@@ -29,6 +29,7 @@
     weatherLon: document.getElementById('weatherLon'),
     showRainForecast: document.getElementById('showRainForecast'),
     useColoredPnL: document.getElementById('useColoredPnL'),
+    centerUI: document.getElementById('centerUI'),
     getLocationBtn: document.getElementById('getLocationBtn'),
     refreshMins: document.getElementById('refreshMins'),
     greeting: document.getElementById('greeting'),
@@ -116,6 +117,7 @@
       showComic: true,
       showRainForecast: true,
       useColoredPnL: true,
+      centerUI: false,
     };
   }
   
@@ -135,6 +137,17 @@
     }
     if (els.toggleThemeBtnMobile) {
       els.toggleThemeBtnMobile.textContent = theme === 'dark' ? '[LIGHT MODE]' : '[DARK MODE]';
+    }
+  }
+  
+  function applyCenterUI(centerUI) {
+    const container = document.querySelector('.container');
+    if (container) {
+      if (centerUI) {
+        container.style.margin = '0 auto';
+      } else {
+        container.style.margin = '';
+      }
     }
   }
 
@@ -220,6 +233,7 @@
     els.weatherLon.value = settings.weather.lon ?? '';
     els.showRainForecast.checked = settings.showRainForecast ?? true;
     els.useColoredPnL.checked = settings.useColoredPnL ?? true;
+    els.centerUI.checked = settings.centerUI ?? false;
     els.showComic.checked = settings.showComic ?? true;
     els.refreshMins.value = settings.refreshMinutes ?? 30;
     els.comicStrip.value = settings.comicStrip || 'calvinandhobbes';
@@ -269,6 +283,7 @@
     newSettings.showComic = els.showComic.checked;
     newSettings.showRainForecast = els.showRainForecast.checked;
     newSettings.useColoredPnL = els.useColoredPnL.checked;
+    newSettings.centerUI = els.centerUI.checked;
     return newSettings;
   }
 
@@ -292,6 +307,9 @@
       if (comicSection) {
         comicSection.style.display = s.showComic ? 'block' : 'none';
       }
+      
+      // Apply center UI setting
+      applyCenterUI(s.centerUI);
       
       refreshAll();
     });
@@ -800,20 +818,32 @@
     // Render perpetual positions
     if (data.perp && data.perp.assetPositions && data.perp.assetPositions.length > 0) {
       console.log('Rendering perp positions:', data.perp.assetPositions);
+      
+      // Fetch CoinGecko prices for perp positions
+      const perpSymbols = data.perp.assetPositions
+        .map(pos => pos.position?.coin)
+        .filter(coin => coin);
+      const cgPrices = await fetchCoinGeckoPrices(perpSymbols);
+      
       for (const pos of data.perp.assetPositions) {
         console.log('Perp position:', pos);
+        const coin = pos.position?.coin || 'Unknown';
         const pnl = parseFloat(pos.position?.unrealizedPnl || 0);
         hyperliquidTotal += pnl;
+        
+        // Use CoinGecko price if available
+        const cgData = cgPrices[coin];
+        const currentPrice = cgData?.price || parseFloat(pos.position?.entryPx || 0);
         
         const li = document.createElement('li');
         li.className = 'crypto-item';
         li.innerHTML = `
           <div class="crypto-header">
-            <strong>${pos.position?.coin || 'Unknown'}</strong>
+            <strong>${coin}</strong>
             <span class="exchange-badge">Hyperliquid</span>
           </div>
           <div class="crypto-details">
-            Size: ${pos.position?.szi || 0} | Entry: $${(parseFloat(pos.position?.entryPx || 0)).toLocaleString()}
+            Size: ${pos.position?.szi || 0} | Price: $${currentPrice.toLocaleString()}
             ${pos.position?.unrealizedPnl ? `<div class="pnl ${parseFloat(pos.position.unrealizedPnl) >= 0 ? 'positive' : 'negative'}">PnL: $${parseFloat(pos.position.unrealizedPnl).toFixed(2)}</div>` : ''}
           </div>
         `;
@@ -1260,47 +1290,79 @@
     }
   }
 
-  async function fetchCoinGecko24hChanges(symbols) {
-    // Map common symbols to CoinGecko IDs
-    const symbolToId = {
-      'BTC': 'bitcoin',
-      'ETH': 'ethereum',
-      'USDC': 'usd-coin',
-      'USDT': 'tether',
-      'SOL': 'solana',
-      'HYPE': 'hyperliquid',
-      'ZEC': 'zcash',
-      'MATIC': 'matic-network',
-      'AVAX': 'avalanche-2',
-      'ARB': 'arbitrum',
-      'OP': 'optimism',
-      'LINK': 'chainlink',
-      'UNI': 'uniswap',
-      'AAVE': 'aave',
-      'CRV': 'curve-dao-token',
-      'LDO': 'lido-dao',
-      'MKR': 'maker',
-      'SNX': 'synthetix-network-token',
-      'DOGE': 'dogecoin',
-      'ADA': 'cardano',
-      'DOT': 'polkadot',
-      'SHIB': 'shiba-inu',
-      'ATOM': 'cosmos',
-      'LTC': 'litecoin',
-      'XRP': 'ripple',
-      'TRX': 'tron',
-      'FTM': 'fantom',
-      'APE': 'apecoin',
-      'SAND': 'the-sandbox',
-      'MANA': 'decentraland',
-      'GRT': 'the-graph',
-      'SUSHI': 'sushi',
-      'COMP': 'compound-governance-token',
-      'YFI': 'yearn-finance'
-    };
-    
+  // Symbol to CoinGecko ID mapping
+  const symbolToCoingeckoId = {
+    'BTC': 'bitcoin',
+    'ETH': 'ethereum',
+    'USDC': 'usd-coin',
+    'USDT': 'tether',
+    'SOL': 'solana',
+    'HYPE': 'hyperliquid',
+    'ZEC': 'zcash',
+    'MATIC': 'matic-network',
+    'AVAX': 'avalanche-2',
+    'ARB': 'arbitrum',
+    'OP': 'optimism',
+    'LINK': 'chainlink',
+    'UNI': 'uniswap',
+    'AAVE': 'aave',
+    'CRV': 'curve-dao-token',
+    'LDO': 'lido-dao',
+    'MKR': 'maker',
+    'SNX': 'synthetix-network-token',
+    'DOGE': 'dogecoin',
+    'ADA': 'cardano',
+    'DOT': 'polkadot',
+    'SHIB': 'shiba-inu',
+    'ATOM': 'cosmos',
+    'LTC': 'litecoin',
+    'XRP': 'ripple',
+    'TRX': 'tron',
+    'FTM': 'fantom',
+    'APE': 'apecoin',
+    'SAND': 'the-sandbox',
+    'MANA': 'decentraland',
+    'GRT': 'the-graph',
+    'SUSHI': 'sushi',
+    'COMP': 'compound-governance-token',
+    'YFI': 'yearn-finance'
+  };
+  
+  async function fetchCoinGeckoPrices(symbols) {
     const ids = symbols
-      .map(s => symbolToId[s.toUpperCase()])
+      .map(s => symbolToCoingeckoId[s.toUpperCase()])
+      .filter(id => id)
+      .join(',');
+    
+    if (!ids) return {};
+    
+    try {
+      const resp = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
+      if (resp.ok) {
+        const data = await resp.json();
+        const result = {};
+        
+        // Map back from ID to symbol with both price and change
+        for (const [symbol, id] of Object.entries(symbolToCoingeckoId)) {
+          if (data[id]) {
+            result[symbol] = {
+              price: data[id].usd || 0,
+              change24h: data[id].usd_24h_change || 0
+            };
+          }
+        }
+        
+        return result;
+      }
+    } catch (err) {
+      console.error('Error fetching CoinGecko prices:', err);
+    }
+    return {};
+  }
+
+  async function fetchCoinGecko24hChanges(symbols) {
+    const ids = symbols
+      .map(s => symbolToCoingeckoId[s.toUpperCase()])
       .filter(id => id)
       .join(',');
     
@@ -1313,7 +1375,7 @@
         const changes = {};
         
         // Map back from ID to symbol
-        for (const [symbol, id] of Object.entries(symbolToId)) {
+        for (const [symbol, id] of Object.entries(symbolToCoingeckoId)) {
           if (data[id] && data[id].usd_24h_change !== undefined) {
             changes[symbol] = data[id].usd_24h_change;
           }
@@ -1380,76 +1442,100 @@
       console.error('Error fetching Hyperliquid market data:', err);
     }
     
+    // Collect all unique symbols for CoinGecko price fetching
+    const allPerpSymbols = new Set();
+    const allWalletData = [];
+    
     for (const wallet of wallets) {
-      // Fetch Hyperliquid data
       const hlData = await fetchHyperliquidPositions(wallet);
-      if (hlData) {
-        // Process perp positions
-        if (hlData.perp && hlData.perp.assetPositions) {
-          for (const pos of hlData.perp.assetPositions) {
-            const coin = pos.position?.coin || 'Unknown';
-            const marketInfo = hlMarketData[coin] || {};
-            const currentPrice = parseFloat(pos.position?.entryPx || 0);
-            const size = parseFloat(pos.position?.szi || 0);
-            allPositionsData.push({
-              asset: coin,
-              exchange: 'Hyperliquid',
-              positionType: 'perp',
-              amount: size,
-              value: size * currentPrice,
-              price: currentPrice,
-              change24h: marketInfo.change24h || 0,
-              pnl: parseFloat(pos.position?.unrealizedPnl || 0),
-              pnlPercent: 0
-            });
-          }
+      const lighterData = await fetchLighterPositions(wallet);
+      const nftData = await fetchOpenSeaNFTs(wallet);
+      
+      allWalletData.push({ hlData, lighterData, nftData });
+      
+      // Collect perp symbols for CoinGecko price fetching
+      if (hlData && hlData.perp && hlData.perp.assetPositions) {
+        for (const pos of hlData.perp.assetPositions) {
+          const coin = pos.position?.coin;
+          if (coin) allPerpSymbols.add(coin);
         }
-        
-        // Process spot balances
-        if (hlData.spot && hlData.spot.balances) {
-          const pricesResp = await fetch('https://api.hyperliquid.xyz/info', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'allMids' })
-          });
-          const prices = pricesResp.ok ? await pricesResp.json() : null;
+      }
+    }
+    
+    // Fetch CoinGecko prices for all perp positions
+    const coinGeckoPrices = await fetchCoinGeckoPrices(Array.from(allPerpSymbols));
+    
+    // Process all collected wallet data
+    for (const { hlData, lighterData, nftData } of allWalletData) {
+      // Process Hyperliquid perp positions
+      if (hlData && hlData.perp && hlData.perp.assetPositions) {
+        for (const pos of hlData.perp.assetPositions) {
+          const coin = pos.position?.coin || 'Unknown';
+          const marketInfo = hlMarketData[coin] || {};
+          const size = parseFloat(pos.position?.szi || 0);
           
-          for (const bal of hlData.spot.balances) {
-            const tokenAmount = parseFloat(bal.total || 0);
-            if (tokenAmount <= 0) continue;
-            
-            let usdValue = tokenAmount;
-            if (bal.coin !== 'USDC' && prices && prices[bal.coin]) {
-              usdValue = tokenAmount * parseFloat(prices[bal.coin]);
-            }
-            
-            let pnl = 0;
-            let pnlPercent = 0;
-            if (bal.entryNtl && parseFloat(bal.entryNtl) > 0) {
-              const entryValue = parseFloat(bal.entryNtl);
-              pnl = usdValue - entryValue;
-              pnlPercent = (pnl / entryValue) * 100;
-            }
-            
-            const marketInfo = hlMarketData[bal.coin] || {};
-            const currentPrice = bal.coin === 'USDC' ? 1 : (prices && prices[bal.coin] ? parseFloat(prices[bal.coin]) : 0);
-            allPositionsData.push({
-              asset: bal.coin,
-              exchange: 'Hyperliquid',
-              positionType: 'spot',
-              amount: tokenAmount,
-              value: usdValue,
-              price: currentPrice,
-              change24h: marketInfo.change24h || 0,
-              pnl: pnl,
-              pnlPercent: pnlPercent
-            });
-          }
+          // Use CoinGecko price if available, otherwise fall back to entry price
+          const cgData = coinGeckoPrices[coin];
+          const currentPrice = cgData?.price || parseFloat(pos.position?.entryPx || 0);
+          const change24h = cgData?.change24h || marketInfo.change24h || 0;
+          
+          allPositionsData.push({
+            asset: coin,
+            exchange: 'Hyperliquid',
+            positionType: 'perp',
+            amount: size,
+            value: Math.abs(size) * currentPrice,
+            price: currentPrice,
+            change24h: change24h,
+            pnl: parseFloat(pos.position?.unrealizedPnl || 0),
+            pnlPercent: 0
+          });
         }
       }
       
-      // Fetch Lighter data
-      const lighterData = await fetchLighterPositions(wallet);
+      // Process Hyperliquid spot balances
+      if (hlData && hlData.spot && hlData.spot.balances) {
+        const pricesResp = await fetch('https://api.hyperliquid.xyz/info', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'allMids' })
+        });
+        const prices = pricesResp.ok ? await pricesResp.json() : null;
+        
+        for (const bal of hlData.spot.balances) {
+          const tokenAmount = parseFloat(bal.total || 0);
+          if (tokenAmount <= 0) continue;
+          
+          let usdValue = tokenAmount;
+          if (bal.coin !== 'USDC' && prices && prices[bal.coin]) {
+            usdValue = tokenAmount * parseFloat(prices[bal.coin]);
+          }
+          
+          let pnl = 0;
+          let pnlPercent = 0;
+          if (bal.entryNtl && parseFloat(bal.entryNtl) > 0) {
+            const entryValue = parseFloat(bal.entryNtl);
+            pnl = usdValue - entryValue;
+            pnlPercent = (pnl / entryValue) * 100;
+          }
+          
+          const marketInfo = hlMarketData[bal.coin] || {};
+          const currentPrice = bal.coin === 'USDC' ? 1 : (prices && prices[bal.coin] ? parseFloat(prices[bal.coin]) : 0);
+          allPositionsData.push({
+            asset: bal.coin,
+            exchange: 'Hyperliquid',
+            positionType: 'spot',
+            amount: tokenAmount,
+            value: usdValue,
+            price: currentPrice,
+            change24h: marketInfo.change24h || 0,
+            pnl: pnl,
+            pnlPercent: pnlPercent
+          });
+        }
+      }
+      
+      // Process Lighter data
       if (lighterData && lighterData.accounts && lighterData.accounts[0]) {
         const account = lighterData.accounts[0];
         if (account.positions) {
@@ -1476,10 +1562,8 @@
         }
       }
       
-      // Fetch OpenSea NFTs
-      const nftData = await fetchOpenSeaNFTs(wallet);
+      // Process OpenSea NFTs
       if (nftData && nftData.collections && nftData.collections.length > 0) {
-        // Add NFT collections to positions
         for (const collection of nftData.collections) {
           const totalValue = collection.count * collection.floorPriceUsd;
           
@@ -1877,6 +1961,7 @@
     const settings = loadSettings() || getDefaultSettings();
     if (!loadSettings()) saveSettings(settings);
     initTheme(settings);
+    applyCenterUI(settings.centerUI ?? false);
     addHandlers();
     refreshAll();
 

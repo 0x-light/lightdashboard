@@ -297,7 +297,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .settings {
-  border: none;
+  border: 1px solid var(--border);
   padding: 0;
   color: var(--text);
   background: var(--card-bg);
@@ -361,7 +361,6 @@ select {
   border: 1px solid var(--border);
   padding: 8px 10px;
   font-family: 'Berkeley Mono', 'Courier New', monospace !important;
-  font-size: 16px;
   transition: background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
 }
 
@@ -684,6 +683,12 @@ select:focus {
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Prevent zoom on input focus on mobile */
+  input,
+  select {
+    font-size: 16px;
   }
 }
 
