@@ -1833,9 +1833,6 @@
         moonName = 'New Moon';
       }
       
-      // Check if rain forecast should be shown
-      const settings = loadSettings() || getDefaultSettings();
-      
       // Only show moon during evening/night (6 PM - 6 AM)
       const currentHour = new Date().getHours();
       const showMoon = currentHour >= 18 || currentHour < 6;
@@ -1858,7 +1855,8 @@
     }
     
     els.summary.innerHTML = summaryParts.join('. ') + '.';
-
+  }
+  
   function init() {
     const settings = loadSettings() || getDefaultSettings();
     if (!loadSettings()) saveSettings(settings);
