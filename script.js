@@ -800,19 +800,19 @@
     // Render perpetual positions
     if (data.perp && data.perp.assetPositions && data.perp.assetPositions.length > 0) {
       for (const pos of data.perp.assetPositions) {
-        const pnl = pos.unrealizedPnl || 0;
+        const pnl = parseFloat(pos.position?.unrealizedPnl || 0);
         hyperliquidTotal += pnl;
         
         const li = document.createElement('li');
         li.className = 'crypto-item';
         li.innerHTML = `
           <div class="crypto-header">
-            <strong>${pos.symbol}</strong>
-            <span class="exchange-badge">Hyperliquid Perp</span>
+            <strong>${pos.position?.coin || 'Unknown'}</strong>
+            <span class="exchange-badge">Hyperliquid</span>
           </div>
           <div class="crypto-details">
-            Size: ${pos.position?.size || 0} | Entry: $${(pos.position?.entryPx || 0).toLocaleString()}
-            ${pos.unrealizedPnl ? `<div class="pnl ${pos.unrealizedPnl >= 0 ? 'positive' : 'negative'}">PnL: $${pos.unrealizedPnl.toFixed(2)}</div>` : ''}
+            Size: ${pos.position?.szi || 0} | Entry: $${(parseFloat(pos.position?.entryPx || 0)).toLocaleString()}
+            ${pos.position?.unrealizedPnl ? `<div class="pnl ${parseFloat(pos.position.unrealizedPnl) >= 0 ? 'positive' : 'negative'}">PnL: $${parseFloat(pos.position.unrealizedPnl).toFixed(2)}</div>` : ''}
           </div>
         `;
         list.appendChild(li);
@@ -857,7 +857,7 @@
         li.innerHTML = `
           <div class="crypto-header">
             <strong>${bal.coin}</strong>
-            <span class="exchange-badge">Hyperliquid Spot</span>
+            <span class="exchange-badge">Hyperliquid</span>
           </div>
           <div class="crypto-details">
             ${tokenAmount.toLocaleString()} ${bal.coin}${priceInfo} = $${usdValue.toLocaleString()}
@@ -1385,16 +1385,19 @@
         // Process perp positions
         if (hlData.perp && hlData.perp.assetPositions) {
           for (const pos of hlData.perp.assetPositions) {
-            const marketInfo = hlMarketData[pos.symbol] || {};
+            const coin = pos.position?.coin || 'Unknown';
+            const marketInfo = hlMarketData[coin] || {};
             const currentPrice = parseFloat(pos.position?.entryPx || 0);
+            const size = parseFloat(pos.position?.szi || 0);
             allPositionsData.push({
-              asset: pos.symbol,
-              exchange: 'Hyperliquid Perp',
-              amount: pos.position?.size || 0,
-              value: parseFloat(pos.position?.size || 0) * currentPrice,
+              asset: coin,
+              exchange: 'Hyperliquid',
+              positionType: 'perp',
+              amount: size,
+              value: size * currentPrice,
               price: currentPrice,
               change24h: marketInfo.change24h || 0,
-              pnl: parseFloat(pos.unrealizedPnl || 0),
+              pnl: parseFloat(pos.position?.unrealizedPnl || 0),
               pnlPercent: 0
             });
           }
@@ -1431,6 +1434,7 @@
             allPositionsData.push({
               asset: bal.coin,
               exchange: 'Hyperliquid',
+              positionType: 'spot',
               amount: tokenAmount,
               value: usdValue,
               price: currentPrice,
@@ -1518,12 +1522,14 @@
     renderPositionsTable();
   }
   
-  function getMarketLink(asset, exchange) {
-    if (exchange === 'Hyperliquid Perp') {
-      return `https://app.hyperliquid.xyz/trade/${asset}`;
-    } else if (exchange === 'Hyperliquid') {
-      // Spot
-      return `https://app.hyperliquid.xyz/spot/${asset}`;
+  function getMarketLink(asset, exchange, positionType) {
+    if (exchange === 'Hyperliquid') {
+      if (positionType === 'perp') {
+        return `https://app.hyperliquid.xyz/trade/${asset}`;
+      } else if (positionType === 'spot') {
+        return `https://app.hyperliquid.xyz/spot/${asset}`;
+      }
+      return null;
     } else if (exchange === 'Lighter') {
       // Lighter links - format: https://app.lighter.xyz/trade/BTC-USDC
       return `https://app.lighter.xyz/trade/${asset}-USDC`;
@@ -1583,7 +1589,7 @@
       const changeSign = hasChange24h && change24h >= 0 ? '+' : '';
       const change24hDisplay = hasChange24h ? `${changeSign}${Math.abs(change24h).toFixed(1)}%` : '—';
       
-      const marketLink = getMarketLink(pos.asset, pos.exchange);
+      const marketLink = getMarketLink(pos.asset, pos.exchange, pos.positionType);
       const exchangeDisplay = marketLink 
         ? `<a href="${marketLink}" target="_blank" class="exchange-link">${pos.exchange}</a>`
         : pos.exchange;
