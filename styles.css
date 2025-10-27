@@ -294,6 +294,9 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   gap: 12px;
   align-items: flex-end;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .settings {
@@ -301,13 +304,19 @@ h1, h2, h3, h4, h5, h6 {
   padding: 0;
   color: var(--text);
   background: var(--card-bg);
-  width: min(720px, 96vw);
+  width: min(720px, calc(100vw - 30px));
+  max-width: calc(100vw - 30px);
   font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .settings-form header, .settings-actions {
-  padding: 12px 14px;
+  padding: 16px;
   border-bottom: 1px solid var(--border);
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .settings-actions {
@@ -316,23 +325,33 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   justify-content: flex-end;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .settings-form section {
-  padding: 12px 14px;
+  padding: 16px;
   display: grid;
   gap: 12px;
+  overflow-x: hidden;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 fieldset {
   border: none;
   border-bottom: 1px solid var(--border);
-  padding: 12px 0;
+  padding: 16px 0;
   background: transparent;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 fieldset:last-child {
   border-bottom: none;
+}
+
+fieldset label:first-of-type {
+  margin-top: 8px;
 }
 
 legend {
@@ -340,6 +359,9 @@ legend {
   font-weight: 400;
   padding: 0;
   text-transform: uppercase;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 label {
@@ -347,21 +369,54 @@ label {
   gap: 6px;
   margin-top: 6px;
   color: var(--text);
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+/* Checkbox labels should not be grid */
+label[style*="display: flex"] {
+  display: flex !important;
+}
+
+input[type="checkbox"] {
+  width: auto !important;
+  min-width: 20px;
+  height: 20px;
+  margin: 0;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 h3 {
   text-transform: uppercase;
   color: var(--muted);
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 input,
-select {
+select,
+button {
   background: var(--card-bg);
   color: var(--text);
   border: 1px solid var(--border);
   padding: 8px 10px;
   font-family: 'Berkeley Mono', 'Courier New', monospace !important;
   transition: background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+input:not([type="checkbox"]),
+select {
+  width: 100%;
+}
+
+button,
+input[type="checkbox"] {
+  width: auto;
 }
 
 input:focus,
@@ -374,6 +429,9 @@ select:focus {
   color: var(--muted);
   margin-bottom: 8px;
   opacity: 0.7;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 .item-row {
@@ -382,6 +440,9 @@ select:focus {
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .item-row-wide {
@@ -667,6 +728,7 @@ select:focus {
     margin: 0;
     border: none;
     border-radius: 0;
+    overflow-x: hidden;
   }
   
   .settings::backdrop {
@@ -677,18 +739,101 @@ select:focus {
     height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow-x: hidden;
+    max-width: 100vw;
+    box-sizing: border-box;
+  }
+  
+  .settings-form header,
+  .settings-form .settings-actions {
+    padding: 16px;
+    overflow-x: hidden;
   }
   
   .settings-form section {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
+    padding: 16px;
+    box-sizing: border-box;
+    width: 100%;
+  }
+  
+  /* Improve spacing on mobile */
+  fieldset {
+    padding: 16px 0;
+  }
+  
+  label {
+    margin-top: 12px;
+  }
+  
+  legend {
+    margin-bottom: 8px;
+    font-size: 0.9em;
+  }
+  
+  .help {
+    font-size: 0.9em;
+    line-height: 1.4;
   }
   
   /* Prevent zoom on input focus on mobile */
   input,
   select {
     font-size: 16px;
+  }
+  
+  /* Stack row elements vertically on mobile */
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  /* Make item-row stack vertically on mobile */
+  .item-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .item-row input:not([type="checkbox"]) {
+    width: 100%;
+  }
+  
+  .item-row label {
+    margin-top: 0;
+  }
+  
+  /* Ensure buttons fit */
+  button:not([type="checkbox"]),
+  .btn-text {
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
+  }
+  
+  /* Get location button on mobile */
+  #getLocationBtn {
+    width: 100%;
+    margin-top: 8px;
+  }
+  
+  /* Settings actions stack on mobile */
+  .settings-actions {
+    flex-wrap: wrap;
+    justify-content: stretch;
+    gap: 12px;
+  }
+  
+  .settings-actions button {
+    flex: 1;
+    min-width: 120px;
+  }
+  
+  /* Ensure help text wraps */
+  .help {
+    word-break: break-word;
   }
 }
 
