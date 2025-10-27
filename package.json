@@ -1,0 +1,13 @@
+{
+  "name": "personal-dashboard",
+  "version": "1.0.0",
+  "description": "Ultra-minimal terminal-style personal dashboard",
+  "scripts": {
+    "dev": "python -m http.server 8000",
+    "build": "echo 'No build required - static site'"
+  },
+  "keywords": ["dashboard", "crypto", "portfolio", "weather"],
+  "author": "",
+  "license": "MIT"
+}
+

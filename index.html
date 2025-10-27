@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>My Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <h1 id="greeting" class="greeting"><span class="loading-terminal">[...]</span></h1>
+      <button id="mobileMenuBtn" class="btn-text mobile-menu-btn">[MENU]</button>
+      <div class="header-actions">
+        <button id="toggleThemeBtn" class="btn-text">[DARK MODE]</button>
+        <button id="toggleAmountsBtn" class="btn-text">[SHOW AMOUNTS]</button>
+        <div class="font-size-controls">
+          <button id="decreaseFontBtn" class="btn-text">[-</button>
+          <span id="fontSizeDisplay" class="btn-text">15px</span>
+          <button id="increaseFontBtn" class="btn-text">+]</button>
+        </div>
+        <button id="openSettingsBtn" class="btn-text">[SETTINGS]</button>
+      </div>
+    </header>
+
+    <!-- Mobile Menu Overlay -->
+    <div id="mobileMenu" class="mobile-menu">
+      <div class="mobile-menu-header">
+        <h1 id="greetingMobile" class="greeting"><span class="loading-terminal">[...]</span></h1>
+        <button id="closeMobileMenuBtn" class="btn-text">[CLOSE]</button>
+      </div>
+      <div class="mobile-menu-content">
+        <button id="toggleThemeBtnMobile" class="btn-text">[DARK MODE]</button>
+        <button id="toggleAmountsBtnMobile" class="btn-text">[SHOW AMOUNTS]</button>
+        <div class="font-size-controls">
+          <button id="decreaseFontBtnMobile" class="btn-text">[-</button>
+          <span id="fontSizeDisplayMobile" class="btn-text">15px</span>
+          <button id="increaseFontBtnMobile" class="btn-text">+]</button>
+        </div>
+        <button id="openSettingsBtnMobile" class="btn-text">[SETTINGS]</button>
+      </div>
+    </div>
+
+    <main class="container">
+      <!-- Hero Section -->
+      <section class="hero">
+        <p id="summary" class="hero-summary"><span class="loading-terminal">[...]</span></p>
+      </section>
+
+      <!-- Data Tables -->
+      <section class="data-section">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2 class="section-title" style="margin: 0;">Positions</h2>
+          <div style="display: flex; gap: 12px;">
+            <button id="toggleNftsBtn" class="btn-text">[HIDE NFTS]</button>
+            <button id="hideSmallBtn" class="btn-text">[SHOW &lt;$100]</button>
+          </div>
+        </div>
+        <table id="positionsTable" class="data-table">
+          <thead>
+            <tr>
+              <th>Asset</th>
+              <th>Exchange</th>
+              <th>Amount</th>
+              <th>Price</th>
+              <th>Value</th>
+              <th>24h Change</th>
+              <th>P&L</th>
+            </tr>
+          </thead>
+          <tbody id="positionsBody">
+            <tr><td colspan="7" class="loading"><span class="loading-terminal">[...]</span></td></tr>
+          </tbody>
+        </table>
+        <div id="mobilePositionsContainer" class="mobile-positions-container"></div>
+      </section>
+
+      <section class="data-section">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2 id="comicTitle" class="section-title" style="margin: 0;">Calvin & Hobbes</h2>
+          <div class="calvin-controls">
+            <button id="calvinPrevBtn" class="btn-text">[PREV]</button>
+            <button id="calvinNextBtn" class="btn-text">[NEXT]</button>
+            <button id="calvinRandomBtn" class="btn-text">[RANDOM]</button>
+          </div>
+        </div>
+        <div class="calvin-container">
+          <div id="calvinImage"><span class="loading-terminal">[...]</span></div>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="settingsDialog" class="settings">
+      <form method="dialog" class="settings-form">
+        <header>
+          <h3>Settings</h3>
+        </header>
+        <section>
+          <fieldset>
+            <legend>Wallet Addresses</legend>
+            <div class="help">Add one or more wallet addresses (comma-separated) to track positions on Hyperliquid, Lighter, and OpenSea NFTs</div>
+            <label>
+              Wallet Addresses
+              <input id="walletAddresses" type="text">
+            </label>
+            <label>
+              OpenSea API Key (Optional)
+              <input id="openSeaApiKey" type="text">
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Personal Info</legend>
+            <label>
+              Your Name
+              <input id="userName" type="text">
+            </label>
+            <label>
+              City
+              <input id="weatherLabel" type="text">
+            </label>
+            <div class="row">
+              <label>
+                Latitude
+                <input id="weatherLat" type="number" step="any">
+              </label>
+              <label>
+                Longitude
+                <input id="weatherLon" type="number" step="any">
+              </label>
+              <button type="button" id="getLocationBtn" class="btn-text" style="align-self: flex-end;">[USE MY LOCATION]</button>
+            </div>
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+              <input id="showRainForecast" type="checkbox">
+              Show rain forecast
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+              <input id="useColoredPnL" type="checkbox">
+              Use colored P&L (green/red)
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Comic Strip</legend>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input id="showComic" type="checkbox">
+              Show comic strip
+            </label>
+            <label>
+              Comic
+              <select id="comicStrip">
+                <option value="calvinandhobbes">Calvin & Hobbes</option>
+                <option value="peanuts">Peanuts</option>
+                <option value="farside">The Far Side</option>
+              </select>
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Manual Crypto Positions (Optional)</legend>
+            <div class="help">Add symbol (e.g., BTC), CoinGecko ID (e.g., bitcoin), amount, and entry price. Find IDs at coingecko.com. These will be added to your on-chain positions.</div>
+            <div id="positionsContainer"></div>
+            <button type="button" id="addPositionBtn" class="btn-text">[+ ADD POSITION]</button>
+          </fieldset>
+
+          <fieldset>
+            <legend>Refresh</legend>
+            <label>
+              Refresh interval (minutes)
+              <input id="refreshMins" type="number" min="1" value="30">
+            </label>
+          </fieldset>
+        </section>
+        <footer class="settings-actions">
+          <button value="cancel" class="btn-text">[CANCEL]</button>
+          <button id="saveSettingsBtn" value="default" class="btn-text">[SAVE]</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <script src="script.js" defer></script>
+  </body>
+</html>
