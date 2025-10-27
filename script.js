@@ -1834,31 +1834,23 @@
       }
       
       // Check if rain forecast should be shown
-      const settings = loadSettings() || getDefaultSettings();
-      
-      // Only show moon during evening/night (6 PM - 6 AM)
-      const currentHour = new Date().getHours();
-      const showMoon = currentHour >= 18 || currentHour < 6;
-      const moonText = showMoon ? ` and a ${moonIcon} ${moonName.toLowerCase()} moon` : '';
-      
-      if (settings.showRainForecast) {
-        const precipitation = weatherData.daily?.precipitation_sum?.[0] || 0;
-        if (precipitation > 0) {
-          summaryParts.push(`It's ${temp}°C ${weatherIcon} in <strong>${city}</strong> with rain forecasted${moonText}`);
-        } else {
-          summaryParts.push(`It's ${temp}°C ${weatherIcon} in <strong>${city}</strong>${moonText ? ' with' + moonText : ''}`);
-        }
-      } else {
-        summaryParts.push(`It's ${temp}°C ${weatherIcon} in <strong>${city}</strong>${moonText ? ' with' + moonText : ''}`);
-      }
-    }
-    
-    if (summaryParts.length === 0) {
-      summaryParts.push('<span class="loading-terminal">[...]</span>');
-    }
-    
-    els.summary.innerHTML = summaryParts.join('. ') + '.';
+const settings = loadSettings() || getDefaultSettings();
+
+// Only show moon during evening/night (6 PM - 6 AM)
+const currentHour = new Date().getHours();
+const showMoon = currentHour >= 18 || currentHour < 6;
+const moonText = showMoon ? ` and a ${moonIcon} ${moonName.toLowerCase()} moon` : '';
+
+if (settings.showRainForecast) {
+  const precipitation = weatherData.daily?.precipitation_sum?.[0] || 0;
+  if (precipitation > 0) {
+    summaryParts.push(`It's ${temp}°C ${weatherIcon} in <strong>${city}</strong> with rain forecasted${moonText}`);
+  } else {
+    summaryParts.push(`It's ${temp}°C ${weatherIcon} in <strong>${city}</strong>${moonText}`);
   }
+} else {
+  summaryParts.push(`It's ${temp}°C ${weatherIcon} in <strong>${city}</strong>${moonText}`);
+}
 
   function init() {
     const settings = loadSettings() || getDefaultSettings();
