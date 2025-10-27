@@ -1836,7 +1836,7 @@
       // Only show moon during evening/night (6 PM - 6 AM)
       const currentHour = new Date().getHours();
       const showMoon = currentHour >= 18 || currentHour < 6;
-      const moonText = showMoon ? ` and a ${moonIcon} ${moonName.toLowerCase()} moon` : '';
+      const moonText = showMoon ? ` with a ${moonIcon} ${moonName.toLowerCase()} moon` : '';
       
       if (settings.showRainForecast) {
         const precipitation = weatherData.daily?.precipitation_sum?.[0] || 0;
