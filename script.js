@@ -1778,7 +1778,15 @@
       const amountText = amountsVisible 
         ? `$${Math.abs(totalDailyChange).toLocaleString(undefined, {maximumFractionDigits: 2})}`
         : '$••••';
-      summaryParts.push(`Your portfolio is <strong>${changeSign} ${amountText}</strong> (${totalDailyChangePercent >= 0 ? '+' : ''}${totalDailyChangePercent.toFixed(2)}%)`);
+      
+      // Apply color based on useColoredPnL setting
+      const useColoredPnL = settings.useColoredPnL ?? true;
+      const colorClass = useColoredPnL 
+        ? (totalDailyChange >= 0 ? 'positive-pnl' : 'negative-pnl')
+        : '';
+      const colorStyle = colorClass ? ` class="${colorClass}"` : '';
+      
+      summaryParts.push(`Your portfolio is <strong${colorStyle}>${changeSign} ${amountText} (${totalDailyChangePercent >= 0 ? '+' : ''}${totalDailyChangePercent.toFixed(2)}%)</strong>`);
     }
     
     // Weather
