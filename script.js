@@ -799,7 +799,9 @@
     
     // Render perpetual positions
     if (data.perp && data.perp.assetPositions && data.perp.assetPositions.length > 0) {
+      console.log('Rendering perp positions:', data.perp.assetPositions);
       for (const pos of data.perp.assetPositions) {
+        console.log('Perp position:', pos);
         const pnl = parseFloat(pos.position?.unrealizedPnl || 0);
         hyperliquidTotal += pnl;
         
