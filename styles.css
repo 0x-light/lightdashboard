@@ -297,7 +297,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .settings {
-  border: 1px solid var(--border);
+  border: none;
   padding: 0;
   color: var(--text);
   background: var(--card-bg);
@@ -361,6 +361,7 @@ select {
   border: 1px solid var(--border);
   padding: 8px 10px;
   font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-size: 16px;
   transition: background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
 }
 
@@ -656,6 +657,33 @@ select:focus {
   
   .mobile-position-card {
     display: block;
+  }
+  
+  /* Full bleed settings dialog on mobile */
+  .settings {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+  }
+  
+  .settings::backdrop {
+    background: rgba(0, 0, 0, 0.8);
+  }
+  
+  .settings-form {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .settings-form section {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
