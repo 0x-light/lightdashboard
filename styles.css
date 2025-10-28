@@ -30,7 +30,7 @@
   --orange: #cb4b16;
   --yellow: #b58900;
   --cyan: #2aa198;
-  --flash-start: rgba(38, 139, 210, 0.3);
+  --flash-start: rgba(162, 216, 255, 0.3);
   --flash-mid: rgba(38, 139, 210, 0.15);
 }
 
@@ -41,13 +41,13 @@
 
 /* Flash animation for real-time updates */
 @keyframes flash-update {
-  0% { background-color: var(--flash-start); }
-  50% { background-color: var(--flash-mid); }
-  100% { background-color: transparent; }
+  0% { opacity: 0.3; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
 }
 
 .flash-update {
-  animation: flash-update 0.4s ease-out;
+  animation: flash-update 0.2s ease-out;
 }
 
 html {
@@ -872,6 +872,6 @@ html[data-theme="dark"] {
   --orange: #cb4b16;
   --yellow: #b58900;
   --cyan: #2aa198;
-  --flash-start: rgba(38, 139, 210, 0.4);
+  --flash-start: rgba(185, 226, 255, 0.4);
   --flash-mid: rgba(38, 139, 210, 0.2);
 }

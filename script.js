@@ -1143,9 +1143,19 @@
         const chainResults = await Promise.all(chainPromises);
         const allNfts = chainResults.flat();
         
+        console.log(`📊 NFT Summary: ${allNfts.length} total NFTs across ${chains.length} chains`);
+        
         if (allNfts.length > 0) {
           const openSeaData = { nfts: allNfts };
           console.log('✅ Total NFTs fetched across all chains:', allNfts.length);
+          
+          // Log NFTs by chain
+          const nftsByChain = {};
+          allNfts.forEach(nft => {
+            const chain = nft._chain || 'unknown';
+            nftsByChain[chain] = (nftsByChain[chain] || 0) + 1;
+          });
+          console.log('📊 NFTs by chain:', nftsByChain);
           
           const collections = {};
           const collectionSlugs = new Set();
@@ -1256,6 +1266,7 @@
           
           // Fetch floor prices and stats using OpenSea Collection Stats API (in parallel)
           console.log('💰 Fetching floor prices and stats for', collectionSlugs.size, 'collections in parallel...');
+          console.log('📋 Collection slugs:', Array.from(collectionSlugs));
           
           const statsPromises = Array.from(collectionSlugs).map(slug =>
             fetch(`https://api.opensea.io/api/v2/collections/${slug}/stats`, {
@@ -1688,6 +1699,8 @@
             console.log('📋 Sample Lighter position data:', account.positions[0]);
           }
           
+          console.log(`💹 Processing ${account.positions.length} Lighter positions`);
+          
           for (const pos of account.positions) {
             if (!pos.position || parseFloat(pos.position) === 0) continue;
             
@@ -1699,7 +1712,7 @@
             // Lighter provides position_value which is already calculated from current market price
             // So deriving price from position_value / position is accurate
             const currentPrice = position > 0 ? positionValue / position : 0;
-            console.log(`💹 Lighter ${pos.symbol}: value=$${positionValue}, position=${position}, derived price=$${currentPrice}`);
+            console.log(`💹 Lighter ${pos.symbol}: value=$${positionValue.toFixed(2)}, position=${position}, price=$${currentPrice.toFixed(2)}, pnl=$${unrealizedPnl.toFixed(2)}`);
             
             allPositionsData.push({
               asset: pos.symbol,
@@ -1823,8 +1836,44 @@
         }
       }
       
+      // Fetch latest Lighter positions for all wallets
+      const settings = loadSettings();
+      const wallets = parseWallets(settings.walletAddresses);
+      const lighterUpdates = {};
+      
+      for (const wallet of wallets) {
+        try {
+          const lighterData = await fetchLighterPositions(wallet);
+          if (lighterData && lighterData.accounts && lighterData.accounts[0]) {
+            const account = lighterData.accounts[0];
+            if (account.positions) {
+              for (const pos of account.positions) {
+                if (pos.position && parseFloat(pos.position) !== 0) {
+                  const position = parseFloat(pos.position);
+                  const positionValue = parseFloat(pos.position_value || 0);
+                  const currentPrice = position > 0 ? positionValue / position : 0;
+                  lighterUpdates[pos.symbol] = {
+                    value: positionValue,
+                    price: currentPrice,
+                    pnl: parseFloat(pos.unrealized_pnl || 0)
+                  };
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.log('Error fetching Lighter data for real-time update:', err.message);
+        }
+      }
+      
+      // Fetch CoinGecko 24h changes for all assets (fallback for non-Hyperliquid)
+      const allAssets = [...new Set(allPositionsData.map(pos => pos.asset))];
+      const coinGeckoChanges = await fetchCoinGecko24hChanges(allAssets);
+      
       // Update positions with new prices and track which ones changed
       const updatedAssets = new Set();
+      
+      // Update Hyperliquid positions
       for (const pos of allPositionsData) {
         if (pos.exchange === 'Hyperliquid' && latestPrices[pos.asset]) {
           const newPrice = latestPrices[pos.asset].price;
@@ -1841,35 +1890,74 @@
             updatedAssets.add(pos.asset);
           }
         }
+        
+        // Update Lighter positions
+        if (pos.exchange === 'Lighter' && lighterUpdates[pos.asset]) {
+          const update = lighterUpdates[pos.asset];
+          if (update.price !== pos.price || update.value !== pos.value) {
+            pos.price = update.price;
+            pos.value = update.value;
+            pos.pnl = update.pnl;
+            updatedAssets.add(pos.asset);
+          }
+          
+          // Update 24h change from CoinGecko
+          if (coinGeckoChanges[pos.asset] !== undefined && coinGeckoChanges[pos.asset] !== pos.change24h) {
+            pos.change24h = coinGeckoChanges[pos.asset];
+            updatedAssets.add(pos.asset);
+          }
+        }
+        
+        // Update 24h change from CoinGecko for any other exchanges
+        if (pos.exchange !== 'Hyperliquid' && pos.exchange !== 'Lighter' && pos.exchange !== 'OpenSea') {
+          if (coinGeckoChanges[pos.asset] !== undefined && coinGeckoChanges[pos.asset] !== pos.change24h) {
+            pos.change24h = coinGeckoChanges[pos.asset];
+            updatedAssets.add(pos.asset);
+          }
+        }
       }
       
       if (updatedAssets.size > 0) {
         renderPositionsTable();
         updateHeroSection();
         
-        // Add flash animation to updated rows
+        // Add flash animation to updated cells
         requestAnimationFrame(() => {
           updatedAssets.forEach(asset => {
-            // Flash desktop table rows
+            // Flash desktop table cells (price, value, change, pnl)
             const rows = els.positionsBody?.querySelectorAll('tr');
             if (rows) {
               rows.forEach(row => {
                 const assetCell = row.querySelector('.asset-cell');
                 if (assetCell && assetCell.textContent.trim() === asset) {
-                  row.classList.add('flash-update');
-                  setTimeout(() => row.classList.remove('flash-update'), 400);
+                  // Flash the price, value, 24h change, and PnL cells
+                  const cells = row.querySelectorAll('td');
+                  if (cells.length >= 7) {
+                    // td indices: 0=asset, 1=exchange, 2=amount, 3=price, 4=value, 5=change24h, 6=pnl
+                    [3, 4, 5, 6].forEach(idx => {
+                      const cell = cells[idx];
+                      if (cell) {
+                        cell.classList.add('flash-update');
+                        setTimeout(() => cell.classList.remove('flash-update'), 200);
+                      }
+                    });
+                  }
                 }
               });
             }
             
-            // Flash mobile cards
+            // Flash mobile card fields
             const cards = els.mobilePositionsContainer?.querySelectorAll('.mobile-position-card');
             if (cards) {
               cards.forEach(card => {
                 const assetSpan = card.querySelector('.card-asset');
                 if (assetSpan && assetSpan.textContent.trim() === asset) {
-                  card.classList.add('flash-update');
-                  setTimeout(() => card.classList.remove('flash-update'), 400);
+                  // Flash the price, value, 24h change, and PnL fields
+                  const fields = card.querySelectorAll('.card-value');
+                  fields.forEach(field => {
+                    field.classList.add('flash-update');
+                    setTimeout(() => field.classList.remove('flash-update'), 200);
+                  });
                 }
               });
             }
