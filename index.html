@@ -21,6 +21,7 @@
           <button id="increaseFontBtn" class="btn-text">+]</button>
         </div>
         <button id="openSettingsBtn" class="btn-text">[SETTINGS]</button>
+        <button id="closeSettingsBtn" class="btn-text" style="display: none;">[CLOSE]</button>
       </div>
     </header>
 
@@ -93,8 +94,9 @@
       </section>
     </main>
 
-    <dialog id="settingsDialog" class="settings">
-      <form method="dialog" class="settings-form">
+    <div id="settingsBackdrop" class="settings-backdrop" style="display: none;"></div>
+    <div id="settingsDialog" class="settings" style="display: none;">
+      <div class="settings-form">
         <header>
           <h3>Settings</h3>
         </header>
@@ -106,7 +108,7 @@
               <button type="button" id="exportSettingsBtn" class="btn-text">[EXPORT]</button>
               <button type="button" id="importSettingsBtn" class="btn-text">[IMPORT]</button>
             </div>
-            <textarea id="settingsExportArea" class="settings-input" style="height: 80px; font-family: monospace; font-size: 11px; display: none;" placeholder="Paste exported settings here and click Import" readonly></textarea>
+            <textarea id="settingsExportArea" class="settings-export-area" style="display: none;" placeholder="Paste exported settings here and click Import" readonly></textarea>
           </fieldset>
 
           <fieldset>
@@ -160,6 +162,13 @@
                 <option value="matrix">Matrix</option>
               </select>
             </label>
+            <label style="margin-bottom: 8px;">
+              Wallpaper
+              <select id="wallpaperSelect" class="settings-input">
+                <option value="none">None</option>
+                <optgroup label="Custom Wallpapers" id="wallpaperOptions"></optgroup>
+              </select>
+            </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
               <input id="useColoredPnL" type="checkbox" class="settings-input">
               Use colored P&L (green/red)
@@ -193,6 +202,13 @@
           <fieldset>
             <legend>Manual Positions</legend>
             <div class="help">Add manual crypto positions. Find CoinGecko IDs at coingecko.com</div>
+            <div class="item-row item-row-wide manual-positions-header">
+              <span>Symbol</span>
+              <span>CoinGecko ID</span>
+              <span>Amount</span>
+              <span>Entry Price</span>
+              <span></span>
+            </div>
             <div id="positionsContainer"></div>
             <button type="button" id="addPositionBtn" class="btn-text">[+ ADD POSITION]</button>
           </fieldset>
@@ -200,48 +216,63 @@
           <fieldset>
             <legend>Rain Effect</legend>
             <label>
-              Density
-              <div class="slider-controls">
-                <button type="button" class="slider-btn" data-target="rainDensity" data-delta="-10">[-]</button>
-                <input type="range" id="rainDensity" min="10" max="500" value="161" class="settings-input">
-                <button type="button" class="slider-btn" data-target="rainDensity" data-delta="10">[+]</button>
+              Search Stickers
+              <input type="text" id="stickerSearch" class="settings-input" placeholder="Type to search...">
+            </label>
+            <div style="margin-top: 8px;">
+              <span style="display: block; margin-bottom: 8px;">Particle Style</span>
+              <div id="stickerGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 6px; max-height: 300px; overflow-y: auto; padding: 8px; background: var(--bg-elev); border: 1px solid var(--border);">
+                <!-- Stickers will be loaded here -->
+              </div>
+            </div>
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+              <input type="checkbox" id="rainRainbow" class="settings-input">
+              Rainbow mode
+            </label>
+            <input type="hidden" id="rainParticleStyle" value="default">
+            <label>
+              <div class="slider-label-row">
+                <span>Density</span>
                 <span id="rainDensityValue">161</span>
               </div>
+              <div class="slider-controls">
+                <input type="range" id="rainDensity" min="10" max="500" value="161" class="settings-input">
+              </div>
             </label>
             <label>
-              Speed
-              <div class="slider-controls">
-                <button type="button" class="slider-btn" data-target="rainSpeed" data-delta="-1">[-]</button>
-                <input type="range" id="rainSpeed" min="1" max="20" value="5" class="settings-input">
-                <button type="button" class="slider-btn" data-target="rainSpeed" data-delta="1">[+]</button>
+              <div class="slider-label-row">
+                <span>Speed</span>
                 <span id="rainSpeedValue">5</span>
               </div>
+              <div class="slider-controls">
+                <input type="range" id="rainSpeed" min="1" max="20" value="5" class="settings-input">
+              </div>
             </label>
             <label>
-              Width
-              <div class="slider-controls">
-                <button type="button" class="slider-btn" data-target="rainSize" data-delta="-1">[-]</button>
-                <input type="range" id="rainSize" min="1" max="10" value="1" class="settings-input">
-                <button type="button" class="slider-btn" data-target="rainSize" data-delta="1">[+]</button>
+              <div class="slider-label-row">
+                <span>Width</span>
                 <span id="rainSizeValue">1</span>
               </div>
-            </label>
-            <label>
-              Length
               <div class="slider-controls">
-                <button type="button" class="slider-btn" data-target="rainLength" data-delta="-1">[-]</button>
-                <input type="range" id="rainLength" min="1" max="20" value="8" class="settings-input">
-                <button type="button" class="slider-btn" data-target="rainLength" data-delta="1">[+]</button>
-                <span id="rainLengthValue">8</span>
+                <input type="range" id="rainSize" min="1" max="10" value="1" class="settings-input">
               </div>
             </label>
             <label>
-              Angle (wind direction)
+              <div class="slider-label-row">
+                <span>Length</span>
+                <span id="rainLengthValue">8</span>
+              </div>
               <div class="slider-controls">
-                <button type="button" class="slider-btn" data-target="rainAngle" data-delta="-5">[-]</button>
-                <input type="range" id="rainAngle" min="-45" max="45" value="-30" class="settings-input">
-                <button type="button" class="slider-btn" data-target="rainAngle" data-delta="5">[+]</button>
+                <input type="range" id="rainLength" min="1" max="20" value="8" class="settings-input">
+              </div>
+            </label>
+            <label>
+              <div class="slider-label-row">
+                <span>Angle (wind direction)</span>
                 <span id="rainAngleValue">-30°</span>
+              </div>
+              <div class="slider-controls">
+                <input type="range" id="rainAngle" min="-45" max="45" value="-30" class="settings-input">
               </div>
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
@@ -271,11 +302,11 @@
           </fieldset>
         </section>
         <footer class="settings-actions">
-          <button value="cancel" class="btn-text">[CANCEL]</button>
-          <button id="saveSettingsBtn" value="default" class="btn-text">[SAVE]</button>
+          <button id="cancelSettingsBtn" class="btn-text">[CANCEL]</button>
+          <button id="saveSettingsBtn" class="btn-text">[SAVE]</button>
         </footer>
-      </form>
-    </dialog>
+      </div>
+    </div>
 
     <!-- Pixel art rain overlay -->
     <canvas id="rainCanvas"></canvas>

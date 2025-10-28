@@ -1,10 +1,18 @@
 (function() {
   const storageKey = 'myDashboardSettings.v1';
 
+  // Store loaded sticker images
+  const stickerImages = {};
+  const wallpapers = [];
+  
   const els = {
     toggleThemeBtn: document.getElementById('toggleThemeBtn'),
     openSettingsBtn: document.getElementById('openSettingsBtn'),
+    closeSettingsBtn: document.getElementById('closeSettingsBtn'),
+    cancelSettingsBtn: document.getElementById('cancelSettingsBtn'),
+    settingsBackdrop: document.getElementById('settingsBackdrop'),
     toggleAmountsBtn: document.getElementById('toggleAmountsBtn'),
+    wallpaperSelect: document.getElementById('wallpaperSelect'),
     decreaseFontBtn: document.getElementById('decreaseFontBtn'),
     increaseFontBtn: document.getElementById('increaseFontBtn'),
     fontSizeDisplay: document.getElementById('fontSizeDisplay'),
@@ -232,10 +240,10 @@
     const row = document.createElement('div');
     row.className = 'item-row item-row-wide';
     row.innerHTML = `
-      <input type="text" value="${position.symbol || ''}" data-idx="${index}" data-field="symbol">
-      <input type="text" value="${position.coingeckoId || ''}" data-idx="${index}" data-field="coingeckoId">
-      <input type="number" step="any" value="${position.amount ?? ''}" data-idx="${index}" data-field="amount">
-      <input type="number" step="any" value="${position.entryPrice ?? ''}" data-idx="${index}" data-field="entryPrice">
+      <input type="text" value="${position.symbol || ''}" data-idx="${index}" data-field="symbol" placeholder="BTC">
+      <input type="text" value="${position.coingeckoId || ''}" data-idx="${index}" data-field="coingeckoId" placeholder="bitcoin">
+      <input type="number" step="any" value="${position.amount ?? ''}" data-idx="${index}" data-field="amount" placeholder="1.5">
+      <input type="number" step="any" value="${position.entryPrice ?? ''}" data-idx="${index}" data-field="entryPrice" placeholder="50000">
       <button type="button" class="remove-btn btn-text" data-idx="${index}" data-kind="position">[X]</button>
     `;
     return row;
@@ -261,9 +269,14 @@
     els.themeSelect.value = settings.theme || 'light';
     els.userName.value = settings.userName || '';
     els.positionsContainer.innerHTML = '';
+    if (settings.cryptoPositions.length === 0) {
+      // Always show at least one empty row
+      els.positionsContainer.appendChild(renderPositionRow({ symbol: '', coingeckoId: '', amount: 0, entryPrice: 0 }, 0));
+    } else {
     settings.cryptoPositions.forEach((p, i) => {
       els.positionsContainer.appendChild(renderPositionRow(p, i));
     });
+    }
     els.weatherLabel.value = settings.weather.label || '';
     els.weatherLat.value = settings.weather.lat ?? '';
     els.weatherLon.value = settings.weather.lon ?? '';
@@ -277,10 +290,29 @@
     els.refreshMins.value = settings.refreshMinutes ?? 30;
     els.comicStrip.value = settings.comicStrip || 'calvinandhobbes';
 
-    if (typeof els.settingsDialog.showModal === 'function') {
-      els.settingsDialog.showModal();
-    } else {
-      alert('Your browser does not support <dialog>.');
+    // Show settings panel
+    els.settingsDialog.style.display = 'block';
+    els.settingsBackdrop.style.display = 'block';
+    // Toggle button visibility
+    els.openSettingsBtn.style.display = 'none';
+    els.closeSettingsBtn.style.display = 'inline-block';
+  }
+  
+  function closeSettings() {
+    // Hide settings panel
+    els.settingsDialog.style.display = 'none';
+    els.settingsBackdrop.style.display = 'none';
+    // Toggle button visibility
+    els.openSettingsBtn.style.display = 'inline-block';
+    els.closeSettingsBtn.style.display = 'none';
+    
+    // Reset import/export mode
+    if (els.settingsExportArea) {
+      els.settingsExportArea.style.display = 'none';
+      els.settingsExportArea.setAttribute('readonly', 'true');
+    }
+    if (els.importSettingsBtn) {
+      els.importSettingsBtn.textContent = '[IMPORT]';
     }
   }
 
@@ -325,6 +357,7 @@
     newSettings.centerUI = els.centerUI.checked;
     newSettings.minBalanceThreshold = Math.max(0, Number(els.minBalanceThreshold.value || 100));
     newSettings.theme = els.themeSelect.value || 'light';
+    newSettings.wallpaper = els.wallpaperSelect ? els.wallpaperSelect.value : 'none';
     newSettings.enableRealTimeUpdates = els.enableRealTimeUpdates.checked;
     newSettings.realTimeUpdateInterval = Math.max(5, Math.min(60, Number(els.realTimeUpdateInterval.value || 10)));
     return newSettings;
@@ -395,7 +428,7 @@
             const decoded = atob(importData);
             const settings = JSON.parse(decoded);
             saveSettings(settings);
-            els.settingsDialog.close();
+            closeSettings();
             
             // Apply all settings
             applyCenterUI(settings.centerUI);
@@ -420,19 +453,42 @@
         }
       });
       
-      // Reset import mode when settings dialog closes
-      els.settingsDialog.addEventListener('close', () => {
-        els.settingsExportArea.style.display = 'none';
-        els.settingsExportArea.setAttribute('readonly', 'true');
-        els.importSettingsBtn.textContent = '[IMPORT]';
-        importMode = false;
+      // Reset import mode when settings dialog closes (handled below)
+    }
+    
+    // Close settings button
+    if (els.closeSettingsBtn) {
+      els.closeSettingsBtn.addEventListener('click', closeSettings);
+    }
+    
+    // Cancel settings button
+    if (els.cancelSettingsBtn) {
+      els.cancelSettingsBtn.addEventListener('click', closeSettings);
+    }
+    
+    // Backdrop click to close
+    if (els.settingsBackdrop) {
+      els.settingsBackdrop.addEventListener('click', closeSettings);
+    }
+    
+    // Click to copy on export textarea
+    if (els.settingsExportArea) {
+      els.settingsExportArea.addEventListener('click', async function() {
+        if (this.value && this.readOnly) {
+          this.select();
+          try {
+            await navigator.clipboard.writeText(this.value);
+          } catch (err) {
+            console.log('Could not copy to clipboard');
+          }
+        }
       });
     }
     
     els.saveSettingsBtn.addEventListener('click', () => {
       const s = collectSettingsFromForm();
       saveSettings(s);
-      els.settingsDialog.close();
+      closeSettings();
       
       // Show/hide comic section immediately
       const comicSection = document.querySelector('.data-section:has(#comicTitle)');
@@ -445,6 +501,9 @@
       
       // Apply theme
       applyTheme(s.theme);
+      
+      // Apply wallpaper
+      applyWallpaper(s.wallpaper);
       
       // Restart real-time updates with new settings
       stopRealTimeUpdates();
@@ -829,7 +888,7 @@
     if (!settings || !settings.weather || !settings.weather.lat || !settings.weather.lon) return null;
 
     const { lat, lon } = settings.weather;
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto`;
     
     try {
       const resp = await fetch(url);
@@ -2283,7 +2342,7 @@
     
     try {
       const resp = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`
       );
       if (resp.ok) {
         weatherData = await resp.json();
@@ -2394,11 +2453,13 @@
     }
     
     // Weather
-    if (weatherData && weatherData.current_weather) {
-      const temp = Math.round(weatherData.current_weather.temperature);
+    if (weatherData && weatherData.current) {
+      const temp = Math.round(weatherData.current.temperature_2m);
       const city = weatherData.label || 'your location';
-      const weatherCode = weatherData.current_weather.weather_code || 0;
-      const isDay = weatherData.current_weather.is_day;
+      const weatherCode = weatherData.current.weather_code || 0;
+      const isDay = weatherData.current.is_day === 1;
+      
+      console.log('Weather code:', weatherCode, 'isDay:', isDay);
       
       // Weather icons based on WMO Weather interpretation codes
       // https://open-meteo.com/en/docs
@@ -2406,55 +2467,61 @@
       if (weatherCode === 0) {
         weatherIcon = isDay ? '☀︎' : '☾'; // Clear sky
       } else if (weatherCode <= 3) {
-        weatherIcon = isDay ? '⛅︎' : '☁︎'; // Partly cloudy
+        weatherIcon = '☁︎'; // Partly cloudy
       } else if (weatherCode <= 49) {
         weatherIcon = '☁︎'; // Cloudy/foggy
-      } else if (weatherCode <= 69 || (weatherCode >= 80 && weatherCode <= 99)) {
-        weatherIcon = '☂︎'; // Rain/drizzle/showers
-      } else if (weatherCode <= 79) {
+      } else if (weatherCode >= 51 && weatherCode <= 67) {
+        weatherIcon = '⛆'; // Drizzle/rain/freezing rain
+      } else if (weatherCode >= 71 && weatherCode <= 77) {
         weatherIcon = '❅'; // Snow
-      } else {
+      } else if (weatherCode >= 80 && weatherCode <= 82) {
+        weatherIcon = '⛆'; // Rain showers
+      } else if (weatherCode >= 85 && weatherCode <= 86) {
+        weatherIcon = '❅'; // Snow showers
+      } else if (weatherCode >= 95 && weatherCode <= 99) {
         weatherIcon = '⛈'; // Thunderstorm
+      } else {
+        weatherIcon = '☁︎'; // Default to cloudy
       }
       
-      // Get moon phase icon (Unicode symbols)
+      // Get moon phase icon (minimal ASCII)
       const moonPhase = weatherData.moonPhase || 0;
       let moonIcon = '';
       let moonName = '';
       
       if (moonPhase < 0.0625) {
-        moonIcon = '○';
-        moonName = 'New Moon';
+        moonIcon = 'o';
+        moonName = 'new moon';
       } else if (moonPhase < 0.1875) {
-        moonIcon = '◑';
-        moonName = 'Waxing Crescent';
+        moonIcon = ')';
+        moonName = 'waxing crescent';
       } else if (moonPhase < 0.3125) {
-        moonIcon = '◐';
-        moonName = 'First Quarter';
+        moonIcon = 'D';
+        moonName = 'first quarter';
       } else if (moonPhase < 0.4375) {
-        moonIcon = '◕';
-        moonName = 'Waxing Gibbous';
+        moonIcon = 'O';
+        moonName = 'waxing gibbous';
       } else if (moonPhase < 0.5625) {
-        moonIcon = '●';
-        moonName = 'Full Moon';
+        moonIcon = '@';
+        moonName = 'full moon';
       } else if (moonPhase < 0.6875) {
-        moonIcon = '◔';
-        moonName = 'Waning Gibbous';
+        moonIcon = 'C';
+        moonName = 'waning gibbous';
       } else if (moonPhase < 0.8125) {
-        moonIcon = '◑';
-        moonName = 'Last Quarter';
+        moonIcon = '(';
+        moonName = 'last quarter';
       } else if (moonPhase < 0.9375) {
-        moonIcon = '◐';
-        moonName = 'Waning Crescent';
+        moonIcon = 'c';
+        moonName = 'waning crescent';
       } else {
-        moonIcon = '○';
-        moonName = 'New Moon';
+        moonIcon = 'o';
+        moonName = 'new moon';
       }
       
       // Only show moon during evening/night (6 PM - 6 AM)
       const currentHour = new Date().getHours();
       const showMoon = currentHour >= 18 || currentHour < 6;
-      const moonText = showMoon ? ` with a ${moonIcon} ${moonName.toLowerCase()} moon` : '';
+      const moonText = showMoon ? ` with a ${moonIcon} ${moonName} moon` : '';
       
       if (settings.showRainForecast) {
         const precipitation = weatherData.daily?.precipitation_sum?.[0] || 0;
@@ -2692,7 +2759,9 @@
     length: 8,
     angle: -30,
     randomAngle: true,
-    useTextColor: false
+    useTextColor: false,
+    particleStyle: 'default',
+    rainbow: false
   };
   
   let rainAngleOffset = 0;
@@ -2851,7 +2920,7 @@
     const effectiveAngle = rainConfig.angle + rainAngleOffset;
     const angleRad = (effectiveAngle * Math.PI) / 180;
     
-    rainDrops.forEach(drop => {
+    rainDrops.forEach((drop, index) => {
       // Add subtle wobble for realism
       const wobbleOffset = Math.sin(drop.wobble) * 0.3;
       
@@ -2861,9 +2930,53 @@
       const width = Math.floor(drop.size);
       const height = Math.floor(drop.size * drop.length);
       
-      // Draw pixel art raindrop/snow (sharp rectangle)
-      // Snow uses same rendering, just different color and speed
-      rainCtx.fillRect(x, y, width, height);
+      // Rainbow mode - cycle through colors
+      if (rainConfig.rainbow && !snowActive) {
+        const hue = (index * 40 + currentTime * 0.1) % 360;
+        rainCtx.fillStyle = `hsl(${hue}, 70%, 60%)`;
+      }
+      
+      // Draw based on particle style
+      if (snowActive || rainConfig.particleStyle === 'default') {
+        // Default: sharp rectangle
+        rainCtx.fillRect(x, y, width, height);
+      } else if (rainConfig.particleStyle.startsWith('sticker:')) {
+        // Custom sticker image
+        const stickerFile = rainConfig.particleStyle.replace('sticker:', '');
+        const img = stickerImages[stickerFile];
+        if (img && img.complete) {
+          const size = height * 2; // Make stickers a bit larger
+          rainCtx.drawImage(img, x - size/4, y, size, size);
+        } else {
+          // Fallback if image not loaded
+          rainCtx.fillRect(x, y, width, height);
+        }
+      } else if (rainConfig.particleStyle === 'bitcoin') {
+        rainCtx.font = `${height}px monospace`;
+        rainCtx.fillText('₿', x, y + height);
+      } else if (rainConfig.particleStyle === 'text-second') {
+        const text = 'There is no second best';
+        const charIndex = index % text.length;
+        rainCtx.font = `${height}px monospace`;
+        rainCtx.fillText(text[charIndex], x, y + height);
+      } else if (rainConfig.particleStyle === 'text-hl') {
+        const text = 'Hyperliquid';
+        const charIndex = index % text.length;
+        rainCtx.font = `${height}px monospace`;
+        rainCtx.fillText(text[charIndex], x, y + height);
+      } else if (rainConfig.particleStyle === 'emoji') {
+        const emojis = ['🌧️', '💧', '⚡'];
+        const emoji = emojis[index % emojis.length];
+        rainCtx.font = `${height}px sans-serif`;
+        rainCtx.fillText(emoji, x, y + height);
+      } else if (rainConfig.particleStyle === 'saylor') {
+        const text = '🚀';
+        rainCtx.font = `${height}px sans-serif`;
+        rainCtx.fillText(text, x, y + height);
+      } else {
+        // Fallback
+        rainCtx.fillRect(x, y, width, height);
+      }
       
       // Update position with wind angle and individual wobble
       drop.y += drop.speed;
@@ -2943,6 +3056,8 @@
     const angleInput = document.getElementById('rainAngle');
     const randomAngleCheckbox = document.getElementById('rainRandomAngle');
     const textColorCheckbox = document.getElementById('rainTextColor');
+    const particleStyleSelect = document.getElementById('rainParticleStyle');
+    const rainbowCheckbox = document.getElementById('rainRainbow');
     
     if (!toggleBtn) return;
     
@@ -2982,6 +3097,7 @@
       speedInput.addEventListener('input', (e) => {
         rainConfig.speed = parseInt(e.target.value);
         document.getElementById('rainSpeedValue').textContent = rainConfig.speed;
+        if (rainActive) initRain();
       });
     }
     
@@ -2990,6 +3106,7 @@
       sizeInput.addEventListener('input', (e) => {
         rainConfig.size = parseInt(e.target.value);
         document.getElementById('rainSizeValue').textContent = rainConfig.size;
+        if (rainActive) initRain();
       });
     }
     
@@ -2998,6 +3115,7 @@
       lengthInput.addEventListener('input', (e) => {
         rainConfig.length = parseInt(e.target.value);
         document.getElementById('rainLengthValue').textContent = rainConfig.length;
+        if (rainActive) initRain();
       });
     }
     
@@ -3028,6 +3146,61 @@
       });
     }
     
+    // Rainbow mode toggle
+    if (rainbowCheckbox) {
+      rainbowCheckbox.addEventListener('change', (e) => {
+        rainConfig.rainbow = e.target.checked;
+      });
+    }
+    
+    // Sticker grid selection functionality
+    const stickerSearch = document.getElementById('stickerSearch');
+    const stickerGrid = document.getElementById('stickerGrid');
+    
+    if (stickerGrid) {
+      // Handle sticker selection
+      stickerGrid.addEventListener('click', (e) => {
+        const item = e.target.closest('.sticker-item');
+        if (!item) return;
+        
+        // Remove selection from all items
+        stickerGrid.querySelectorAll('.sticker-item').forEach(i => i.classList.remove('selected'));
+        
+        // Add selection to clicked item
+        item.classList.add('selected');
+        
+        // Update hidden input
+        const value = item.dataset.value;
+        if (particleStyleSelect) {
+          particleStyleSelect.value = value;
+          rainConfig.particleStyle = value;
+          if (rainActive) initRain(); // Reinitialize for immediate effect
+        }
+      });
+      
+      // Set initial selection
+      const currentValue = particleStyleSelect?.value || 'default';
+      const selectedItem = stickerGrid.querySelector(`[data-value="${currentValue}"]`);
+      if (selectedItem) selectedItem.classList.add('selected');
+    }
+    
+    // Sticker search functionality
+    if (stickerSearch && stickerGrid) {
+      stickerSearch.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        const items = stickerGrid.querySelectorAll('.sticker-item');
+        
+        items.forEach(item => {
+          const searchText = item.dataset.searchText || '';
+          if (searchText.includes(searchTerm)) {
+            item.style.display = '';
+          } else {
+            item.style.display = 'none';
+          }
+        });
+      });
+    }
+    
     // Slider button controls
     document.querySelectorAll('.slider-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -3051,9 +3224,157 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  // Load custom stickers and wallpapers from local folders
+  // Place image files in:
+  //   - /stickers/ folder for rain particle images (png, jpg, gif, webp)
+  //   - /wallpapers/ folder for background images (png, jpg, gif, webp)
+  // Run this command to update the manifest after adding new files:
+  //   cd stickers && ls -1 *.{png,jpg,jpeg,gif,webp} 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' > index.json
+  async function loadCustomAssets() {
+    const stickerGrid = document.getElementById('stickerGrid');
+    
+    // Add built-in styles first
+    const builtInStyles = [
+      { value: 'default', label: 'Rain', display: '💧' },
+      { value: 'bitcoin', label: 'Bitcoin', display: '₿' },
+      { value: 'text-second', label: 'No 2nd', display: '📝' },
+      { value: 'text-hl', label: 'HL', display: '🔥' },
+      { value: 'emoji', label: 'Weather', display: '🌧️' },
+      { value: 'saylor', label: 'Rocket', display: '🚀' }
+    ];
+    
+    builtInStyles.forEach(style => {
+      const item = document.createElement('div');
+      item.className = 'sticker-item';
+      item.dataset.value = style.value;
+      item.dataset.searchText = style.label.toLowerCase();
+      item.innerHTML = `<div class="sticker-icon">${style.display}</div><div class="sticker-label">${style.label}</div>`;
+      item.title = style.label;
+      if (stickerGrid) stickerGrid.appendChild(item);
+    });
+    
+    // Load stickers from index.json manifest
+    try {
+      console.log('Fetching stickers manifest...');
+      const stickerManifest = await fetch('/stickers/index.json');
+      
+      if (!stickerManifest.ok) {
+        throw new Error(`HTTP error! status: ${stickerManifest.status}`);
+      }
+      
+      const stickerFiles = await stickerManifest.json();
+      
+      console.log(`Loading ${stickerFiles.length} stickers from manifest:`, stickerFiles);
+      
+      const loadedStickers = [];
+      
+      // Create and add sticker items without waiting for images to load
+      for (const file of stickerFiles) {
+        const img = new Image();
+        const imgSrc = `/stickers/${file}`;
+        
+        // Add to grid immediately
+        const item = document.createElement('div');
+        item.className = 'sticker-item';
+        item.dataset.value = `sticker:${file}`;
+        item.dataset.searchText = file.toLowerCase();
+        
+        const iconDiv = document.createElement('div');
+        iconDiv.className = 'sticker-icon';
+        
+        const imgElement = document.createElement('img');
+        imgElement.src = imgSrc;
+        imgElement.style.cssText = 'width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges;';
+        imgElement.onerror = (e) => {
+          console.error(`❌ Failed to load sticker: ${file} from ${imgSrc}`, e);
+          item.style.display = 'none';
+        };
+        imgElement.onload = () => {
+          console.log(`✓ Loaded: ${file}`);
+          stickerImages[file] = imgElement;
+          loadedStickers.push(file);
+        };
+        
+        iconDiv.appendChild(imgElement);
+        
+        const label = document.createElement('div');
+        label.className = 'sticker-label';
+        label.textContent = file.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '').substring(0, 10);
+        
+        item.appendChild(iconDiv);
+        item.appendChild(label);
+        item.title = file.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '');
+        
+        if (stickerGrid) stickerGrid.appendChild(item);
+      }
+      
+      // Log after a brief delay to count loaded stickers
+      setTimeout(() => {
+        console.log(`✅ Loaded ${loadedStickers.length}/${stickerFiles.length} stickers`);
+      }, 1000);
+    } catch (err) {
+      console.error('Failed to load stickers manifest:', err);
+      console.log('Make sure /stickers/index.json exists. Run: ./update-manifests.sh');
+    }
+    
+    // Load wallpapers from index.json manifest
+    try {
+      const wallpaperManifest = await fetch('/wallpapers/index.json');
+      const wallpaperFiles = await wallpaperManifest.json();
+      
+      for (const file of wallpaperFiles) {
+        try {
+          const response = await fetch(`/wallpapers/${file}`, { method: 'HEAD' });
+          if (response.ok) {
+            wallpapers.push(file);
+            
+            // Add option to dropdown
+            const option = document.createElement('option');
+            option.value = file;
+            option.textContent = file.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '');
+            document.getElementById('wallpaperOptions')?.appendChild(option);
+          }
+        } catch (err) {
+          console.log(`Failed to load wallpaper: ${file}`);
+        }
+      }
+      
+      console.log(`✅ Loaded ${wallpapers.length} wallpapers`);
+    } catch (err) {
+      console.log('No wallpapers manifest found.');
+    }
+  }
+  
+  // Apply wallpaper
+  function applyWallpaper(wallpaper) {
+    if (wallpaper && wallpaper !== 'none') {
+      document.body.style.backgroundImage = `url('/wallpapers/${wallpaper}')`;
+      document.body.style.backgroundSize = 'cover';
+      document.body.style.backgroundPosition = 'center';
+      document.body.style.backgroundAttachment = 'fixed';
+    } else {
+      document.body.style.backgroundImage = '';
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    await loadCustomAssets();
     init();
     setupRainControls();
+    
+    // Apply wallpaper from settings
+    const settings = loadSettings() || getDefaultSettings();
+    if (settings.wallpaper) {
+      applyWallpaper(settings.wallpaper);
+      if (els.wallpaperSelect) els.wallpaperSelect.value = settings.wallpaper;
+    }
+    
+    // Wallpaper change handler
+    if (els.wallpaperSelect) {
+      els.wallpaperSelect.addEventListener('change', (e) => {
+        applyWallpaper(e.target.value);
+      });
+    }
     
     // Check weather and auto-enable rain if it's raining at user's location (desktop only)
     if (rainCanvas && !isMobileDevice()) {
