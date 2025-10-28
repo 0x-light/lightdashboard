@@ -20,6 +20,7 @@
           <span id="fontSizeDisplay" class="btn-text">15px</span>
           <button id="increaseFontBtn" class="btn-text">+]</button>
         </div>
+        <button id="openStickersBtn" class="btn-text">[STICKERS]</button>
         <button id="openSettingsBtn" class="btn-text">[SETTINGS]</button>
         <button id="closeSettingsBtn" class="btn-text" style="display: none;">[CLOSE]</button>
       </div>
@@ -41,6 +42,7 @@
           <span id="fontSizeDisplayMobile" class="btn-text">15px</span>
           <button id="increaseFontBtnMobile" class="btn-text">+]</button>
         </div>
+        <button id="openStickersBtnMobile" class="btn-text">[STICKERS]</button>
         <button id="openSettingsBtnMobile" class="btn-text">[SETTINGS]</button>
       </div>
     </div>
@@ -216,20 +218,22 @@
           <fieldset>
             <legend>Rain Effect</legend>
             <label>
-              Search Stickers
-              <input type="text" id="stickerSearch" class="settings-input" placeholder="Type to search...">
+              Particle Style
+              <select id="rainParticleStyle" class="settings-input">
+                <option value="default">💧 Rain</option>
+                <option value="bitcoin">₿ Bitcoin</option>
+                <option value="zcash">ᙇ Zcash</option>
+                <option value="text-second">📝 No 2nd</option>
+                <option value="text-hl">🔥 HL</option>
+                <option value="emoji">🌧️ Weather</option>
+                <option value="saylor">🚀 Rocket</option>
+                <optgroup label="Custom Stickers" id="stickerOptions"></optgroup>
+              </select>
             </label>
-            <div style="margin-top: 8px;">
-              <span style="display: block; margin-bottom: 8px;">Particle Style</span>
-              <div id="stickerGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; max-height: 300px; overflow-y: auto; padding: 8px; background: var(--bg-elev); border: 1px solid var(--border);">
-                <!-- Stickers will be loaded here -->
-              </div>
-            </div>
             <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
               <input type="checkbox" id="rainRainbow" class="settings-input">
               Rainbow mode
             </label>
-            <input type="hidden" id="rainParticleStyle" value="default">
             <label>
               <div class="slider-label-row">
                 <span>Density</span>
@@ -300,6 +304,7 @@
               </select>
             </label>
           </fieldset>
+
         </section>
         <footer class="settings-actions">
           <button id="cancelSettingsBtn" class="btn-text">[CANCEL]</button>
@@ -313,6 +318,20 @@
     
     <!-- Sticky stickers container -->
     <div id="stickyStickers"></div>
+
+    <!-- Sticker Window -->
+    <div id="stickerWindow" class="sticker-window" style="display: none;">
+      <div class="sticker-window-header">
+        <span>Stickers</span>
+        <button id="closeStickerWindowBtn" class="btn-text">[CLOSE]</button>
+      </div>
+      <div class="sticker-window-content">
+        <div class="help" style="margin-bottom: 8px;">Drag stickers onto the dashboard to place them. Hover to show controls.</div>
+        <div id="stickerGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; max-height: 400px; overflow-y: auto; padding: 8px; background: var(--bg-elev); border: 1px solid var(--border);">
+          <!-- Stickers will be loaded here -->
+        </div>
+      </div>
+    </div>
 
     <script src="script.js" defer></script>
   </body>

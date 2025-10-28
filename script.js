@@ -11,6 +11,10 @@
     closeSettingsBtn: document.getElementById('closeSettingsBtn'),
     cancelSettingsBtn: document.getElementById('cancelSettingsBtn'),
     settingsBackdrop: document.getElementById('settingsBackdrop'),
+    openStickersBtn: document.getElementById('openStickersBtn'),
+    openStickersBtnMobile: document.getElementById('openStickersBtnMobile'),
+    stickerWindow: document.getElementById('stickerWindow'),
+    closeStickerWindowBtn: document.getElementById('closeStickerWindowBtn'),
     toggleAmountsBtn: document.getElementById('toggleAmountsBtn'),
     wallpaperSelect: document.getElementById('wallpaperSelect'),
     decreaseFontBtn: document.getElementById('decreaseFontBtn'),
@@ -252,26 +256,59 @@
   let assetsLoaded = false;
   let dragDropSetup = false;
   
+  function openStickerWindow() {
+    if (els.stickerWindow) {
+      els.stickerWindow.style.display = 'flex';
+      
+      // Load assets if not already loaded
+      if (!assetsLoaded) {
+        console.log('🔄 Loading assets on sticker window open...');
+        loadCustomAssets().then(() => {
+          assetsLoaded = true;
+          // Setup drag-drop after assets are loaded
+          if (!dragDropSetup) {
+            setTimeout(() => {
+              setupStickerDragDrop();
+              dragDropSetup = true;
+              console.log('✓ Drag-drop setup complete');
+            }, 500);
+          }
+        }).catch(err => {
+          console.error('Failed to load assets:', err);
+        });
+      }
+      
+      // Add click-outside-to-close handler
+      setTimeout(() => {
+        document.addEventListener('click', handleStickerWindowClickOutside);
+      }, 100);
+    }
+    
+    // Close mobile menu if open
+    if (els.mobileMenu) {
+      els.mobileMenu.classList.remove('active');
+    }
+  }
+  
+  function handleStickerWindowClickOutside(e) {
+    if (els.stickerWindow && 
+        els.stickerWindow.style.display === 'flex' &&
+        !els.stickerWindow.contains(e.target) &&
+        !els.openStickersBtn?.contains(e.target) &&
+        !els.openStickersBtnMobile?.contains(e.target)) {
+      closeStickerWindow();
+    }
+  }
+  
+  function closeStickerWindow() {
+    if (els.stickerWindow) {
+      els.stickerWindow.style.display = 'none';
+      document.removeEventListener('click', handleStickerWindowClickOutside);
+    }
+  }
+
   function openSettings() {
     const settings = loadSettings() || getDefaultSettings();
-    
-    // Load assets if not already loaded
-    if (!assetsLoaded) {
-      console.log('🔄 Loading assets on settings open...');
-      loadCustomAssets().then(() => {
-        assetsLoaded = true;
-        // Setup drag-drop after assets are loaded
-        if (!dragDropSetup) {
-          setTimeout(() => {
-            setupStickerDragDrop();
-            dragDropSetup = true;
-            console.log('✓ Drag-drop setup complete');
-          }, 500);
-        }
-      }).catch(err => {
-        console.error('Failed to load assets:', err);
-      });
-    }
     
     // Migrate old settings to new format
     if (!settings.walletAddresses && (settings.hyperliquidAddress || settings.lighterAddress)) {
@@ -392,6 +429,22 @@
         closeMobileMenu();
         openSettings();
       });
+    }
+    
+    // Sticker window handlers
+    if (els.openStickersBtn) {
+      els.openStickersBtn.addEventListener('click', openStickerWindow);
+    }
+    
+    if (els.openStickersBtnMobile) {
+      els.openStickersBtnMobile.addEventListener('click', () => {
+        closeMobileMenu();
+        openStickerWindow();
+      });
+    }
+    
+    if (els.closeStickerWindowBtn) {
+      els.closeStickerWindowBtn.addEventListener('click', closeStickerWindow);
     }
     
     // Theme dropdown change handler
@@ -3188,51 +3241,11 @@
       });
     }
     
-    // Sticker grid selection functionality
-    const stickerSearch = document.getElementById('stickerSearch');
-    const stickerGrid = document.getElementById('stickerGrid');
-    
-    if (stickerGrid) {
-      // Handle sticker selection
-      stickerGrid.addEventListener('click', (e) => {
-        const item = e.target.closest('.sticker-item');
-        if (!item) return;
-        
-        // Remove selection from all items
-        stickerGrid.querySelectorAll('.sticker-item').forEach(i => i.classList.remove('selected'));
-        
-        // Add selection to clicked item
-        item.classList.add('selected');
-        
-        // Update hidden input
-        const value = item.dataset.value;
-        if (particleStyleSelect) {
-          particleStyleSelect.value = value;
-          rainConfig.particleStyle = value;
-          if (rainActive) initRain(); // Reinitialize for immediate effect
-        }
-      });
-      
-      // Set initial selection
-      const currentValue = particleStyleSelect?.value || 'default';
-      const selectedItem = stickerGrid.querySelector(`[data-value="${currentValue}"]`);
-      if (selectedItem) selectedItem.classList.add('selected');
-    }
-    
-    // Sticker search functionality
-    if (stickerSearch && stickerGrid) {
-      stickerSearch.addEventListener('input', (e) => {
-        const searchTerm = e.target.value.toLowerCase();
-        const items = stickerGrid.querySelectorAll('.sticker-item');
-        
-        items.forEach(item => {
-          const searchText = item.dataset.searchText || '';
-          if (searchText.includes(searchTerm)) {
-            item.style.display = '';
-          } else {
-            item.style.display = 'none';
-          }
-        });
+    // Particle style dropdown
+    if (particleStyleSelect) {
+      particleStyleSelect.addEventListener('change', (e) => {
+        rainConfig.particleStyle = e.target.value;
+        if (rainActive) initRain(); // Reinitialize for immediate effect
       });
     }
     
@@ -3267,6 +3280,7 @@
   //   cd stickers && ls -1 *.{png,jpg,jpeg,gif,webp} 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' > index.json
   async function loadCustomAssets() {
     const stickerGrid = document.getElementById('stickerGrid');
+    const stickerOptions = document.getElementById('stickerOptions');
     
     if (!stickerGrid) {
       console.error('❌ stickerGrid element not found!');
@@ -3274,27 +3288,6 @@
     }
     
     console.log('✓ Found stickerGrid element');
-    
-    // Add built-in styles first
-    const builtInStyles = [
-      { value: 'default', label: 'Rain', display: '💧' },
-      { value: 'bitcoin', label: 'Bitcoin', display: '₿' },
-      { value: 'zcash', label: 'Zcash', display: 'ᙇ' },
-      { value: 'text-second', label: 'No 2nd', display: '📝' },
-      { value: 'text-hl', label: 'HL', display: '🔥' },
-      { value: 'emoji', label: 'Weather', display: '🌧️' },
-      { value: 'saylor', label: 'Rocket', display: '🚀' }
-    ];
-    
-    builtInStyles.forEach(style => {
-      const item = document.createElement('div');
-      item.className = 'sticker-item';
-      item.dataset.value = style.value;
-      item.dataset.searchText = style.label.toLowerCase();
-      item.innerHTML = `<div class="sticker-icon">${style.display}</div><div class="sticker-label">${style.label}</div>`;
-      item.title = style.label;
-      if (stickerGrid) stickerGrid.appendChild(item);
-    });
     
     // Load stickers from index.json manifest
     try {
@@ -3314,19 +3307,19 @@
       // Create and add sticker items
       for (const file of stickerFiles) {
         const imgSrc = `/stickers/${file}`;
+        const displayName = file.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '');
         
-        // Create item
+        // Create grid item for drag-and-drop
         const item = document.createElement('div');
         item.className = 'sticker-item';
         item.dataset.value = `sticker:${file}`;
-        item.dataset.searchText = file.toLowerCase();
-        item.title = file.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '');
+        item.title = displayName;
         
         // Create icon container
         const iconDiv = document.createElement('div');
         iconDiv.className = 'sticker-icon';
         
-        // Create image
+        // Create image for grid
         const imgElement = document.createElement('img');
         imgElement.src = imgSrc;
         imgElement.alt = file;
@@ -3335,6 +3328,15 @@
           console.log(`✓ Loaded: ${file}`);
           stickerImages[file] = this;
           loadedStickers.push(file);
+          
+          // Add to dropdown once loaded
+          if (stickerOptions) {
+            const option = document.createElement('option');
+            option.value = `sticker:${file}`;
+            option.textContent = displayName;
+            option.dataset.image = imgSrc;
+            stickerOptions.appendChild(option);
+          }
         });
         
         imgElement.addEventListener('error', function(e) {
@@ -3347,7 +3349,7 @@
         // Create label
         const label = document.createElement('div');
         label.className = 'sticker-label';
-        label.textContent = file.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '').substring(0, 10);
+        label.textContent = displayName.substring(0, 10);
         
         item.appendChild(iconDiv);
         item.appendChild(label);

@@ -1348,3 +1348,43 @@ input[type="range"]:focus::-webkit-slider-thumb {
 input[type="range"]:focus::-moz-range-thumb {
   background: var(--accent);
 }
+
+/* Sticker Window */
+.sticker-window {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 400px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 100px);
+  background: var(--bg);
+  border: 2px solid var(--border);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+}
+
+.sticker-window-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  font-weight: bold;
+}
+
+.sticker-window-content {
+  padding: 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+@media (max-width: 768px) {
+  .sticker-window {
+    bottom: 10px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    max-width: none;
+  }
+}
