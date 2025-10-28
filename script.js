@@ -5,6 +5,57 @@
   const stickerImages = {};
   const wallpapers = [];
   
+  // CoinGecko API rate limiting
+  let lastCoinGeckoCall = 0;
+  const COINGECKO_DELAY = 1500; // 1.5 seconds between calls to avoid rate limits
+  const coinGeckoCache = new Map();
+  const CACHE_DURATION = 60000; // Cache for 1 minute
+  
+  async function rateLimitedFetch(url, cacheKey = null) {
+    // Check cache first
+    if (cacheKey && coinGeckoCache.has(cacheKey)) {
+      const cached = coinGeckoCache.get(cacheKey);
+      if (Date.now() - cached.timestamp < CACHE_DURATION) {
+        console.log(`Using cached data for: ${cacheKey}`);
+        return cached.data;
+      }
+    }
+    
+    // Rate limit
+    const now = Date.now();
+    const timeSinceLastCall = now - lastCoinGeckoCall;
+    if (timeSinceLastCall < COINGECKO_DELAY) {
+      const delay = COINGECKO_DELAY - timeSinceLastCall;
+      console.log(`Rate limiting: waiting ${delay}ms before next CoinGecko call`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+    
+    lastCoinGeckoCall = Date.now();
+    
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        if (resp.status === 429) {
+          console.warn('CoinGecko rate limit hit, waiting 5s...');
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          return rateLimitedFetch(url, cacheKey); // Retry
+        }
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      
+      // Cache the result
+      if (cacheKey) {
+        coinGeckoCache.set(cacheKey, { data, timestamp: Date.now() });
+      }
+      
+      return data;
+    } catch (err) {
+      console.error('CoinGecko fetch error:', err);
+      return null;
+    }
+  }
+  
   const els = {
     toggleThemeBtn: document.getElementById('toggleThemeBtn'),
     openSettingsBtn: document.getElementById('openSettingsBtn'),
@@ -862,15 +913,7 @@
     if (!ids) return null;
 
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`;
-    
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error('CoinGecko failed');
-      return await resp.json();
-    } catch (err) {
-      console.error('Crypto fetch error:', err);
-      return null;
-    }
+    return await rateLimitedFetch(url, `crypto-positions-${ids}`);
   }
 
   function getCoinIcon(symbol) {
@@ -1499,9 +1542,11 @@
           const tokenPrices = {};
           
           try {
-            const pricesResp = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${uniqueCoingeckoIds.join(',')}&vs_currencies=usd`);
-            if (pricesResp.ok) {
-              const pricesData = await pricesResp.json();
+            const pricesData = await rateLimitedFetch(
+              `https://api.coingecko.com/api/v3/simple/price?ids=${uniqueCoingeckoIds.join(',')}&vs_currencies=usd`,
+              `nft-token-prices-${uniqueCoingeckoIds.join(',')}`
+            );
+            if (pricesData) {
               for (const [chain, tokenInfo] of Object.entries(chainTokenMap)) {
                 const price = pricesData[tokenInfo.coingeckoId]?.usd;
                 if (price) {
@@ -1509,8 +1554,8 @@
                   console.log(`💱 ${tokenInfo.symbol} Price: $${price}`);
                 }
               }
-                }
-              } catch (err) {
+            }
+          } catch (err) {
             console.log('⚠️ Error fetching token prices:', err);
           }
           
@@ -1740,27 +1785,25 @@
     
     if (!ids) return {};
     
-    try {
-      const resp = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
-      if (resp.ok) {
-        const data = await resp.json();
-        const result = {};
-        
-        // Map back from ID to symbol with both price and change
-        for (const [symbol, id] of Object.entries(symbolToCoingeckoId)) {
-          if (data[id]) {
-            result[symbol] = {
-              price: data[id].usd || 0,
-              change24h: data[id].usd_24h_change || 0
-            };
-          }
+    const data = await rateLimitedFetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
+      `perp-prices-${ids}`
+    );
+    
+    if (data) {
+      const result = {};
+      // Map back from ID to symbol with both price and change
+      for (const [symbol, id] of Object.entries(symbolToCoingeckoId)) {
+        if (data[id]) {
+          result[symbol] = {
+            price: data[id].usd || 0,
+            change24h: data[id].usd_24h_change || 0
+          };
         }
-        
-        return result;
       }
-    } catch (err) {
-      console.error('Error fetching CoinGecko prices:', err);
+      return result;
     }
+    
     return {};
   }
 
@@ -1772,24 +1815,22 @@
     
     if (!ids) return {};
     
-    try {
-      const resp = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
-      if (resp.ok) {
-        const data = await resp.json();
-        const changes = {};
-        
-        // Map back from ID to symbol
-        for (const [symbol, id] of Object.entries(symbolToCoingeckoId)) {
-          if (data[id] && data[id].usd_24h_change !== undefined) {
-            changes[symbol] = data[id].usd_24h_change;
-          }
+    const data = await rateLimitedFetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
+      `24h-changes-${ids}`
+    );
+    
+    if (data) {
+      const changes = {};
+      // Map back from ID to symbol
+      for (const [symbol, id] of Object.entries(symbolToCoingeckoId)) {
+        if (data[id] && data[id].usd_24h_change !== undefined) {
+          changes[symbol] = data[id].usd_24h_change;
         }
-        
-        return changes;
       }
-    } catch (err) {
-      console.error('Error fetching CoinGecko changes:', err);
+      return changes;
     }
+    
     return {};
   }
 
@@ -2660,17 +2701,17 @@
       return cachedBTCPrice;
     }
     
-    try {
-      const resp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
-      if (resp.ok) {
-        const data = await resp.json();
-        cachedBTCPrice = data.bitcoin?.usd || 0;
-        btcPriceFetchTime = Date.now();
-        return cachedBTCPrice;
-      }
-    } catch (err) {
-      console.error('Failed to fetch BTC price:', err);
+    const data = await rateLimitedFetch(
+      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd',
+      'btc-price'
+    );
+    
+    if (data && data.bitcoin) {
+      cachedBTCPrice = data.bitcoin.usd || 0;
+      btcPriceFetchTime = Date.now();
+      return cachedBTCPrice;
     }
+    
     return 0;
   }
 
@@ -3370,8 +3411,9 @@
       
       const loadedStickers = [];
       
-      // Create and add sticker items
-      for (const file of stickerFiles) {
+      // Create and add sticker items with lazy loading to prevent mobile crashes
+      for (let i = 0; i < stickerFiles.length; i++) {
+        const file = stickerFiles[i];
         const imgSrc = `/stickers/${file}`;
         const displayName = file.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '');
         
@@ -3385,10 +3427,12 @@
         const iconDiv = document.createElement('div');
         iconDiv.className = 'sticker-icon';
         
-        // Create image for grid
+        // Create image for grid with lazy loading
         const imgElement = document.createElement('img');
-        imgElement.src = imgSrc;
         imgElement.alt = file;
+        imgElement.loading = 'lazy'; // Native lazy loading
+        imgElement.style.width = '100%';
+        imgElement.style.height = 'auto';
         
         imgElement.addEventListener('load', function() {
           console.log(`✓ Loaded: ${file}`);
@@ -3422,6 +3466,23 @@
         
         if (stickerGrid) {
           stickerGrid.appendChild(item);
+        }
+        
+        // Set src after adding to DOM to trigger lazy loading
+        // Add slight delay between images on mobile to prevent memory issues
+        if (i < 10 || !isMobileDevice()) {
+          imgElement.src = imgSrc; // Load first 10 immediately
+        } else {
+          // Lazy load the rest with IntersectionObserver on mobile
+          const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+              if (entry.isIntersecting && !imgElement.src) {
+                imgElement.src = imgSrc;
+                observer.unobserve(imgElement);
+              }
+            });
+          }, { rootMargin: '50px' });
+          observer.observe(imgElement);
         }
       }
       
