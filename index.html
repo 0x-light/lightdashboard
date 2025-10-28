@@ -100,6 +100,16 @@
         </header>
         <section>
           <fieldset>
+            <legend>Backup & Restore</legend>
+            <div class="help">Export your settings as text to backup or transfer between devices</div>
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+              <button type="button" id="exportSettingsBtn" class="btn-text">[EXPORT]</button>
+              <button type="button" id="importSettingsBtn" class="btn-text">[IMPORT]</button>
+            </div>
+            <textarea id="settingsExportArea" class="settings-input" style="height: 80px; font-family: monospace; font-size: 11px; display: none;" placeholder="Paste exported settings here and click Import" readonly></textarea>
+          </fieldset>
+
+          <fieldset>
             <legend>Wallets & API</legend>
             <div class="help">Add wallet addresses (comma-separated) to track Hyperliquid, Lighter, and OpenSea NFTs</div>
             <label>

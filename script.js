@@ -21,6 +21,9 @@
     openSettingsBtnMobile: document.getElementById('openSettingsBtnMobile'),
     settingsDialog: document.getElementById('settingsDialog'),
     saveSettingsBtn: document.getElementById('saveSettingsBtn'),
+    exportSettingsBtn: document.getElementById('exportSettingsBtn'),
+    importSettingsBtn: document.getElementById('importSettingsBtn'),
+    settingsExportArea: document.getElementById('settingsExportArea'),
     walletAddresses: document.getElementById('walletAddresses'),
     openSeaApiKey: document.getElementById('openSeaApiKey'),
     themeSelect: document.getElementById('themeSelect'),
@@ -342,6 +345,87 @@
       els.themeSelect.addEventListener('change', () => {
         const newTheme = els.themeSelect.value;
         applyTheme(newTheme);
+      });
+    }
+    
+    // Export settings
+    if (els.exportSettingsBtn) {
+      els.exportSettingsBtn.addEventListener('click', async () => {
+        const settings = loadSettings() || getDefaultSettings();
+        const exportData = btoa(JSON.stringify(settings));
+        els.settingsExportArea.value = exportData;
+        els.settingsExportArea.style.display = 'block';
+        els.settingsExportArea.removeAttribute('readonly');
+        els.settingsExportArea.select();
+        
+        try {
+          await navigator.clipboard.writeText(exportData);
+          const originalText = els.exportSettingsBtn.textContent;
+          els.exportSettingsBtn.textContent = '[COPIED!]';
+          setTimeout(() => {
+            els.exportSettingsBtn.textContent = originalText;
+          }, 1500);
+        } catch (err) {
+          console.log('Could not copy to clipboard, showing text instead');
+        }
+      });
+    }
+    
+    // Import settings
+    if (els.importSettingsBtn) {
+      let importMode = false;
+      els.importSettingsBtn.addEventListener('click', () => {
+        if (!importMode) {
+          // First click: show textarea for pasting
+          els.settingsExportArea.value = '';
+          els.settingsExportArea.placeholder = 'Paste exported settings here and click [IMPORT] again';
+          els.settingsExportArea.style.display = 'block';
+          els.settingsExportArea.removeAttribute('readonly');
+          els.settingsExportArea.focus();
+          els.importSettingsBtn.textContent = '[APPLY IMPORT]';
+          importMode = true;
+        } else {
+          // Second click: import the settings
+          try {
+            const importData = els.settingsExportArea.value.trim();
+            if (!importData) {
+              alert('Please paste settings data first');
+              return;
+            }
+            const decoded = atob(importData);
+            const settings = JSON.parse(decoded);
+            saveSettings(settings);
+            els.settingsDialog.close();
+            
+            // Apply all settings
+            applyCenterUI(settings.centerUI);
+            applyTheme(settings.theme);
+            
+            // Restart real-time updates
+            stopRealTimeUpdates();
+            if (settings.enableRealTimeUpdates) {
+              setTimeout(() => startRealTimeUpdates(), 1000);
+            }
+            
+            // Hide textarea and reset
+            els.settingsExportArea.style.display = 'none';
+            els.importSettingsBtn.textContent = '[IMPORT]';
+            importMode = false;
+            
+            refreshAll();
+          } catch (err) {
+            alert('Invalid settings data. Please check the pasted text and try again.');
+            console.error('Import error:', err);
+          }
+        }
+      });
+      
+      // Reset import mode when settings dialog closes
+      els.settingsDialog.addEventListener('close', () => {
+        els.settingsExportArea.style.display = 'none';
+        els.settingsExportArea.setAttribute('readonly', 'true');
+        els.importSettingsBtn.textContent = '[IMPORT]';
+        importMode = false;
       });
     }
     
@@ -1194,63 +1278,63 @@
           });
           console.log('📊 NFTs by chain:', nftsByChain);
           
-          const collections = {};
-          const collectionSlugs = new Set();
-          const nftsByCollection = {};
+              const collections = {};
+              const collectionSlugs = new Set();
+              const nftsByCollection = {};
           
           // Log first NFT to see what data we have
           if (openSeaData.nfts.length > 0) {
             console.log('📋 Sample NFT data:', JSON.stringify(openSeaData.nfts[0], null, 2));
           }
-          
-          for (const nft of openSeaData.nfts) {
-            const collectionSlug = nft.collection;
+              
+              for (const nft of openSeaData.nfts) {
+                const collectionSlug = nft.collection;
             // Use the chain we tagged when fetching
             let chain = nft._chain || 'ethereum';
-            let contractAddr = nft.contract;
+                let contractAddr = nft.contract;
             if (nft.identifier && nft.identifier.includes(':')) {
-              const parts = nft.identifier.split(':');
-              if (parts.length >= 2) {
-                contractAddr = parts[1]; // Second part is the contract address
-              }
-            }
-            
+                  const parts = nft.identifier.split(':');
+                  if (parts.length >= 2) {
+                    contractAddr = parts[1]; // Second part is the contract address
+                  }
+                }
+                
             console.log(`🎨 NFT: slug=${collectionSlug}, chain=${chain}, contract=${contractAddr}`);
-            
-            if (collectionSlug) {
-              collectionSlugs.add(collectionSlug);
-              
-              if (!nftsByCollection[collectionSlug]) {
-                nftsByCollection[collectionSlug] = [];
-              }
-              nftsByCollection[collectionSlug].push(nft);
-            }
-            
-            if (!collections[collectionSlug || contractAddr]) {
+                
+                if (collectionSlug) {
+                  collectionSlugs.add(collectionSlug);
+                  
+                  if (!nftsByCollection[collectionSlug]) {
+                    nftsByCollection[collectionSlug] = [];
+                  }
+                  nftsByCollection[collectionSlug].push(nft);
+                }
+                
+                if (!collections[collectionSlug || contractAddr]) {
               // We'll get the proper name from the stats API later
-              collections[collectionSlug || contractAddr] = {
+                  collections[collectionSlug || contractAddr] = {
                 name: collectionSlug || contractAddr, // Temporary, will be updated from stats API
-                contract: contractAddr,
-                slug: collectionSlug,
+                    contract: contractAddr,
+                    slug: collectionSlug,
                 chain: chain, // Store the chain
-                count: 0,
-                floorPriceUsd: 0,
+                    count: 0,
+                    floorPriceUsd: 0,
                 floorPriceNative: 0, // Floor price in native token
                 nativeToken: 'ETH', // Will be updated based on chain
-                change24h: null, // null indicates no data available
-                totalPaidUsd: 0, // Track what was paid for all NFTs
-                nfts: []
-              };
+                    change24h: null, // null indicates no data available
+                    totalPaidUsd: 0, // Track what was paid for all NFTs
+                    nfts: []
+                  };
             } else {
               // Update chain if it's not ethereum (in case collection already exists)
               if (chain !== 'ethereum') {
                 collections[collectionSlug || contractAddr].chain = chain;
               }
-            }
-            collections[collectionSlug || contractAddr].count++;
-            collections[collectionSlug || contractAddr].nfts.push(nft);
-          }
-          
+                }
+                collections[collectionSlug || contractAddr].count++;
+                collections[collectionSlug || contractAddr].nfts.push(nft);
+              }
+              
           // Map chains to their native tokens and CoinGecko IDs
           const chainTokenMap = {
             'ethereum': { symbol: 'ETH', coingeckoId: 'ethereum' },
@@ -1289,8 +1373,8 @@
                   console.log(`💱 ${tokenInfo.symbol} Price: $${price}`);
                 }
               }
-            }
-          } catch (err) {
+                }
+              } catch (err) {
             console.log('⚠️ Error fetching token prices:', err);
           }
           
@@ -1307,14 +1391,14 @@
           
           const statsPromises = Array.from(collectionSlugs).map(slug =>
             fetch(`https://api.opensea.io/api/v2/collections/${slug}/stats`, {
-              headers: {
-                'X-API-KEY': apiKey,
-                'accept': 'application/json'
-              }
+                    headers: {
+                      'X-API-KEY': apiKey,
+                      'accept': 'application/json'
+                    }
             })
             .then(async (statsResp) => {
-              if (statsResp.ok) {
-                const statsData = await statsResp.json();
+                  if (statsResp.ok) {
+                    const statsData = await statsResp.json();
                 
                 // Get floor price and proper collection name from stats
                 const floorPriceNative = statsData.total?.floor_price;
@@ -1357,43 +1441,43 @@
           );
           
           await Promise.all(statsPromises);
-          
-          // Fetch last sale price for each NFT to calculate PnL
-          console.log('💸 Fetching last sale prices for NFTs...');
-          for (const slug of collectionSlugs) {
-            if (!nftsByCollection[slug]) continue;
-            
-            for (const nft of nftsByCollection[slug]) {
-              try {
-                // Get individual NFT data including last sale
-                const nftResp = await fetch(`https://api.opensea.io/api/v2/chain/ethereum/contract/${collections[slug].contract}/nfts/${nft.identifier.split(':')[2]}`, {
-                  headers: {
-                    'X-API-KEY': apiKey,
-                    'accept': 'application/json'
-                  }
-                });
+              
+              // Fetch last sale price for each NFT to calculate PnL
+              console.log('💸 Fetching last sale prices for NFTs...');
+              for (const slug of collectionSlugs) {
+                if (!nftsByCollection[slug]) continue;
                 
-                if (nftResp.ok) {
-                  const nftData = await nftResp.json();
-                  const lastSale = nftData.nft?.last_sale;
-                  
-                  if (lastSale) {
-                    // Convert last sale to USD
-                    const saleAmountEth = parseFloat(lastSale.total_price) / 1e18; // Wei to ETH
-                    const saleAmountUsd = saleAmountEth * ethPrice;
-                    collections[slug].totalPaidUsd += saleAmountUsd;
-                    console.log(`💸 ${slug} NFT #${nft.identifier.split(':')[2]}: Last sale ${saleAmountEth.toFixed(4)} ETH ($${saleAmountUsd.toFixed(2)})`);
+                for (const nft of nftsByCollection[slug]) {
+                  try {
+                    // Get individual NFT data including last sale
+                    const nftResp = await fetch(`https://api.opensea.io/api/v2/chain/ethereum/contract/${collections[slug].contract}/nfts/${nft.identifier.split(':')[2]}`, {
+                      headers: {
+                        'X-API-KEY': apiKey,
+                        'accept': 'application/json'
+                      }
+                    });
+                    
+                    if (nftResp.ok) {
+                      const nftData = await nftResp.json();
+                      const lastSale = nftData.nft?.last_sale;
+                      
+                      if (lastSale) {
+                        // Convert last sale to USD
+                        const saleAmountEth = parseFloat(lastSale.total_price) / 1e18; // Wei to ETH
+                        const saleAmountUsd = saleAmountEth * ethPrice;
+                        collections[slug].totalPaidUsd += saleAmountUsd;
+                        console.log(`💸 ${slug} NFT #${nft.identifier.split(':')[2]}: Last sale ${saleAmountEth.toFixed(4)} ETH ($${saleAmountUsd.toFixed(2)})`);
+                      }
+                    }
+                  } catch (err) {
+                    console.log(`⚠️ Failed to fetch NFT data for ${nft.identifier}:`, err);
                   }
                 }
-              } catch (err) {
-                console.log(`⚠️ Failed to fetch NFT data for ${nft.identifier}:`, err);
               }
-            }
-          }
               
-          console.log('✅ Grouped NFT collections from OpenSea with prices:', Object.values(collections));
-          return { collections: Object.values(collections) };
-        } else {
+              console.log('✅ Grouped NFT collections from OpenSea with prices:', Object.values(collections));
+              return { collections: Object.values(collections) };
+            } else {
           console.log('⚠️ No NFTs found across any chains');
         }
       } else {
@@ -1476,42 +1560,42 @@
 
   // Symbol to CoinGecko ID mapping
   const symbolToCoingeckoId = {
-    'BTC': 'bitcoin',
-    'ETH': 'ethereum',
-    'USDC': 'usd-coin',
-    'USDT': 'tether',
-    'SOL': 'solana',
-    'HYPE': 'hyperliquid',
-    'ZEC': 'zcash',
-    'MATIC': 'matic-network',
-    'AVAX': 'avalanche-2',
-    'ARB': 'arbitrum',
-    'OP': 'optimism',
-    'LINK': 'chainlink',
-    'UNI': 'uniswap',
-    'AAVE': 'aave',
-    'CRV': 'curve-dao-token',
-    'LDO': 'lido-dao',
-    'MKR': 'maker',
-    'SNX': 'synthetix-network-token',
-    'DOGE': 'dogecoin',
-    'ADA': 'cardano',
-    'DOT': 'polkadot',
-    'SHIB': 'shiba-inu',
-    'ATOM': 'cosmos',
-    'LTC': 'litecoin',
-    'XRP': 'ripple',
-    'TRX': 'tron',
-    'FTM': 'fantom',
-    'APE': 'apecoin',
-    'SAND': 'the-sandbox',
-    'MANA': 'decentraland',
-    'GRT': 'the-graph',
-    'SUSHI': 'sushi',
-    'COMP': 'compound-governance-token',
-    'YFI': 'yearn-finance'
-  };
-  
+      'BTC': 'bitcoin',
+      'ETH': 'ethereum',
+      'USDC': 'usd-coin',
+      'USDT': 'tether',
+      'SOL': 'solana',
+      'HYPE': 'hyperliquid',
+      'ZEC': 'zcash',
+      'MATIC': 'matic-network',
+      'AVAX': 'avalanche-2',
+      'ARB': 'arbitrum',
+      'OP': 'optimism',
+      'LINK': 'chainlink',
+      'UNI': 'uniswap',
+      'AAVE': 'aave',
+      'CRV': 'curve-dao-token',
+      'LDO': 'lido-dao',
+      'MKR': 'maker',
+      'SNX': 'synthetix-network-token',
+      'DOGE': 'dogecoin',
+      'ADA': 'cardano',
+      'DOT': 'polkadot',
+      'SHIB': 'shiba-inu',
+      'ATOM': 'cosmos',
+      'LTC': 'litecoin',
+      'XRP': 'ripple',
+      'TRX': 'tron',
+      'FTM': 'fantom',
+      'APE': 'apecoin',
+      'SAND': 'the-sandbox',
+      'MANA': 'decentraland',
+      'GRT': 'the-graph',
+      'SUSHI': 'sushi',
+      'COMP': 'compound-governance-token',
+      'YFI': 'yearn-finance'
+    };
+    
   async function fetchCoinGeckoPrices(symbols) {
     const ids = symbols
       .map(s => symbolToCoingeckoId[s.toUpperCase()])
@@ -1625,11 +1709,11 @@
               // Calculate 24h change
               if (prevDayPx > 0) {
                 const change24h = ((markPx - prevDayPx) / prevDayPx) * 100;
-                hlMarketData[assetName].change24h = change24h;
+                  hlMarketData[assetName].change24h = change24h;
+                }
               }
             }
           }
-        }
         
         console.log('📊 Hyperliquid market data loaded:', Object.keys(hlMarketData).length, 'assets');
       }
@@ -1661,7 +1745,7 @@
       // Process Hyperliquid perp positions
       if (hlData && hlData.perp && hlData.perp.assetPositions) {
         console.log('Processing Hyperliquid perp positions:', hlData.perp.assetPositions.length);
-        for (const pos of hlData.perp.assetPositions) {
+          for (const pos of hlData.perp.assetPositions) {
           const coin = pos.position?.coin || 'Unknown';
           const marketInfo = hlMarketData[coin] || {};
           const size = parseFloat(pos.position?.szi || 0);
@@ -1672,59 +1756,59 @@
           
           console.log(`💹 ${coin}: markPx=$${marketInfo.markPx || 'N/A'}, using price=$${currentPrice.toFixed(2)}`);
           
-          allPositionsData.push({
+            allPositionsData.push({
             asset: coin,
             exchange: 'Hyperliquid',
             positionType: 'perp',
             amount: size,
             value: Math.abs(size) * currentPrice,
-            price: currentPrice,
+              price: currentPrice,
             change24h: change24h,
             pnl: parseFloat(pos.position?.unrealizedPnl || 0),
-            pnlPercent: 0
-          });
+              pnlPercent: 0
+            });
+          }
         }
-      }
-      
+        
       // Process Hyperliquid spot balances
       if (hlData && hlData.spot && hlData.spot.balances) {
-        const pricesResp = await fetch('https://api.hyperliquid.xyz/info', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'allMids' })
-        });
-        const prices = pricesResp.ok ? await pricesResp.json() : null;
-        
-        for (const bal of hlData.spot.balances) {
-          const tokenAmount = parseFloat(bal.total || 0);
-          if (tokenAmount <= 0) continue;
-          
-          let usdValue = tokenAmount;
-          if (bal.coin !== 'USDC' && prices && prices[bal.coin]) {
-            usdValue = tokenAmount * parseFloat(prices[bal.coin]);
-          }
-          
-          let pnl = 0;
-          let pnlPercent = 0;
-          if (bal.entryNtl && parseFloat(bal.entryNtl) > 0) {
-            const entryValue = parseFloat(bal.entryNtl);
-            pnl = usdValue - entryValue;
-            pnlPercent = (pnl / entryValue) * 100;
-          }
-          
-          const marketInfo = hlMarketData[bal.coin] || {};
-          const currentPrice = bal.coin === 'USDC' ? 1 : (prices && prices[bal.coin] ? parseFloat(prices[bal.coin]) : 0);
-          allPositionsData.push({
-            asset: bal.coin,
-            exchange: 'Hyperliquid',
-            positionType: 'spot',
-            amount: tokenAmount,
-            value: usdValue,
-            price: currentPrice,
-            change24h: marketInfo.change24h || 0,
-            pnl: pnl,
-            pnlPercent: pnlPercent
+          const pricesResp = await fetch('https://api.hyperliquid.xyz/info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'allMids' })
           });
+          const prices = pricesResp.ok ? await pricesResp.json() : null;
+          
+          for (const bal of hlData.spot.balances) {
+            const tokenAmount = parseFloat(bal.total || 0);
+            if (tokenAmount <= 0) continue;
+            
+            let usdValue = tokenAmount;
+            if (bal.coin !== 'USDC' && prices && prices[bal.coin]) {
+              usdValue = tokenAmount * parseFloat(prices[bal.coin]);
+            }
+            
+            let pnl = 0;
+            let pnlPercent = 0;
+            if (bal.entryNtl && parseFloat(bal.entryNtl) > 0) {
+              const entryValue = parseFloat(bal.entryNtl);
+              pnl = usdValue - entryValue;
+              pnlPercent = (pnl / entryValue) * 100;
+            }
+            
+            const marketInfo = hlMarketData[bal.coin] || {};
+            const currentPrice = bal.coin === 'USDC' ? 1 : (prices && prices[bal.coin] ? parseFloat(prices[bal.coin]) : 0);
+            allPositionsData.push({
+              asset: bal.coin,
+              exchange: 'Hyperliquid',
+            positionType: 'spot',
+              amount: tokenAmount,
+              value: usdValue,
+              price: currentPrice,
+              change24h: marketInfo.change24h || 0,
+              pnl: pnl,
+              pnlPercent: pnlPercent
+            });
         }
       }
       
@@ -2040,9 +2124,9 @@
   function getMarketLink(asset, exchange, positionType) {
     if (exchange === 'Hyperliquid') {
       if (positionType === 'perp') {
-        return `https://app.hyperliquid.xyz/trade/${asset}`;
+      return `https://app.hyperliquid.xyz/trade/${asset}`;
       } else if (positionType === 'spot') {
-        return `https://app.hyperliquid.xyz/spot/${asset}`;
+      return `https://app.hyperliquid.xyz/spot/${asset}`;
       }
       return null;
     } else if (exchange === 'Lighter') {
@@ -2387,7 +2471,7 @@
     
     els.summary.innerHTML = summaryParts.join('. ') + '.';
   }
-  
+
   function init() {
     const settings = loadSettings() || getDefaultSettings();
     if (!loadSettings()) saveSettings(settings);
