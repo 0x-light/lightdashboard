@@ -12,3 +12,11 @@
   # Cache control for static assets
   Cache-Control: public, max-age=3600, must-revalidate
 
+/manifest.json
+  Content-Type: application/manifest+json
+  Cache-Control: public, max-age=86400
+
+/favicon-*.svg
+  Content-Type: image/svg+xml
+  Cache-Control: public, max-age=604800
+

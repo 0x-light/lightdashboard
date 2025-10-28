@@ -3376,10 +3376,10 @@
 
   // Load custom stickers and wallpapers from local folders
   // Place image files in:
-  //   - /stickers/ folder for rain particle images (png, jpg, gif, webp)
-  //   - /wallpapers/ folder for background images (png, jpg, gif, webp)
+  //   - /stickers/ folder for rain particle images (png, jpg, gif, webp, svg)
+  //   - /wallpapers/ folder for background images (png, jpg, gif, webp, svg)
   // Run this command to update the manifest after adding new files:
-  //   cd stickers && ls -1 *.{png,jpg,jpeg,gif,webp} 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' > index.json
+  //   cd stickers && ls -1 *.{png,jpg,jpeg,gif,webp,svg} 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length > 0))' > index.json
   async function loadCustomAssets() {
     const stickerGrid = document.getElementById('stickerGrid');
     const stickerOptions = document.getElementById('stickerOptions');
@@ -3404,7 +3404,7 @@
       for (let i = 0; i < stickerFiles.length; i++) {
         const file = stickerFiles[i];
         const imgSrc = `/stickers/${file}`;
-        const displayName = file.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '');
+        const displayName = file.replace(/\.(png|jpg|jpeg|gif|webp|svg)$/i, '');
         
         // Create grid item for drag-and-drop
         const item = document.createElement('div');
@@ -3490,7 +3490,7 @@
             // Add option to dropdown
             const option = document.createElement('option');
             option.value = file;
-            option.textContent = file.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '');
+            option.textContent = file.replace(/\.(png|jpg|jpeg|gif|webp|svg)$/i, '');
             document.getElementById('wallpaperOptions')?.appendChild(option);
           }
         } catch (err) {
