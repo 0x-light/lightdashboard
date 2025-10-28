@@ -889,6 +889,9 @@ html[data-theme="dark"] {
   image-rendering: pixelated;
   image-rendering: -moz-crisp-edges;
   image-rendering: crisp-edges;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  will-change: auto;
 }
 
 #rainCanvas.active {

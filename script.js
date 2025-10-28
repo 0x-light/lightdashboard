@@ -2654,8 +2654,12 @@
     
     rainCtx.clearRect(0, 0, rainCanvas.width, rainCanvas.height);
     
-    // Set pixel art style - crisp rendering
+    // Set pixel art style - crisp rendering, no blur
     rainCtx.imageSmoothingEnabled = false;
+    rainCtx.webkitImageSmoothingEnabled = false;
+    rainCtx.mozImageSmoothingEnabled = false;
+    rainCtx.msImageSmoothingEnabled = false;
+    rainCtx.oImageSmoothingEnabled = false;
     
     // Color based on type
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -2690,21 +2694,18 @@
     const angleRad = (effectiveAngle * Math.PI) / 180;
     
     rainDrops.forEach(drop => {
-      // Round coordinates for sharp pixels
-      const x = Math.round(drop.x);
-      const y = Math.round(drop.y);
-      
       // Add subtle wobble for realism
       const wobbleOffset = Math.sin(drop.wobble) * 0.3;
       
+      // Round ALL coordinates for sharp, crisp pixels - no sub-pixel rendering
+      const x = Math.floor(drop.x + wobbleOffset);
+      const y = Math.floor(drop.y);
+      const width = Math.floor(drop.size);
+      const height = Math.floor(drop.size * drop.length);
+      
       // Draw pixel art raindrop/snow (sharp rectangle)
       // Snow uses same rendering, just different color and speed
-      rainCtx.fillRect(
-        x + wobbleOffset, 
-        y, 
-        drop.size, 
-        drop.size * drop.length
-      );
+      rainCtx.fillRect(x, y, width, height);
       
       // Update position with wind angle and individual wobble
       drop.y += drop.speed;
