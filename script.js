@@ -11,6 +11,7 @@
     mobileMenuBtn: document.getElementById('mobileMenuBtn'),
     closeMobileMenuBtn: document.getElementById('closeMobileMenuBtn'),
     mobileMenu: document.getElementById('mobileMenu'),
+    toggleRainBtnMobile: document.getElementById('toggleRainBtnMobile'),
     toggleThemeBtnMobile: document.getElementById('toggleThemeBtnMobile'),
     toggleAmountsBtnMobile: document.getElementById('toggleAmountsBtnMobile'),
     decreaseFontBtnMobile: document.getElementById('decreaseFontBtnMobile'),
@@ -2424,6 +2425,18 @@
       els.closeMobileMenuBtn.addEventListener('click', closeMobileMenu);
     }
     
+    // Mobile rain toggle
+    if (els.toggleRainBtnMobile) {
+      els.toggleRainBtnMobile.addEventListener('click', () => {
+        toggleRain();
+        const newText = rainActive ? '[RAIN OFF]' : '[RAIN ON]';
+        els.toggleRainBtnMobile.textContent = newText;
+        // Update desktop button too
+        const desktopBtn = document.getElementById('toggleRainBtn');
+        if (desktopBtn) desktopBtn.textContent = newText;
+      });
+    }
+    
     // Mobile theme toggle
     if (els.toggleThemeBtnMobile) {
       els.toggleThemeBtnMobile.addEventListener('click', () => {
@@ -2509,7 +2522,277 @@
     }
   }
 
-  document.addEventListener('DOMContentLoaded', init);
+  // Pixel art rain effect
+  const rainCanvas = document.getElementById('rainCanvas');
+  const rainCtx = rainCanvas ? rainCanvas.getContext('2d') : null;
+  let rainDrops = [];
+  let rainActive = false;
+  let rainAnimationFrame = null;
+  
+  const rainConfig = {
+    density: 200,
+    speed: 10,
+    size: 1,
+    length: 3,
+    angle: -30,
+    randomAngle: true,
+    useThemeColor: false
+  };
+  
+  let rainAngleOffset = 0;
+  let rainAngleChangeTime = 0;
+  
+  // Check if it's raining at user's location and auto-enable rain
+  async function checkWeatherAndEnableRain() {
+    try {
+      const settings = loadSettings();
+      const weather = settings?.weather;
+      
+      // Check if user has location set in settings
+      if (!weather || !weather.lat || !weather.lon) {
+        console.log('Weather check skipped: No location set in settings');
+        return;
+      }
+      
+      const latitude = weather.lat;
+      const longitude = weather.lon;
+      
+      // Fetch weather data from Open-Meteo (free, no API key required)
+      const weatherResponse = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=weather_code,precipitation&timezone=auto`
+      );
+      
+      if (!weatherResponse.ok) {
+        console.log('Weather API error:', weatherResponse.status);
+        return;
+      }
+      
+      const weatherData = await weatherResponse.json();
+      const weatherCode = weatherData.current?.weather_code;
+      const precipitation = weatherData.current?.precipitation || 0;
+      
+      // Weather codes for rain: 51-67, 80-82, 95-99
+      // See: https://open-meteo.com/en/docs
+      const isRaining = precipitation > 0 || 
+                       (weatherCode >= 51 && weatherCode <= 67) ||
+                       (weatherCode >= 80 && weatherCode <= 82) ||
+                       (weatherCode >= 95 && weatherCode <= 99);
+      
+      if (isRaining && !rainActive) {
+        console.log('🌧️ Detected rain at your location, enabling rain effect');
+        toggleRain();
+        const toggleBtn = document.getElementById('toggleRainBtn');
+        const mobileBtn = document.getElementById('toggleRainBtnMobile');
+        if (toggleBtn) toggleBtn.textContent = '[RAIN OFF]';
+        if (mobileBtn) mobileBtn.textContent = '[RAIN OFF]';
+      }
+    } catch (error) {
+      // Silently fail - API might be unavailable
+      console.log('Weather check skipped:', error.message);
+    }
+  }
+  
+  function resizeRainCanvas() {
+    if (!rainCanvas) return;
+    rainCanvas.width = window.innerWidth;
+    rainCanvas.height = window.innerHeight;
+  }
+  
+  function createRainDrop() {
+    return {
+      x: Math.random() * rainCanvas.width,
+      y: Math.random() * rainCanvas.height - rainCanvas.height,
+      speed: rainConfig.speed + Math.random() * 2,
+      size: rainConfig.size
+    };
+  }
+  
+  function initRain() {
+    rainDrops = [];
+    for (let i = 0; i < rainConfig.density; i++) {
+      rainDrops.push(createRainDrop());
+    }
+  }
+  
+  function drawRain() {
+    if (!rainActive || !rainCtx) return;
+    
+    rainCtx.clearRect(0, 0, rainCanvas.width, rainCanvas.height);
+    
+    // Set pixel art style
+    rainCtx.imageSmoothingEnabled = false;
+    
+    // Rain color - more whitish
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (rainConfig.useThemeColor) {
+      rainCtx.fillStyle = isDark ? '#268bd2' : '#268bd2';
+    } else {
+      rainCtx.fillStyle = isDark ? 'rgba(230, 240, 255, 0.7)' : 'rgba(180, 190, 210, 0.6)';
+    }
+    
+    // Randomize angle over time if enabled
+    const currentTime = Date.now();
+    if (rainConfig.randomAngle && currentTime - rainAngleChangeTime > 3000) {
+      rainAngleOffset = (Math.random() - 0.5) * 30; // Random offset ±15°
+      rainAngleChangeTime = currentTime;
+    } else if (!rainConfig.randomAngle) {
+      rainAngleOffset = 0;
+    }
+    
+    const effectiveAngle = rainConfig.angle + rainAngleOffset;
+    const angleRad = (effectiveAngle * Math.PI) / 180;
+    
+    rainDrops.forEach(drop => {
+      // Draw pixel art raindrop (simple rectangle with length)
+      rainCtx.fillRect(drop.x, drop.y, drop.size, drop.size * rainConfig.length);
+      
+      // Update position with angle
+      drop.y += drop.speed;
+      drop.x += Math.sin(angleRad) * drop.speed * 0.3;
+      
+      // Reset drop when it goes off screen
+      if (drop.y > rainCanvas.height) {
+        drop.y = -10;
+        drop.x = Math.random() * rainCanvas.width;
+      }
+      if (drop.x < 0) drop.x = rainCanvas.width;
+      if (drop.x > rainCanvas.width) drop.x = 0;
+    });
+    
+    rainAnimationFrame = requestAnimationFrame(drawRain);
+  }
+  
+  function toggleRain() {
+    rainActive = !rainActive;
+    
+    if (rainActive) {
+      rainCanvas.classList.add('active');
+      resizeRainCanvas();
+      initRain();
+      drawRain();
+    } else {
+      rainCanvas.classList.remove('active');
+      if (rainAnimationFrame) {
+        cancelAnimationFrame(rainAnimationFrame);
+        rainAnimationFrame = null;
+      }
+    }
+  }
+  
+  function setupRainControls() {
+    const toggleBtn = document.getElementById('toggleRainBtn');
+    const densityInput = document.getElementById('rainDensity');
+    const speedInput = document.getElementById('rainSpeed');
+    const sizeInput = document.getElementById('rainSize');
+    const lengthInput = document.getElementById('rainLength');
+    const angleInput = document.getElementById('rainAngle');
+    const randomAngleCheckbox = document.getElementById('rainRandomAngle');
+    const colorCheckbox = document.getElementById('rainColor');
+    
+    if (!toggleBtn) return;
+    
+    // Toggle rain on/off
+    toggleBtn.addEventListener('click', () => {
+      toggleRain();
+      const newText = rainActive ? '[RAIN OFF]' : '[RAIN ON]';
+      toggleBtn.textContent = newText;
+      // Update mobile button too
+      const mobileBtn = document.getElementById('toggleRainBtnMobile');
+      if (mobileBtn) mobileBtn.textContent = newText;
+    });
+    
+    // Update density
+    if (densityInput) {
+      densityInput.addEventListener('input', (e) => {
+        rainConfig.density = parseInt(e.target.value);
+        document.getElementById('rainDensityValue').textContent = rainConfig.density;
+        if (rainActive) initRain();
+      });
+    }
+    
+    // Update speed
+    if (speedInput) {
+      speedInput.addEventListener('input', (e) => {
+        rainConfig.speed = parseInt(e.target.value);
+        document.getElementById('rainSpeedValue').textContent = rainConfig.speed;
+      });
+    }
+    
+    // Update size (width)
+    if (sizeInput) {
+      sizeInput.addEventListener('input', (e) => {
+        rainConfig.size = parseInt(e.target.value);
+        document.getElementById('rainSizeValue').textContent = rainConfig.size;
+      });
+    }
+    
+    // Update length
+    if (lengthInput) {
+      lengthInput.addEventListener('input', (e) => {
+        rainConfig.length = parseInt(e.target.value);
+        document.getElementById('rainLengthValue').textContent = rainConfig.length;
+      });
+    }
+    
+    // Update angle
+    if (angleInput) {
+      angleInput.addEventListener('input', (e) => {
+        rainConfig.angle = parseInt(e.target.value);
+        document.getElementById('rainAngleValue').textContent = rainConfig.angle + '°';
+        rainConfig.randomAngle = false; // Disable random when manually adjusted
+        if (randomAngleCheckbox) randomAngleCheckbox.checked = false;
+      });
+    }
+    
+    // Toggle random angle
+    if (randomAngleCheckbox) {
+      randomAngleCheckbox.addEventListener('change', (e) => {
+        rainConfig.randomAngle = e.target.checked;
+        if (e.target.checked) {
+          rainAngleChangeTime = 0; // Force immediate angle change
+        }
+      });
+    }
+    
+    // Toggle theme color
+    if (colorCheckbox) {
+      colorCheckbox.addEventListener('change', (e) => {
+        rainConfig.useThemeColor = e.target.checked;
+      });
+    }
+    
+    // Slider button controls
+    document.querySelectorAll('.slider-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.getAttribute('data-target');
+        const delta = parseInt(btn.getAttribute('data-delta'));
+        const input = document.getElementById(targetId);
+        if (input) {
+          const newValue = Math.max(
+            parseInt(input.min),
+            Math.min(parseInt(input.max), parseInt(input.value) + delta)
+          );
+          input.value = newValue;
+          input.dispatchEvent(new Event('input'));
+        }
+      });
+    });
+    
+    // Resize canvas on window resize
+    window.addEventListener('resize', () => {
+      if (rainActive) resizeRainCanvas();
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    init();
+    setupRainControls();
+    
+    // Check weather and auto-enable rain if it's raining at user's location
+    if (rainCanvas) {
+      checkWeatherAndEnableRain();
+    }
+  });
   
   // Stop real-time updates when page unloads
   window.addEventListener('beforeunload', stopRealTimeUpdates);

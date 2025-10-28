@@ -11,6 +11,7 @@
       <h1 id="greeting" class="greeting"><span class="loading-terminal">[...]</span></h1>
       <button id="mobileMenuBtn" class="btn-text mobile-menu-btn">[MENU]</button>
       <div class="header-actions">
+        <button id="toggleRainBtn" class="btn-text">[RAIN ON]</button>
         <button id="toggleThemeBtn" class="btn-text">[DARK MODE]</button>
         <button id="toggleAmountsBtn" class="btn-text">[SHOW AMOUNTS]</button>
         <div class="font-size-controls">
@@ -29,6 +30,7 @@
         <button id="closeMobileMenuBtn" class="btn-text">[CLOSE]</button>
       </div>
       <div class="mobile-menu-content">
+        <button id="toggleRainBtnMobile" class="btn-text">[RAIN ON]</button>
         <button id="toggleThemeBtnMobile" class="btn-text">[DARK MODE]</button>
         <button id="toggleAmountsBtnMobile" class="btn-text">[SHOW AMOUNTS]</button>
         <div class="font-size-controls">
@@ -152,6 +154,63 @@
           </fieldset>
 
           <fieldset>
+            <legend>Rain Effect</legend>
+            <label>
+              Density
+              <div class="slider-controls">
+                <button type="button" class="slider-btn" data-target="rainDensity" data-delta="-10">[-]</button>
+                <input type="range" id="rainDensity" min="10" max="500" value="200">
+                <button type="button" class="slider-btn" data-target="rainDensity" data-delta="10">[+]</button>
+                <span id="rainDensityValue">200</span>
+              </div>
+            </label>
+            <label>
+              Speed
+              <div class="slider-controls">
+                <button type="button" class="slider-btn" data-target="rainSpeed" data-delta="-1">[-]</button>
+                <input type="range" id="rainSpeed" min="1" max="20" value="10">
+                <button type="button" class="slider-btn" data-target="rainSpeed" data-delta="1">[+]</button>
+                <span id="rainSpeedValue">10</span>
+              </div>
+            </label>
+            <label>
+              Width
+              <div class="slider-controls">
+                <button type="button" class="slider-btn" data-target="rainSize" data-delta="-1">[-]</button>
+                <input type="range" id="rainSize" min="1" max="10" value="1">
+                <button type="button" class="slider-btn" data-target="rainSize" data-delta="1">[+]</button>
+                <span id="rainSizeValue">1</span>
+              </div>
+            </label>
+            <label>
+              Length
+              <div class="slider-controls">
+                <button type="button" class="slider-btn" data-target="rainLength" data-delta="-1">[-]</button>
+                <input type="range" id="rainLength" min="1" max="20" value="3">
+                <button type="button" class="slider-btn" data-target="rainLength" data-delta="1">[+]</button>
+                <span id="rainLengthValue">3</span>
+              </div>
+            </label>
+            <label>
+              Angle (wind direction)
+              <div class="slider-controls">
+                <button type="button" class="slider-btn" data-target="rainAngle" data-delta="-5">[-]</button>
+                <input type="range" id="rainAngle" min="-45" max="45" value="-30">
+                <button type="button" class="slider-btn" data-target="rainAngle" data-delta="5">[+]</button>
+                <span id="rainAngleValue">-30°</span>
+              </div>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+              <input type="checkbox" id="rainRandomAngle" checked>
+              Randomize angle (realistic wind)
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+              <input type="checkbox" id="rainColor">
+              Use theme color
+            </label>
+          </fieldset>
+
+          <fieldset>
             <legend>Comic Strip</legend>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
               <input id="showComic" type="checkbox">
@@ -188,6 +247,9 @@
         </footer>
       </form>
     </dialog>
+
+    <!-- Pixel art rain overlay -->
+    <canvas id="rainCanvas"></canvas>
 
     <script src="script.js" defer></script>
   </body>

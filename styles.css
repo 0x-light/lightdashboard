@@ -875,3 +875,51 @@ html[data-theme="dark"] {
   --flash-start: rgba(185, 226, 255, 0.4);
   --flash-mid: rgba(38, 139, 210, 0.2);
 }
+
+/* Pixel art rain overlay */
+#rainCanvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+  display: none;
+}
+
+#rainCanvas.active {
+  display: block;
+}
+
+/* Slider controls styling */
+.slider-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.slider-controls input[type="range"] {
+  flex: 1;
+}
+
+.slider-controls span {
+  min-width: 50px;
+  text-align: right;
+  color: var(--accent);
+}
+
+.slider-btn {
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.slider-btn:hover {
+  color: var(--accent);
+}
