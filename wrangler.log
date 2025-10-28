@@ -34,3 +34,25 @@ No Functions. Shimming...
 [wrangler:info] GET /stickers/hypurr-calls.png 304 Not Modified (35ms)
 [wrangler:info] GET /stickers/hypurr-cheers.png 304 Not Modified (59ms)
 [wrangler:info] GET /stickers/hypurr-cash.png 304 Not Modified (89ms)
+_headers modified. Re-evaluating...
+✨ Parsed 0 valid redirect rules.
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mFound 1 invalid redirect rule:[0m
+
+  ▶︎ Infinite loop detected in this rule and has been ignored. This will cause a redirect to strip `.html` or `/index` and end up triggering this rule again. Please fix or remove this rule to silence this warning.
+      at _redirects:2 | /* /index.html 200
+  
+  
+
+
+✨ Parsed 1 valid header rule.
+_headers modified. Re-evaluating...
+✨ Parsed 0 valid redirect rules.
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mFound 1 invalid redirect rule:[0m
+
+  ▶︎ Infinite loop detected in this rule and has been ignored. This will cause a redirect to strip `.html` or `/index` and end up triggering this rule again. Please fix or remove this rule to silence this warning.
+      at _redirects:2 | /* /index.html 200
+  
+  
+
+
+✨ Parsed 1 valid header rule.

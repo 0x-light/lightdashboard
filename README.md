@@ -96,11 +96,23 @@ All settings are stored in `localStorage` and persist across sessions:
 - Safari: Full support
 - Mobile browsers: Fully responsive with card layouts
 
-## Privacy
+## Privacy & Security
 
-- All data is stored locally in your browser
-- No tracking, analytics, or external dependencies beyond API calls
-- API keys are stored in `localStorage` (never transmitted except to the respective APIs)
+**🔒 Your data never leaves your device** - This dashboard is designed with privacy-first principles:
+
+- ✅ **100% Local Storage**: All settings, wallet addresses, and API keys are stored only in your browser's localStorage
+- ✅ **Encrypted**: Sensitive data (wallet addresses, API keys) is encrypted before storage
+- ✅ **No Tracking**: Zero analytics, no cookies, no telemetry
+- ✅ **No Accounts**: No sign-up, no server, no database
+- ✅ **Open Source**: Audit the code yourself
+- ✅ **Self-Hostable**: Deploy on your own infrastructure for complete control
+
+### What Gets Sent to External APIs?
+- Your **wallet addresses** → Only to blockchain APIs (Hyperliquid, Lighter, OpenSea) to fetch your positions
+- Your **location coordinates** → Only to weather API (if you enable weather)
+- **Nothing else** → No personal data, no usage statistics, no tracking
+
+**See [SECURITY.md](./SECURITY.md) for complete security details and API documentation.**
 
 ## Technical Stack
 

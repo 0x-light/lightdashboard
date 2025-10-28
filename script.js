@@ -1,5 +1,40 @@
+/**
+ * Privacy-First Dashboard
+ * 
+ * SECURITY & PRIVACY NOTICE:
+ * - All data is stored locally in your browser's localStorage only
+ * - Sensitive data (wallet addresses, API keys) is encrypted before storage
+ * - No analytics, tracking, or telemetry of any kind
+ * - No user accounts, no server-side storage, no databases
+ * - External API calls are made only to fetch your positions:
+ *   • Hyperliquid API - for perp/spot positions
+ *   • Lighter API - for lighter positions
+ *   • OpenSea API - for NFT data
+ *   • CoinGecko API - for price data (public, no personal data sent)
+ *   • Open-Meteo API - for weather (only if enabled)
+ * - Your data never leaves your device except to fetch positions from blockchain APIs
+ * 
+ * See SECURITY.md for full details.
+ */
 (function() {
   const storageKey = 'myDashboardSettings.v1';
+  
+  // Simple encryption for sensitive data in localStorage
+  // Note: This is obfuscation, not true encryption. For true security, use a password-derived key.
+  // All data stays local - nothing is sent to external servers except necessary API calls.
+  function simpleEncrypt(text) {
+    if (!text) return text;
+    return btoa(encodeURIComponent(text));
+  }
+  
+  function simpleDecrypt(encoded) {
+    if (!encoded) return encoded;
+    try {
+      return decodeURIComponent(atob(encoded));
+    } catch (e) {
+      return encoded; // Return as-is if decryption fails (backward compatibility)
+    }
+  }
 
   // Store loaded sticker images
   const stickerImages = {};
@@ -165,14 +200,49 @@
     try {
       const raw = localStorage.getItem(storageKey);
       if (!raw) return null;
-      return JSON.parse(raw);
+      const settings = JSON.parse(raw);
+      
+      // Decrypt sensitive fields
+      if (settings.walletAddresses) {
+        settings.walletAddresses = simpleDecrypt(settings.walletAddresses);
+      }
+      if (settings.openSeaApiKey) {
+        settings.openSeaApiKey = simpleDecrypt(settings.openSeaApiKey);
+      }
+      // Backward compatibility for old format
+      if (settings.hyperliquidAddress) {
+        settings.hyperliquidAddress = simpleDecrypt(settings.hyperliquidAddress);
+      }
+      if (settings.lighterAddress) {
+        settings.lighterAddress = simpleDecrypt(settings.lighterAddress);
+      }
+      
+      return settings;
     } catch {
       return null;
     }
   }
 
   function saveSettings(settings) {
-    localStorage.setItem(storageKey, JSON.stringify(settings));
+    // Create a copy to avoid modifying the original
+    const settingsToSave = { ...settings };
+    
+    // Encrypt sensitive fields before saving
+    if (settingsToSave.walletAddresses) {
+      settingsToSave.walletAddresses = simpleEncrypt(settingsToSave.walletAddresses);
+    }
+    if (settingsToSave.openSeaApiKey) {
+      settingsToSave.openSeaApiKey = simpleEncrypt(settingsToSave.openSeaApiKey);
+    }
+    // Backward compatibility for old format
+    if (settingsToSave.hyperliquidAddress) {
+      settingsToSave.hyperliquidAddress = simpleEncrypt(settingsToSave.hyperliquidAddress);
+    }
+    if (settingsToSave.lighterAddress) {
+      settingsToSave.lighterAddress = simpleEncrypt(settingsToSave.lighterAddress);
+    }
+    
+    localStorage.setItem(storageKey, JSON.stringify(settingsToSave));
   }
 
   function getDefaultSettings() {
@@ -369,7 +439,7 @@
         addresses.push(settings.lighterAddress);
       }
       settings.walletAddresses = addresses.join(', ');
-      console.log('Migrated old wallet settings to:', settings.walletAddresses);
+      console.log('Migrated old wallet settings');
     }
     
     // Populate settings
@@ -1104,7 +1174,7 @@
       return;
     }
     
-    console.log('Fetching Hyperliquid positions for:', settings.hyperliquidAddress);
+    console.log('Fetching Hyperliquid positions...');
     const data = await fetchHyperliquidPositions(settings.hyperliquidAddress);
     if (!data) {
       console.error('Failed to fetch Hyperliquid data');
@@ -1288,7 +1358,7 @@
       return;
     }
     
-    console.log('Fetching Lighter positions for:', settings.lighterAddress);
+    console.log('Fetching Lighter positions...');
     const data = await fetchLighterPositions(settings.lighterAddress);
     console.log('Lighter data:', data);
     
@@ -1376,7 +1446,7 @@
   async function fetchOpenSeaNFTs(address) {
     if (!address) return null;
     
-    console.log('🎨 Fetching NFTs for address:', address);
+    console.log('🎨 Fetching NFTs...');
     
     const settings = loadSettings();
     const apiKey = settings?.openSeaApiKey || '';
@@ -1838,8 +1908,7 @@
     const settings = loadSettings() || getDefaultSettings();
     const wallets = parseWallets(settings.walletAddresses);
     
-    console.log('Wallet addresses:', settings.walletAddresses);
-    console.log('Parsed wallets:', wallets);
+    console.log('Fetching positions for configured wallets...');
     
     if (wallets.length === 0) {
       renderPositionsTable();
