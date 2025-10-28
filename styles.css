@@ -886,6 +886,9 @@ html[data-theme="dark"] {
   pointer-events: none;
   z-index: 9999;
   display: none;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
 }
 
 #rainCanvas.active {

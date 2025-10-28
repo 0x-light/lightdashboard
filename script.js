@@ -2541,6 +2541,8 @@
   
   let rainAngleOffset = 0;
   let rainAngleChangeTime = 0;
+  let targetAngleOffset = 0;
+  let windTransitionSpeed = 0.02; // Smooth wind transitions
   
   // Check if it's raining at user's location and auto-enable rain
   async function checkWeatherAndEnableRain() {
@@ -2602,8 +2604,10 @@
     return {
       x: Math.random() * rainCanvas.width,
       y: Math.random() * rainCanvas.height - rainCanvas.height,
-      speed: rainConfig.speed + Math.random() * 2,
-      size: rainConfig.size
+      speed: rainConfig.speed * (0.7 + Math.random() * 0.6), // More speed variation
+      size: rainConfig.size,
+      wobble: Math.random() * Math.PI * 2, // For slight horizontal variation
+      wobbleSpeed: 0.02 + Math.random() * 0.03
     };
   }
   
@@ -2619,7 +2623,7 @@
     
     rainCtx.clearRect(0, 0, rainCanvas.width, rainCanvas.height);
     
-    // Set pixel art style
+    // Set pixel art style - crisp rendering
     rainCtx.imageSmoothingEnabled = false;
     
     // Rain color - more whitish
@@ -2630,33 +2634,54 @@
       rainCtx.fillStyle = isDark ? 'rgba(230, 240, 255, 0.7)' : 'rgba(180, 190, 210, 0.6)';
     }
     
-    // Randomize angle over time if enabled
+    // Realistic wind simulation - smooth transitions
     const currentTime = Date.now();
-    if (rainConfig.randomAngle && currentTime - rainAngleChangeTime > 3000) {
-      rainAngleOffset = (Math.random() - 0.5) * 30; // Random offset ±15°
-      rainAngleChangeTime = currentTime;
-    } else if (!rainConfig.randomAngle) {
+    if (rainConfig.randomAngle) {
+      // Change wind target every 2-4 seconds
+      if (currentTime - rainAngleChangeTime > 2000 + Math.random() * 2000) {
+        targetAngleOffset = (Math.random() - 0.5) * 40; // ±20° variation
+        rainAngleChangeTime = currentTime;
+      }
+      // Smoothly interpolate to target angle
+      rainAngleOffset += (targetAngleOffset - rainAngleOffset) * windTransitionSpeed;
+    } else {
       rainAngleOffset = 0;
+      targetAngleOffset = 0;
     }
     
     const effectiveAngle = rainConfig.angle + rainAngleOffset;
     const angleRad = (effectiveAngle * Math.PI) / 180;
     
     rainDrops.forEach(drop => {
-      // Draw pixel art raindrop (simple rectangle with length)
-      rainCtx.fillRect(drop.x, drop.y, drop.size, drop.size * rainConfig.length);
+      // Round coordinates for sharp pixels
+      const x = Math.round(drop.x);
+      const y = Math.round(drop.y);
       
-      // Update position with angle
+      // Add subtle wobble for realism
+      const wobbleOffset = Math.sin(drop.wobble) * 0.3;
+      
+      // Draw pixel art raindrop (sharp rectangle)
+      rainCtx.fillRect(
+        x + wobbleOffset, 
+        y, 
+        drop.size, 
+        drop.size * rainConfig.length
+      );
+      
+      // Update position with wind angle and individual wobble
       drop.y += drop.speed;
-      drop.x += Math.sin(angleRad) * drop.speed * 0.3;
+      drop.x += Math.sin(angleRad) * drop.speed * 0.35 + wobbleOffset;
+      drop.wobble += drop.wobbleSpeed;
       
       // Reset drop when it goes off screen
       if (drop.y > rainCanvas.height) {
-        drop.y = -10;
+        drop.y = -10 - Math.random() * 20;
         drop.x = Math.random() * rainCanvas.width;
+        drop.speed = rainConfig.speed * (0.7 + Math.random() * 0.6);
+        drop.wobble = Math.random() * Math.PI * 2;
       }
-      if (drop.x < 0) drop.x = rainCanvas.width;
-      if (drop.x > rainCanvas.width) drop.x = 0;
+      if (drop.x < -20) drop.x = rainCanvas.width + 20;
+      if (drop.x > rainCanvas.width + 20) drop.x = -20;
     });
     
     rainAnimationFrame = requestAnimationFrame(drawRain);
