@@ -7,7 +7,7 @@
   Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=()
   
   # Content Security Policy - Allow only necessary external APIs
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.hyperliquid.xyz https://api.lighter.xyz https://api.opensea.io https://api.coingecko.com https://api.open-meteo.com https://api.bigdatacloud.net https://www.gocomics.com https://assets.coingecko.com; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.hyperliquid.xyz https://mainnet.zklighter.elliot.ai https://api.opensea.io https://api.coingecko.com https://api.open-meteo.com https://api.bigdatacloud.net https://www.gocomics.com https://assets.coingecko.com https://api.allorigins.win; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;
   
   # Cache control for static assets
   Cache-Control: public, max-age=3600, must-revalidate

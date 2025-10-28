@@ -62,42 +62,38 @@
     if (cacheKey && coinGeckoCache.has(cacheKey)) {
       const cached = coinGeckoCache.get(cacheKey);
       if (Date.now() - cached.timestamp < CACHE_DURATION) {
-        console.log(`Using cached data for: ${cacheKey}`);
         return cached.data;
       }
     }
-    
+
     // Rate limit
     const now = Date.now();
     const timeSinceLastCall = now - lastCoinGeckoCall;
     if (timeSinceLastCall < COINGECKO_DELAY) {
       const delay = COINGECKO_DELAY - timeSinceLastCall;
-      console.log(`Rate limiting: waiting ${delay}ms before next CoinGecko call`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
-    
+
     lastCoinGeckoCall = Date.now();
-    
+
     try {
       const resp = await fetch(url);
       if (!resp.ok) {
         if (resp.status === 429) {
-          console.warn('CoinGecko rate limit hit, waiting 5s...');
           await new Promise(resolve => setTimeout(resolve, 5000));
           return rateLimitedFetch(url, cacheKey); // Retry
         }
         throw new Error(`HTTP ${resp.status}`);
       }
       const data = await resp.json();
-      
+
       // Cache the result
       if (cacheKey) {
         coinGeckoCache.set(cacheKey, { data, timestamp: Date.now() });
       }
-      
+
       return data;
     } catch (err) {
-      console.error('CoinGecko fetch error:', err);
       return null;
     }
   }
@@ -394,7 +390,6 @@
       
       // Load assets if not already loaded
       if (!assetsLoaded) {
-        console.log('🔄 Loading assets on sticker window open...');
         loadCustomAssets().then(() => {
           assetsLoaded = true;
           // Setup drag-drop after assets are loaded
@@ -402,7 +397,6 @@
             setTimeout(() => {
               setupStickerDragDrop();
               dragDropSetup = true;
-              console.log('✓ Drag-drop setup complete');
             }, 500);
           }
         }).catch(err => {
@@ -1457,16 +1451,12 @@
   async function fetchOpenSeaNFTs(address) {
     if (!address) return null;
     
-    console.log('🎨 Fetching NFTs...');
-    
     const settings = loadSettings();
     const apiKey = settings?.openSeaApiKey || '';
     
     try {
       // Try OpenSea API first if we have an API key
       if (apiKey) {
-        console.log('🔑 Trying OpenSea API with API key...');
-        
         // Fetch from multiple chains
         const chains = [
           'ethereum', 
@@ -1490,7 +1480,6 @@
           'unichain'
         ];
         // Fetch from all chains in parallel for speed
-        console.log(`🔍 Fetching NFTs from ${chains.length} chains in parallel...`);
         const chainPromises = chains.map(chain =>
           fetch(`https://api.opensea.io/api/v2/chain/${chain}/account/${address}/nfts?limit=200`, {
             headers: {
@@ -1502,7 +1491,6 @@
             if (chainResp.ok) {
               const chainData = await chainResp.json();
               if (chainData.nfts && chainData.nfts.length > 0) {
-                console.log(`✅ Fetched ${chainData.nfts.length} NFTs from ${chain}`);
                 // Tag each NFT with its chain
                 chainData.nfts.forEach(nft => {
                   nft._chain = chain;
@@ -1512,37 +1500,18 @@
             }
             return [];
           })
-          .catch(err => {
-            console.log(`⚠️ Error fetching from ${chain}:`, err.message);
-            return [];
-          })
+          .catch(() => [])
         );
         
         const chainResults = await Promise.all(chainPromises);
         const allNfts = chainResults.flat();
         
-        console.log(`📊 NFT Summary: ${allNfts.length} total NFTs across ${chains.length} chains`);
-        
         if (allNfts.length > 0) {
           const openSeaData = { nfts: allNfts };
-          console.log('✅ Total NFTs fetched across all chains:', allNfts.length);
-          
-          // Log NFTs by chain
-          const nftsByChain = {};
-          allNfts.forEach(nft => {
-            const chain = nft._chain || 'unknown';
-            nftsByChain[chain] = (nftsByChain[chain] || 0) + 1;
-          });
-          console.log('📊 NFTs by chain:', nftsByChain);
           
               const collections = {};
               const collectionSlugs = new Set();
               const nftsByCollection = {};
-          
-          // Log first NFT to see what data we have
-          if (openSeaData.nfts.length > 0) {
-            console.log('📋 Sample NFT data:', JSON.stringify(openSeaData.nfts[0], null, 2));
-          }
               
               for (const nft of openSeaData.nfts) {
                 const collectionSlug = nft.collection;
@@ -1555,8 +1524,6 @@
                     contractAddr = parts[1]; // Second part is the contract address
                   }
                 }
-                
-            console.log(`🎨 NFT: slug=${collectionSlug}, chain=${chain}, contract=${contractAddr}`);
                 
                 if (collectionSlug) {
                   collectionSlugs.add(collectionSlug);
@@ -1629,24 +1596,20 @@
                 const price = pricesData[tokenInfo.coingeckoId]?.usd;
                 if (price) {
                   tokenPrices[chain] = price;
-                  console.log(`💱 ${tokenInfo.symbol} Price: $${price}`);
                 }
               }
             }
           } catch (err) {
-            console.log('⚠️ Error fetching token prices:', err);
+            // Silent fallback
           }
           
           // Update collection native tokens based on their chain
           for (const collection of Object.values(collections)) {
             const tokenInfo = chainTokenMap[collection.chain] || chainTokenMap['ethereum'];
             collection.nativeToken = tokenInfo.symbol;
-            console.log(`🏷️ Collection "${collection.name}" on chain "${collection.chain}" using token ${collection.nativeToken}`);
           }
           
           // Fetch floor prices and stats using OpenSea Collection Stats API (in parallel)
-          console.log('💰 Fetching floor prices and stats for', collectionSlugs.size, 'collections in parallel...');
-          console.log('📋 Collection slugs:', Array.from(collectionSlugs));
           
           const statsPromises = Array.from(collectionSlugs).map(slug =>
             fetch(`https://api.opensea.io/api/v2/collections/${slug}/stats`, {
@@ -1685,24 +1648,17 @@
                     collection.floorPriceNative = floorPriceNative;
                     collection.floorPriceUsd = floorPriceNative * nativeTokenPrice;
                     collection.change24h = floorChange1d; // Can be null if no data
-                    
-                    const changeStr = floorChange1d !== null ? `${floorChange1d.toFixed(2)}%` : 'N/A';
-                    console.log(`✅ ${collection.name}: ${floorPriceNative} ${collection.nativeToken} ($${collection.floorPriceUsd.toFixed(2)}), 24h: ${changeStr}`);
                   }
                 }
               }
               return slug;
             })
-            .catch(err => {
-              console.log(`⚠️ Failed to fetch stats for ${slug}:`, err.message);
-              return slug;
-            })
+            .catch(() => slug)
           );
           
           await Promise.all(statsPromises);
               
               // Fetch last sale price for each NFT to calculate PnL
-              console.log('💸 Fetching last sale prices for NFTs...');
               for (const slug of collectionSlugs) {
                 if (!nftsByCollection[slug]) continue;
                 
@@ -1725,27 +1681,19 @@
                         const saleAmountEth = parseFloat(lastSale.total_price) / 1e18; // Wei to ETH
                         const saleAmountUsd = saleAmountEth * ethPrice;
                         collections[slug].totalPaidUsd += saleAmountUsd;
-                        console.log(`💸 ${slug} NFT #${nft.identifier.split(':')[2]}: Last sale ${saleAmountEth.toFixed(4)} ETH ($${saleAmountUsd.toFixed(2)})`);
                       }
                     }
                   } catch (err) {
-                    console.log(`⚠️ Failed to fetch NFT data for ${nft.identifier}:`, err);
+                    // Silent fallback
                   }
                 }
               }
               
-              console.log('✅ Grouped NFT collections from OpenSea with prices:', Object.values(collections));
               return { collections: Object.values(collections) };
-            } else {
-          console.log('⚠️ No NFTs found across any chains');
+            }
         }
-      } else {
-        console.log('⚠️ No OpenSea API key provided, skipping OpenSea API');
-      }
       
       // Fallback: Try Reservoir API (aggregates multiple marketplaces)
-      console.log('🔄 Trying Reservoir API...');
-      try {
         const reservoirResp = await fetch(`https://api.reservoir.tools/users/${address}/tokens/v10?limit=100`, {
           headers: {
             'accept': 'application/json'
@@ -1754,7 +1702,6 @@
         
         if (reservoirResp.ok) {
           const reservoirData = await reservoirResp.json();
-          console.log('✅ Fetched NFTs from Reservoir:', reservoirData);
           
           if (reservoirData.tokens && reservoirData.tokens.length > 0) {
             const collections = {};
@@ -1783,7 +1730,6 @@
             }
             
             // Fetch floor prices from Reservoir collections API
-            console.log('💰 Fetching floor prices from Reservoir...');
             for (const contractAddr of contractAddresses) {
               try {
                 const collResp = await fetch(`https://api.reservoir.tools/collections/v7?id=${contractAddr}`);
@@ -1791,28 +1737,19 @@
                   const collData = await collResp.json();
                   if (collData.collections?.[0]?.floorAsk?.price?.amount?.usd) {
                     collections[contractAddr].floorPriceUsd = collData.collections[0].floorAsk.price.amount.usd;
-                    console.log(`✅ ${collections[contractAddr].name}: $${collections[contractAddr].floorPriceUsd}`);
                   }
                 }
               } catch (err) {
-                console.log(`⚠️ Failed to fetch floor for ${contractAddr}`);
+                // Silent fallback
               }
             }
             
-            console.log('✅ Grouped NFT collections from Reservoir with prices:', Object.values(collections));
             return { collections: Object.values(collections) };
           }
-        } else {
-          console.log('⚠️ Reservoir API returned', reservoirResp.status);
         }
-      } catch (reservoirErr) {
-        console.log('❌ Reservoir failed:', reservoirErr);
-      }
       
-      console.log('❌ All NFT fetching methods failed');
       return null;
     } catch (err) {
-      console.error('❌ NFT fetch error:', err);
       return null;
     }
   }
@@ -1913,23 +1850,19 @@
   }
 
   async function fetchAndRenderPositions() {
-    console.time('⏱️ Total fetch time');
     allPositionsData = [];
     
     // Fetch data for all wallets
     const settings = loadSettings() || getDefaultSettings();
     const wallets = parseWallets(settings.walletAddresses);
     
-    console.log('Fetching positions for configured wallets...');
-    
     if (wallets.length === 0) {
       renderPositionsTable();
-      console.timeEnd('⏱️ Total fetch time');
+      updateHeroSection();
       return;
     }
     
     // Fetch Hyperliquid market data for 24h changes
-    console.time('⏱️ HL market data');
     let hlMarketData = {};
     try {
       const marketResp = await fetch('https://api.hyperliquid.xyz/info', {
@@ -1971,17 +1904,12 @@
               }
             }
           }
-        
-        console.log('📊 Hyperliquid market data loaded:', Object.keys(hlMarketData).length, 'assets');
       }
     } catch (err) {
-      console.error('Error fetching Hyperliquid market data:', err);
+      console.error('Hyperliquid market data error:', err);
     }
-    console.timeEnd('⏱️ HL market data');
     
     // Fetch data for all wallets in parallel
-    console.time('⏱️ Wallet data fetch');
-    console.log('⚡ Fetching data for', wallets.length, 'wallets in parallel...');
     const walletDataPromises = wallets.map(async (wallet) => {
       const [hlData, lighterData, nftData] = await Promise.all([
         fetchHyperliquidPositions(wallet),
@@ -1989,17 +1917,12 @@
         fetchOpenSeaNFTs(wallet)
       ]);
       
-      console.log(`Wallet data - HL:${hlData ? '✓' : '✗'} Lighter:${lighterData ? '✓' : '✗'} NFTs:${nftData ? '✓' : '✗'}`);
-      
       return { hlData, lighterData, nftData };
     });
     
     const allWalletData = await Promise.all(walletDataPromises);
-    console.timeEnd('⏱️ Wallet data fetch');
     
     // Process all collected wallet data
-    console.log('Processing', allWalletData.length, 'wallets of data');
-    console.time('⏱️ Processing wallet data');
     
     // Fetch Hyperliquid spot prices once for all wallets
     let hlSpotPrices = null;
@@ -2029,8 +1952,6 @@
           // Use Hyperliquid's markPx (most accurate real-time price from their orderbook)
           const currentPrice = marketInfo.markPx || parseFloat(pos.position?.entryPx || 0);
           const change24h = marketInfo.change24h || 0;
-          
-          console.log(`💹 ${coin}: markPx=$${marketInfo.markPx || 'N/A'}, using price=$${currentPrice.toFixed(2)}`);
           
             allPositionsData.push({
             asset: coin,
@@ -2087,13 +2008,6 @@
       if (lighterData && lighterData.accounts && lighterData.accounts[0]) {
         const account = lighterData.accounts[0];
         if (account.positions) {
-          // Log first position to see available fields
-          if (account.positions.length > 0) {
-            console.log('📋 Sample Lighter position data:', account.positions[0]);
-          }
-          
-          console.log(`💹 Processing ${account.positions.length} Lighter positions`);
-          
           for (const pos of account.positions) {
             if (!pos.position || parseFloat(pos.position) === 0) continue;
             
@@ -2105,7 +2019,6 @@
             // Lighter provides position_value which is already calculated from current market price
             // So deriving price from position_value / position is accurate
             const currentPrice = position > 0 ? positionValue / position : 0;
-            console.log(`💹 Lighter ${pos.symbol}: value=$${positionValue.toFixed(2)}, position=${position}, price=$${currentPrice.toFixed(2)}, pnl=$${unrealizedPnl.toFixed(2)}`);
             
             allPositionsData.push({
               asset: pos.symbol,
@@ -2161,36 +2074,20 @@
         .map(pos => pos.asset)
     )];
     
-    console.log(`📊 Fetching CoinGecko 24h changes for ${cryptoAssets.length} assets (primarily Lighter):`, cryptoAssets);
-    console.time('⏱️ CoinGecko 24h changes');
-    
     if (cryptoAssets.length > 0) {
       const coinGeckoChanges = await fetchCoinGecko24hChanges(cryptoAssets);
       
       // Apply CoinGecko changes only to positions that don't have them yet
-      let updatedCount = 0;
       for (const pos of allPositionsData) {
         if (pos.change24h === 0 && coinGeckoChanges[pos.asset] !== undefined) {
           pos.change24h = coinGeckoChanges[pos.asset];
-          updatedCount++;
         }
       }
-      console.log(`✅ Updated ${updatedCount} positions with CoinGecko 24h changes`);
     }
-    
-    console.timeEnd('⏱️ CoinGecko 24h changes');
-    console.log('Total positions collected:', allPositionsData.length);
-    console.log('Positions by exchange:', 
-      allPositionsData.reduce((acc, pos) => {
-        acc[pos.exchange] = (acc[pos.exchange] || 0) + 1;
-        return acc;
-      }, {})
-    );
     
     // Render positions table
     renderPositionsTable();
     updateHeroSection();
-    console.timeEnd('⏱️ Total fetch time');
   }
   
   // Real-time price update functionality
@@ -2381,7 +2278,6 @@
     stopRealTimeUpdates(); // Clear any existing timer
     
     const interval = (settings.realTimeUpdateInterval || 10) * 1000;
-    console.log(`⚡ Starting real-time updates every ${settings.realTimeUpdateInterval}s`);
     
     realTimeUpdateTimer = setInterval(updatePricesRealTime, interval);
   }
@@ -2390,7 +2286,6 @@
     if (realTimeUpdateTimer) {
       clearInterval(realTimeUpdateTimer);
       realTimeUpdateTimer = null;
-      console.log('⏸️ Stopped real-time updates');
     }
   }
   
@@ -2682,7 +2577,6 @@
       const weatherCode = weatherData.current.weather_code || 0;
       const isDay = weatherData.current.is_day === 1;
       
-      console.log('Weather code:', weatherCode, 'isDay:', isDay);
       
       // Weather icons based on WMO Weather interpretation codes
       // https://open-meteo.com/en/docs
@@ -3001,7 +2895,6 @@
       
       // Check if user has location set in settings
       if (!weather || !weather.lat || !weather.lon) {
-        console.log('Weather check skipped: No location set in settings');
         return;
       }
       
@@ -3014,7 +2907,6 @@
       );
       
       if (!weatherResponse.ok) {
-        console.log('Weather API error:', weatherResponse.status);
         return;
       }
       
@@ -3034,14 +2926,12 @@
                        (weatherCode >= 95 && weatherCode <= 99));
       
       if (isSnowing && !snowActive) {
-        console.log('❄️ Detected snow at your location, enabling snow effect');
         toggleSnow();
         const toggleBtn = document.getElementById('toggleSnowBtn');
         const mobileBtn = document.getElementById('toggleSnowBtnMobile');
         if (toggleBtn) toggleBtn.textContent = '[SNOW OFF]';
         if (mobileBtn) mobileBtn.textContent = '[SNOW OFF]';
       } else if (isRaining && !rainActive) {
-        console.log('🌧️ Detected rain at your location, enabling rain effect');
         toggleRain();
         const toggleBtn = document.getElementById('toggleRainBtn');
         const mobileBtn = document.getElementById('toggleRainBtnMobile');
@@ -3050,7 +2940,6 @@
       }
     } catch (error) {
       // Silently fail - API might be unavailable
-      console.log('Weather check skipped:', error.message);
     }
   }
   
@@ -3433,15 +3322,11 @@
     const stickerOptions = document.getElementById('stickerOptions');
     
     if (!stickerGrid) {
-      console.error('❌ stickerGrid element not found!');
       return;
     }
     
-    console.log('✓ Found stickerGrid element');
-    
     // Load stickers from index.json manifest
     try {
-      console.log('Fetching stickers manifest...');
       const stickerManifest = await fetch('/stickers/index.json');
       
       if (!stickerManifest.ok) {
@@ -3449,8 +3334,6 @@
       }
       
       const stickerFiles = await stickerManifest.json();
-      
-      console.log(`Loading ${stickerFiles.length} stickers from manifest:`, stickerFiles);
       
       const loadedStickers = [];
       
@@ -3478,7 +3361,6 @@
         imgElement.style.height = 'auto';
         
         imgElement.addEventListener('load', function() {
-          console.log(`✓ Loaded: ${file}`);
           stickerImages[file] = this;
           loadedStickers.push(file);
           
@@ -3492,8 +3374,7 @@
           }
         });
         
-        imgElement.addEventListener('error', function(e) {
-          console.error(`❌ Failed: ${file}`, e);
+        imgElement.addEventListener('error', function() {
           item.style.display = 'none';
         });
         
@@ -3528,19 +3409,8 @@
           observer.observe(imgElement);
         }
       }
-      
-      console.log(`📦 Added ${stickerFiles.length} sticker items to grid`);
-      console.log(`Grid now has ${stickerGrid.children.length} total items`);
-      
-      // Log after a brief delay to count loaded stickers
-      setTimeout(() => {
-        console.log(`✅ Images loaded: ${loadedStickers.length}/${stickerFiles.length} stickers`);
-        const visibleItems = Array.from(stickerGrid.children).filter(item => item.style.display !== 'none').length;
-        console.log(`👀 Visible items in grid: ${visibleItems}`);
-      }, 2000);
     } catch (err) {
-      console.error('Failed to load stickers manifest:', err);
-      console.log('Make sure /stickers/index.json exists. Run: ./update-manifests.sh');
+      // Silent fallback
     }
     
     // Load wallpapers from index.json manifest
@@ -3561,13 +3431,11 @@
             document.getElementById('wallpaperOptions')?.appendChild(option);
           }
         } catch (err) {
-          console.log(`Failed to load wallpaper: ${file}`);
+          // Silent fallback
         }
       }
-      
-      console.log(`✅ Loaded ${wallpapers.length} wallpapers`);
     } catch (err) {
-      console.log('No wallpapers manifest found.');
+      // Silent fallback
     }
   }
   
@@ -3892,11 +3760,8 @@
   function setupStickerDragDrop() {
     const stickerGrid = document.getElementById('stickerGrid');
     if (!stickerGrid) {
-      console.error('❌ stickerGrid not found for drag-drop setup');
       return;
     }
-    
-    console.log('✓ Setting up drag-drop on stickerGrid');
     
     stickerGrid.addEventListener('mousedown', (e) => {
       const item = e.target.closest('.sticker-item');
@@ -3905,8 +3770,6 @@
       // Prevent default browser drag behavior
       e.preventDefault();
       e.stopPropagation();
-      
-      console.log('🎯 Started dragging sticker:', item.dataset.value);
       
       const value = item.dataset.value;
       let imageSrc;
