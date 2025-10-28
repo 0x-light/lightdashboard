@@ -115,8 +115,6 @@
     calvinRandomBtn: document.getElementById('calvinRandomBtn'),
     hideSmallBtn: document.getElementById('hideSmallBtn'),
     toggleNftsBtn: document.getElementById('toggleNftsBtn'),
-    totalValue: document.getElementById('totalValue'),
-    positionsTitle: document.getElementById('positionsTitle'),
     comicStrip: document.getElementById('comicStrip'),
     showComic: document.getElementById('showComic'),
     comicTitle: document.getElementById('comicTitle'),
@@ -127,7 +125,6 @@
   let hideNfts = false;
   let currentFontSize = 15; // default font size in px
   let currentCalvinDate = new Date(); // Track current comic date
-  let showValueInBTC = false; // Toggle between USD and BTC display
   
   // Comic metadata
   const comicMetadata = {
@@ -2552,13 +2549,19 @@
       totalDailyChangePercent = (totalDailyChange / (totalValue - totalDailyChange)) * 100;
     }
     
-    // Build summary
+    // Build summary - start with portfolio value
     let summaryParts = [];
     
+    // Portfolio value
+    const valueText = amountsVisible 
+      ? `$${totalValue.toLocaleString(undefined, {maximumFractionDigits: 0})}`
+      : '$••••';
+    
+    // Daily change
     if (totalDailyChange !== 0 && Math.abs(totalDailyChange) > 0.01) {
       const changeSign = totalDailyChange >= 0 ? 'up' : 'down';
-      const amountText = amountsVisible 
-        ? `$${Math.abs(totalDailyChange).toLocaleString(undefined, {maximumFractionDigits: 2})}`
+      const changeAmountText = amountsVisible 
+        ? `$${Math.abs(totalDailyChange).toLocaleString(undefined, {maximumFractionDigits: 0})}`
         : '$••••';
       
       // Apply color based on useColoredPnL setting
@@ -2567,7 +2570,10 @@
         : (totalDailyChange >= 0 ? 'positive-neutral' : 'negative-neutral');
       const colorStyle = ` class="${colorClass}"`;
       
-      summaryParts.push(`Your portfolio is <strong${colorStyle}>${changeSign} ${amountText} (${totalDailyChangePercent >= 0 ? '+' : '-'}${Math.abs(totalDailyChangePercent).toFixed(2)}%)</strong>`);
+      const sign = totalDailyChangePercent >= 0 ? '+' : '-';
+      summaryParts.push(`Your portfolio is worth ${valueText}, <strong${colorStyle}>${changeSign} ${changeAmountText} (${sign}${Math.abs(totalDailyChangePercent).toFixed(2)}%)</strong>`);
+    } else {
+      summaryParts.push(`Your portfolio is worth ${valueText}`);
     }
     
     // Weather
@@ -2658,62 +2664,8 @@
     }
     
     els.summary.innerHTML = summaryParts.join('. ') + '.';
-    
-    // Update total value display
-    if (els.totalValue) {
-      if (!amountsVisible) {
-        els.totalValue.textContent = '••••';
-      } else if (showValueInBTC) {
-        // Find BTC price from positions data
-        const btcPosition = allPositionsData.find(pos => 
-          pos.asset?.toLowerCase() === 'bitcoin' || 
-          pos.asset?.toLowerCase() === 'btc'
-        );
-        const btcPrice = btcPosition?.price || 0;
-        
-        if (btcPrice > 0) {
-          const btcValue = totalValue / btcPrice;
-          els.totalValue.textContent = `₿${btcValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 4})}`;
-        } else {
-          // Fetch BTC price from CoinGecko if not in portfolio
-          fetchBTCPrice().then(price => {
-            if (price > 0) {
-              const btcValue = totalValue / price;
-              els.totalValue.textContent = `₿${btcValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 4})}`;
-            } else {
-              els.totalValue.textContent = `$${totalValue.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
-            }
-          });
-        }
-      } else {
-        els.totalValue.textContent = `$${totalValue.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
-      }
-    }
   }
   
-  // Cache BTC price to avoid repeated API calls
-  let cachedBTCPrice = 0;
-  let btcPriceFetchTime = 0;
-  
-  async function fetchBTCPrice() {
-    // Use cache if less than 5 minutes old
-    if (cachedBTCPrice > 0 && Date.now() - btcPriceFetchTime < 5 * 60 * 1000) {
-      return cachedBTCPrice;
-    }
-    
-    const data = await rateLimitedFetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd',
-      'btc-price'
-    );
-    
-    if (data && data.bitcoin) {
-      cachedBTCPrice = data.bitcoin.usd || 0;
-      btcPriceFetchTime = Date.now();
-      return cachedBTCPrice;
-    }
-    
-    return 0;
-  }
 
   function init() {
     const settings = loadSettings() || getDefaultSettings();
@@ -2754,14 +2706,6 @@
       });
     }
     
-    // Add toggle handler for USD/BTC value display
-    if (els.positionsTitle) {
-      els.positionsTitle.addEventListener('click', () => {
-        showValueInBTC = !showValueInBTC;
-        updateHeroSection(); // Update the display
-      });
-    }
-
     // Add toggle handler for amounts visibility
     if (els.toggleAmountsBtn) {
       els.toggleAmountsBtn.addEventListener('click', () => {
