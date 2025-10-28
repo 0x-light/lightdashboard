@@ -11,6 +11,7 @@
     mobileMenuBtn: document.getElementById('mobileMenuBtn'),
     closeMobileMenuBtn: document.getElementById('closeMobileMenuBtn'),
     mobileMenu: document.getElementById('mobileMenu'),
+    toggleSnowBtnMobile: document.getElementById('toggleSnowBtnMobile'),
     toggleRainBtnMobile: document.getElementById('toggleRainBtnMobile'),
     toggleThemeBtnMobile: document.getElementById('toggleThemeBtnMobile'),
     toggleAmountsBtnMobile: document.getElementById('toggleAmountsBtnMobile'),
@@ -2425,6 +2426,18 @@
       els.closeMobileMenuBtn.addEventListener('click', closeMobileMenu);
     }
     
+    // Mobile snow toggle
+    if (els.toggleSnowBtnMobile) {
+      els.toggleSnowBtnMobile.addEventListener('click', () => {
+        toggleSnow();
+        const newText = snowActive ? '[SNOW OFF]' : '[SNOW ON]';
+        els.toggleSnowBtnMobile.textContent = newText;
+        // Update desktop button too
+        const desktopBtn = document.getElementById('toggleSnowBtn');
+        if (desktopBtn) desktopBtn.textContent = newText;
+      });
+    }
+    
     // Mobile rain toggle
     if (els.toggleRainBtnMobile) {
       els.toggleRainBtnMobile.addEventListener('click', () => {
@@ -2527,11 +2540,12 @@
   const rainCtx = rainCanvas ? rainCanvas.getContext('2d') : null;
   let rainDrops = [];
   let rainActive = false;
+  let snowActive = false;
   let rainAnimationFrame = null;
   
   const rainConfig = {
-    density: 105,
-    speed: 3,
+    density: 161,
+    speed: 5,
     size: 1,
     length: 8,
     angle: -30,
@@ -2544,7 +2558,7 @@
   let targetAngleOffset = 0;
   let windTransitionSpeed = 0.02; // Smooth wind transitions
   
-  // Check if it's raining at user's location and auto-enable rain
+  // Check weather at user's location and auto-enable rain/snow
   async function checkWeatherAndEnableRain() {
     try {
       const settings = loadSettings();
@@ -2573,14 +2587,25 @@
       const weatherCode = weatherData.current?.weather_code;
       const precipitation = weatherData.current?.precipitation || 0;
       
-      // Weather codes for rain: 51-67, 80-82, 95-99
-      // See: https://open-meteo.com/en/docs
-      const isRaining = precipitation > 0 || 
+      // Weather codes from Open-Meteo: https://open-meteo.com/en/docs
+      // Snow codes: 71-77 (snow), 85-86 (snow showers)
+      const isSnowing = (weatherCode >= 71 && weatherCode <= 77) ||
+                       (weatherCode >= 85 && weatherCode <= 86);
+      
+      // Rain codes: 51-67 (drizzle/rain), 80-82 (rain showers), 95-99 (thunderstorm)
+      const isRaining = !isSnowing && (precipitation > 0 || 
                        (weatherCode >= 51 && weatherCode <= 67) ||
                        (weatherCode >= 80 && weatherCode <= 82) ||
-                       (weatherCode >= 95 && weatherCode <= 99);
+                       (weatherCode >= 95 && weatherCode <= 99));
       
-      if (isRaining && !rainActive) {
+      if (isSnowing && !snowActive) {
+        console.log('❄️ Detected snow at your location, enabling snow effect');
+        toggleSnow();
+        const toggleBtn = document.getElementById('toggleSnowBtn');
+        const mobileBtn = document.getElementById('toggleSnowBtnMobile');
+        if (toggleBtn) toggleBtn.textContent = '[SNOW OFF]';
+        if (mobileBtn) mobileBtn.textContent = '[SNOW OFF]';
+      } else if (isRaining && !rainActive) {
         console.log('🌧️ Detected rain at your location, enabling rain effect');
         toggleRain();
         const toggleBtn = document.getElementById('toggleRainBtn');
@@ -2601,11 +2626,17 @@
   }
   
   function createRainDrop() {
+    // Snow uses same rendering as rain but with slower speed
+    const baseSpeed = snowActive ? 0.6 : rainConfig.speed;
+    const baseSize = snowActive ? 1 : rainConfig.size;
+    const baseLength = snowActive ? 2 : rainConfig.length;
+    
     return {
       x: Math.random() * rainCanvas.width,
       y: Math.random() * rainCanvas.height - rainCanvas.height,
-      speed: rainConfig.speed * (0.7 + Math.random() * 0.6), // More speed variation
-      size: rainConfig.size,
+      speed: baseSpeed * (0.7 + Math.random() * 0.6), // More speed variation
+      size: baseSize,
+      length: baseLength,
       wobble: Math.random() * Math.PI * 2, // For slight horizontal variation
       wobbleSpeed: 0.02 + Math.random() * 0.03
     };
@@ -2619,19 +2650,25 @@
   }
   
   function drawRain() {
-    if (!rainActive || !rainCtx) return;
+    if ((!rainActive && !snowActive) || !rainCtx) return;
     
     rainCtx.clearRect(0, 0, rainCanvas.width, rainCanvas.height);
     
     // Set pixel art style - crisp rendering
     rainCtx.imageSmoothingEnabled = false;
     
-    // Rain color - more whitish
+    // Color based on type
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    if (rainConfig.useThemeColor) {
-      rainCtx.fillStyle = isDark ? '#268bd2' : '#268bd2';
+    if (snowActive) {
+      // Snow is pure white
+      rainCtx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.85)';
     } else {
-      rainCtx.fillStyle = isDark ? 'rgba(230, 240, 255, 0.7)' : 'rgba(180, 190, 210, 0.6)';
+      // Rain color - more whitish
+      if (rainConfig.useThemeColor) {
+        rainCtx.fillStyle = isDark ? '#268bd2' : '#268bd2';
+      } else {
+        rainCtx.fillStyle = isDark ? 'rgba(230, 240, 255, 0.7)' : 'rgba(180, 190, 210, 0.6)';
+      }
     }
     
     // Realistic wind simulation - smooth transitions
@@ -2660,12 +2697,13 @@
       // Add subtle wobble for realism
       const wobbleOffset = Math.sin(drop.wobble) * 0.3;
       
-      // Draw pixel art raindrop (sharp rectangle)
+      // Draw pixel art raindrop/snow (sharp rectangle)
+      // Snow uses same rendering, just different color and speed
       rainCtx.fillRect(
         x + wobbleOffset, 
         y, 
         drop.size, 
-        drop.size * rainConfig.length
+        drop.size * drop.length
       );
       
       // Update position with wind angle and individual wobble
@@ -2677,7 +2715,8 @@
       if (drop.y > rainCanvas.height) {
         drop.y = -10 - Math.random() * 20;
         drop.x = Math.random() * rainCanvas.width;
-        drop.speed = rainConfig.speed * (0.7 + Math.random() * 0.6);
+        const baseSpeed = snowActive ? 0.6 : rainConfig.speed;
+        drop.speed = baseSpeed * (0.7 + Math.random() * 0.6);
         drop.wobble = Math.random() * Math.PI * 2;
       }
       if (drop.x < -20) drop.x = rainCanvas.width + 20;
@@ -2691,10 +2730,41 @@
     rainActive = !rainActive;
     
     if (rainActive) {
+      snowActive = false; // Turn off snow if rain is enabled
       rainCanvas.classList.add('active');
       resizeRainCanvas();
       initRain();
       drawRain();
+      
+      // Update snow buttons
+      const snowBtn = document.getElementById('toggleSnowBtn');
+      const snowMobileBtn = document.getElementById('toggleSnowBtnMobile');
+      if (snowBtn) snowBtn.textContent = '[SNOW ON]';
+      if (snowMobileBtn) snowMobileBtn.textContent = '[SNOW ON]';
+    } else {
+      rainCanvas.classList.remove('active');
+      if (rainAnimationFrame) {
+        cancelAnimationFrame(rainAnimationFrame);
+        rainAnimationFrame = null;
+      }
+    }
+  }
+  
+  function toggleSnow() {
+    snowActive = !snowActive;
+    
+    if (snowActive) {
+      rainActive = false; // Turn off rain if snow is enabled
+      rainCanvas.classList.add('active');
+      resizeRainCanvas();
+      initRain(); // Use same particles
+      drawRain(); // Use same draw function
+      
+      // Update rain buttons
+      const rainBtn = document.getElementById('toggleRainBtn');
+      const rainMobileBtn = document.getElementById('toggleRainBtnMobile');
+      if (rainBtn) rainBtn.textContent = '[RAIN ON]';
+      if (rainMobileBtn) rainMobileBtn.textContent = '[RAIN ON]';
     } else {
       rainCanvas.classList.remove('active');
       if (rainAnimationFrame) {
@@ -2706,6 +2776,7 @@
   
   function setupRainControls() {
     const toggleBtn = document.getElementById('toggleRainBtn');
+    const toggleSnowBtn = document.getElementById('toggleSnowBtn');
     const densityInput = document.getElementById('rainDensity');
     const speedInput = document.getElementById('rainSpeed');
     const sizeInput = document.getElementById('rainSize');
@@ -2725,6 +2796,18 @@
       const mobileBtn = document.getElementById('toggleRainBtnMobile');
       if (mobileBtn) mobileBtn.textContent = newText;
     });
+    
+    // Toggle snow on/off
+    if (toggleSnowBtn) {
+      toggleSnowBtn.addEventListener('click', () => {
+        toggleSnow();
+        const newText = snowActive ? '[SNOW OFF]' : '[SNOW ON]';
+        toggleSnowBtn.textContent = newText;
+        // Update mobile button too
+        const mobileBtn = document.getElementById('toggleSnowBtnMobile');
+        if (mobileBtn) mobileBtn.textContent = newText;
+      });
+    }
     
     // Update density
     if (densityInput) {
@@ -2813,11 +2896,17 @@
     init();
     setupRainControls();
     
-    // Check weather and auto-enable rain if it's raining at user's location
-    if (rainCanvas) {
+    // Check weather and auto-enable rain if it's raining at user's location (desktop only)
+    if (rainCanvas && !isMobileDevice()) {
       checkWeatherAndEnableRain();
     }
   });
+  
+  // Helper function to detect mobile devices
+  function isMobileDevice() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+           || window.innerWidth <= 768;
+  }
   
   // Stop real-time updates when page unloads
   window.addEventListener('beforeunload', stopRealTimeUpdates);
