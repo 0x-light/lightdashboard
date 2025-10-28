@@ -56,21 +56,33 @@
   const COINGECKO_DELAY = 1200; // 1.2 seconds between calls to avoid rate limits
   const coinGeckoCache = new Map();
   const CACHE_DURATION = 120000; // Cache for 2 minutes
+  const MAX_CACHE_SIZE = 100; // Limit cache size to prevent memory leaks
+  let consecutiveRateLimits = 0;
   
-  async function rateLimitedFetch(url, cacheKey = null) {
-    // Check cache first
+  // Tab visibility tracking
+  let isTabVisible = true;
+  let updateInProgress = false;
+  let lastFullRefresh = 0;
+  const MIN_REFRESH_INTERVAL = 30000; // Minimum 30s between full refreshes
+  
+  async function rateLimitedFetch(url, cacheKey = null, retryCount = 0) {
+    // Check cache first - extend cache if we've been rate limited recently
     if (cacheKey && coinGeckoCache.has(cacheKey)) {
       const cached = coinGeckoCache.get(cacheKey);
-      if (Date.now() - cached.timestamp < CACHE_DURATION) {
+      const cacheAge = Date.now() - cached.timestamp;
+      const extendedDuration = consecutiveRateLimits > 0 ? CACHE_DURATION * 2 : CACHE_DURATION;
+      if (cacheAge < extendedDuration) {
         return cached.data;
       }
     }
 
-    // Rate limit
+    // Rate limit with exponential backoff
     const now = Date.now();
     const timeSinceLastCall = now - lastCoinGeckoCall;
-    if (timeSinceLastCall < COINGECKO_DELAY) {
-      const delay = COINGECKO_DELAY - timeSinceLastCall;
+    const baseDelay = COINGECKO_DELAY * Math.pow(1.5, consecutiveRateLimits);
+    
+    if (timeSinceLastCall < baseDelay) {
+      const delay = baseDelay - timeSinceLastCall;
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
@@ -80,16 +92,37 @@
       const resp = await fetch(url);
       if (!resp.ok) {
         if (resp.status === 429) {
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          return rateLimitedFetch(url, cacheKey); // Retry
+          consecutiveRateLimits++;
+          // Exponential backoff: 5s, 10s, 20s, 40s...
+          const backoffDelay = 5000 * Math.pow(2, Math.min(retryCount, 4));
+          await new Promise(resolve => setTimeout(resolve, backoffDelay));
+          
+          // Limit retries to prevent infinite loops
+          if (retryCount < 3) {
+            return rateLimitedFetch(url, cacheKey, retryCount + 1);
+          }
+          return null; // Give up after 3 retries
         }
         throw new Error(`HTTP ${resp.status}`);
       }
+      
+      // Success - reset rate limit counter
+      consecutiveRateLimits = Math.max(0, consecutiveRateLimits - 1);
       const data = await resp.json();
 
       // Cache the result
       if (cacheKey) {
         coinGeckoCache.set(cacheKey, { data, timestamp: Date.now() });
+        
+        // Clean up old cache entries if cache is too large
+        if (coinGeckoCache.size > MAX_CACHE_SIZE) {
+          const oldestKeys = Array.from(coinGeckoCache.entries())
+            .sort((a, b) => a[1].timestamp - b[1].timestamp)
+            .slice(0, coinGeckoCache.size - MAX_CACHE_SIZE)
+            .map(entry => entry[0]);
+          
+          oldestKeys.forEach(key => coinGeckoCache.delete(key));
+        }
       }
 
       return data;
@@ -1420,6 +1453,13 @@
   let weatherData = null;
 
   async function refreshAll() {
+    // Throttle refreshes to prevent excessive API calls
+    const now = Date.now();
+    if (now - lastFullRefresh < MIN_REFRESH_INTERVAL) {
+      return; // Skip if refreshed recently
+    }
+    lastFullRefresh = now;
+    
     // Reset positions data
     allPositionsData = [];
     
@@ -2094,7 +2134,15 @@
   let realTimeUpdateTimer = null;
   
   async function updatePricesRealTime() {
+    // Skip if tab is not visible to save API calls
+    if (!isTabVisible) return;
+    
+    // Skip if update already in progress to prevent concurrent requests
+    if (updateInProgress) return;
+    
     if (allPositionsData.length === 0) return;
+    
+    updateInProgress = true;
     
     try {
       // Fetch latest Hyperliquid mark prices
@@ -2268,6 +2316,8 @@
       }
     } catch (err) {
       console.error('Real-time update error:', err);
+    } finally {
+      updateInProgress = false;
     }
   }
   
@@ -2667,6 +2717,19 @@
     applyCenterUI(settings.centerUI ?? false);
     addHandlers();
     refreshAll();
+    
+    // Setup Page Visibility API to pause requests when tab is inactive
+    document.addEventListener('visibilitychange', () => {
+      isTabVisible = !document.hidden;
+      
+      if (isTabVisible) {
+        // Tab became visible - resume updates
+        startRealTimeUpdates();
+      } else {
+        // Tab became hidden - pause updates to save API calls
+        stopRealTimeUpdates();
+      }
+    });
     
     // Start real-time updates after initial load
     setTimeout(() => {
@@ -3824,10 +3887,7 @@
         
         if (isDraggingOut) {
           // Create sticky sticker at drop position (centered at 200px default width)
-          console.log('🎨 Dropping sticker at:', e.clientX, e.clientY);
           createStickySticker(imageSrc, e.clientX - 100, e.clientY - 100);
-        } else {
-          console.log('❌ Dropped inside settings, not creating sticky sticker');
         }
       };
       
