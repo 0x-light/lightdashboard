@@ -30,11 +30,24 @@
   --orange: #cb4b16;
   --yellow: #b58900;
   --cyan: #2aa198;
+  --flash-start: rgba(38, 139, 210, 0.3);
+  --flash-mid: rgba(38, 139, 210, 0.15);
 }
 
 * {
   box-sizing: border-box;
   font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+}
+
+/* Flash animation for real-time updates */
+@keyframes flash-update {
+  0% { background-color: var(--flash-start); }
+  50% { background-color: var(--flash-mid); }
+  100% { background-color: transparent; }
+}
+
+.flash-update {
+  animation: flash-update 0.4s ease-out;
 }
 
 html {
@@ -859,4 +872,6 @@ html[data-theme="dark"] {
   --orange: #cb4b16;
   --yellow: #b58900;
   --cyan: #2aa198;
+  --flash-start: rgba(38, 139, 210, 0.4);
+  --flash-mid: rgba(38, 139, 210, 0.2);
 }

@@ -30,6 +30,8 @@
     showRainForecast: document.getElementById('showRainForecast'),
     useColoredPnL: document.getElementById('useColoredPnL'),
     centerUI: document.getElementById('centerUI'),
+    enableRealTimeUpdates: document.getElementById('enableRealTimeUpdates'),
+    realTimeUpdateInterval: document.getElementById('realTimeUpdateInterval'),
     getLocationBtn: document.getElementById('getLocationBtn'),
     refreshMins: document.getElementById('refreshMins'),
     greeting: document.getElementById('greeting'),
@@ -118,6 +120,8 @@
       showRainForecast: true,
       useColoredPnL: true,
       centerUI: false,
+      enableRealTimeUpdates: true,
+      realTimeUpdateInterval: 10 // seconds
     };
   }
   
@@ -240,6 +244,8 @@
     els.showRainForecast.checked = settings.showRainForecast ?? true;
     els.useColoredPnL.checked = settings.useColoredPnL ?? true;
     els.centerUI.checked = settings.centerUI ?? false;
+    els.enableRealTimeUpdates.checked = settings.enableRealTimeUpdates ?? true;
+    els.realTimeUpdateInterval.value = settings.realTimeUpdateInterval ?? 10;
     els.showComic.checked = settings.showComic ?? true;
     els.refreshMins.value = settings.refreshMinutes ?? 30;
     els.comicStrip.value = settings.comicStrip || 'calvinandhobbes';
@@ -290,6 +296,8 @@
     newSettings.showRainForecast = els.showRainForecast.checked;
     newSettings.useColoredPnL = els.useColoredPnL.checked;
     newSettings.centerUI = els.centerUI.checked;
+    newSettings.enableRealTimeUpdates = els.enableRealTimeUpdates.checked;
+    newSettings.realTimeUpdateInterval = Math.max(5, Math.min(60, Number(els.realTimeUpdateInterval.value || 10)));
     return newSettings;
   }
 
@@ -316,6 +324,12 @@
       
       // Apply center UI setting
       applyCenterUI(s.centerUI);
+      
+      // Restart real-time updates with new settings
+      stopRealTimeUpdates();
+      if (s.enableRealTimeUpdates) {
+        setTimeout(() => startRealTimeUpdates(), 1000);
+      }
       
       refreshAll();
     });
@@ -1761,6 +1775,132 @@
     renderPositionsTable();
   }
   
+  // Real-time price update functionality
+  let realTimeUpdateTimer = null;
+  
+  async function updatePricesRealTime() {
+    if (allPositionsData.length === 0) return;
+    
+    try {
+      // Fetch latest Hyperliquid mark prices
+      const marketResp = await fetch('https://api.hyperliquid.xyz/info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'metaAndAssetCtxs' })
+      });
+      
+      if (!marketResp.ok) return;
+      
+      const marketData = await marketResp.json();
+      const latestPrices = {};
+      
+      if (marketData && marketData[0] && marketData[1]) {
+        for (let i = 0; i < marketData[1].length; i++) {
+          const ctx = marketData[1][i];
+          const assetName = marketData[0].universe[i]?.name;
+          if (assetName && ctx && ctx.markPx) {
+            latestPrices[assetName] = {
+              price: parseFloat(ctx.markPx),
+              prevDayPx: parseFloat(ctx.prevDayPx || 0)
+            };
+          }
+        }
+      }
+      
+      // Also fetch Hyperliquid spot prices
+      const spotPricesResp = await fetch('https://api.hyperliquid.xyz/info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'allMids' })
+      });
+      
+      if (spotPricesResp.ok) {
+        const spotPrices = await spotPricesResp.json();
+        for (const [coin, price] of Object.entries(spotPrices)) {
+          if (!latestPrices[coin]) {
+            latestPrices[coin] = { price: parseFloat(price), prevDayPx: 0 };
+          }
+        }
+      }
+      
+      // Update positions with new prices and track which ones changed
+      const updatedAssets = new Set();
+      for (const pos of allPositionsData) {
+        if (pos.exchange === 'Hyperliquid' && latestPrices[pos.asset]) {
+          const newPrice = latestPrices[pos.asset].price;
+          if (newPrice && newPrice !== pos.price) {
+            pos.price = newPrice;
+            pos.value = Math.abs(pos.amount) * newPrice;
+            
+            // Update 24h change if we have prevDayPx
+            if (latestPrices[pos.asset].prevDayPx > 0) {
+              const change = ((newPrice - latestPrices[pos.asset].prevDayPx) / latestPrices[pos.asset].prevDayPx) * 100;
+              pos.change24h = change;
+            }
+            
+            updatedAssets.add(pos.asset);
+          }
+        }
+      }
+      
+      if (updatedAssets.size > 0) {
+        renderPositionsTable();
+        updateHeroSection();
+        
+        // Add flash animation to updated rows
+        requestAnimationFrame(() => {
+          updatedAssets.forEach(asset => {
+            // Flash desktop table rows
+            const rows = els.positionsBody?.querySelectorAll('tr');
+            if (rows) {
+              rows.forEach(row => {
+                const assetCell = row.querySelector('.asset-cell');
+                if (assetCell && assetCell.textContent.trim() === asset) {
+                  row.classList.add('flash-update');
+                  setTimeout(() => row.classList.remove('flash-update'), 400);
+                }
+              });
+            }
+            
+            // Flash mobile cards
+            const cards = els.mobilePositionsContainer?.querySelectorAll('.mobile-position-card');
+            if (cards) {
+              cards.forEach(card => {
+                const assetSpan = card.querySelector('.card-asset');
+                if (assetSpan && assetSpan.textContent.trim() === asset) {
+                  card.classList.add('flash-update');
+                  setTimeout(() => card.classList.remove('flash-update'), 400);
+                }
+              });
+            }
+          });
+        });
+      }
+    } catch (err) {
+      console.error('Real-time update error:', err);
+    }
+  }
+  
+  function startRealTimeUpdates() {
+    const settings = loadSettings();
+    if (!settings || !settings.enableRealTimeUpdates) return;
+    
+    stopRealTimeUpdates(); // Clear any existing timer
+    
+    const interval = (settings.realTimeUpdateInterval || 10) * 1000;
+    console.log(`⚡ Starting real-time updates every ${settings.realTimeUpdateInterval}s`);
+    
+    realTimeUpdateTimer = setInterval(updatePricesRealTime, interval);
+  }
+  
+  function stopRealTimeUpdates() {
+    if (realTimeUpdateTimer) {
+      clearInterval(realTimeUpdateTimer);
+      realTimeUpdateTimer = null;
+      console.log('⏸️ Stopped real-time updates');
+    }
+  }
+  
   function getMarketLink(asset, exchange, positionType) {
     if (exchange === 'Hyperliquid') {
       if (positionType === 'perp') {
@@ -2118,6 +2258,11 @@
     applyCenterUI(settings.centerUI ?? false);
     addHandlers();
     refreshAll();
+    
+    // Start real-time updates after initial load
+    setTimeout(() => {
+      startRealTimeUpdates();
+    }, 2000); // Start after 2s to let initial load complete
 
     // Add toggle handler for hide small positions
     if (els.hideSmallBtn) {
@@ -2277,4 +2422,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', init);
+  
+  // Stop real-time updates when page unloads
+  window.addEventListener('beforeunload', stopRealTimeUpdates);
 })();
