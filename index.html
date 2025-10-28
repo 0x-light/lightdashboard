@@ -100,59 +100,91 @@
         </header>
         <section>
           <fieldset>
-            <legend>Wallet Addresses</legend>
-            <div class="help">Add one or more wallet addresses (comma-separated) to track positions on Hyperliquid, Lighter, and OpenSea NFTs</div>
+            <legend>Wallets & API</legend>
+            <div class="help">Add wallet addresses (comma-separated) to track Hyperliquid, Lighter, and OpenSea NFTs</div>
             <label>
               Wallet Addresses
-              <input id="walletAddresses" type="text">
+              <input id="walletAddresses" type="text" class="settings-input">
             </label>
             <label>
               OpenSea API Key (Optional)
-              <input id="openSeaApiKey" type="text">
+              <input id="openSeaApiKey" type="text" class="settings-input">
             </label>
           </fieldset>
 
           <fieldset>
-            <legend>Personal Info</legend>
+            <legend>Personal & Location</legend>
             <label>
               Your Name
-              <input id="userName" type="text">
+              <input id="userName" type="text" class="settings-input">
             </label>
             <label>
               City
-              <input id="weatherLabel" type="text">
+              <input id="weatherLabel" type="text" class="settings-input">
             </label>
             <div class="row">
               <label>
                 Latitude
-                <input id="weatherLat" type="number" step="any">
+                <input id="weatherLat" type="number" step="any" class="settings-input">
               </label>
               <label>
                 Longitude
-                <input id="weatherLon" type="number" step="any">
+                <input id="weatherLon" type="number" step="any" class="settings-input">
               </label>
               <button type="button" id="getLocationBtn" class="btn-text" style="align-self: flex-end;">[USE MY LOCATION]</button>
             </div>
             <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-              <input id="showRainForecast" type="checkbox">
+              <input id="showRainForecast" type="checkbox" class="settings-input">
               Show rain forecast
             </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Appearance</legend>
+            <label style="margin-bottom: 8px;">
+              Theme
+              <select id="themeSelect" class="settings-input">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="amber">Amber</option>
+                <option value="matrix">Matrix</option>
+              </select>
+            </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-              <input id="useColoredPnL" type="checkbox">
+              <input id="useColoredPnL" type="checkbox" class="settings-input">
               Use colored P&L (green/red)
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-              <input id="centerUI" type="checkbox">
+              <input id="centerUI" type="checkbox" class="settings-input">
               Center UI horizontally
             </label>
-            <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-              <input id="enableRealTimeUpdates" type="checkbox">
+            <label style="margin-top: 8px;">
+              Hide balances below (USD)
+              <input id="minBalanceThreshold" type="number" min="0" step="10" value="100" style="width: 100px;" class="settings-input">
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Updates & Data</legend>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input id="enableRealTimeUpdates" type="checkbox" class="settings-input">
               Real-time price updates
             </label>
-            <label style="margin-top: 8px;">
+            <label style="margin-bottom: 8px;">
               Update interval (seconds)
-              <input id="realTimeUpdateInterval" type="number" min="5" max="60" value="10" style="width: 80px;">
+              <input id="realTimeUpdateInterval" type="number" min="5" max="60" value="10" style="width: 80px;" class="settings-input">
             </label>
+            <label>
+              Refresh interval (minutes)
+              <input id="refreshMins" type="number" min="1" value="30" class="settings-input">
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Manual Positions</legend>
+            <div class="help">Add manual crypto positions. Find CoinGecko IDs at coingecko.com</div>
+            <div id="positionsContainer"></div>
+            <button type="button" id="addPositionBtn" class="btn-text">[+ ADD POSITION]</button>
           </fieldset>
 
           <fieldset>
@@ -161,7 +193,7 @@
               Density
               <div class="slider-controls">
                 <button type="button" class="slider-btn" data-target="rainDensity" data-delta="-10">[-]</button>
-                <input type="range" id="rainDensity" min="10" max="500" value="161">
+                <input type="range" id="rainDensity" min="10" max="500" value="161" class="settings-input">
                 <button type="button" class="slider-btn" data-target="rainDensity" data-delta="10">[+]</button>
                 <span id="rainDensityValue">161</span>
               </div>
@@ -170,7 +202,7 @@
               Speed
               <div class="slider-controls">
                 <button type="button" class="slider-btn" data-target="rainSpeed" data-delta="-1">[-]</button>
-                <input type="range" id="rainSpeed" min="1" max="20" value="5">
+                <input type="range" id="rainSpeed" min="1" max="20" value="5" class="settings-input">
                 <button type="button" class="slider-btn" data-target="rainSpeed" data-delta="1">[+]</button>
                 <span id="rainSpeedValue">5</span>
               </div>
@@ -179,7 +211,7 @@
               Width
               <div class="slider-controls">
                 <button type="button" class="slider-btn" data-target="rainSize" data-delta="-1">[-]</button>
-                <input type="range" id="rainSize" min="1" max="10" value="1">
+                <input type="range" id="rainSize" min="1" max="10" value="1" class="settings-input">
                 <button type="button" class="slider-btn" data-target="rainSize" data-delta="1">[+]</button>
                 <span id="rainSizeValue">1</span>
               </div>
@@ -188,7 +220,7 @@
               Length
               <div class="slider-controls">
                 <button type="button" class="slider-btn" data-target="rainLength" data-delta="-1">[-]</button>
-                <input type="range" id="rainLength" min="1" max="20" value="8">
+                <input type="range" id="rainLength" min="1" max="20" value="8" class="settings-input">
                 <button type="button" class="slider-btn" data-target="rainLength" data-delta="1">[+]</button>
                 <span id="rainLengthValue">8</span>
               </div>
@@ -197,49 +229,34 @@
               Angle (wind direction)
               <div class="slider-controls">
                 <button type="button" class="slider-btn" data-target="rainAngle" data-delta="-5">[-]</button>
-                <input type="range" id="rainAngle" min="-45" max="45" value="-30">
+                <input type="range" id="rainAngle" min="-45" max="45" value="-30" class="settings-input">
                 <button type="button" class="slider-btn" data-target="rainAngle" data-delta="5">[+]</button>
                 <span id="rainAngleValue">-30°</span>
               </div>
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-              <input type="checkbox" id="rainRandomAngle" checked>
+              <input type="checkbox" id="rainRandomAngle" checked class="settings-input">
               Randomize angle (realistic wind)
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-              <input type="checkbox" id="rainColor">
-              Use theme color
+              <input type="checkbox" id="rainTextColor" class="settings-input">
+              Use theme text color
             </label>
           </fieldset>
 
           <fieldset>
             <legend>Comic Strip</legend>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <input id="showComic" type="checkbox">
+              <input id="showComic" type="checkbox" class="settings-input">
               Show comic strip
             </label>
             <label>
               Comic
-              <select id="comicStrip">
+              <select id="comicStrip" class="settings-input">
                 <option value="calvinandhobbes">Calvin & Hobbes</option>
                 <option value="peanuts">Peanuts</option>
                 <option value="farside">The Far Side</option>
               </select>
-            </label>
-          </fieldset>
-
-          <fieldset>
-            <legend>Manual Crypto Positions (Optional)</legend>
-            <div class="help">Add symbol (e.g., BTC), CoinGecko ID (e.g., bitcoin), amount, and entry price. Find IDs at coingecko.com. These will be added to your on-chain positions.</div>
-            <div id="positionsContainer"></div>
-            <button type="button" id="addPositionBtn" class="btn-text">[+ ADD POSITION]</button>
-          </fieldset>
-
-          <fieldset>
-            <legend>Refresh</legend>
-            <label>
-              Refresh interval (minutes)
-              <input id="refreshMins" type="number" min="1" value="30">
             </label>
           </fieldset>
         </section>

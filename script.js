@@ -23,6 +23,7 @@
     saveSettingsBtn: document.getElementById('saveSettingsBtn'),
     walletAddresses: document.getElementById('walletAddresses'),
     openSeaApiKey: document.getElementById('openSeaApiKey'),
+    themeSelect: document.getElementById('themeSelect'),
     userName: document.getElementById('userName'),
     positionsContainer: document.getElementById('positionsContainer'),
     addPositionBtn: document.getElementById('addPositionBtn'),
@@ -32,6 +33,7 @@
     showRainForecast: document.getElementById('showRainForecast'),
     useColoredPnL: document.getElementById('useColoredPnL'),
     centerUI: document.getElementById('centerUI'),
+    minBalanceThreshold: document.getElementById('minBalanceThreshold'),
     enableRealTimeUpdates: document.getElementById('enableRealTimeUpdates'),
     realTimeUpdateInterval: document.getElementById('realTimeUpdateInterval'),
     getLocationBtn: document.getElementById('getLocationBtn'),
@@ -122,6 +124,7 @@
       showRainForecast: true,
       useColoredPnL: true,
       centerUI: false,
+      minBalanceThreshold: 100,
       enableRealTimeUpdates: true,
       realTimeUpdateInterval: 10 // seconds
     };
@@ -137,12 +140,27 @@
 
   function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
-    // Update button text if it exists
+    
+    // Update theme button text - cycle light -> dark -> amber -> matrix -> light
+    const themeLabels = {
+      'light': 'DARK MODE',
+      'dark': 'AMBER MODE',
+      'amber': 'MATRIX MODE',
+      'matrix': 'LIGHT MODE'
+    };
+    
+    const nextThemeLabel = themeLabels[theme] || 'DARK MODE';
+    
     if (els.toggleThemeBtn) {
-      els.toggleThemeBtn.textContent = theme === 'dark' ? '[LIGHT MODE]' : '[DARK MODE]';
+      els.toggleThemeBtn.textContent = `[${nextThemeLabel}]`;
     }
     if (els.toggleThemeBtnMobile) {
-      els.toggleThemeBtnMobile.textContent = theme === 'dark' ? '[LIGHT MODE]' : '[DARK MODE]';
+      els.toggleThemeBtnMobile.textContent = `[${nextThemeLabel}]`;
+    }
+    
+    // Update dropdown if it exists
+    if (els.themeSelect) {
+      els.themeSelect.value = theme;
     }
   }
   
@@ -185,11 +203,13 @@
     const theme = settings?.theme || (prefersDark ? 'dark' : 'light');
     applyTheme(theme);
     
-    // Add click handler for theme toggle button
+    // Add click handler for theme toggle button - cycle through themes
     if (els.toggleThemeBtn) {
       els.toggleThemeBtn.addEventListener('click', () => {
         const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        const themeOrder = ['light', 'dark', 'amber', 'matrix'];
+        const currentIndex = themeOrder.indexOf(currentTheme);
+        const newTheme = themeOrder[(currentIndex + 1) % themeOrder.length];
         applyTheme(newTheme);
         const s = loadSettings() || getDefaultSettings();
         s.theme = newTheme;
@@ -235,6 +255,7 @@
     // Populate settings
     els.walletAddresses.value = settings.walletAddresses || '';
     els.openSeaApiKey.value = settings.openSeaApiKey || '';
+    els.themeSelect.value = settings.theme || 'light';
     els.userName.value = settings.userName || '';
     els.positionsContainer.innerHTML = '';
     settings.cryptoPositions.forEach((p, i) => {
@@ -246,6 +267,7 @@
     els.showRainForecast.checked = settings.showRainForecast ?? true;
     els.useColoredPnL.checked = settings.useColoredPnL ?? true;
     els.centerUI.checked = settings.centerUI ?? false;
+    els.minBalanceThreshold.value = settings.minBalanceThreshold ?? 100;
     els.enableRealTimeUpdates.checked = settings.enableRealTimeUpdates ?? true;
     els.realTimeUpdateInterval.value = settings.realTimeUpdateInterval ?? 10;
     els.showComic.checked = settings.showComic ?? true;
@@ -298,6 +320,8 @@
     newSettings.showRainForecast = els.showRainForecast.checked;
     newSettings.useColoredPnL = els.useColoredPnL.checked;
     newSettings.centerUI = els.centerUI.checked;
+    newSettings.minBalanceThreshold = Math.max(0, Number(els.minBalanceThreshold.value || 100));
+    newSettings.theme = els.themeSelect.value || 'light';
     newSettings.enableRealTimeUpdates = els.enableRealTimeUpdates.checked;
     newSettings.realTimeUpdateInterval = Math.max(5, Math.min(60, Number(els.realTimeUpdateInterval.value || 10)));
     return newSettings;
@@ -310,6 +334,14 @@
       els.openSettingsBtnMobile.addEventListener('click', () => {
         closeMobileMenu();
         openSettings();
+      });
+    }
+    
+    // Theme dropdown change handler
+    if (els.themeSelect) {
+      els.themeSelect.addEventListener('change', () => {
+        const newTheme = els.themeSelect.value;
+        applyTheme(newTheme);
       });
     }
     
@@ -326,6 +358,9 @@
       
       // Apply center UI setting
       applyCenterUI(s.centerUI);
+      
+      // Apply theme
+      applyTheme(s.theme);
       
       // Restart real-time updates with new settings
       stopRealTimeUpdates();
@@ -681,11 +716,11 @@
           <div class="crypto-header">
             <img src="${getCoinIcon(pos.symbol)}" alt="${pos.symbol}" class="crypto-icon" onerror="this.style.display='none'">
             <strong>${pos.symbol}</strong>
-            ${priceData.usd_24h_change ? `<span class="change ${priceData.usd_24h_change >= 0 ? 'positive' : 'negative'}">${priceData.usd_24h_change.toFixed(2)}%</span>` : ''}
+            ${priceData.usd_24h_change ? `<span class="change ${priceData.usd_24h_change >= 0 ? 'positive' : 'negative'}">${priceData.usd_24h_change >= 0 ? '+' : '-'}${Math.abs(priceData.usd_24h_change).toFixed(2)}%</span>` : ''}
           </div>
           <div class="crypto-details">
             ${pos.amount.toFixed(4)} × $${priceUsd.toLocaleString()} = $${valueUsd.toLocaleString()}
-            ${pnl !== 0 ? `<div class="pnl ${pnlClass}">P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString()} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%)</div>` : ''}
+            ${pnl !== 0 ? `<div class="pnl ${pnlClass}">P&L: ${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toLocaleString()} (${pnlPercent >= 0 ? '+' : '-'}${Math.abs(pnlPercent).toFixed(2)}%)</div>` : ''}
           </div>
         `;
         list.appendChild(li);
@@ -883,7 +918,7 @@
           </div>
           <div class="crypto-details">
             Size: ${pos.position?.szi || 0} | Price: $${currentPrice.toLocaleString()}
-            ${pos.position?.unrealizedPnl ? `<div class="pnl ${parseFloat(pos.position.unrealizedPnl) >= 0 ? 'positive' : 'negative'}">PnL: $${parseFloat(pos.position.unrealizedPnl).toFixed(2)}</div>` : ''}
+            ${pos.position?.unrealizedPnl ? `<div class="pnl ${parseFloat(pos.position.unrealizedPnl) >= 0 ? 'positive' : 'negative'}">PnL: ${parseFloat(pos.position.unrealizedPnl) >= 0 ? '+' : '-'}$${Math.abs(parseFloat(pos.position.unrealizedPnl)).toFixed(2)}</div>` : ''}
           </div>
         `;
         list.appendChild(li);
@@ -917,7 +952,7 @@
           const pnl = usdValue - entryValue;
           const pnlPercent = ((usdValue - entryValue) / entryValue) * 100;
           const pnlClass = pnl >= 0 ? 'positive' : 'negative';
-          pnlInfo = `<div class="pnl ${pnlClass}">P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%)</div>`;
+          pnlInfo = `<div class="pnl ${pnlClass}">P&L: ${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)} (${pnlPercent >= 0 ? '+' : '-'}${Math.abs(pnlPercent).toFixed(2)}%)</div>`;
         }
         
         console.log(`Rendering ${bal.coin}: ${tokenAmount} = $${usdValue}`);
@@ -1033,7 +1068,7 @@
         </div>
         <div class="crypto-details">
           Position: ${position.toFixed(2)} @ $${parseFloat(pos.avg_entry_price || 0).toFixed(2)} = $${positionValue.toLocaleString()}
-          ${unrealizedPnl !== 0 ? `<div class="pnl ${unrealizedPnl >= 0 ? 'positive' : 'negative'}">Unrealized P&L: $${unrealizedPnl.toFixed(2)}</div>` : ''}
+          ${unrealizedPnl !== 0 ? `<div class="pnl ${unrealizedPnl >= 0 ? 'positive' : 'negative'}">Unrealized P&L: ${unrealizedPnl >= 0 ? '+' : '-'}$${Math.abs(unrealizedPnl).toFixed(2)}</div>` : ''}
         </div>
       `;
       list.appendChild(li);
@@ -1620,6 +1655,7 @@
     
     // Process all collected wallet data
     console.log('Processing', allWalletData.length, 'wallets of data');
+    console.time('⏱️ Processing wallet data');
     
     for (const { hlData, lighterData, nftData } of allWalletData) {
       // Process Hyperliquid perp positions
@@ -1759,25 +1795,35 @@
       }
     }
     
-    // Fetch CoinGecko 24h changes for crypto assets only (not NFTs)
+    console.timeEnd('⏱️ Processing wallet data');
+    
+    // Fetch CoinGecko 24h changes for crypto assets only (excluding NFTs and Hyperliquid)
     // NFTs already have their floor price changes from OpenSea
+    // Hyperliquid has accurate 24h changes from their API
     const cryptoAssets = [...new Set(
       allPositionsData
-        .filter(pos => pos.exchange !== 'OpenSea') // Exclude NFTs
+        .filter(pos => pos.exchange !== 'OpenSea' && pos.exchange !== 'Hyperliquid') // Primarily for Lighter
         .map(pos => pos.asset)
     )];
+    
+    console.log(`📊 Fetching CoinGecko 24h changes for ${cryptoAssets.length} assets (primarily Lighter):`, cryptoAssets);
+    console.time('⏱️ CoinGecko 24h changes');
     
     if (cryptoAssets.length > 0) {
       const coinGeckoChanges = await fetchCoinGecko24hChanges(cryptoAssets);
       
-      // Apply CoinGecko changes only to crypto positions (not OpenSea)
+      // Apply CoinGecko changes only to positions that don't have them yet
+      let updatedCount = 0;
       for (const pos of allPositionsData) {
-        if (pos.exchange !== 'OpenSea' && coinGeckoChanges[pos.asset] !== undefined) {
+        if (pos.change24h === 0 && coinGeckoChanges[pos.asset] !== undefined) {
           pos.change24h = coinGeckoChanges[pos.asset];
+          updatedCount++;
         }
       }
+      console.log(`✅ Updated ${updatedCount} positions with CoinGecko 24h changes`);
     }
     
+    console.timeEnd('⏱️ CoinGecko 24h changes');
     console.log('Total positions collected:', allPositionsData.length);
     console.log('Positions by exchange:', 
       allPositionsData.reduce((acc, pos) => {
@@ -2020,9 +2066,11 @@
     
     // Filter positions based on toggles
     let filteredPositions = allPositionsData;
+    const settings = loadSettings() || getDefaultSettings();
+    const minThreshold = settings.minBalanceThreshold || 100;
     
     if (hideSmallPositions) {
-      filteredPositions = filteredPositions.filter(pos => pos.value >= 100);
+      filteredPositions = filteredPositions.filter(pos => pos.value >= minThreshold);
     }
     
     if (hideNfts) {
@@ -2039,7 +2087,6 @@
       els.mobilePositionsContainer.innerHTML = '';
     }
     
-    const settings = loadSettings() || getDefaultSettings();
     const useColoredPnL = settings.useColoredPnL ?? true;
     
     for (const pos of filteredPositions) {
@@ -2048,14 +2095,14 @@
       const pnlClass = useColoredPnL 
         ? (hasPnlValue && pos.pnl >= 0 ? 'positive-pnl' : hasPnlValue ? 'negative-pnl' : 'neutral-value')
         : (hasPnlValue && pos.pnl >= 0 ? 'positive-neutral' : hasPnlValue ? 'negative-neutral' : 'neutral-value');
-      const pnlSign = hasPnlValue && pos.pnl >= 0 ? '+' : '';
+      const pnlSign = hasPnlValue ? (pos.pnl >= 0 ? '+' : '-') : '';
       
       const change24h = pos.change24h;
       const hasChange24h = change24h !== null && change24h !== undefined;
       const changeClass = useColoredPnL
         ? (hasChange24h ? (change24h >= 0 ? 'positive-pnl' : 'negative-pnl') : 'neutral-value')
         : (hasChange24h ? (change24h >= 0 ? 'positive-neutral' : 'negative-neutral') : 'neutral-value');
-      const changeSign = hasChange24h && change24h >= 0 ? '+' : '';
+      const changeSign = hasChange24h ? (change24h >= 0 ? '+' : '-') : '';
       const change24hDisplay = hasChange24h ? `${changeSign}${Math.abs(change24h).toFixed(1)}%` : '—';
       
       const marketLink = getMarketLink(pos.asset, pos.exchange, pos.positionType);
@@ -2256,7 +2303,7 @@
         : '';
       const colorStyle = colorClass ? ` class="${colorClass}"` : '';
       
-      summaryParts.push(`Your portfolio is <strong${colorStyle}>${changeSign} ${amountText} (${totalDailyChangePercent >= 0 ? '+' : ''}${totalDailyChangePercent.toFixed(2)}%)</strong>`);
+      summaryParts.push(`Your portfolio is <strong${colorStyle}>${changeSign} ${amountText} (${totalDailyChangePercent >= 0 ? '+' : '-'}${Math.abs(totalDailyChangePercent).toFixed(2)}%)</strong>`);
     }
     
     // Weather
@@ -2356,10 +2403,17 @@
 
     // Add toggle handler for hide small positions
     if (els.hideSmallBtn) {
-      els.hideSmallBtn.textContent = hideSmallPositions ? '[SHOW <$100]' : '[HIDE <$100]';
+      const updateHideSmallBtn = () => {
+        const settings = loadSettings() || getDefaultSettings();
+        const threshold = settings.minBalanceThreshold || 100;
+        els.hideSmallBtn.textContent = hideSmallPositions ? `[SHOW <$${threshold}]` : `[HIDE <$${threshold}]`;
+      };
+      
+      updateHideSmallBtn();
+      
       els.hideSmallBtn.addEventListener('click', () => {
         hideSmallPositions = !hideSmallPositions;
-        els.hideSmallBtn.textContent = hideSmallPositions ? '[SHOW <$100]' : '[HIDE <$100]';
+        updateHideSmallBtn();
         renderPositionsTable();
       });
     }
@@ -2450,13 +2504,14 @@
       });
     }
     
-    // Mobile theme toggle
+    // Mobile theme toggle - cycle through themes
     if (els.toggleThemeBtnMobile) {
       els.toggleThemeBtnMobile.addEventListener('click', () => {
         const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        const themeOrder = ['light', 'dark', 'amber', 'matrix'];
+        const currentIndex = themeOrder.indexOf(currentTheme);
+        const newTheme = themeOrder[(currentIndex + 1) % themeOrder.length];
         applyTheme(newTheme);
-        els.toggleThemeBtnMobile.textContent = newTheme === 'dark' ? '[LIGHT MODE]' : '[DARK MODE]';
         const s = loadSettings() || getDefaultSettings();
         s.theme = newTheme;
         saveSettings(s);
@@ -2550,7 +2605,7 @@
     length: 8,
     angle: -30,
     randomAngle: true,
-    useThemeColor: false
+    useTextColor: false
   };
   
   let rainAngleOffset = 0;
@@ -2662,16 +2717,32 @@
     rainCtx.oImageSmoothingEnabled = false;
     
     // Color based on type
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const theme = document.documentElement.getAttribute('data-theme') || 'light';
+    const isDark = theme !== 'light';
+    
+    // Get theme colors
+    const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim();
+    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
+    
     if (snowActive) {
-      // Snow is pure white
-      rainCtx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.85)';
-    } else {
-      // Rain color - more whitish
-      if (rainConfig.useThemeColor) {
-        rainCtx.fillStyle = isDark ? '#268bd2' : '#268bd2';
+      // Snow uses muted color on light mode, white on dark themes
+      if (theme === 'light') {
+        rainCtx.fillStyle = muted || '#93a1a1';
       } else {
-        rainCtx.fillStyle = isDark ? 'rgba(230, 240, 255, 0.7)' : 'rgba(180, 190, 210, 0.6)';
+        rainCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      }
+    } else {
+      // Rain color: text color or default
+      if (rainConfig.useTextColor) {
+        rainCtx.fillStyle = textColor || '#657b83';
+      } else {
+        // Use default subtle colors
+        if (theme === 'light') {
+          rainCtx.fillStyle = 'rgba(180, 190, 210, 0.6)';
+        } else {
+          // Dark themes use --muted
+          rainCtx.fillStyle = muted || '#586e75';
+        }
       }
     }
     
@@ -2784,7 +2855,7 @@
     const lengthInput = document.getElementById('rainLength');
     const angleInput = document.getElementById('rainAngle');
     const randomAngleCheckbox = document.getElementById('rainRandomAngle');
-    const colorCheckbox = document.getElementById('rainColor');
+    const textColorCheckbox = document.getElementById('rainTextColor');
     
     if (!toggleBtn) return;
     
@@ -2863,10 +2934,10 @@
       });
     }
     
-    // Toggle theme color
-    if (colorCheckbox) {
-      colorCheckbox.addEventListener('change', (e) => {
-        rainConfig.useThemeColor = e.target.checked;
+    // Toggle theme text color
+    if (textColorCheckbox) {
+      textColorCheckbox.addEventListener('change', (e) => {
+        rainConfig.useTextColor = e.target.checked;
       });
     }
     

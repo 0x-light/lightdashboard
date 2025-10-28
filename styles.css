@@ -859,7 +859,7 @@ select:focus {
 }
 
 html[data-theme="dark"] {
-  /* Dark solarized palette for toggle */
+  /* Dark solarized palette */
   --bg: #000000;
   --bg-elev: #073642;
   --text: #839496;
@@ -874,6 +874,42 @@ html[data-theme="dark"] {
   --cyan: #2aa198;
   --flash-start: rgba(185, 226, 255, 0.4);
   --flash-mid: rgba(38, 139, 210, 0.2);
+}
+
+html[data-theme="amber"] {
+  /* Classic amber monitor */
+  --bg: #1a0f00;
+  --bg-elev: #2a1a00;
+  --text: #ffb000;
+  --muted: #c08000;
+  --accent: #ffd700;
+  --border: rgba(255, 176, 0, 0.2);
+  --card-bg: #1a0f00;
+  --green: #ffb000;
+  --red: #ff8800;
+  --orange: #ffb000;
+  --yellow: #ffd700;
+  --cyan: #ffb000;
+  --flash-start: rgba(255, 215, 0, 0.4);
+  --flash-mid: rgba(255, 176, 0, 0.2);
+}
+
+html[data-theme="matrix"] {
+  /* Matrix green on black */
+  --bg: #000000;
+  --bg-elev: #001a00;
+  --text: #00ff41;
+  --muted: #008f11;
+  --accent: #00ff41;
+  --border: rgba(0, 255, 65, 0.2);
+  --card-bg: #000000;
+  --green: #00ff41;
+  --red: #00ff41;
+  --orange: #00ff41;
+  --yellow: #00ff41;
+  --cyan: #00ff41;
+  --flash-start: rgba(0, 255, 65, 0.4);
+  --flash-mid: rgba(0, 255, 65, 0.2);
 }
 
 /* Pixel art rain overlay */
