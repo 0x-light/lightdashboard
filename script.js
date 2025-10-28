@@ -64,6 +64,8 @@
     calvinRandomBtn: document.getElementById('calvinRandomBtn'),
     hideSmallBtn: document.getElementById('hideSmallBtn'),
     toggleNftsBtn: document.getElementById('toggleNftsBtn'),
+    totalValue: document.getElementById('totalValue'),
+    positionsTitle: document.getElementById('positionsTitle'),
     comicStrip: document.getElementById('comicStrip'),
     showComic: document.getElementById('showComic'),
     comicTitle: document.getElementById('comicTitle'),
@@ -74,6 +76,7 @@
   let hideNfts = false;
   let currentFontSize = 15; // default font size in px
   let currentCalvinDate = new Date(); // Track current comic date
+  let showValueInBTC = false; // Toggle between USD and BTC display
   
   // Comic metadata
   const comicMetadata = {
@@ -2614,6 +2617,61 @@
     }
     
     els.summary.innerHTML = summaryParts.join('. ') + '.';
+    
+    // Update total value display
+    if (els.totalValue) {
+      if (!amountsVisible) {
+        els.totalValue.textContent = '••••';
+      } else if (showValueInBTC) {
+        // Find BTC price from positions data
+        const btcPosition = allPositionsData.find(pos => 
+          pos.asset?.toLowerCase() === 'bitcoin' || 
+          pos.asset?.toLowerCase() === 'btc'
+        );
+        const btcPrice = btcPosition?.price || 0;
+        
+        if (btcPrice > 0) {
+          const btcValue = totalValue / btcPrice;
+          els.totalValue.textContent = `₿${btcValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 4})}`;
+        } else {
+          // Fetch BTC price from CoinGecko if not in portfolio
+          fetchBTCPrice().then(price => {
+            if (price > 0) {
+              const btcValue = totalValue / price;
+              els.totalValue.textContent = `₿${btcValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 4})}`;
+            } else {
+              els.totalValue.textContent = `$${totalValue.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
+            }
+          });
+        }
+      } else {
+        els.totalValue.textContent = `$${totalValue.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
+      }
+    }
+  }
+  
+  // Cache BTC price to avoid repeated API calls
+  let cachedBTCPrice = 0;
+  let btcPriceFetchTime = 0;
+  
+  async function fetchBTCPrice() {
+    // Use cache if less than 5 minutes old
+    if (cachedBTCPrice > 0 && Date.now() - btcPriceFetchTime < 5 * 60 * 1000) {
+      return cachedBTCPrice;
+    }
+    
+    try {
+      const resp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+      if (resp.ok) {
+        const data = await resp.json();
+        cachedBTCPrice = data.bitcoin?.usd || 0;
+        btcPriceFetchTime = Date.now();
+        return cachedBTCPrice;
+      }
+    } catch (err) {
+      console.error('Failed to fetch BTC price:', err);
+    }
+    return 0;
   }
 
   function init() {
@@ -2652,6 +2710,14 @@
         hideNfts = !hideNfts;
         els.toggleNftsBtn.textContent = hideNfts ? '[SHOW NFTS]' : '[HIDE NFTS]';
         renderPositionsTable();
+      });
+    }
+    
+    // Add toggle handler for USD/BTC value display
+    if (els.positionsTitle) {
+      els.positionsTitle.addEventListener('click', () => {
+        showValueInBTC = !showValueInBTC;
+        updateHeroSection(); // Update the display
       });
     }
 
