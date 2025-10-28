@@ -1059,6 +1059,16 @@ html[data-theme="matrix"] {
   background: var(--bg);
   transition: all 0.1s ease;
   visibility: visible !important;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+.sticker-item * {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .sticker-item:hover {
@@ -1113,6 +1123,113 @@ html[data-theme="matrix"] {
 
 .sticker-item.selected .sticker-label {
   color: var(--text);
+}
+
+/* Sticky stickers */
+#stickyStickers {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.sticky-sticker {
+  position: absolute;
+  cursor: move;
+  pointer-events: all;
+  user-select: none;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+.sticky-sticker:hover {
+  filter: brightness(1.1);
+  z-index: 1001;
+}
+
+.sticky-sticker.dragging {
+  opacity: 0.8;
+  cursor: grabbing;
+}
+
+.sticky-sticker img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  -webkit-image-rendering: pixelated;
+  -ms-interpolation-mode: nearest-neighbor;
+}
+
+.sticky-sticker .resize-handle {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  padding: 2px 4px;
+  background: var(--bg);
+  border: 1px solid var(--fg);
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 2;
+  font-size: 8px;
+  line-height: 1;
+  font-family: 'Berkeley Mono', monospace;
+  pointer-events: auto;
+}
+
+.sticky-sticker .rotate-handle {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  padding: 2px 4px;
+  background: var(--bg);
+  border: 1px solid var(--fg);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 2;
+  font-size: 8px;
+  line-height: 1;
+  font-family: 'Berkeley Mono', monospace;
+  pointer-events: auto;
+}
+
+.sticky-sticker .rotate-handle:active {
+  cursor: grabbing;
+}
+
+.sticky-sticker:hover .resize-handle,
+.sticky-sticker:hover .rotate-handle {
+  opacity: 1;
+}
+
+.sticky-sticker .remove-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  padding: 2px 4px;
+  background: var(--bg);
+  border: 1px solid var(--fg);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 8px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.2s;
+  font-family: 'Berkeley Mono', monospace;
+  pointer-events: auto;
+}
+
+.sticky-sticker:hover .remove-btn {
+  opacity: 1;
 }
 
 /* Pixel art rain overlay */

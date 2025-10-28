@@ -250,6 +250,7 @@
   }
 
   let assetsLoaded = false;
+  let dragDropSetup = false;
   
   function openSettings() {
     const settings = loadSettings() || getDefaultSettings();
@@ -259,6 +260,14 @@
       console.log('🔄 Loading assets on settings open...');
       loadCustomAssets().then(() => {
         assetsLoaded = true;
+        // Setup drag-drop after assets are loaded
+        if (!dragDropSetup) {
+          setTimeout(() => {
+            setupStickerDragDrop();
+            dragDropSetup = true;
+            console.log('✓ Drag-drop setup complete');
+          }, 500);
+        }
       }).catch(err => {
         console.error('Failed to load assets:', err);
       });
@@ -2953,12 +2962,23 @@
         // Default: sharp rectangle
         rainCtx.fillRect(x, y, width, height);
       } else if (rainConfig.particleStyle.startsWith('sticker:')) {
-        // Custom sticker image
+        // Custom sticker image - render larger and sharper
         const stickerFile = rainConfig.particleStyle.replace('sticker:', '');
         const img = stickerImages[stickerFile];
         if (img && img.complete) {
-          const size = height * 2; // Make stickers a bit larger
-          rainCtx.drawImage(img, x - size/4, y, size, size);
+          // Larger size for better visibility and quality
+          const size = height * 4; // Increased from 2 to 4
+          const renderX = Math.floor(x - size/2);
+          const renderY = Math.floor(y);
+          
+          // Save context state
+          rainCtx.save();
+          rainCtx.imageSmoothingEnabled = false;
+          
+          // Draw at integer coordinates for crisp pixels
+          rainCtx.drawImage(img, renderX, renderY, size, size);
+          
+          rainCtx.restore();
         } else {
           // Fallback if image not loaded
           rainCtx.fillRect(x, y, width, height);
@@ -3391,9 +3411,402 @@
     }
   }
 
+  // Sticky Stickers functionality
+  let stickyStickersData = [];
+  const STICKY_STICKERS_KEY = 'stickyStickers.v1';
+  
+  function loadStickyStickers() {
+    try {
+      const saved = localStorage.getItem(STICKY_STICKERS_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch (err) {
+      return [];
+    }
+  }
+  
+  function saveStickyStickers() {
+    localStorage.setItem(STICKY_STICKERS_KEY, JSON.stringify(stickyStickersData));
+  }
+  
+  function createStickySticker(imageSrc, x, y, width = null, height = null, rotation = 0) {
+    const container = document.getElementById('stickyStickers');
+    if (!container) return;
+    
+    const id = Date.now() + Math.random();
+    const sticker = document.createElement('div');
+    sticker.className = 'sticky-sticker';
+    sticker.dataset.id = id;
+    sticker.style.left = `${x}px`;
+    sticker.style.top = `${y}px`;
+    sticker.style.transform = `rotate(${rotation}deg)`;
+    
+    const img = document.createElement('img');
+    img.src = imageSrc;
+    img.draggable = false;
+    
+    // Load image to get natural dimensions and set proper aspect ratio
+    img.onload = () => {
+      const aspectRatio = img.naturalWidth / img.naturalHeight;
+      
+      if (width === null && height === null) {
+        // Default: set width to 200px and calculate height
+        width = 200;
+        height = 200 / aspectRatio;
+      } else if (width === null) {
+        width = height * aspectRatio;
+      } else if (height === null) {
+        height = width / aspectRatio;
+      }
+      
+      sticker.style.width = `${width}px`;
+      sticker.style.height = `${height}px`;
+      sticker.dataset.aspectRatio = aspectRatio;
+      
+      // Update saved data
+      const data = stickyStickersData.find(s => s.id === id);
+      if (data) {
+        data.width = width;
+        data.height = height;
+        data.aspectRatio = aspectRatio;
+        saveStickyStickers();
+      }
+    };
+    
+    // Set initial size if provided
+    if (width !== null) sticker.style.width = `${width}px`;
+    if (height !== null) sticker.style.height = `${height}px`;
+    
+    const resizeHandle = document.createElement('div');
+    resizeHandle.className = 'resize-handle';
+    resizeHandle.textContent = '[RESIZE]';
+    
+    const rotateHandle = document.createElement('div');
+    rotateHandle.className = 'rotate-handle';
+    rotateHandle.textContent = '[ROTATE]';
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-btn';
+    removeBtn.textContent = '[X]';
+    removeBtn.onclick = (e) => {
+      e.stopPropagation();
+      removeStickySticker(id);
+    };
+    
+    sticker.appendChild(img);
+    sticker.appendChild(resizeHandle);
+    sticker.appendChild(rotateHandle);
+    sticker.appendChild(removeBtn);
+    container.appendChild(sticker);
+    
+    // Make draggable
+    makeDraggable(sticker);
+    makeResizable(sticker, resizeHandle);
+    makeRotatable(sticker, rotateHandle);
+    
+    // Save to data (will be updated with dimensions in img.onload)
+    stickyStickersData.push({ id, imageSrc, x, y, width, height, rotation, aspectRatio: null });
+    saveStickyStickers();
+    
+    return sticker;
+  }
+  
+  function makeDraggable(element) {
+    let isDragging = false;
+    let startX, startY, initialX, initialY;
+    
+    element.addEventListener('mousedown', (e) => {
+      if (e.target.classList.contains('resize-handle') || 
+          e.target.classList.contains('rotate-handle') || 
+          e.target.classList.contains('remove-btn')) return;
+      isDragging = true;
+      element.classList.add('dragging');
+      
+      const rect = element.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+      initialX = rect.left;
+      initialY = rect.top;
+      
+      e.preventDefault();
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      
+      const newX = initialX + dx;
+      const newY = initialY + dy;
+      
+      element.style.left = `${newX}px`;
+      element.style.top = `${newY}px`;
+      
+      // Update data
+      const id = parseFloat(element.dataset.id);
+      const data = stickyStickersData.find(s => s.id === id);
+      if (data) {
+        data.x = newX;
+        data.y = newY;
+      }
+    });
+    
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        element.classList.remove('dragging');
+        saveStickyStickers();
+      }
+    });
+  }
+  
+  function makeResizable(element, handle) {
+    let isResizing = false;
+    let startX, startY, startWidth, startHeight, aspectRatio;
+    
+    handle.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startWidth = element.offsetWidth;
+      startHeight = element.offsetHeight;
+      aspectRatio = parseFloat(element.dataset.aspectRatio) || (startWidth / startHeight);
+      e.stopPropagation();
+      e.preventDefault();
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const delta = Math.max(dx, dy);
+      
+      // Calculate new width and maintain aspect ratio
+      const newWidth = Math.max(32, Math.min(800, startWidth + delta));
+      const newHeight = newWidth / aspectRatio;
+      
+      element.style.width = `${newWidth}px`;
+      element.style.height = `${newHeight}px`;
+      
+      // Update data
+      const id = parseFloat(element.dataset.id);
+      const data = stickyStickersData.find(s => s.id === id);
+      if (data) {
+        data.width = newWidth;
+        data.height = newHeight;
+      }
+    });
+    
+    document.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        saveStickyStickers();
+      }
+    });
+  }
+  
+  function makeRotatable(element, handle) {
+    let isRotating = false;
+    let startAngle, startRotation;
+    
+    handle.addEventListener('mousedown', (e) => {
+      isRotating = true;
+      const rect = element.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      
+      startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180 / Math.PI;
+      
+      // Get current rotation from transform
+      const transform = element.style.transform;
+      const match = transform.match(/rotate\(([-\d.]+)deg\)/);
+      startRotation = match ? parseFloat(match[1]) : 0;
+      
+      e.stopPropagation();
+      e.preventDefault();
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!isRotating) return;
+      
+      const rect = element.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      
+      const currentAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180 / Math.PI;
+      const deltaAngle = currentAngle - startAngle;
+      const newRotation = startRotation + deltaAngle;
+      
+      element.style.transform = `rotate(${newRotation}deg)`;
+      
+      // Update data
+      const id = parseFloat(element.dataset.id);
+      const data = stickyStickersData.find(s => s.id === id);
+      if (data) {
+        data.rotation = newRotation;
+      }
+    });
+    
+    document.addEventListener('mouseup', () => {
+      if (isRotating) {
+        isRotating = false;
+        saveStickyStickers();
+      }
+    });
+  }
+  
+  function removeStickySticker(id) {
+    const element = document.querySelector(`.sticky-sticker[data-id="${id}"]`);
+    if (element) element.remove();
+    
+    stickyStickersData = stickyStickersData.filter(s => s.id !== id);
+    saveStickyStickers();
+  }
+  
+  function restoreStickyStickers() {
+    stickyStickersData = loadStickyStickers();
+    stickyStickersData.forEach(data => {
+      const container = document.getElementById('stickyStickers');
+      if (!container) return;
+      
+      // Handle old format (size) and new format (width/height)
+      const width = data.width || data.size || 200;
+      const height = data.height || data.size || 200;
+      const aspectRatio = data.aspectRatio || (width / height);
+      
+      const sticker = document.createElement('div');
+      sticker.className = 'sticky-sticker';
+      sticker.dataset.id = data.id;
+      sticker.dataset.aspectRatio = aspectRatio;
+      sticker.style.left = `${data.x}px`;
+      sticker.style.top = `${data.y}px`;
+      sticker.style.width = `${width}px`;
+      sticker.style.height = `${height}px`;
+      sticker.style.transform = `rotate(${data.rotation || 0}deg)`;
+      
+      const img = document.createElement('img');
+      img.src = data.imageSrc;
+      img.draggable = false;
+      
+      const resizeHandle = document.createElement('div');
+      resizeHandle.className = 'resize-handle';
+      resizeHandle.textContent = '[RESIZE]';
+      
+      const rotateHandle = document.createElement('div');
+      rotateHandle.className = 'rotate-handle';
+      rotateHandle.textContent = '[ROTATE]';
+      
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'remove-btn';
+      removeBtn.textContent = '[X]';
+      removeBtn.onclick = (e) => {
+        e.stopPropagation();
+        removeStickySticker(data.id);
+      };
+      
+      sticker.appendChild(img);
+      sticker.appendChild(resizeHandle);
+      sticker.appendChild(rotateHandle);
+      sticker.appendChild(removeBtn);
+      container.appendChild(sticker);
+      
+      makeDraggable(sticker);
+      makeResizable(sticker, resizeHandle);
+      makeRotatable(sticker, rotateHandle);
+    });
+  }
+  
+  function setupStickerDragDrop() {
+    const stickerGrid = document.getElementById('stickerGrid');
+    if (!stickerGrid) {
+      console.error('❌ stickerGrid not found for drag-drop setup');
+      return;
+    }
+    
+    console.log('✓ Setting up drag-drop on stickerGrid');
+    
+    stickerGrid.addEventListener('mousedown', (e) => {
+      const item = e.target.closest('.sticker-item');
+      if (!item) return;
+      
+      // Prevent default browser drag behavior
+      e.preventDefault();
+      e.stopPropagation();
+      
+      console.log('🎯 Started dragging sticker:', item.dataset.value);
+      
+      const value = item.dataset.value;
+      let imageSrc;
+      
+      if (value && value.startsWith('sticker:')) {
+        const file = value.replace('sticker:', '');
+        imageSrc = `/stickers/${file}`;
+      } else {
+        // For emoji/text styles, we can't easily make them sticky
+        return;
+      }
+      
+      // Create ghost element for dragging
+      const ghost = item.cloneNode(true);
+      ghost.style.position = 'fixed';
+      ghost.style.pointerEvents = 'none';
+      ghost.style.opacity = '0.9';
+      ghost.style.zIndex = '10000';
+      ghost.style.filter = 'brightness(1.2)';
+      
+      // Add helper text
+      const helper = document.createElement('div');
+      helper.textContent = '[DROP TO PLACE]';
+      helper.style.cssText = 'position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); color: var(--accent); font-size: 10px; white-space: nowrap; font-weight: bold;';
+      ghost.appendChild(helper);
+      
+      document.body.appendChild(ghost);
+      
+      let isDraggingOut = false;
+      
+      const moveGhost = (e) => {
+        ghost.style.left = `${e.clientX - 30}px`;
+        ghost.style.top = `${e.clientY - 30}px`;
+        
+        // Check if dragged outside settings
+        const settingsDialog = document.getElementById('settingsDialog');
+        const dialogRect = settingsDialog?.getBoundingClientRect();
+        if (dialogRect) {
+          const isInside = e.clientX >= dialogRect.left && 
+                          e.clientX <= dialogRect.right && 
+                          e.clientY >= dialogRect.top && 
+                          e.clientY <= dialogRect.bottom;
+          
+          isDraggingOut = !isInside;
+        }
+      };
+      
+      const endDrag = (e) => {
+        document.removeEventListener('mousemove', moveGhost);
+        document.removeEventListener('mouseup', endDrag);
+        ghost.remove();
+        
+        if (isDraggingOut) {
+          // Create sticky sticker at drop position (centered at 200px default width)
+          console.log('🎨 Dropping sticker at:', e.clientX, e.clientY);
+          createStickySticker(imageSrc, e.clientX - 100, e.clientY - 100);
+        } else {
+          console.log('❌ Dropped inside settings, not creating sticky sticker');
+        }
+      };
+      
+      document.addEventListener('mousemove', moveGhost);
+      document.addEventListener('mouseup', endDrag);
+      
+      moveGhost(e);
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', async () => {
     init();
     setupRainControls();
+    restoreStickyStickers();
     
     // Apply wallpaper from settings
     const settings = loadSettings() || getDefaultSettings();
