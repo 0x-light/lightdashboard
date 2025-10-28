@@ -2530,10 +2530,10 @@
   let rainAnimationFrame = null;
   
   const rainConfig = {
-    density: 200,
-    speed: 10,
+    density: 105,
+    speed: 3,
     size: 1,
-    length: 3,
+    length: 8,
     angle: -30,
     randomAngle: true,
     useThemeColor: false
