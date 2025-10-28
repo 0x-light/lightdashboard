@@ -2219,7 +2219,7 @@
       const hasPnl = pos.pnl !== null && pos.pnl !== undefined;
       const pnlAmount = hasPnl ? Math.abs(pos.pnl) : 0;
       const pnlDisplay = amountsVisible 
-        ? (hasPnl ? `${pnlSign}$${formatCompactNumber(pnlAmount)}${pos.pnlPercent !== 0 ? ` (${pnlSign}${pos.pnlPercent.toFixed(1)}%)` : ''}` : '—')
+        ? (hasPnl ? `${pnlSign}$${formatCompactNumber(pnlAmount)}${pos.pnlPercent !== 0 ? ` (${pnlSign}${Math.abs(pos.pnlPercent).toFixed(1)}%)` : ''}` : '—')
         : '••••';
       
       // Desktop table row
@@ -2346,9 +2346,13 @@
       .sort((a, b) => Math.abs(b[1].change24h) - Math.abs(a[1].change24h))
       .slice(0, 2);
     
+    const useColoredPnL = settings.useColoredPnL ?? true;
     for (const [asset, data] of sortedAssets) {
       const sign = data.change24h >= 0 ? 'up' : 'down';
-      highlights.push(`<strong>${asset}</strong> is ${sign} ${Math.abs(data.change24h).toFixed(1)}%`);
+      const colorClass = useColoredPnL 
+        ? (data.change24h >= 0 ? 'positive-pnl' : 'negative-pnl')
+        : (data.change24h >= 0 ? 'positive-neutral' : 'negative-neutral');
+      highlights.push(`<strong>${asset}</strong> is <span class="${colorClass}">${sign} ${Math.abs(data.change24h).toFixed(1)}%</span>`);
     }
     
     // Calculate total daily change (based on 24h change %)
@@ -2381,11 +2385,10 @@
         : '$••••';
       
       // Apply color based on useColoredPnL setting
-      const useColoredPnL = settings.useColoredPnL ?? true;
       const colorClass = useColoredPnL 
         ? (totalDailyChange >= 0 ? 'positive-pnl' : 'negative-pnl')
-        : '';
-      const colorStyle = colorClass ? ` class="${colorClass}"` : '';
+        : (totalDailyChange >= 0 ? 'positive-neutral' : 'negative-neutral');
+      const colorStyle = ` class="${colorClass}"`;
       
       summaryParts.push(`Your portfolio is <strong${colorStyle}>${changeSign} ${amountText} (${totalDailyChangePercent >= 0 ? '+' : '-'}${Math.abs(totalDailyChangePercent).toFixed(2)}%)</strong>`);
     }
