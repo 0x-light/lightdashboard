@@ -249,8 +249,20 @@
     return row;
   }
 
+  let assetsLoaded = false;
+  
   function openSettings() {
     const settings = loadSettings() || getDefaultSettings();
+    
+    // Load assets if not already loaded
+    if (!assetsLoaded) {
+      console.log('🔄 Loading assets on settings open...');
+      loadCustomAssets().then(() => {
+        assetsLoaded = true;
+      }).catch(err => {
+        console.error('Failed to load assets:', err);
+      });
+    }
     
     // Migrate old settings to new format
     if (!settings.walletAddresses && (settings.hyperliquidAddress || settings.lighterAddress)) {
@@ -2954,6 +2966,9 @@
       } else if (rainConfig.particleStyle === 'bitcoin') {
         rainCtx.font = `${height}px monospace`;
         rainCtx.fillText('₿', x, y + height);
+      } else if (rainConfig.particleStyle === 'zcash') {
+        rainCtx.font = `${height}px monospace`;
+        rainCtx.fillText('ᙇ', x, y + height);
       } else if (rainConfig.particleStyle === 'text-second') {
         const text = 'There is no second best';
         const charIndex = index % text.length;
@@ -3233,10 +3248,18 @@
   async function loadCustomAssets() {
     const stickerGrid = document.getElementById('stickerGrid');
     
+    if (!stickerGrid) {
+      console.error('❌ stickerGrid element not found!');
+      return;
+    }
+    
+    console.log('✓ Found stickerGrid element');
+    
     // Add built-in styles first
     const builtInStyles = [
       { value: 'default', label: 'Rain', display: '💧' },
       { value: 'bitcoin', label: 'Bitcoin', display: '₿' },
+      { value: 'zcash', label: 'Zcash', display: 'ᙇ' },
       { value: 'text-second', label: 'No 2nd', display: '📝' },
       { value: 'text-hl', label: 'HL', display: '🔥' },
       { value: 'emoji', label: 'Weather', display: '🌧️' },
@@ -3268,50 +3291,61 @@
       
       const loadedStickers = [];
       
-      // Create and add sticker items without waiting for images to load
+      // Create and add sticker items
       for (const file of stickerFiles) {
-        const img = new Image();
         const imgSrc = `/stickers/${file}`;
         
-        // Add to grid immediately
+        // Create item
         const item = document.createElement('div');
         item.className = 'sticker-item';
         item.dataset.value = `sticker:${file}`;
         item.dataset.searchText = file.toLowerCase();
+        item.title = file.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '');
         
+        // Create icon container
         const iconDiv = document.createElement('div');
         iconDiv.className = 'sticker-icon';
         
+        // Create image
         const imgElement = document.createElement('img');
         imgElement.src = imgSrc;
-        imgElement.style.cssText = 'width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges;';
-        imgElement.onerror = (e) => {
-          console.error(`❌ Failed to load sticker: ${file} from ${imgSrc}`, e);
-          item.style.display = 'none';
-        };
-        imgElement.onload = () => {
+        imgElement.alt = file;
+        
+        imgElement.addEventListener('load', function() {
           console.log(`✓ Loaded: ${file}`);
-          stickerImages[file] = imgElement;
+          stickerImages[file] = this;
           loadedStickers.push(file);
-        };
+        });
+        
+        imgElement.addEventListener('error', function(e) {
+          console.error(`❌ Failed: ${file}`, e);
+          item.style.display = 'none';
+        });
         
         iconDiv.appendChild(imgElement);
         
+        // Create label
         const label = document.createElement('div');
         label.className = 'sticker-label';
         label.textContent = file.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '').substring(0, 10);
         
         item.appendChild(iconDiv);
         item.appendChild(label);
-        item.title = file.replace(/\.(png|jpg|jpeg|gif|webp)$/i, '');
         
-        if (stickerGrid) stickerGrid.appendChild(item);
+        if (stickerGrid) {
+          stickerGrid.appendChild(item);
+        }
       }
+      
+      console.log(`📦 Added ${stickerFiles.length} sticker items to grid`);
+      console.log(`Grid now has ${stickerGrid.children.length} total items`);
       
       // Log after a brief delay to count loaded stickers
       setTimeout(() => {
-        console.log(`✅ Loaded ${loadedStickers.length}/${stickerFiles.length} stickers`);
-      }, 1000);
+        console.log(`✅ Images loaded: ${loadedStickers.length}/${stickerFiles.length} stickers`);
+        const visibleItems = Array.from(stickerGrid.children).filter(item => item.style.display !== 'none').length;
+        console.log(`👀 Visible items in grid: ${visibleItems}`);
+      }, 2000);
     } catch (err) {
       console.error('Failed to load stickers manifest:', err);
       console.log('Make sure /stickers/index.json exists. Run: ./update-manifests.sh');
@@ -3358,7 +3392,6 @@
   }
 
   document.addEventListener('DOMContentLoaded', async () => {
-    await loadCustomAssets();
     init();
     setupRainControls();
     
