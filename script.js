@@ -22,18 +22,29 @@
   // Simple encryption for sensitive data in localStorage
   // Note: This is obfuscation, not true encryption. For true security, use a password-derived key.
   // All data stays local - nothing is sent to external servers except necessary API calls.
+  const ENCRYPT_PREFIX = 'enc:';
+  
   function simpleEncrypt(text) {
     if (!text) return text;
-    return btoa(encodeURIComponent(text));
+    // Add prefix to identify encrypted data
+    return ENCRYPT_PREFIX + btoa(encodeURIComponent(text));
   }
   
   function simpleDecrypt(encoded) {
     if (!encoded) return encoded;
-    try {
-      return decodeURIComponent(atob(encoded));
-    } catch (e) {
-      return encoded; // Return as-is if decryption fails (backward compatibility)
+    
+    // Check if data is encrypted (has our prefix)
+    if (typeof encoded === 'string' && encoded.startsWith(ENCRYPT_PREFIX)) {
+      try {
+        return decodeURIComponent(atob(encoded.substring(ENCRYPT_PREFIX.length)));
+      } catch (e) {
+        console.error('Decryption failed:', e);
+        return ''; // Return empty string if decryption fails
+      }
     }
+    
+    // Not encrypted, return as-is (backward compatibility)
+    return encoded;
   }
 
   // Store loaded sticker images
@@ -42,9 +53,9 @@
   
   // CoinGecko API rate limiting
   let lastCoinGeckoCall = 0;
-  const COINGECKO_DELAY = 1500; // 1.5 seconds between calls to avoid rate limits
+  const COINGECKO_DELAY = 1200; // 1.2 seconds between calls to avoid rate limits
   const coinGeckoCache = new Map();
-  const CACHE_DURATION = 60000; // Cache for 1 minute
+  const CACHE_DURATION = 120000; // Cache for 2 minutes
   
   async function rateLimitedFetch(url, cacheKey = null) {
     // Check cache first
@@ -1902,6 +1913,7 @@
   }
 
   async function fetchAndRenderPositions() {
+    console.time('⏱️ Total fetch time');
     allPositionsData = [];
     
     // Fetch data for all wallets
@@ -1912,10 +1924,12 @@
     
     if (wallets.length === 0) {
       renderPositionsTable();
+      console.timeEnd('⏱️ Total fetch time');
       return;
     }
     
     // Fetch Hyperliquid market data for 24h changes
+    console.time('⏱️ HL market data');
     let hlMarketData = {};
     try {
       const marketResp = await fetch('https://api.hyperliquid.xyz/info', {
@@ -1963,8 +1977,10 @@
     } catch (err) {
       console.error('Error fetching Hyperliquid market data:', err);
     }
+    console.timeEnd('⏱️ HL market data');
     
     // Fetch data for all wallets in parallel
+    console.time('⏱️ Wallet data fetch');
     console.log('⚡ Fetching data for', wallets.length, 'wallets in parallel...');
     const walletDataPromises = wallets.map(async (wallet) => {
       const [hlData, lighterData, nftData] = await Promise.all([
@@ -1973,16 +1989,33 @@
         fetchOpenSeaNFTs(wallet)
       ]);
       
-      console.log(`Wallet ${wallet} - HL:${hlData ? '✓' : '✗'} Lighter:${lighterData ? '✓' : '✗'} NFTs:${nftData ? '✓' : '✗'}`);
+      console.log(`Wallet data - HL:${hlData ? '✓' : '✗'} Lighter:${lighterData ? '✓' : '✗'} NFTs:${nftData ? '✓' : '✗'}`);
       
       return { hlData, lighterData, nftData };
     });
     
     const allWalletData = await Promise.all(walletDataPromises);
+    console.timeEnd('⏱️ Wallet data fetch');
     
     // Process all collected wallet data
     console.log('Processing', allWalletData.length, 'wallets of data');
     console.time('⏱️ Processing wallet data');
+    
+    // Fetch Hyperliquid spot prices once for all wallets
+    let hlSpotPrices = null;
+    const hasSpotBalances = allWalletData.some(({ hlData }) => hlData && hlData.spot && hlData.spot.balances);
+    if (hasSpotBalances) {
+      try {
+        const pricesResp = await fetch('https://api.hyperliquid.xyz/info', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'allMids' })
+        });
+        hlSpotPrices = pricesResp.ok ? await pricesResp.json() : null;
+      } catch (err) {
+        console.error('Error fetching HL spot prices:', err);
+      }
+    }
     
     for (const { hlData, lighterData, nftData } of allWalletData) {
       // Process Hyperliquid perp positions
@@ -2015,12 +2048,7 @@
         
       // Process Hyperliquid spot balances
       if (hlData && hlData.spot && hlData.spot.balances) {
-          const pricesResp = await fetch('https://api.hyperliquid.xyz/info', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'allMids' })
-          });
-          const prices = pricesResp.ok ? await pricesResp.json() : null;
+          const prices = hlSpotPrices;
           
           for (const bal of hlData.spot.balances) {
             const tokenAmount = parseFloat(bal.total || 0);
@@ -2161,6 +2189,8 @@
     
     // Render positions table
     renderPositionsTable();
+    updateHeroSection();
+    console.timeEnd('⏱️ Total fetch time');
   }
   
   // Real-time price update functionality
