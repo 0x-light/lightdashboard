@@ -238,6 +238,7 @@ h1, h2, h3, h4, h5, h6 {
   text-transform: uppercase;
   border-bottom: 1px solid rgba(147, 161, 161, 0.2);
   opacity: 0.6;
+  white-space: nowrap;
 }
 
 .data-table td {
@@ -1461,4 +1462,22 @@ input[type="range"]:focus::-moz-range-thumb {
   .last-update-timestamp:active {
     opacity: 1;
   }
+}
+
+/* Edit list mode */
+.position-row-hidden {
+  opacity: 0.3;
+}
+
+.position-edit-btn {
+  margin-left: 8px;
+  font-size: 0.85em;
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--muted);
+  transition: all 0.2s ease;
+}
+
+.position-edit-btn:hover {
+  color: var(--text);
 }

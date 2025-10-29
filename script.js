@@ -190,6 +190,7 @@
     calvinRandomBtn: document.getElementById('calvinRandomBtn'),
     hideSmallBtn: document.getElementById('hideSmallBtn'),
     toggleNftsBtn: document.getElementById('toggleNftsBtn'),
+    editListBtn: document.getElementById('editListBtn'),
     comicStrip: document.getElementById('comicStrip'),
     showComic: document.getElementById('showComic'),
     comicTitle: document.getElementById('comicTitle'),
@@ -208,6 +209,7 @@
   let amountsVisible = true;
   let hideSmallPositions = true;
   let hideNfts = false;
+  let editMode = false;
   let currentFontSize = 15; // default font size in px
   let currentCalvinDate = new Date(); // Track current comic date
   
@@ -318,7 +320,8 @@
       showThemeBtn: true,
       showAmountsBtn: true,
       showFontSize: true,
-      showStickersBtn: true
+      showStickersBtn: true,
+      hiddenAssets: [] // Array of hidden asset keys: "ASSET_EXCHANGE"
     };
   }
   
@@ -2914,6 +2917,24 @@
     }
   }
   
+  function toggleAssetVisibility(assetKey) {
+    const settings = loadSettings() || getDefaultSettings();
+    const hiddenAssets = settings.hiddenAssets || [];
+    
+    const index = hiddenAssets.indexOf(assetKey);
+    if (index > -1) {
+      // Asset is hidden, show it
+      hiddenAssets.splice(index, 1);
+    } else {
+      // Asset is visible, hide it
+      hiddenAssets.push(assetKey);
+    }
+    
+    settings.hiddenAssets = hiddenAssets;
+    saveSettings(settings);
+    renderPositionsTable();
+  }
+  
   function getMarketLink(asset, exchange, positionType) {
     if (exchange === 'Hyperliquid') {
       if (positionType === 'perp') {
@@ -2945,6 +2966,7 @@
     let filteredPositions = allPositionsData;
     const settings = loadSettings() || getDefaultSettings();
     const minThreshold = settings.minBalanceThreshold || 100;
+    const hiddenAssets = settings.hiddenAssets || [];
     
     if (hideSmallPositions) {
       filteredPositions = filteredPositions.filter(pos => pos.value >= minThreshold);
@@ -2952,6 +2974,14 @@
     
     if (hideNfts) {
       filteredPositions = filteredPositions.filter(pos => pos.exchange !== 'OpenSea');
+    }
+    
+    // Filter hidden assets (only when not in edit mode)
+    if (!editMode) {
+      filteredPositions = filteredPositions.filter(pos => {
+        const assetKey = `${pos.asset}_${pos.exchange}`;
+        return !hiddenAssets.includes(assetKey);
+      });
     }
     
     if (filteredPositions.length === 0) {
@@ -2968,6 +2998,14 @@
     
     for (const pos of filteredPositions) {
       const tr = document.createElement('tr');
+      const assetKey = `${pos.asset}_${pos.exchange}`;
+      const isHidden = hiddenAssets.includes(assetKey);
+      
+      // Add class for hidden items in edit mode
+      if (editMode && isHidden) {
+        tr.classList.add('position-row-hidden');
+      }
+      
       const hasPnlValue = pos.pnl !== null && pos.pnl !== undefined;
       const pnlClass = useColoredPnL 
         ? (hasPnlValue && pos.pnl >= 0 ? 'positive-pnl' : hasPnlValue ? 'negative-pnl' : 'neutral-value')
@@ -3016,8 +3054,12 @@
         : '••••';
       
       // Desktop table row
+      const editButton = editMode 
+        ? `<button class="position-edit-btn" data-asset-key="${assetKey}">[${isHidden ? 'SHOW' : 'HIDE'}]</button>`
+        : '';
+      
       tr.innerHTML = `
-        <td class="asset-cell">${pos.asset}</td>
+        <td class="asset-cell">${pos.asset}${editButton}</td>
         <td class="exchange-cell">${exchangeDisplay}</td>
         <td>${amountDisplay}</td>
         <td>${priceDisplay}</td>
@@ -3029,9 +3071,12 @@
       // Mobile card view
       const mobileCard = document.createElement('div');
       mobileCard.className = 'mobile-position-card';
+      if (editMode && isHidden) {
+        mobileCard.classList.add('position-row-hidden');
+      }
       mobileCard.innerHTML = `
         <div class="card-header">
-          <span class="card-asset">${pos.asset}</span>
+          <span class="card-asset">${pos.asset}${editButton}</span>
           <span class="card-exchange">${exchangeDisplay}</span>
         </div>
         <div class="card-grid">
@@ -3380,6 +3425,34 @@
         hideNfts = !hideNfts;
         els.toggleNftsBtn.textContent = hideNfts ? '[SHOW NFTS]' : '[HIDE NFTS]';
         renderPositionsTable();
+      });
+    }
+    
+    // Add edit list mode toggle
+    if (els.editListBtn) {
+      els.editListBtn.addEventListener('click', () => {
+        editMode = !editMode;
+        els.editListBtn.textContent = editMode ? '[SAVE CHANGES]' : '[EDIT LIST]';
+        renderPositionsTable();
+      });
+    }
+    
+    // Add event delegation for hide/show buttons (they're created dynamically)
+    if (els.positionsBody) {
+      els.positionsBody.addEventListener('click', (e) => {
+        if (e.target.classList.contains('position-edit-btn')) {
+          const assetKey = e.target.getAttribute('data-asset-key');
+          toggleAssetVisibility(assetKey);
+        }
+      });
+    }
+    
+    if (els.mobilePositionsContainer) {
+      els.mobilePositionsContainer.addEventListener('click', (e) => {
+        if (e.target.classList.contains('position-edit-btn')) {
+          const assetKey = e.target.getAttribute('data-asset-key');
+          toggleAssetVisibility(assetKey);
+        }
       });
     }
 
