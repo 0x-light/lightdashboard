@@ -16,7 +16,8 @@
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json">
     
-    <!-- iOS webapp capable -->
+    <!-- Progressive Web App capabilities -->
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Dashboard">
@@ -353,6 +354,9 @@
         </div>
       </div>
     </div>
+
+    <!-- Last update timestamp (desktop only) -->
+    <div id="lastUpdateTimestamp" class="last-update-timestamp"></div>
 
     <script src="script.js" defer></script>
   </body>

@@ -710,6 +710,7 @@ select:focus {
 #calvinImage {
   width: 100%;
   display: flex;
+  justify-content: center;
 }
 
 /* Mobile Position Cards */
@@ -993,7 +994,7 @@ html[data-theme="dark"] {
   --bg-elev: #073642;
   --text: #839496;
   --text-bright: #ffffff;
-  --muted: #586e75;
+  --muted: #87a3ac;
   --accent: #ffffff;
   --border: rgba(147, 161, 161, 0.15);
   --card-bg: #000000;
@@ -1116,7 +1117,7 @@ html[data-theme="matrix"] {
 .sticker-label {
   font-size: 8px;
   text-align: center;
-  color: var(--muted);
+  color: var(--dd);
   line-height: 1.1;
   word-break: break-all;
   max-width: 100%;

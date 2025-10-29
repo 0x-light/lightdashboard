@@ -10,6 +10,7 @@ Everything is stored in your browser's localStorage:
 - UI preferences
 - Manual positions
 - Weather location
+- Midnight price snapshots (fetched from Hyperliquid/CoinGecko historical APIs at your local midnight for accurate 24h change tracking)
 
 The encryption prevents casual inspection but is not cryptographically secure. Keep your device secure and do not share your browser profile.
 
