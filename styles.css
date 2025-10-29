@@ -1045,6 +1045,44 @@ html[data-theme="matrix"] {
   --flash-mid: rgba(0, 255, 65, 0.2);
 }
 
+html[data-theme="halloween"] {
+  /* Spooky Halloween - orange on black with purple accents */
+  --bg: #0a0a0a;
+  --bg-elev: #1a0f00;
+  --text: #ff8c00;
+  --text-bright: #ffa500;
+  --muted: #cc6600;
+  --accent: #ff6600;
+  --border: rgba(255, 140, 0, 0.2);
+  --card-bg: #0a0a0a;
+  --green: #9d4edd;
+  --red: #ff4500;
+  --orange: #ff8c00;
+  --yellow: #ffa500;
+  --cyan: #9d4edd;
+  --flash-start: rgba(255, 140, 0, 0.4);
+  --flash-mid: rgba(157, 78, 221, 0.2);
+}
+
+html[data-theme="christmas"] {
+  /* Festive Christmas - red, green, and gold */
+  --bg: #0d1f0d;
+  --bg-elev: #1a0f0f;
+  --text: #e8f5e8;
+  --text-bright: #ffffff;
+  --muted: #a8c5a8;
+  --accent: #ff3333;
+  --border: rgba(255, 215, 0, 0.2);
+  --card-bg: #0d1f0d;
+  --green: #00c853;
+  --red: #ff1744;
+  --orange: #ffd700;
+  --yellow: #ffd700;
+  --cyan: #00c853;
+  --flash-start: rgba(255, 215, 0, 0.4);
+  --flash-mid: rgba(0, 200, 83, 0.2);
+}
+
 /* Sticker grid container */
 #stickerGrid {
   display: grid !important;

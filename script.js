@@ -355,15 +355,18 @@
   function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
     
-    // Update theme button text - cycle light -> dark -> amber -> matrix -> light
+    // Update theme button text - shows the NEXT theme when clicked
+    // light -> dark -> halloween -> christmas -> amber -> matrix -> light
     const themeLabels = {
-      'light': 'DARK MODE',
-      'dark': 'AMBER MODE',
-      'amber': 'MATRIX MODE',
-      'matrix': 'LIGHT MODE'
+      'light': 'DARK THEME',
+      'dark': 'HALLOWEEN THEME',
+      'halloween': 'CHRISTMAS THEME',
+      'christmas': 'AMBER THEME',
+      'amber': 'MATRIX THEME',
+      'matrix': 'LIGHT THEME'
     };
     
-    const nextThemeLabel = themeLabels[theme] || 'DARK MODE';
+    const nextThemeLabel = themeLabels[theme] || 'DARK THEME';
     
     if (els.toggleThemeBtn) {
       els.toggleThemeBtn.textContent = `[${nextThemeLabel}]`;
@@ -375,6 +378,15 @@
     // Update dropdown if it exists
     if (els.themeSelect) {
       els.themeSelect.value = theme;
+    }
+    
+    // Auto-enable snow for Christmas theme
+    if (theme === 'christmas' && !snowActive) {
+      toggleSnow();
+    }
+    // Auto-disable snow when leaving Christmas theme (optional - you can remove this if you want snow to persist)
+    else if (theme !== 'christmas' && snowActive) {
+      toggleSnow();
     }
   }
   
@@ -421,7 +433,7 @@
     if (els.toggleThemeBtn) {
       els.toggleThemeBtn.addEventListener('click', () => {
         const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-        const themeOrder = ['light', 'dark', 'amber', 'matrix'];
+        const themeOrder = ['light', 'dark', 'halloween', 'christmas', 'amber', 'matrix'];
         const currentIndex = themeOrder.indexOf(currentTheme);
         const newTheme = themeOrder[(currentIndex + 1) % themeOrder.length];
         applyTheme(newTheme);
@@ -3452,7 +3464,7 @@
     if (els.toggleThemeBtnMobile) {
       els.toggleThemeBtnMobile.addEventListener('click', () => {
         const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-        const themeOrder = ['light', 'dark', 'amber', 'matrix'];
+        const themeOrder = ['light', 'dark', 'halloween', 'christmas', 'amber', 'matrix'];
         const currentIndex = themeOrder.indexOf(currentTheme);
         const newTheme = themeOrder[(currentIndex + 1) % themeOrder.length];
         applyTheme(newTheme);
