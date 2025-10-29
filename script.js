@@ -1451,6 +1451,17 @@
   // Store all position data globally for hero summary
   let allPositionsData = [];
   let weatherData = null;
+  
+  // Store actual account balances for accurate total value calculation
+  // This uses real account balances, not position notional values, to properly handle leverage
+  // - Hyperliquid: accountValue from marginSummary (perp) + spot balance values
+  // - Lighter: collateral + unrealized_pnl from account data
+  // - NFTs: total floor value (count * floor price)
+  let accountBalances = {
+    hyperliquid: 0,  // Total account value including perp margin and spot balances
+    lighter: 0,      // Collateral + unrealized PnL
+    nfts: 0          // Total NFT floor value
+  };
 
   async function refreshAll() {
     // Throttle refreshes to prevent excessive API calls
@@ -1892,6 +1903,13 @@
   async function fetchAndRenderPositions() {
     allPositionsData = [];
     
+    // Reset account balances
+    accountBalances = {
+      hyperliquid: 0,
+      lighter: 0,
+      nfts: 0
+    };
+    
     // Fetch data for all wallets
     const settings = loadSettings() || getDefaultSettings();
     const wallets = parseWallets(settings.walletAddresses);
@@ -1981,9 +1999,51 @@
     }
     
     for (const { hlData, lighterData, nftData } of allWalletData) {
-      // Process Hyperliquid perp positions
+      // === Extract TRUE account balances for accurate portfolio value ===
+      // Using actual balances instead of position notional values properly accounts for leverage
+      // A 10x leveraged position with $1000 notional only requires ~$100 in margin
+      
+      // Hyperliquid perp: Use accountValue from marginSummary (balance + unrealized PnL)
+      // Per https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api
+      if (hlData && hlData.perp && hlData.perp.marginSummary) {
+        const accountValue = parseFloat(hlData.perp.marginSummary.accountValue || 0);
+        accountBalances.hyperliquid += accountValue;
+      }
+      
+      // Hyperliquid spot: Sum all spot token balances converted to USD
+      if (hlData && hlData.spot && hlData.spot.balances) {
+        const spotPrices = hlSpotPrices || {};
+        for (const bal of hlData.spot.balances) {
+          const tokenAmount = parseFloat(bal.total || 0);
+          if (tokenAmount > 0) {
+            let usdValue = tokenAmount;
+            if (bal.coin !== 'USDC' && spotPrices[bal.coin]) {
+              usdValue = tokenAmount * parseFloat(spotPrices[bal.coin]);
+            }
+            accountBalances.hyperliquid += usdValue;
+          }
+        }
+      }
+      
+      // Lighter: Use collateral + unrealized PnL from account data
+      // Per https://apidocs.lighter.xyz/reference/account-1
+      if (lighterData && lighterData.accounts && lighterData.accounts[0]) {
+        const account = lighterData.accounts[0];
+        const collateral = parseFloat(account.collateral || 0);
+        const unrealizedPnl = parseFloat(account.unrealized_pnl || 0);
+        accountBalances.lighter += (collateral + unrealizedPnl);
+      }
+      
+      // NFTs: Use current floor value (no leverage applicable)
+      if (nftData && nftData.collections && nftData.collections.length > 0) {
+        for (const collection of nftData.collections) {
+          const totalValue = collection.count * collection.floorPriceUsd;
+          accountBalances.nfts += totalValue;
+        }
+      }
+      
+      // Process Hyperliquid perp positions (for display only, not for balance calculation)
       if (hlData && hlData.perp && hlData.perp.assetPositions) {
-        console.log('Processing Hyperliquid perp positions:', hlData.perp.assetPositions.length);
           for (const pos of hlData.perp.assetPositions) {
           const coin = pos.position?.coin || 'Unknown';
           const marketInfo = hlMarketData[coin] || {};
@@ -2536,9 +2596,12 @@
       els.greetingMobile.textContent = `${timeOfDay}, ${userName}.`;
     }
     
-    // Calculate total P&L
+    // Calculate total portfolio value from actual account balances
+    // This is more accurate than summing position values as it accounts for leverage
+    const totalValue = accountBalances.hyperliquid + accountBalances.lighter + accountBalances.nfts;
+    
+    // Calculate total P&L from positions (for display purposes)
     const totalPnl = allPositionsData.reduce((sum, pos) => sum + pos.pnl, 0);
-    const totalValue = allPositionsData.reduce((sum, pos) => sum + pos.value, 0);
     
     // Get asset highlights based on 24h change
     const highlights = [];
