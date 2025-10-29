@@ -1394,7 +1394,7 @@ input[type="range"]:focus::-moz-range-thumb {
   }
 }
 
-/* Last update timestamp - bottom left */
+/* Last update timestamp - bottom left on desktop, last card on mobile */
 .last-update-timestamp {
   position: fixed;
   bottom: 24px;
@@ -1404,4 +1404,13 @@ input[type="range"]:focus::-moz-range-thumb {
   opacity: 0.6;
   pointer-events: none;
   z-index: 5;
+}
+
+@media (max-width: 768px) {
+  .last-update-timestamp {
+    position: static;
+    margin: 24px auto;
+    text-align: center;
+    opacity: 0.6;
+  }
 }
