@@ -1393,3 +1393,15 @@ input[type="range"]:focus::-moz-range-thumb {
     max-width: none;
   }
 }
+
+/* Last update timestamp - bottom left */
+.last-update-timestamp {
+  position: fixed;
+  bottom: 24px;
+  left: 32px;
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 5;
+}

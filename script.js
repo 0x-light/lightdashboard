@@ -193,6 +193,16 @@
     comicStrip: document.getElementById('comicStrip'),
     showComic: document.getElementById('showComic'),
     comicTitle: document.getElementById('comicTitle'),
+    lastUpdateTimestamp: document.getElementById('lastUpdateTimestamp'),
+    showSnowBtn: document.getElementById('showSnowBtn'),
+    showRainBtn: document.getElementById('showRainBtn'),
+    showThemeBtn: document.getElementById('showThemeBtn'),
+    showAmountsBtn: document.getElementById('showAmountsBtn'),
+    showFontSize: document.getElementById('showFontSize'),
+    showStickersBtn: document.getElementById('showStickersBtn'),
+    toggleSnowBtn: document.getElementById('toggleSnowBtn'),
+    toggleRainBtn: document.getElementById('toggleRainBtn'),
+    fontSizeControls: document.getElementById('fontSizeControls'),
   };
   
   let amountsVisible = true;
@@ -302,7 +312,13 @@
       centerUI: false,
       minBalanceThreshold: 100,
       enableRealTimeUpdates: true,
-      realTimeUpdateInterval: 10 // seconds
+      realTimeUpdateInterval: 10, // seconds
+      showSnowBtn: true,
+      showRainBtn: true,
+      showThemeBtn: true,
+      showAmountsBtn: true,
+      showFontSize: true,
+      showStickersBtn: true
     };
   }
   
@@ -312,6 +328,28 @@
       .split(',')
       .map(w => w.trim())
       .filter(w => w.length > 0);
+  }
+
+  function applyHeaderVisibility(settings) {
+    // Show/hide header bar elements based on settings
+    if (els.toggleSnowBtn) {
+      els.toggleSnowBtn.style.display = settings.showSnowBtn ? '' : 'none';
+    }
+    if (els.toggleRainBtn) {
+      els.toggleRainBtn.style.display = settings.showRainBtn ? '' : 'none';
+    }
+    if (els.toggleThemeBtn) {
+      els.toggleThemeBtn.style.display = settings.showThemeBtn ? '' : 'none';
+    }
+    if (els.toggleAmountsBtn) {
+      els.toggleAmountsBtn.style.display = settings.showAmountsBtn ? '' : 'none';
+    }
+    if (els.fontSizeControls) {
+      els.fontSizeControls.style.display = settings.showFontSize ? '' : 'none';
+    }
+    if (els.openStickersBtn) {
+      els.openStickersBtn.style.display = settings.showStickersBtn ? '' : 'none';
+    }
   }
 
   function applyTheme(theme) {
@@ -506,6 +544,14 @@
     els.showComic.checked = settings.showComic ?? true;
     els.refreshMins.value = settings.refreshMinutes ?? 30;
     els.comicStrip.value = settings.comicStrip || 'calvinandhobbes';
+    
+    // Header bar visibility settings
+    els.showSnowBtn.checked = settings.showSnowBtn ?? true;
+    els.showRainBtn.checked = settings.showRainBtn ?? true;
+    els.showThemeBtn.checked = settings.showThemeBtn ?? true;
+    els.showAmountsBtn.checked = settings.showAmountsBtn ?? true;
+    els.showFontSize.checked = settings.showFontSize ?? true;
+    els.showStickersBtn.checked = settings.showStickersBtn ?? true;
 
     // Show settings panel
     els.settingsDialog.style.display = 'block';
@@ -577,6 +623,15 @@
     newSettings.wallpaper = els.wallpaperSelect ? els.wallpaperSelect.value : 'none';
     newSettings.enableRealTimeUpdates = els.enableRealTimeUpdates.checked;
     newSettings.realTimeUpdateInterval = Math.max(5, Math.min(60, Number(els.realTimeUpdateInterval.value || 10)));
+    
+    // Header bar visibility settings
+    newSettings.showSnowBtn = els.showSnowBtn.checked;
+    newSettings.showRainBtn = els.showRainBtn.checked;
+    newSettings.showThemeBtn = els.showThemeBtn.checked;
+    newSettings.showAmountsBtn = els.showAmountsBtn.checked;
+    newSettings.showFontSize = els.showFontSize.checked;
+    newSettings.showStickersBtn = els.showStickersBtn.checked;
+    
     return newSettings;
   }
 
@@ -737,6 +792,9 @@
       
       // Apply wallpaper
       applyWallpaper(s.wallpaper);
+      
+      // Apply header visibility
+      applyHeaderVisibility(s);
       
       // Restart real-time updates with new settings
       stopRealTimeUpdates();
@@ -1718,6 +1776,20 @@
     
     // Update hero section with summary
     await updateHeroSection();
+    
+    // Update last refresh timestamp
+    updateLastUpdateTimestamp();
+  }
+  
+  function updateLastUpdateTimestamp() {
+    if (!els.lastUpdateTimestamp) return;
+    
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    
+    els.lastUpdateTimestamp.textContent = `Last update: ${hours}:${minutes}:${seconds}`;
   }
   
   // Helper function to normalize NFT collection display names
@@ -2816,6 +2888,7 @@
       if (updatedAssets.size > 0) {
         renderPositionsTable();
         await updateHeroSection();
+        updateLastUpdateTimestamp();
         
         // Add flash animation to updated cells
         requestAnimationFrame(() => {
@@ -4500,12 +4573,13 @@
     setupRainControls();
     restoreStickyStickers();
     
-    // Apply wallpaper from settings
+    // Apply settings on load
     const settings = loadSettings() || getDefaultSettings();
     if (settings.wallpaper) {
       applyWallpaper(settings.wallpaper);
       if (els.wallpaperSelect) els.wallpaperSelect.value = settings.wallpaper;
     }
+    applyHeaderVisibility(settings);
     
     // Wallpaper change handler
     if (els.wallpaperSelect) {

@@ -37,7 +37,7 @@
         <button id="toggleRainBtn" class="btn-text">[RAIN ON]</button>
         <button id="toggleThemeBtn" class="btn-text">[DARK MODE]</button>
         <button id="toggleAmountsBtn" class="btn-text">[SHOW AMOUNTS]</button>
-        <div class="font-size-controls">
+        <div id="fontSizeControls" class="font-size-controls">
           <button id="decreaseFontBtn" class="btn-text">[-</button>
           <span id="fontSizeDisplay" class="btn-text">15px</span>
           <button id="increaseFontBtn" class="btn-text">+]</button>
@@ -208,6 +208,35 @@
           </fieldset>
 
           <fieldset>
+            <legend>Header Bar</legend>
+            <div class="help">Customize which buttons appear in the header bar</div>
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+              <input id="showSnowBtn" type="checkbox" class="settings-input" checked>
+              Show Snow button
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+              <input id="showRainBtn" type="checkbox" class="settings-input" checked>
+              Show Rain button
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+              <input id="showThemeBtn" type="checkbox" class="settings-input" checked>
+              Show Theme button
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+              <input id="showAmountsBtn" type="checkbox" class="settings-input" checked>
+              Show Amounts button
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+              <input id="showFontSize" type="checkbox" class="settings-input" checked>
+              Show Font Size controls
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+              <input id="showStickersBtn" type="checkbox" class="settings-input" checked>
+              Show Stickers button
+            </label>
+          </fieldset>
+
+          <fieldset>
             <legend>Updates & Data</legend>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
               <input id="enableRealTimeUpdates" type="checkbox" class="settings-input">
@@ -355,7 +384,7 @@
       </div>
     </div>
 
-    <!-- Last update timestamp (desktop only) -->
+    <!-- Last update timestamp (bottom left, always visible) -->
     <div id="lastUpdateTimestamp" class="last-update-timestamp"></div>
 
     <script src="script.js" defer></script>
