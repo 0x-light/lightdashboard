@@ -173,7 +173,7 @@
     weatherLon: document.getElementById('weatherLon'),
     showRainForecast: document.getElementById('showRainForecast'),
     useColoredPnL: document.getElementById('useColoredPnL'),
-    centerUI: document.getElementById('centerUI'),
+    leftAligned: document.getElementById('leftAligned'),
     minBalanceThreshold: document.getElementById('minBalanceThreshold'),
     enableRealTimeUpdates: document.getElementById('enableRealTimeUpdates'),
     realTimeUpdateInterval: document.getElementById('realTimeUpdateInterval'),
@@ -309,7 +309,7 @@
       showComic: true,
       showRainForecast: true,
       useColoredPnL: true,
-      centerUI: false,
+      leftAligned: false,
       minBalanceThreshold: 100,
       enableRealTimeUpdates: true,
       realTimeUpdateInterval: 10, // seconds
@@ -378,13 +378,13 @@
     }
   }
   
-  function applyCenterUI(centerUI) {
+  function applyAlignment(leftAligned) {
     const container = document.querySelector('.container');
     if (container) {
-      if (centerUI) {
-        container.style.margin = '0 auto';
-      } else {
+      if (leftAligned) {
         container.style.margin = '';
+      } else {
+        container.style.margin = '0 auto';
       }
     }
   }
@@ -536,7 +536,7 @@
     els.weatherLon.value = settings.weather.lon ?? '';
     els.showRainForecast.checked = settings.showRainForecast ?? true;
     els.useColoredPnL.checked = settings.useColoredPnL ?? true;
-    els.centerUI.checked = settings.centerUI ?? false;
+    els.leftAligned.checked = settings.leftAligned ?? false;
     els.minBalanceThreshold.value = settings.minBalanceThreshold ?? 100;
     els.enableRealTimeUpdates.checked = settings.enableRealTimeUpdates ?? true;
     els.realTimeUpdateInterval.value = settings.realTimeUpdateInterval ?? 10;
@@ -616,7 +616,7 @@
     newSettings.showComic = els.showComic.checked;
     newSettings.showRainForecast = els.showRainForecast.checked;
     newSettings.useColoredPnL = els.useColoredPnL.checked;
-    newSettings.centerUI = els.centerUI.checked;
+    newSettings.leftAligned = els.leftAligned.checked;
     newSettings.minBalanceThreshold = Math.max(0, Number(els.minBalanceThreshold.value || 100));
     newSettings.theme = els.themeSelect.value || 'light';
     newSettings.wallpaper = els.wallpaperSelect ? els.wallpaperSelect.value : 'none';
@@ -717,7 +717,7 @@
             closeSettings();
             
             // Apply all settings
-            applyCenterUI(settings.centerUI);
+            applyAlignment(settings.leftAligned);
             applyTheme(settings.theme);
             
             // Restart real-time updates
@@ -781,8 +781,8 @@
         comicSection.style.display = s.showComic ? 'block' : 'none';
       }
       
-      // Apply center UI setting
-      applyCenterUI(s.centerUI);
+      // Apply alignment setting
+      applyAlignment(s.leftAligned);
       
       // Apply theme
       applyTheme(s.theme);
@@ -3313,7 +3313,7 @@
     const settings = loadSettings() || getDefaultSettings();
     if (!loadSettings()) saveSettings(settings);
     initTheme(settings);
-    applyCenterUI(settings.centerUI ?? false);
+    applyAlignment(settings.leftAligned ?? false);
     addHandlers();
     refreshAll();
     
