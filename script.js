@@ -38,7 +38,7 @@
       try {
         return decodeURIComponent(atob(encoded.substring(ENCRYPT_PREFIX.length)));
       } catch (e) {
-        console.error('Decryption failed:', e);
+        console.error('✗ Decryption failed');
         return ''; // Return empty string if decryption fails
       }
     }
@@ -471,7 +471,7 @@
             }, 500);
           }
         }).catch(err => {
-          console.error('Failed to load assets:', err);
+          console.error('✗ Asset load failed');
         });
       }
       
@@ -515,7 +515,6 @@
         addresses.push(settings.lighterAddress);
       }
       settings.walletAddresses = addresses.join(', ');
-      console.log('Migrated old wallet settings');
     }
     
     // Populate settings
@@ -544,7 +543,7 @@
     els.showComic.checked = settings.showComic ?? true;
     els.refreshMins.value = settings.refreshMinutes ?? 30;
     els.comicStrip.value = settings.comicStrip || 'calvinandhobbes';
-    
+
     // Header bar visibility settings
     els.showSnowBtn.checked = settings.showSnowBtn ?? true;
     els.showRainBtn.checked = settings.showRainBtn ?? true;
@@ -687,7 +686,6 @@
             els.exportSettingsBtn.textContent = originalText;
           }, 1500);
         } catch (err) {
-          console.log('Could not copy to clipboard, showing text instead');
         }
       });
     }
@@ -736,7 +734,7 @@
             refreshAll();
           } catch (err) {
             alert('Invalid settings data. Please check the pasted text and try again.');
-            console.error('Import error:', err);
+            console.error('✗ Import failed');
           }
         }
       });
@@ -767,7 +765,6 @@
           try {
             await navigator.clipboard.writeText(this.value);
           } catch (err) {
-            console.log('Could not copy to clipboard');
           }
         }
       });
@@ -847,13 +844,13 @@
               }
             }
           } catch (err) {
-            console.log('Could not fetch city name:', err);
+            // Silent
           }
 
           els.getLocationBtn.textContent = '[USE MY LOCATION]';
           els.getLocationBtn.disabled = false;
         } catch (err) {
-          console.error('Geolocation error:', err);
+          console.error('✗ Location denied');
           alert('Could not get your location. Please check browser permissions.');
           els.getLocationBtn.textContent = '[USE MY LOCATION]';
           els.getLocationBtn.disabled = false;
@@ -927,7 +924,6 @@
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
       
-      console.log(`Fetching ${comic.name} from:`, comicUrl);
       
       let imgUrl = null;
       
@@ -942,7 +938,6 @@
             const value = img.getAttribute(attr);
             if (value && value.includes('featureassets.amuniversal.com')) {
               imgUrl = value.split(',')[0].split(' ')[0]; // Handle srcset format
-              console.log('Far Side image found (amuniversal CDN):', imgUrl);
               break;
             }
           }
@@ -955,7 +950,6 @@
           const match = htmlText.match(/https?:\/\/featureassets\.amuniversal\.com\/[^\s"'<>]+/);
           if (match) {
             imgUrl = match[0];
-            console.log('Far Side image found (HTML regex):', imgUrl);
           }
         }
       }
@@ -976,7 +970,6 @@
         }
       }
       
-      console.log('Image URL found:', imgUrl);
       
       if (imgUrl) {
         // Ensure the URL is absolute
@@ -1024,13 +1017,12 @@
           }
         }
         
-        console.log(`✅ ${comic.name} comic rendered successfully`);
       } else {
         throw new Error('Could not find comic image');
       }
       
     } catch (err) {
-      console.error('Comic render error:', err);
+      console.error('✗ Comic load failed');
       
       const settings = loadSettings() || getDefaultSettings();
       const comicStrip = settings.comicStrip || 'calvinandhobbes';
@@ -1184,7 +1176,7 @@
       if (!resp.ok) throw new Error('Weather API failed');
       return await resp.json();
     } catch (err) {
-      console.error('Weather fetch error:', err);
+      console.error('✗ Weather data unavailable');
       return null;
     }
   }
@@ -1256,7 +1248,7 @@
       
       return { perp: perpData, spot: spotData };
     } catch (err) {
-      console.error('Hyperliquid fetch error:', err);
+      console.error('✗ Hyperliquid connection failed');
       return null;
     }
   }
@@ -1266,24 +1258,22 @@
     const list = document.getElementById('cryptoList');
     
     if (!summary || !list) {
-      console.error('Missing summary or list elements');
+      // Missing elements
       return;
     }
     
     const settings = loadSettings();
     if (!settings || !settings.hyperliquidAddress) {
-      console.error('No hyperliquid address in settings');
+      // No address
       return;
     }
     
-    console.log('Fetching Hyperliquid positions...');
     const data = await fetchHyperliquidPositions(settings.hyperliquidAddress);
     if (!data) {
-      console.error('Failed to fetch Hyperliquid data');
+      console.error('✗ Hyperliquid data unavailable');
       return;
     }
     
-    console.log('Hyperliquid data:', data);
     
     let hyperliquidTotal = 0;
     
@@ -1300,7 +1290,7 @@
           prices = await pricesResp.json();
         }
       } catch (err) {
-        console.error('Failed to fetch prices', err);
+        // Price fetch failed
       }
     }
     
@@ -1325,15 +1315,13 @@
         }
       }
     } catch (err) {
-      console.error('Failed to fetch market prices', err);
+      // Market price fetch failed
     }
     
     // Render perpetual positions
     if (data.perp && data.perp.assetPositions && data.perp.assetPositions.length > 0) {
-      console.log('Rendering perp positions:', data.perp.assetPositions);
       
       for (const pos of data.perp.assetPositions) {
-        console.log('Perp position:', pos);
         const coin = pos.position?.coin || 'Unknown';
         const pnl = parseFloat(pos.position?.unrealizedPnl || 0);
         hyperliquidTotal += pnl;
@@ -1359,7 +1347,6 @@
     
     // Render spot balances (HYPE, USDC, etc)
     if (data.spot && data.spot.balances && data.spot.balances.length > 0) {
-      console.log('Rendering spot balances:', data.spot.balances);
       for (const bal of data.spot.balances) {
         // bal.total is the token amount, bal.token is the LP token count
         const tokenAmount = parseFloat(bal.total || 0);
@@ -1387,7 +1374,6 @@
           pnlInfo = `<div class="pnl ${pnlClass}">P&L: ${pnl >= 0 ? '+' : '-'}$${Math.abs(pnl).toFixed(2)} (${pnlPercent >= 0 ? '+' : '-'}${Math.abs(pnlPercent).toFixed(2)}%)</div>`;
         }
         
-        console.log(`Rendering ${bal.coin}: ${tokenAmount} = $${usdValue}`);
         hyperliquidTotal += usdValue;
         
         const li = document.createElement('li');
@@ -1405,7 +1391,6 @@
         list.appendChild(li);
       }
     } else {
-      console.log('No spot balances to render');
     }
     
     // Update summary with Hyperliquid total
@@ -1425,7 +1410,6 @@
       resp = await fetch(`https://mainnet.zklighter.elliot.ai/api/v1/account?by=l1_address&value=${address}`);
       if (resp.ok) {
         const data = await resp.json();
-        console.log('Lighter mainnet account data:', data);
         return data;
       }
       
@@ -1433,14 +1417,12 @@
       resp = await fetch(`https://testnet.zklighter.elliot.ai/api/v1/account?by=l1_address&value=${address}`);
       if (resp.ok) {
         const data = await resp.json();
-        console.log('Lighter testnet account data:', data);
         return data;
       }
       
-      console.log('Lighter API endpoints returned no data');
       return null;
     } catch (err) {
-      console.error('Lighter fetch error:', err);
+      console.error('✗ Lighter connection failed');
       return null;
     }
   }
@@ -1450,33 +1432,27 @@
     const list = document.getElementById('cryptoList');
     
     if (!summary || !list) {
-      console.error('Missing summary or list elements in renderLighterData');
+      // Missing elements
       return;
     }
     
     const settings = loadSettings();
     if (!settings || !settings.lighterAddress) {
-      console.log('No lighter address in settings');
       return;
     }
     
-    console.log('Fetching Lighter positions...');
     const data = await fetchLighterPositions(settings.lighterAddress);
-    console.log('Lighter data:', data);
     
     if (!data || !data.accounts || !Array.isArray(data.accounts) || data.accounts.length === 0) {
-      console.log('No Lighter positions found');
       return;
     }
     
     // Get the first account's positions
     const account = data.accounts[0];
     if (!account || !account.positions) {
-      console.log('No positions in Lighter account');
       return;
     }
     
-    console.log('Rendering', account.positions.length, 'Lighter positions');
     
     let lighterTotal = 0;
     
@@ -1620,7 +1596,6 @@
       
       if (response.ok) {
         const data = await response.json();
-        console.log(`Hyperliquid API response for ${asset}:`, data);
         
         // Find the candle closest to midnight
         if (data && data.length > 0) {
@@ -1634,13 +1609,12 @@
           const closestCandle = sortedCandles[0];
           if (closestCandle && closestCandle.c) {
             const price = parseFloat(closestCandle.c);
-            console.log(`${asset} closest candle at ${new Date(closestCandle.t).toLocaleString()}: $${price}`);
             return price;
           }
         }
       }
     } catch (err) {
-      console.error(`Hyperliquid API error for ${asset}:`, err);
+      // API error
     }
     return null;
   }
@@ -1673,10 +1647,6 @@
     const midnightDate = new Date(midnightTs);
     const now = new Date();
     
-    console.log('🕐 Current time:', now.toLocaleString());
-    console.log('🌙 Target midnight:', midnightDate.toLocaleString());
-    console.log('📅 Midnight timestamp (ms):', midnightTs);
-    console.log(`⏱️ Fetching midnight prices for ${midnightDate.toLocaleString()}`);
     
     const priceMap = {
       _ACCOUNT_BALANCES: {
@@ -1687,7 +1657,6 @@
       }
     };
 
-    console.log('💰 Midnight account balances:', priceMap._ACCOUNT_BALANCES);
 
     // For NFTs, use current floor prices (no historical API available)
     // Store by collection slug since all NFTs in a collection share the same floor
@@ -1700,7 +1669,6 @@
           const key = `${pos.collectionSlug}_NFT`;
           if (!nftCollections.has(key)) {
             priceMap[key] = pos.price || 0;
-            console.log(`${pos.collectionSlug} (NFT collection) floor: $${pos.price}`);
             nftCollections.add(key);
           }
         }
@@ -1728,9 +1696,7 @@
             
             if (price !== null) {
               priceMap[key] = price;
-              console.log(`${pos.asset} (${pos.exchange}) midnight price: $${price.toFixed(2)} [${source}]`);
             } else {
-              console.log(`${pos.asset} (${pos.exchange}) - no midnight price available`);
             }
           })()
         );
@@ -1738,7 +1704,6 @@
     }
 
     await Promise.all(pricePromises);
-    console.log('Complete midnight price map:', priceMap);
     return priceMap;
   }
 
@@ -1808,7 +1773,7 @@
     // Otherwise use the provided name
     return name;
   }
-
+  
   async function fetchOpenSeaNFTs(address) {
     if (!address) return null;
     
@@ -1870,10 +1835,10 @@
         if (allNfts.length > 0) {
         const openSeaData = { nfts: allNfts };
         
-            const collections = {};
-            const collectionSlugs = new Set();
-            const nftsByCollection = {};
-            
+              const collections = {};
+              const collectionSlugs = new Set();
+              const nftsByCollection = {};
+              
             for (const rawNft of openSeaData.nfts) {
               const nft = { ...rawNft };
 
@@ -1890,7 +1855,7 @@
               const chain = nft._chain || 'ethereum';
 
               // Determine the contract address (can arrive as string or nested object)
-              let contractAddr = nft.contract;
+                let contractAddr = nft.contract;
               if (contractAddr && typeof contractAddr === 'object') {
                 contractAddr = contractAddr.address || contractAddr.contract_address || contractAddr.id || null;
               }
@@ -1908,8 +1873,8 @@
 
               // Fall back to identifier parsing if needed
               if ((!contractAddr || typeof contractAddr !== 'string') && nft.identifier && nft.identifier.includes(':')) {
-                const parts = nft.identifier.split(':');
-                if (parts.length >= 2) {
+                  const parts = nft.identifier.split(':');
+                  if (parts.length >= 2) {
                   contractAddr = parts[1];
                 }
               }
@@ -1920,12 +1885,11 @@
 
               const collectionKey = collectionSlug || contractAddr;
               if (!collectionKey) {
-                console.log('    ⚠️ Skipping NFT without identifiable collection key', nft);
                 continue;
               }
-
-              if (collectionSlug) {
-                collectionSlugs.add(collectionSlug);
+                
+                if (collectionSlug) {
+                  collectionSlugs.add(collectionSlug);
               }
 
               if (!nftsByCollection[collectionKey]) {
@@ -1940,17 +1904,17 @@
             // We'll get the proper name from the stats API later when possible
                 collections[collectionKey] = {
               name: collectionName || collectionSlug || contractAddr || 'Unknown Collection',
-                  contract: contractAddr,
+                    contract: contractAddr,
                   slug: collectionSlug || collectionKey,
               chain: chain,
-                  count: 0,
-                  floorPriceUsd: 0,
+                    count: 0,
+                    floorPriceUsd: 0,
               floorPriceNative: 0,
               nativeToken: 'ETH',
                   change24h: null,
                   totalPaidUsd: 0,
-                  nfts: []
-                };
+                    nfts: []
+                  };
           } else {
             // Update stored metadata if we discover more accurate info
             if (collectionName && (!collections[collectionKey].name || collections[collectionKey].name === collections[collectionKey].slug)) {
@@ -2082,7 +2046,6 @@
           await Promise.all(statsPromises);
 
           // Fetch last sale price for EACH individual NFT - SIMPLIFIED
-          console.log('🎨 Fetching individual NFT purchase prices...');
           for (const [collectionKey, collection] of Object.entries(collections)) {
             const nftList = nftsByCollection[collectionKey];
             if (!nftList || nftList.length === 0) continue;
@@ -2091,11 +2054,9 @@
             const contractAddress = collection.contract;
 
             if (!contractAddress) {
-              console.log(`  ⚠️ Missing contract address for collection ${collection.name}, skipping last sale fetch.`);
               continue;
             }
 
-            console.log(`  Collection: ${collection.name} (${nftList.length} NFTs)`);
             
             for (const nft of nftList) {
               // Determine token ID, supporting multiple possible fields
@@ -2105,47 +2066,40 @@
                 if (identifier.includes(':')) {
                   const parts = identifier.split(':');
                   tokenId = parts[2] || parts[parts.length - 1];
-                } else {
+                  } else {
                   tokenId = identifier;
                 }
               }
 
               if (!tokenId) {
-                console.log(`    ⚠️ Could not determine token ID for NFT`, nft);
                 continue;
               }
 
               nft.tokenId = tokenId;
 
-              console.log(`    Fetching #${tokenId}...`);
               
               try {
                 // Fetch sale events from OpenSea Events API (more reliable than last_sale field)
                 const eventsUrl = `https://api.opensea.io/api/v2/events/chain/${chain}/contract/${contractAddress}/nfts/${tokenId}?event_type=sale`;
-                console.log(`      Events URL: ${eventsUrl}`);
                 
                 const eventsResp = await fetch(eventsUrl, {
-                  headers: {
-                    'X-API-KEY': apiKey,
-                    'accept': 'application/json'
-                  }
-                });
-                
+                      headers: {
+                        'X-API-KEY': apiKey,
+                        'accept': 'application/json'
+                      }
+                    });
+                    
                 if (!eventsResp.ok) {
-                  console.log(`      ❌ Events API returned ${eventsResp.status}`);
                   const errorText = await eventsResp.text();
-                  console.log(`      Error details: ${errorText}`);
                   continue;
                 }
                 
                 const eventsData = await eventsResp.json();
-                console.log(`      📦 Events data:`, eventsData);
                 
                 // Get the most recent sale event
                 const saleEvents = eventsData.asset_events || [];
                 const lastSaleEvent = saleEvents.length > 0 ? saleEvents[0] : null;
                 
-                console.log(`      🏷️ Last sale event:`, lastSaleEvent);
                 
                 if (lastSaleEvent && lastSaleEvent.payment) {
                   const payment = lastSaleEvent.payment;
@@ -2171,19 +2125,14 @@
                     nft.lastSalePriceUsd = saleAmountUsd;
                     nft.lastSalePriceNative = saleAmountInToken;
                     nft.lastSaleToken = paymentToken;
-                    console.log(`      ✅ Last sale: ${saleAmountInToken.toFixed(4)} ${nft.lastSaleToken} = $${saleAmountUsd.toFixed(0)}`);
                   } else {
-                    console.log(`      ℹ️ Unable to determine USD value for last sale (token price unavailable or zero).`);
                   }
                 } else {
-                  console.log(`      ℹ️ No sale events found for this NFT`);
+                    }
+                  } catch (err) {
+                  }
                 }
-              } catch (err) {
-                console.log(`      ❌ Error: ${err.message}`);
-                console.log(`      Stack:`, err.stack);
               }
-            }
-          }
               
               return { collections: Object.values(collections) };
             }
@@ -2358,7 +2307,6 @@
     // Collect NFT holdings across wallets; aggregate by collection
     const nftAggregates = new Map();
 
-    console.time('⏱️ Processing wallet data');
     
     // Fetch data for all wallets
     const settings = loadSettings() || getDefaultSettings();
@@ -2414,7 +2362,7 @@
           }
         }
     } catch (err) {
-      console.error('Hyperliquid market data error:', err);
+      console.error('✗ Hyperliquid market data unavailable');
     }
     
     // Fetch data for all wallets in parallel
@@ -2444,7 +2392,7 @@
         });
         hlSpotPrices = pricesResp.ok ? await pricesResp.json() : null;
     } catch (err) {
-        console.error('Error fetching HL spot prices:', err);
+        // Spot price fetch failed
       }
     }
     
@@ -2586,11 +2534,9 @@
       
       // Process OpenSea NFTs - aggregate holdings per collection
       if (nftData && nftData.collections && nftData.collections.length > 0) {
-        console.log('🎨 Processing NFT holdings:');
         for (const collection of nftData.collections) {
           const collectionKey = collection.slug || collection.contract || collection.name;
           if (!collectionKey) {
-            console.log('  ⚠️ Skipping collection without slug/contract/name', collection);
             continue;
           }
 
@@ -2666,7 +2612,6 @@
 
     // Push aggregated NFT positions into the positions list
     if (nftAggregates.size > 0) {
-      console.log(`🧮 Aggregated ${nftAggregates.size} NFT collections`);
       for (const aggregate of nftAggregates.values()) {
         const amount = aggregate.amount || 0;
         if (amount <= 0) continue;
@@ -2681,11 +2626,11 @@
           if (aggregate.totalCostUsd > 0) {
             pnlPercent = (pnl / aggregate.totalCostUsd) * 100;
           }
-        }
-
-        allPositionsData.push({
+          }
+          
+          allPositionsData.push({
           asset: aggregate.asset,
-          exchange: 'OpenSea',
+            exchange: 'OpenSea',
           amount: amount,
           value: totalValueUsd,
           price: unitPriceUsd,
@@ -2700,26 +2645,22 @@
       }
     }
 
-    console.timeEnd('⏱️ Processing wallet data');
     
     // === Calculate TRUE 24h changes from local midnight prices ===
     // This ensures all 24h changes are based on your local midnight, not exchange 24h periods
-    console.log('📊 Calculating 24h changes from local midnight...');
     
     let midnightData = getDailyPrices();
     
     // If no midnight data or it's from a previous day, fetch new midnight prices
     if (!midnightData || isNewDay(midnightData.timestamp)) {
-      console.log('Fetching fresh midnight prices...');
       const midnightPrices = await fetchMidnightPrices();
       saveDailyPrices(midnightPrices, getMidnightTimestamp());
       midnightData = { prices: midnightPrices, timestamp: getMidnightTimestamp() };
     } else {
-      console.log(`Using cached midnight prices from ${new Date(midnightData.timestamp).toLocaleString()}`);
     }
     
     // Calculate 24h change for each position based on midnight price
-    for (const pos of allPositionsData) {
+      for (const pos of allPositionsData) {
       const currentPrice = pos.price || 0;
       let midnightPrice = null;
       
@@ -2739,13 +2680,9 @@
       if (midnightPrice && midnightPrice > 0 && currentPrice > 0) {
         const change24h = ((currentPrice - midnightPrice) / midnightPrice) * 100;
         pos.change24h = change24h;
-        console.log(`${pos.asset} (${pos.exchange}): $${midnightPrice.toFixed(2)} → $${currentPrice.toFixed(2)} = ${change24h >= 0 ? '+' : ''}${change24h.toFixed(2)}%`);
-      } else {
-        console.log(`${pos.asset} (${pos.exchange}): Missing midnight price, keeping current change`);
       }
     }
     
-    console.log('✅ 24h changes updated from local midnight');
     
     // Render positions table
     renderPositionsTable();
@@ -2834,7 +2771,6 @@
             }
           }
         } catch (err) {
-          console.log('Error fetching Lighter data for real-time update:', err.message);
         }
       }
       
@@ -2934,7 +2870,7 @@
         });
       }
     } catch (err) {
-      console.error('Real-time update error:', err);
+      // Update error
     } finally {
       updateInProgress = false;
     }
@@ -3135,7 +3071,7 @@
         weatherData.moonPhase = phase;
       }
     } catch (err) {
-      console.error('Weather fetch error:', err);
+      console.error('✗ Weather data unavailable');
       weatherData = null;
     }
   }
@@ -3168,14 +3104,11 @@
     
     // If no snapshot exists or it's from a previous day, fetch TRUE midnight prices
     if (!midnightData || isNewDay(midnightData.timestamp)) {
-      console.log('📊 Fetching new midnight prices...');
       const midnightPrices = await fetchMidnightPrices();
       saveDailyPrices(midnightPrices, getMidnightTimestamp());
       midnightData = { prices: midnightPrices, timestamp: getMidnightTimestamp() };
     } else {
       const midnightDate = new Date(midnightData.timestamp);
-      console.log(`📊 Using cached midnight prices from ${midnightDate.toLocaleString()}`);
-      console.log('Midnight data:', midnightData.prices);
     }
     
     // === Calculate TRUE Daily P&L from Price Movements ===
@@ -3185,7 +3118,6 @@
     let totalDailyChange = 0;
     let portfolioValueAtMidnightPrices = 0;
     
-    console.log('💰 Calculating daily P&L from midnight prices:');
     
     for (const pos of allPositionsData) {
       const currentPrice = pos.price || 0;
@@ -3214,11 +3146,9 @@
         portfolioValueAtMidnightPrices += midnightValue;
         
         const pnlPercent = ((currentPrice - midnightPrice) / midnightPrice) * 100;
-        console.log(`  ${pos.asset}: ${amount.toFixed(2)} × ($${currentPrice.toFixed(2)} - $${midnightPrice.toFixed(2)}) = ${positionPnL >= 0 ? '+' : ''}$${positionPnL.toFixed(2)} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%)`);
       } else {
         // If no midnight price, use current value as midnight value
         portfolioValueAtMidnightPrices += (amount * currentPrice);
-        console.log(`  ${pos.asset}: No midnight price available, assuming flat`);
       }
     }
     
@@ -3227,8 +3157,6 @@
       ? (totalDailyChange / portfolioValueAtMidnightPrices) * 100 
       : 0;
     
-    console.log(`📊 Total daily change: ${totalDailyChange >= 0 ? '+' : ''}$${totalDailyChange.toFixed(2)} (${totalDailyChangePercent >= 0 ? '+' : ''}${totalDailyChangePercent.toFixed(2)}%)`);
-    console.log(`📊 Baseline for % calculation (current positions @ midnight prices): $${portfolioValueAtMidnightPrices.toFixed(2)}`);
     
     // Get asset highlights based on 24h change (for individual assets)
     const highlights = [];
@@ -3381,6 +3309,7 @@
   
 
   function init() {
+    console.log('✓ Dashboard initialized');
     const settings = loadSettings() || getDefaultSettings();
     if (!loadSettings()) saveSettings(settings);
     initTheme(settings);
@@ -4606,13 +4535,8 @@
   // Expose helper function to manually test midnight price fetching
   // Usage in console: testMidnightPrices()
   window.testMidnightPrices = async function() {
-    console.log('🧪 Testing midnight price fetch...');
-    console.log('Clearing cached midnight data...');
     localStorage.removeItem('dailyMidnightPrices.v1');
-    console.log('Triggering update...');
     await refreshAll();
-    console.log('✅ Complete! Check logs above for midnight prices.');
   };
   
-  console.log('💡 Tip: Run testMidnightPrices() in console to manually fetch midnight prices');
 })();
