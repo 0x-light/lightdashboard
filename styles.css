@@ -1402,8 +1402,13 @@ input[type="range"]:focus::-moz-range-thumb {
   font-size: 11px;
   color: var(--muted);
   opacity: 0.6;
-  pointer-events: none;
+  cursor: pointer;
   z-index: 5;
+  transition: opacity 0.2s;
+}
+
+.last-update-timestamp:hover {
+  opacity: 1;
 }
 
 @media (max-width: 768px) {
@@ -1412,5 +1417,10 @@ input[type="range"]:focus::-moz-range-thumb {
     margin: 24px auto;
     text-align: center;
     opacity: 0.6;
+    cursor: pointer;
+  }
+  
+  .last-update-timestamp:active {
+    opacity: 1;
   }
 }

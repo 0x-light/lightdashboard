@@ -644,6 +644,14 @@
       });
     }
     
+    // Last update timestamp - click to refresh
+    if (els.lastUpdateTimestamp) {
+      els.lastUpdateTimestamp.addEventListener('click', async () => {
+        els.lastUpdateTimestamp.textContent = 'Updating...';
+        await refreshAll();
+      });
+    }
+    
     // Sticker window handlers
     if (els.openStickersBtn) {
       els.openStickersBtn.addEventListener('click', openStickerWindow);
@@ -3200,6 +3208,8 @@
       : '$••••';
     
     // Daily change from midnight local time (includes all assets: crypto positions + NFTs)
+    console.log('Daily change debug:', { totalDailyChange, totalDailyChangePercent, allPositionsCount: allPositionsData.length });
+    
     if (totalDailyChange !== 0 && Math.abs(totalDailyChange) > 0.01) {
       const changeSign = totalDailyChange >= 0 ? 'up' : 'down';
       const changeAmountText = amountsVisible 
