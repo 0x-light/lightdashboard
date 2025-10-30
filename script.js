@@ -279,6 +279,7 @@
   }
 
   const els = {
+    loadingScreen: document.getElementById('loadingScreen'),
     toggleThemeBtn: document.getElementById('toggleThemeBtn'),
     openSettingsBtn: document.getElementById('openSettingsBtn'),
     closeSettingsBtn: document.getElementById('closeSettingsBtn'),
@@ -2044,6 +2045,17 @@
     const loadTime = ((performance.now() - startTime) / 1000).toFixed(2);
     console.log(`⚡ Loaded in ${loadTime}s`);
     
+    // Hide loading screen after first load
+    if (els.loadingScreen && !els.loadingScreen.classList.contains('hidden')) {
+      els.loadingScreen.classList.add('hidden');
+      // Remove from DOM after fade completes
+      setTimeout(() => {
+        if (els.loadingScreen) {
+          els.loadingScreen.style.display = 'none';
+        }
+      }, 300);
+    }
+    
     // BACKGROUND: Non-critical data (weather, comics) - don't block UI
     if (!priorityOnly) {
       Promise.all([
@@ -2097,9 +2109,15 @@
     const settings = loadSettings();
     const apiKey = settings?.openSeaApiKey || '';
     
+    if (!apiKey) {
+      console.error('✗ OpenSea: No API key configured');
+      return null;
+    }
+    
     try {
       // Try OpenSea API first if we have an API key
       if (apiKey) {
+        console.log(`⟳ OpenSea: Fetching NFTs for ${address.substring(0, 6)}...${address.substring(address.length - 4)}`);
         // Fetch from multiple chains
         const chains = [
           'ethereum', 
@@ -2134,20 +2152,28 @@
             if (chainResp.ok) {
               const chainData = await chainResp.json();
               if (chainData.nfts && chainData.nfts.length > 0) {
+                console.log(`  ✓ ${chain}: Found ${chainData.nfts.length} NFT(s)`);
                 // Tag each NFT with its chain
                 chainData.nfts.forEach(nft => {
                   nft._chain = chain;
                 });
                 return chainData.nfts;
               }
+            } else {
+              console.log(`  ⚠ ${chain}: ${chainResp.status} ${chainResp.statusText}`);
             }
             return [];
           })
-          .catch(() => [])
+          .catch((err) => {
+            console.error(`  ✗ ${chain}: ${err.message}`);
+            return [];
+          })
         );
         
         const chainResults = await Promise.all(chainPromises);
         const allNfts = chainResults.flat();
+        
+        console.log(`⟳ OpenSea: Total ${allNfts.length} NFT(s) found across all chains`);
         
         if (allNfts.length > 0) {
         const openSeaData = { nfts: allNfts };
@@ -2449,8 +2475,12 @@
               // Cache the result
               nftCache.set(cacheKey, { data: result, timestamp: Date.now() });
               
+              console.log(`✓ OpenSea: Processed ${result.collections.length} collection(s)`);
+              
               return result;
             }
+      } else {
+        console.log('⚠ OpenSea: No NFTs found');
       }
       
       // Fallback: Try Reservoir API (aggregates multiple marketplaces)
@@ -2515,6 +2545,7 @@
       
       return null;
     } catch (err) {
+      console.error('✗ OpenSea: Fatal error -', err.message);
       return null;
     }
   }
@@ -4361,7 +4392,49 @@
   }
   
 
+  function initDotGrid() {
+    const dotGrid = document.getElementById('dotGrid');
+    if (!dotGrid) return;
+    
+    // Create 8x8 grid (64 dots) with flame-like density (denser at bottom)
+    const gridSize = 8;
+    
+    for (let row = 0; row < gridSize; row++) {
+      for (let col = 0; col < gridSize; col++) {
+        const dot = document.createElement('div');
+        dot.className = 'dot';
+        
+        // Vertical progress: 0 = bottom, 1 = top
+        const verticalProgress = row / gridSize;
+        
+        // Bottom rows animate more frequently (denser/more active like fire base)
+        // Top rows animate less frequently (sparser like dissipating flames)
+        const densityFactor = 1 - verticalProgress; // 1 at bottom, 0 at top
+        
+        // Random delay with wave pattern
+        const horizontalWave = (col / gridSize) * 0.4; // Wave across horizontally
+        const randomOffset = Math.random() * 0.8; // Add randomness
+        const verticalDelay = verticalProgress * 0.6; // Bottom starts earlier
+        
+        const totalDelay = horizontalWave + randomOffset + verticalDelay;
+        
+        // Animation duration: faster at bottom (denser), slower at top (sparser)
+        const baseDuration = 1.5;
+        const durationVariation = verticalProgress * 0.8; // Top is slower
+        const duration = baseDuration + durationVariation;
+        
+        dot.style.setProperty('--delay', `${totalDelay}s`);
+        dot.style.setProperty('--duration', `${duration}s`);
+        
+        dotGrid.appendChild(dot);
+      }
+    }
+  }
+
   function init() {
+    // Initialize loading animation
+    initDotGrid();
+    
     // console.log('✓ Dashboard initialized');
     const settings = loadSettings() || getDefaultSettings();
     if (!loadSettings()) saveSettings(settings);
