@@ -101,6 +101,36 @@
   }
 }
 
+/* Greeting container with loader */
+.greeting-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Mini loader in header */
+.mini-loader {
+  display: grid;
+  grid-template-columns: repeat(4, 1.5px);
+  grid-template-rows: repeat(4, 1.5px);
+  gap: 2px;
+  width: 12px;
+  height: 12px;
+  margin-left: 5px;
+}
+
+.mini-loader .dot {
+  width: 1.5px;
+  height: 1.5px;
+}
+
+/* Mobile adjustments for mini loader */
+@media (max-width: 768px) {
+  .greeting-container {
+    gap: 8px;
+  }
+}
+
 /* Flash animation for real-time updates */
 @keyframes flash-update {
   0% { opacity: 0.3; }
@@ -944,6 +974,74 @@ select:focus {
   z-index: 1000;
 }
 
+/* Theme select wrapper and label */
+.theme-select-wrapper {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.theme-select-label {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: var(--muted);
+  opacity: .6;
+  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-size: inherit;
+  font-weight: 400;
+  text-transform: uppercase;
+  padding: 6px 0;
+  white-space: nowrap;
+}
+
+.theme-select-wrapper:hover .theme-select-label {
+  color: var(--text);
+  opacity: 1;
+}
+
+/* Theme select styled as btn-text */
+.theme-select-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background: transparent;
+  border: none;
+  color: transparent;
+  cursor: pointer;
+  margin: 0;
+  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-size: inherit;
+  font-weight: 400;
+  text-transform: uppercase;
+  width: auto;
+  width: 49px;
+  min-width: 49px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Remove dropdown arrow */
+.theme-select-btn::-ms-expand {
+  display: none;
+}
+
+.theme-select-btn:focus {
+  outline: none;
+}
+
+.theme-select-btn:focus ~ .theme-select-label,
+.theme-select-wrapper:focus-within .theme-select-label {
+  color: var(--text);
+  opacity: 1;
+}
+
+.theme-select-btn option {
+  background: var(--bg);
+  color: var(--text);
+}
+
 .mobile-menu.active {
   display: block;
 }
@@ -1265,6 +1363,101 @@ html[data-theme="christmas"] {
   --cyan: #00c853;
   --flash-start: rgba(255, 215, 0, 0.4);
   --flash-mid: rgba(0, 200, 83, 0.2);
+}
+
+html[data-theme="cyberpunk"] {
+  /* Cyberpunk - neon pink and cyan on dark */
+  --bg: #000000;
+  --bg-elev: #0a0e1a;
+  --text: #00d9ff;
+  --text-bright: #ff006e;
+  --muted: #6b7199;
+  --accent: #ff006e;
+  --border: rgba(255, 0, 110, 0.3);
+  --card-bg: #050811;
+  --green: #00ff9f;
+  --red: #ff006e;
+  --orange: #ff8500;
+  --yellow: #ffea00;
+  --cyan: #00d9ff;
+  --flash-start: rgba(255, 0, 110, 0.5);
+  --flash-mid: rgba(0, 217, 255, 0.3);
+}
+
+html[data-theme="retro"] {
+  /* Retro - warm browns and cream */
+  --bg: #f5f1e8;
+  --bg-elev: #e8dcc8;
+  --text: #5a4a3a;
+  --text-bright: #3d2e1f;
+  --muted: #8b7a6a;
+  --accent: #c85a54;
+  --border: rgba(90, 74, 58, 0.2);
+  --card-bg: #faf7f0;
+  --green: #6b8e5f;
+  --red: #c85a54;
+  --orange: #d8894d;
+  --yellow: #daa520;
+  --cyan: #5a8a8a;
+  --flash-start: rgba(200, 90, 84, 0.3);
+  --flash-mid: rgba(90, 74, 58, 0.15);
+}
+
+html[data-theme="cozy-wooden"] {
+  /* Cozy Wooden - rich wood tones */
+  --bg: #2d2416;
+  --bg-elev: #3d3220;
+  --text: #d4c5a0;
+  --text-bright: #f0e6c8;
+  --muted: #8b7a5a;
+  --accent: #cd853f;
+  --border: rgba(205, 133, 63, 0.3);
+  --card-bg: #332a1a;
+  --green: #90be6d;
+  --red: #d35400;
+  --orange: #cd853f;
+  --yellow: #daa520;
+  --cyan: #6b8e8e;
+  --flash-start: rgba(205, 133, 63, 0.4);
+  --flash-mid: rgba(144, 190, 109, 0.2);
+}
+
+html[data-theme="daily"] {
+  /* The Daily - grayscale newspaper */
+  --bg: #f5f5f5;
+  --bg-elev: #ffffff;
+  --text: #1a1a1a;
+  --text-bright: #000000;
+  --muted: #666666;
+  --accent: #000000;
+  --border: rgba(0, 0, 0, 0.15);
+  --card-bg: #ffffff;
+  --green: #2d2d2d;
+  --red: #1a1a1a;
+  --orange: #4d4d4d;
+  --yellow: #666666;
+  --cyan: #333333;
+  --flash-start: rgba(0, 0, 0, 0.2);
+  --flash-mid: rgba(0, 0, 0, 0.1);
+}
+
+html[data-theme="ft"] {
+  /* FT - Financial Times salmon pink */
+  --bg: #fff1e5;
+  --bg-elev: #fef4ea;
+  --text: #33302e;
+  --text-bright: #000000;
+  --muted: #6a5f56;
+  --accent: #990f3d;
+  --border: rgba(51, 48, 46, 0.1);
+  --card-bg: #fef4ea;
+  --green: #00994d;
+  --red: #cc0000;
+  --orange: #d97706;
+  --yellow: #b8860b;
+  --cyan: #0077b6;
+  --flash-start: rgba(153, 15, 61, 0.25);
+  --flash-mid: rgba(153, 15, 61, 0.1);
 }
 
 /* Sticker grid container */

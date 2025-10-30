@@ -280,6 +280,7 @@
 
   const els = {
     loadingScreen: document.getElementById('loadingScreen'),
+    miniLoader: document.getElementById('miniLoader'),
     toggleThemeBtn: document.getElementById('toggleThemeBtn'),
     openSettingsBtn: document.getElementById('openSettingsBtn'),
     closeSettingsBtn: document.getElementById('closeSettingsBtn'),
@@ -553,29 +554,16 @@
   }
 
   function applyTheme(theme) {
+    const previousTheme = document.documentElement.dataset.theme;
     document.documentElement.dataset.theme = theme;
     
-    // Update theme button text - shows the NEXT theme when clicked
-    // light -> dark -> halloween -> christmas -> amber -> matrix -> light
-    const themeLabels = {
-      'light': 'DARK THEME',
-      'dark': 'HALLOWEEN THEME',
-      'halloween': 'CHRISTMAS THEME',
-      'christmas': 'AMBER THEME',
-      'amber': 'MATRIX THEME',
-      'matrix': 'LIGHT THEME'
-    };
-    
-    const nextThemeLabel = themeLabels[theme] || 'DARK THEME';
-    
+    // Update all theme select elements to sync
     if (els.toggleThemeBtn) {
-      els.toggleThemeBtn.textContent = `[${nextThemeLabel}]`;
+      els.toggleThemeBtn.value = theme;
     }
     if (els.toggleThemeBtnMobile) {
-      els.toggleThemeBtnMobile.textContent = `[${nextThemeLabel}]`;
+      els.toggleThemeBtnMobile.value = theme;
     }
-    
-    // Update dropdown if it exists
     if (els.themeSelect) {
       els.themeSelect.value = theme;
     }
@@ -587,6 +575,17 @@
     // Auto-disable snow when leaving Christmas theme (optional - you can remove this if you want snow to persist)
     else if (theme !== 'christmas' && snowActive) {
       toggleSnow();
+    }
+    
+    // Auto-enable yellow rain for Cyberpunk theme
+    if (theme === 'cyberpunk' && !rainActive) {
+      rainAutoEnabled = true; // Mark as auto-enabled
+      toggleRain(true); // Pass true to indicate this is an auto-toggle
+    }
+    // When switching away from cyberpunk, turn off rain if it was auto-enabled
+    else if (previousTheme === 'cyberpunk' && theme !== 'cyberpunk' && rainActive && rainAutoEnabled) {
+      toggleRain(true); // Pass true to indicate this is an auto-toggle
+      rainAutoEnabled = false;
     }
   }
   
@@ -629,13 +628,21 @@
     const theme = settings?.theme || (prefersDark ? 'dark' : 'light');
     applyTheme(theme);
     
-    // Add click handler for theme toggle button - cycle through themes
+    // Header theme select change handler
     if (els.toggleThemeBtn) {
-      els.toggleThemeBtn.addEventListener('click', () => {
-        const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-        const themeOrder = ['light', 'dark', 'halloween', 'christmas', 'amber', 'matrix'];
-        const currentIndex = themeOrder.indexOf(currentTheme);
-        const newTheme = themeOrder[(currentIndex + 1) % themeOrder.length];
+      els.toggleThemeBtn.addEventListener('change', (e) => {
+        const newTheme = e.target.value;
+        applyTheme(newTheme);
+        const s = loadSettings() || getDefaultSettings();
+        s.theme = newTheme;
+        saveSettings(s);
+      });
+    }
+    
+    // Settings theme select change handler
+    if (els.themeSelect) {
+      els.themeSelect.addEventListener('change', (e) => {
+        const newTheme = e.target.value;
         applyTheme(newTheme);
         const s = loadSettings() || getDefaultSettings();
         s.theme = newTheme;
@@ -915,7 +922,6 @@
     // Last update timestamp - click to refresh
     if (els.lastUpdateTimestamp) {
       els.lastUpdateTimestamp.addEventListener('click', async () => {
-        els.lastUpdateTimestamp.textContent = 'Updating...';
         await refreshAll();
       });
     }
@@ -2025,6 +2031,9 @@
     }
     lastFullRefresh = now;
     
+    // Show mini loader during data fetch
+    showMiniLoader();
+    
     const startTime = performance.now();
     
     // Reset positions data
@@ -2044,6 +2053,9 @@
     
     const loadTime = ((performance.now() - startTime) / 1000).toFixed(2);
     console.log(`⚡ Loaded in ${loadTime}s`);
+    
+    // Hide mini loader after data fetch completes
+    hideMiniLoader();
     
     // Hide loading screen after first load
     if (els.loadingScreen && !els.loadingScreen.classList.contains('hidden')) {
@@ -4333,37 +4345,37 @@
         weatherIcon = '☁︎'; // Default to cloudy
       }
       
-      // Get moon phase icon (minimal ASCII)
+      // Get moon phase icon (Unicode moon symbols)
       const moonPhase = weatherData.moonPhase || 0;
       let moonIcon = '';
       let moonName = '';
       
       if (moonPhase < 0.0625) {
-        moonIcon = 'o';
+        moonIcon = '○';
         moonName = 'new moon';
       } else if (moonPhase < 0.1875) {
-        moonIcon = ')';
+        moonIcon = '☽';
         moonName = 'waxing crescent';
       } else if (moonPhase < 0.3125) {
-        moonIcon = 'D';
+        moonIcon = '◐';
         moonName = 'first quarter';
       } else if (moonPhase < 0.4375) {
-        moonIcon = 'O';
+        moonIcon = '◐';
         moonName = 'waxing gibbous';
       } else if (moonPhase < 0.5625) {
-        moonIcon = '@';
+        moonIcon = '●';
         moonName = 'full moon';
       } else if (moonPhase < 0.6875) {
-        moonIcon = 'C';
+        moonIcon = '◑';
         moonName = 'waning gibbous';
       } else if (moonPhase < 0.8125) {
-        moonIcon = '(';
+        moonIcon = '◑';
         moonName = 'last quarter';
       } else if (moonPhase < 0.9375) {
-        moonIcon = 'c';
+        moonIcon = '☾';
         moonName = 'waning crescent';
       } else {
-        moonIcon = 'o';
+        moonIcon = '○';
         moonName = 'new moon';
       }
       
@@ -4431,9 +4443,52 @@
     }
   }
 
+  function initMiniLoader() {
+    if (!els.miniLoader) return;
+    
+    // Create 4x4 mini grid (16 dots) with same flame-like pattern
+    const gridSize = 4;
+    
+    for (let row = 0; row < gridSize; row++) {
+      for (let col = 0; col < gridSize; col++) {
+        const dot = document.createElement('div');
+        dot.className = 'dot';
+        
+        const verticalProgress = row / gridSize;
+        const horizontalWave = (col / gridSize) * 0.3;
+        const randomOffset = Math.random() * 0.6;
+        const verticalDelay = verticalProgress * 0.5;
+        
+        const totalDelay = horizontalWave + randomOffset + verticalDelay;
+        
+        const baseDuration = 1.2;
+        const durationVariation = verticalProgress * 0.6;
+        const duration = baseDuration + durationVariation;
+        
+        dot.style.setProperty('--delay', `${totalDelay}s`);
+        dot.style.setProperty('--duration', `${duration}s`);
+        
+        els.miniLoader.appendChild(dot);
+      }
+    }
+  }
+  
+  function showMiniLoader() {
+    if (els.miniLoader) {
+      els.miniLoader.style.display = 'grid';
+    }
+  }
+  
+  function hideMiniLoader() {
+    if (els.miniLoader) {
+      els.miniLoader.style.display = 'none';
+    }
+  }
+
   function init() {
-    // Initialize loading animation
+    // Initialize loading animations
     initDotGrid();
+    initMiniLoader();
     
     // console.log('✓ Dashboard initialized');
     const settings = loadSettings() || getDefaultSettings();
@@ -4592,13 +4647,10 @@
       });
     }
     
-    // Mobile theme toggle - cycle through themes
+    // Mobile theme select change handler
     if (els.toggleThemeBtnMobile) {
-      els.toggleThemeBtnMobile.addEventListener('click', () => {
-        const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-        const themeOrder = ['light', 'dark', 'halloween', 'christmas', 'amber', 'matrix'];
-        const currentIndex = themeOrder.indexOf(currentTheme);
-        const newTheme = themeOrder[(currentIndex + 1) % themeOrder.length];
+      els.toggleThemeBtnMobile.addEventListener('change', (e) => {
+        const newTheme = e.target.value;
         applyTheme(newTheme);
         const s = loadSettings() || getDefaultSettings();
         s.theme = newTheme;
@@ -4744,17 +4796,7 @@
     if (heroSection) {
       heroSection.style.cursor = 'pointer';
       heroSection.addEventListener('click', async () => {
-        if (els.summary) {
-          const originalText = els.summary.innerHTML;
-          els.summary.innerHTML = '<span class="loading-terminal">[Updating...]</span>';
-          await refreshAll();
-          // Text will be updated by refreshAll, but fallback if it fails
-          if (els.summary.innerHTML.includes('[Updating...]')) {
-            els.summary.innerHTML = originalText;
-          }
-        } else {
-          await refreshAll();
-        }
+        await refreshAll();
       });
     }
 
@@ -4770,6 +4812,7 @@
   const rainCtx = rainCanvas ? rainCanvas.getContext('2d') : null;
   let rainDrops = [];
   let rainActive = false;
+  let rainAutoEnabled = false; // Track if rain was auto-enabled by theme
   let snowActive = false;
   let rainAnimationFrame = null;
   
@@ -4904,8 +4947,10 @@
         rainCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
       }
     } else {
-      // Rain color: text color or default
-      if (rainConfig.useTextColor) {
+      // Rain color: yellow for cyberpunk, text color or default for others
+      if (theme === 'cyberpunk') {
+        rainCtx.fillStyle = '#ffea00'; // Yellow rain for cyberpunk
+      } else if (rainConfig.useTextColor) {
         rainCtx.fillStyle = textColor || '#657b83';
       } else {
         // Use default subtle colors
@@ -5028,8 +5073,13 @@
     rainAnimationFrame = requestAnimationFrame(drawRain);
   }
   
-  function toggleRain() {
+  function toggleRain(isAutoToggle = false) {
     rainActive = !rainActive;
+    
+    // If user manually toggles rain (not auto-enabled), mark as user action
+    if (!isAutoToggle && rainActive) {
+      rainAutoEnabled = false;
+    }
     
     if (rainActive) {
       snowActive = false; // Turn off snow if rain is enabled
