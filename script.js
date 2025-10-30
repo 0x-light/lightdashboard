@@ -59,6 +59,130 @@
   const MAX_CACHE_SIZE = 100; // Limit cache size to prevent memory leaks
   let consecutiveRateLimits = 0;
   
+  // === PYTH NETWORK PRICE FEEDS ===
+  // Unified price source for portfolio calculations
+  
+  // Pyth price feed IDs for verified assets
+  // To verify or find new feed IDs, visit: https://pyth.network/developers/price-feed-ids
+  // These IDs are for mainnet and should be checked periodically for updates
+  const PYTH_PRICE_FEEDS = {
+    // Major assets
+    'BTC': '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43',
+    'ETH': '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
+    'SOL': '0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d',
+    
+    // Stablecoins
+    'USDT': '0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b',
+    // Note: USDC price feed may vary by chain - using exchange fallback instead
+    
+    // L2s & Alt L1s
+    'ARB': '0x3fa4252848f9f0a1480be62745a4629d9eb1322aebab8a791e344b3b9c1adcf5',
+    'AVAX': '0x93da3352f9f1d105fdfe4971cfa80e9dd777bfc5d0f683ebb6e1294b92137bb7',
+    'MATIC': '0x5de33a9112c2b700b8d30b8a3402c103578ccfa2765696471cc672bd5cf6ac52',
+    'OP': '0x385f64d993f7b77d8182ed5003d97c60aa3361f3cecfe711544d2d59165e9bdf',
+    'APT': '0x03ae4db29ed4ae33d323568895aa00337e658e348b37509f5372ae51f0af00d5',
+    'SUI': '0x23d7315113f5b1d3ba7a83604c44b94d79f4fd69af77f804fc7f920a6dc65744',
+    'NEAR': '0xc415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750',
+    
+    // DeFi & Other
+    'BNB': '0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f',
+    'DOGE': '0xdcef50dd0a4cd2dcc17e45df1676dcb336a11a61c69df7a0299b0150c672d25c',
+    'ADA': '0x2a01deaec9e51a579277b34b122399984d0bbf57e2458a7e42fecd2829867a0d',
+    'DOT': '0xca3eed9b267293f6595901c734c7525ce8ef49adafe8284606ceb307afa2ca5b',
+    'LINK': '0x8ac0c70fff57e9aefdf5edf44b51d62c2d433653cbb2cf5cc06bb115af04d221',
+    'UNI': '0x78d185a741d07edb3412b09008b7c5cfb9bbbd7d568bf00ba737b456ba171501',
+    'XRP': '0xec5d399846a9209f3fe5881d70aae9268c94339ff9817e8d18ff19fa05eea1c8',
+    'LTC': '0x6e3f3fa8253588df9326580180233eb791e03b443a3ba7a1d892e73874e19a54',
+    'ATOM': '0xb00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819',
+    'APE': '0x15add95022ae13563a11992e727c91bdb6b55bc183d9754a32f71c72c9daa5e',
+    'ICP': '0xc9907d786c5821547777780a1e4f89484f3417cb14dd244f09b9ea82b38aa65',
+    'MKR': '0x9375299e31c0deb9c6bc378e6329aab44cb48ec655552a70d4b9050346a30378',
+    'AAVE': '0x2b9ab1e972a281585084148ba1389800799bd4be63b957507db1349314e47445',
+    'FIL': '0x150ac9b959aee0051e4091f0ef5216d941f590e1c5e7f91cf7635b5c11628c0e',
+    
+    // Additional assets
+    'HYPE': '0xb2748e718cf3a75b0ca099cb467aea6aa8f7d960b381b3970769b5a2d6be26dc', // Crypto.HYPE/USD (Hyperliquid)
+    'ZEC': '0xbe9b59d178f0d6a97ab4c343bff2aa69caa1eaae3e9048a65788c529b125bb24'  // Crypto.ZEC/USD (Zcash)
+    
+    // USDC uses exchange price (more accurate at $1.00 stable)
+  };
+  
+  async function fetchPythPrice(asset, timestamp = null) {
+    // Get Pyth price feed ID for asset
+    const feedId = PYTH_PRICE_FEEDS[asset];
+    if (!feedId) {
+      return null; // Asset not supported by Pyth
+    }
+    
+    try {
+      let url;
+      if (timestamp) {
+        // Historical price - Hermes API uses Unix timestamp in seconds
+        const unixTimestamp = Math.floor(timestamp / 1000);
+        url = `https://hermes.pyth.network/v2/updates/price/${unixTimestamp}?ids[]=${feedId}`;
+      } else {
+        // Latest price
+        url = `https://hermes.pyth.network/v2/updates/price/latest?ids[]=${feedId}`;
+      }
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        return null;
+      }
+      
+      const data = await response.json();
+      
+      // Parse Pyth price data
+      if (data.parsed && data.parsed.length > 0) {
+        const priceData = data.parsed[0];
+        const price = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
+        return price;
+      }
+      
+      return null;
+    } catch (err) {
+      return null;
+    }
+  }
+  
+  async function fetchPythPrices(assets) {
+    // Fetch multiple prices at once
+    const feedIds = assets
+      .map(asset => PYTH_PRICE_FEEDS[asset])
+      .filter(id => id);
+    
+    if (feedIds.length === 0) return {};
+    
+    try {
+      const idsParam = feedIds.map(id => `ids[]=${id}`).join('&');
+      const url = `https://hermes.pyth.network/v2/updates/price/latest?${idsParam}`;
+      
+      const response = await fetch(url);
+      if (!response.ok) return {};
+      
+      const data = await response.json();
+      
+      // Map results back to asset symbols
+      const prices = {};
+      if (data.parsed && data.parsed.length > 0) {
+        for (const priceData of data.parsed) {
+          // Find asset symbol by feed ID
+          const asset = Object.keys(PYTH_PRICE_FEEDS).find(
+            key => PYTH_PRICE_FEEDS[key] === priceData.id
+          );
+          if (asset) {
+            const price = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
+            prices[asset] = price;
+          }
+        }
+      }
+      
+      return prices;
+    } catch (err) {
+      return {};
+    }
+  }
+  
   // Tab visibility tracking
   let isTabVisible = true;
   let updateInProgress = false;
@@ -174,6 +298,7 @@
     showRainForecast: document.getElementById('showRainForecast'),
     useColoredPnL: document.getElementById('useColoredPnL'),
     leftAligned: document.getElementById('leftAligned'),
+    usePythPrices: document.getElementById('usePythPrices'),
     minBalanceThreshold: document.getElementById('minBalanceThreshold'),
     enableRealTimeUpdates: document.getElementById('enableRealTimeUpdates'),
     realTimeUpdateInterval: document.getElementById('realTimeUpdateInterval'),
@@ -185,6 +310,7 @@
     positionsBody: document.getElementById('positionsBody'),
     mobilePositionsContainer: document.getElementById('mobilePositionsContainer'),
     calvinImage: document.getElementById('calvinImage'),
+    calvinDismissBtn: document.getElementById('calvinDismissBtn'),
     calvinPrevBtn: document.getElementById('calvinPrevBtn'),
     calvinNextBtn: document.getElementById('calvinNextBtn'),
     calvinRandomBtn: document.getElementById('calvinRandomBtn'),
@@ -309,9 +435,11 @@
       fontSize: 15,
       comicStrip: 'calvinandhobbes',
       showComic: true,
+      comicDismissedUntil: null, // Timestamp of when comic was dismissed (null = not dismissed)
       showRainForecast: true,
       useColoredPnL: true,
       leftAligned: false,
+      usePythPrices: true,
       minBalanceThreshold: 100,
       enableRealTimeUpdates: true,
       realTimeUpdateInterval: 10, // seconds
@@ -552,6 +680,7 @@
     els.showRainForecast.checked = settings.showRainForecast ?? true;
     els.useColoredPnL.checked = settings.useColoredPnL ?? true;
     els.leftAligned.checked = settings.leftAligned ?? false;
+    els.usePythPrices.checked = settings.usePythPrices ?? false;
     els.minBalanceThreshold.value = settings.minBalanceThreshold ?? 100;
     els.enableRealTimeUpdates.checked = settings.enableRealTimeUpdates ?? true;
     els.realTimeUpdateInterval.value = settings.realTimeUpdateInterval ?? 10;
@@ -632,6 +761,7 @@
     newSettings.showRainForecast = els.showRainForecast.checked;
     newSettings.useColoredPnL = els.useColoredPnL.checked;
     newSettings.leftAligned = els.leftAligned.checked;
+    newSettings.usePythPrices = els.usePythPrices.checked;
     newSettings.minBalanceThreshold = Math.max(0, Number(els.minBalanceThreshold.value || 100));
     newSettings.theme = els.themeSelect.value || 'light';
     newSettings.wallpaper = els.wallpaperSelect ? els.wallpaperSelect.value : 'none';
@@ -798,10 +928,19 @@
       saveSettings(s);
       closeSettings();
       
+      // If user manually enables comic in settings, clear any dismiss state
+      if (s.showComic && s.comicDismissedUntil) {
+        s.comicDismissedUntil = null;
+        saveSettings(s);
+      }
+      
       // Show/hide comic section immediately
       const comicSection = document.querySelector('.data-section:has(#comicTitle)');
       if (comicSection) {
-        comicSection.style.display = s.showComic ? 'block' : 'none';
+        // Check if comic is dismissed
+        const now = Date.now();
+        const isDismissed = s.comicDismissedUntil && now < s.comicDismissedUntil;
+        comicSection.style.display = (s.showComic && !isDismissed) ? 'block' : 'none';
       }
       
       // Apply alignment setting
@@ -1698,7 +1837,9 @@
       }
     }
 
-    // Fetch historical prices for crypto assets
+    // Fetch historical prices for crypto assets at midnight
+    const settings = loadSettings() || getDefaultSettings();
+    const usePyth = settings.usePythPrices ?? true;
     const pricePromises = [];
     
     for (const pos of allPositionsData) {
@@ -1706,20 +1847,30 @@
         pricePromises.push(
           (async () => {
             const key = `${pos.asset}_${pos.exchange}`;
+            let price = null;
             
-            // Try Hyperliquid first
-            let price = await fetchHyperliquidHistoricalPrice(pos.asset, midnightTs);
-            let source = 'Hyperliquid';
-            
-            // Fallback to CoinGecko if needed
-            if (price === null && pos.coingeckoId) {
-              price = await fetchCoinGeckoHistoricalPrice(pos.coingeckoId, midnightTs);
-              source = 'CoinGecko';
+            if (usePyth) {
+              // Pyth → Hyperliquid → CoinGecko fallback chain
+              price = await fetchPythPrice(pos.asset, midnightTs);
+              
+              if (price === null) {
+                price = await fetchHyperliquidHistoricalPrice(pos.asset, midnightTs);
+              }
+              
+              if (price === null && pos.coingeckoId) {
+                price = await fetchCoinGeckoHistoricalPrice(pos.coingeckoId, midnightTs);
+              }
+            } else {
+              // Hyperliquid → CoinGecko fallback (when Pyth disabled)
+              price = await fetchHyperliquidHistoricalPrice(pos.asset, midnightTs);
+              
+              if (price === null && pos.coingeckoId) {
+                price = await fetchCoinGeckoHistoricalPrice(pos.coingeckoId, midnightTs);
+              }
             }
             
             if (price !== null) {
               priceMap[key] = price;
-            } else {
             }
           })()
         );
@@ -1743,10 +1894,21 @@
     
     const settings = loadSettings() || getDefaultSettings();
     
+    // Check if comic is dismissed
+    let isDismissed = false;
+    if (settings.comicDismissedUntil && now < settings.comicDismissedUntil) {
+      isDismissed = true;
+    } else if (settings.comicDismissedUntil && now >= settings.comicDismissedUntil) {
+      // Dismiss period expired, re-enable comic and clear dismiss timestamp
+      settings.comicDismissedUntil = null;
+      settings.showComic = true;
+      saveSettings(settings);
+    }
+    
     // Show/hide comic section
     const comicSection = document.querySelector('.data-section:has(#comicTitle)');
     if (comicSection) {
-      comicSection.style.display = settings.showComic ? 'block' : 'none';
+      comicSection.style.display = (settings.showComic && !isDismissed) ? 'block' : 'none';
     }
     
     // Fetch all data
@@ -1755,8 +1917,8 @@
       fetchAndRenderWeather(),
     ];
     
-    // Only fetch comic if it's visible
-    if (settings.showComic) {
+    // Only fetch comic if it's visible and not dismissed
+    if (settings.showComic && !isDismissed) {
       tasks.push(renderCalvin());
     }
     
@@ -2669,6 +2831,31 @@
     }
 
     
+    // === Pyth Network Pricing ===
+    // Fetch Pyth prices for unified portfolio calculations
+    // Exchange prices shown in table; Pyth used for hero section and as fallback
+    const usePyth = settings.usePythPrices ?? true;
+    const pythPricesMap = {};
+    
+    if (usePyth && allPositionsData.length > 0) {
+      const assets = [...new Set(allPositionsData
+        .filter(pos => pos.exchange !== 'OpenSea')
+        .map(pos => pos.asset))];
+      
+      const pythPrices = await fetchPythPrices(assets);
+      Object.assign(pythPricesMap, pythPrices);
+      
+      // Only use Pyth as fallback when exchange price is missing or zero
+      for (const pos of allPositionsData) {
+        if (pos.exchange !== 'OpenSea' && pythPricesMap[pos.asset]) {
+          if (!pos.price || pos.price === 0) {
+            pos.price = pythPricesMap[pos.asset];
+            pos.value = Math.abs(pos.amount) * pos.price;
+          }
+        }
+      }
+    }
+    
     // === Calculate TRUE 24h changes from local midnight prices ===
     // This ensures all 24h changes are based on your local midnight, not exchange 24h periods
     
@@ -2727,49 +2914,111 @@
     updateInProgress = true;
     
     try {
-      // Fetch latest Hyperliquid mark prices
-      const marketResp = await fetch('https://api.hyperliquid.xyz/info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'metaAndAssetCtxs' })
-      });
+      const settings = loadSettings() || getDefaultSettings();
+      const usePyth = settings.usePythPrices ?? true;
       
-      if (!marketResp.ok) return;
+      let latestPrices = {};
       
-      const marketData = await marketResp.json();
-      const latestPrices = {};
-      
-      if (marketData && marketData[0] && marketData[1]) {
-        for (let i = 0; i < marketData[1].length; i++) {
-          const ctx = marketData[1][i];
-          const assetName = marketData[0].universe[i]?.name;
-          if (assetName && ctx && ctx.markPx) {
-            latestPrices[assetName] = {
-              price: parseFloat(ctx.markPx),
-              prevDayPx: parseFloat(ctx.prevDayPx || 0)
+      if (usePyth) {
+        // Fetch both Pyth and Hyperliquid prices
+        const assets = [...new Set(allPositionsData
+          .filter(pos => pos.exchange !== 'OpenSea')
+          .map(pos => pos.asset))];
+        
+        const pythPrices = await fetchPythPrices(assets);
+        
+        // Get exchange prices from Hyperliquid
+        const marketResp = await fetch('https://api.hyperliquid.xyz/info', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'metaAndAssetCtxs' })
+        });
+        
+        if (!marketResp.ok) return;
+        
+        const marketData = await marketResp.json();
+        
+        if (marketData && marketData[0] && marketData[1]) {
+          for (let i = 0; i < marketData[1].length; i++) {
+            const ctx = marketData[1][i];
+            const assetName = marketData[0].universe[i]?.name;
+            if (assetName && ctx && ctx.markPx) {
+              latestPrices[assetName] = {
+                price: parseFloat(ctx.markPx),
+                prevDayPx: parseFloat(ctx.prevDayPx || 0)
+              };
+            }
+          }
+        }
+        
+        // Also fetch Hyperliquid spot prices
+        const spotPricesResp = await fetch('https://api.hyperliquid.xyz/info', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'allMids' })
+        });
+        
+        if (spotPricesResp.ok) {
+          const spotPrices = await spotPricesResp.json();
+          for (const [coin, price] of Object.entries(spotPrices)) {
+            if (!latestPrices[coin]) {
+              latestPrices[coin] = { price: parseFloat(price), prevDayPx: 0 };
+            }
+          }
+        }
+        
+        // Use Pyth as fallback for assets not covered by exchanges
+        for (const [asset, price] of Object.entries(pythPrices)) {
+          if (!latestPrices[asset]) {
+            latestPrices[asset] = {
+              price: price,
+              prevDayPx: 0
             };
           }
         }
-      }
-      
-      // Also fetch Hyperliquid spot prices
-      const spotPricesResp = await fetch('https://api.hyperliquid.xyz/info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'allMids' })
-      });
-      
-      if (spotPricesResp.ok) {
-        const spotPrices = await spotPricesResp.json();
-        for (const [coin, price] of Object.entries(spotPrices)) {
-          if (!latestPrices[coin]) {
-            latestPrices[coin] = { price: parseFloat(price), prevDayPx: 0 };
+      } else {
+        // Pyth disabled: fetch exchange prices only
+        const marketResp = await fetch('https://api.hyperliquid.xyz/info', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'metaAndAssetCtxs' })
+        });
+        
+        if (marketResp.ok) {
+          const marketData = await marketResp.json();
+          
+          if (marketData && marketData[0] && marketData[1]) {
+            for (let i = 0; i < marketData[1].length; i++) {
+              const ctx = marketData[1][i];
+              const assetName = marketData[0].universe[i]?.name;
+              if (assetName && ctx && ctx.markPx) {
+                latestPrices[assetName] = {
+                  price: parseFloat(ctx.markPx),
+                  prevDayPx: parseFloat(ctx.prevDayPx || 0)
+                };
+              }
+            }
+          }
+          
+          // Also fetch spot prices
+          const spotPricesResp = await fetch('https://api.hyperliquid.xyz/info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'allMids' })
+          });
+          
+          if (spotPricesResp.ok) {
+            const spotPrices = await spotPricesResp.json();
+            for (const [coin, price] of Object.entries(spotPrices)) {
+              if (!latestPrices[coin]) {
+                latestPrices[coin] = { price: parseFloat(price), prevDayPx: 0 };
+              }
+            }
           }
         }
       }
       
       // Fetch latest Lighter positions for all wallets
-      const settings = loadSettings();
       const wallets = parseWallets(settings.walletAddresses);
       const lighterUpdates = {};
       
@@ -3176,16 +3425,33 @@
       const midnightDate = new Date(midnightData.timestamp);
     }
     
-    // === Calculate TRUE Daily P&L from Price Movements ===
-    // For each position, calculate: amount * (current_price - midnight_price)
-    // This gives P&L from price changes only, not from trades/transfers
+    // === Calculate Daily P&L from Price Movements ===
+    // For each position: amount × (current_price - midnight_price)
+    // Reflects price changes only, not trades/transfers
+    
+    // Fetch Pyth prices for unified hero section calculations
+    const usePyth = settings.usePythPrices ?? true;
+    let pythPricesForHero = {};
+    
+    if (usePyth && allPositionsData.length > 0) {
+      const assets = [...new Set(allPositionsData
+        .filter(pos => pos.exchange !== 'OpenSea')
+        .map(pos => pos.asset))];
+      
+      pythPricesForHero = await fetchPythPrices(assets);
+    }
     
     let totalDailyChange = 0;
     let portfolioValueAtMidnightPrices = 0;
     
     
     for (const pos of allPositionsData) {
-      const currentPrice = pos.price || 0;
+      // Use Pyth price for hero calculations if enabled, otherwise use exchange price
+      let currentPrice = pos.price || 0;
+      if (usePyth && pos.exchange !== 'OpenSea' && pythPricesForHero[pos.asset]) {
+        currentPrice = pythPricesForHero[pos.asset];
+      }
+      
       const amount = Math.abs(pos.amount || 0); // Use absolute value for position size
       let midnightPrice = null;
       
@@ -3265,8 +3531,6 @@
       : '$••••';
     
     // Daily change from midnight local time (includes all assets: crypto positions + NFTs)
-    console.log('Daily change debug:', { totalDailyChange, totalDailyChangePercent, allPositionsCount: allPositionsData.length });
-    
     if (totalDailyChange !== 0 && Math.abs(totalDailyChange) > 0.01) {
       const changeSign = totalDailyChange >= 0 ? 'up' : 'down';
       const changeAmountText = amountsVisible 
@@ -3584,6 +3848,26 @@
     }
 
     // Calvin navigation handlers
+    if (els.calvinDismissBtn) {
+      els.calvinDismissBtn.addEventListener('click', () => {
+        // Dismiss comic until next day (midnight)
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(0, 0, 0, 0); // Set to midnight
+        
+        const settings = loadSettings() || getDefaultSettings();
+        settings.comicDismissedUntil = tomorrow.getTime();
+        settings.showComic = false; // Uncheck the setting
+        saveSettings(settings);
+        
+        // Hide comic section
+        const comicSection = document.querySelector('.data-section:has(#comicTitle)');
+        if (comicSection) {
+          comicSection.style.display = 'none';
+        }
+      });
+    }
+    
     if (els.calvinPrevBtn) {
       els.calvinPrevBtn.addEventListener('click', () => {
         currentCalvinDate.setDate(currentCalvinDate.getDate() - 1);

@@ -1470,6 +1470,8 @@ input[type="range"]:focus::-moz-range-thumb {
 }
 
 .position-edit-btn {
+  padding: 0;
+  border: none;
   margin-left: 8px;
   font-size: 0.85em;
   cursor: pointer;
