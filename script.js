@@ -310,16 +310,21 @@
     positionsBody: document.getElementById('positionsBody'),
     mobilePositionsContainer: document.getElementById('mobilePositionsContainer'),
     calvinImage: document.getElementById('calvinImage'),
+    tabCalvin: document.getElementById('tabCalvin'),
+    tabPeanuts: document.getElementById('tabPeanuts'),
+    tabFarside: document.getElementById('tabFarside'),
     calvinDismissBtn: document.getElementById('calvinDismissBtn'),
     calvinPrevBtn: document.getElementById('calvinPrevBtn'),
     calvinNextBtn: document.getElementById('calvinNextBtn'),
     calvinRandomBtn: document.getElementById('calvinRandomBtn'),
+    calvinPrevBtnMobile: document.getElementById('calvinPrevBtnMobile'),
+    calvinNextBtnMobile: document.getElementById('calvinNextBtnMobile'),
+    calvinRandomBtnMobile: document.getElementById('calvinRandomBtnMobile'),
     hideSmallBtn: document.getElementById('hideSmallBtn'),
     toggleNftsBtn: document.getElementById('toggleNftsBtn'),
     editListBtn: document.getElementById('editListBtn'),
     comicStrip: document.getElementById('comicStrip'),
     showComic: document.getElementById('showComic'),
-    comicTitle: document.getElementById('comicTitle'),
     lastUpdateTimestamp: document.getElementById('lastUpdateTimestamp'),
     showSnowBtn: document.getElementById('showSnowBtn'),
     showRainBtn: document.getElementById('showRainBtn'),
@@ -935,7 +940,7 @@
       }
       
       // Show/hide comic section immediately
-      const comicSection = document.querySelector('.data-section:has(#comicTitle)');
+      const comicSection = document.querySelector('.data-section:has(.comic-header)');
       if (comicSection) {
         // Check if comic is dismissed
         const now = Date.now();
@@ -1044,11 +1049,6 @@
       
       if (!comic) {
         throw new Error('Unknown comic strip');
-      }
-      
-      // Update title
-      if (els.comicTitle) {
-        els.comicTitle.textContent = comic.name;
       }
       
       // If we should fade, add fading class and wait
@@ -1906,7 +1906,7 @@
     }
     
     // Show/hide comic section
-    const comicSection = document.querySelector('.data-section:has(#comicTitle)');
+    const comicSection = document.querySelector('.data-section:has(.comic-header)');
     if (comicSection) {
       comicSection.style.display = (settings.showComic && !isDismissed) ? 'block' : 'none';
     }
@@ -3861,7 +3861,7 @@
         saveSettings(settings);
         
         // Hide comic section
-        const comicSection = document.querySelector('.data-section:has(#comicTitle)');
+        const comicSection = document.querySelector('.data-section:has(.comic-header)');
         if (comicSection) {
           comicSection.style.display = 'none';
         }
@@ -3893,6 +3893,65 @@
           currentCalvinDate = new Date(randomTime);
           renderCalvin(currentCalvinDate, true);
         }
+      });
+    }
+    
+    // Mobile button handlers (sync with desktop)
+    if (els.calvinPrevBtnMobile) {
+      els.calvinPrevBtnMobile.addEventListener('click', () => {
+        if (els.calvinPrevBtn) {
+          els.calvinPrevBtn.click();
+        }
+      });
+    }
+    
+    if (els.calvinNextBtnMobile) {
+      els.calvinNextBtnMobile.addEventListener('click', () => {
+        if (els.calvinNextBtn) {
+          els.calvinNextBtn.click();
+        }
+      });
+    }
+    
+    if (els.calvinRandomBtnMobile) {
+      els.calvinRandomBtnMobile.addEventListener('click', () => {
+        if (els.calvinRandomBtn) {
+          els.calvinRandomBtn.click();
+        }
+      });
+    }
+    
+    // Comic tab switching
+    const comicTabs = [els.tabCalvin, els.tabPeanuts, els.tabFarside];
+    comicTabs.forEach(tab => {
+      if (tab) {
+        tab.addEventListener('click', () => {
+          const comicName = tab.getAttribute('data-comic');
+          
+          // Update active state
+          comicTabs.forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          
+          // Save to settings
+          const settings = loadSettings() || getDefaultSettings();
+          settings.comicStrip = comicName;
+          saveSettings(settings);
+          
+          // Load the comic
+          const comic = comicMetadata[comicName];
+          if (comic) {
+            currentCalvinDate = new Date(); // Reset to today
+            renderCalvin(currentCalvinDate, true);
+          }
+        });
+      }
+    });
+    
+    // Hero section click to refresh
+    if (els.heroValue) {
+      els.heroValue.style.cursor = 'pointer';
+      els.heroValue.addEventListener('click', async () => {
+        await refreshAll();
       });
     }
 
@@ -4888,6 +4947,22 @@
       if (els.wallpaperSelect) els.wallpaperSelect.value = settings.wallpaper;
     }
     applyHeaderVisibility(settings);
+    
+    // Set active comic tab based on settings
+    const comicStrip = settings.comicStrip || 'calvinandhobbes';
+    const comicTabMap = {
+      'calvinandhobbes': els.tabCalvin,
+      'peanuts': els.tabPeanuts,
+      'farside': els.tabFarside
+    };
+    const comicTabs = [els.tabCalvin, els.tabPeanuts, els.tabFarside];
+    comicTabs.forEach(tab => {
+      if (tab) tab.classList.remove('active');
+    });
+    const activeTab = comicTabMap[comicStrip];
+    if (activeTab) {
+      activeTab.classList.add('active');
+    }
     
     // Wallpaper change handler
     if (els.wallpaperSelect) {

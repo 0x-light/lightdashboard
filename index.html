@@ -107,17 +107,26 @@
       </section>
 
       <section class="data-section">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h2 id="comicTitle" class="section-title" style="margin: 0;">Calvin & Hobbes</h2>
-          <div class="calvin-controls">
-            <button id="calvinDismissBtn" class="btn-text">[DISMISS]</button>
-            <button id="calvinPrevBtn" class="btn-text">[PREV]</button>
-            <button id="calvinNextBtn" class="btn-text">[NEXT]</button>
-            <button id="calvinRandomBtn" class="btn-text">[RANDOM]</button>
+        <div class="comic-header">
+          <div class="comic-tabs">
+            <button id="tabCalvin" class="comic-tab active" data-comic="calvinandhobbes">CALVIN AND HOBBES</button>
+            <button id="tabPeanuts" class="comic-tab" data-comic="peanuts">PEANUTS</button>
+            <button id="tabFarside" class="comic-tab" data-comic="farside">THE FAR SIDE</button>
           </div>
+          <button id="calvinDismissBtn" class="btn-text comic-dismiss">[X]</button>
         </div>
         <div class="calvin-container">
           <div id="calvinImage"><span class="loading-terminal">[...]</span></div>
+        </div>
+        <div class="calvin-controls-mobile">
+          <button id="calvinPrevBtnMobile" class="btn-text">[PREV]</button>
+          <button id="calvinRandomBtnMobile" class="btn-text">[RANDOM]</button>
+          <button id="calvinNextBtnMobile" class="btn-text">[NEXT]</button>
+        </div>
+        <div class="calvin-controls">
+          <button id="calvinPrevBtn" class="btn-text">[PREV]</button>
+          <button id="calvinRandomBtn" class="btn-text">[RANDOM]</button>
+          <button id="calvinNextBtn" class="btn-text">[NEXT]</button>
         </div>
       </section>
     </main>

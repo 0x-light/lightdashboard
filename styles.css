@@ -689,10 +689,68 @@ select:focus {
   align-items: center;
 }
 
+.comic-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.comic-tabs {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.comic-tab {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.4;
+  transition: opacity 0.2s;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.comic-tab:hover {
+  opacity: 0.7;
+}
+
+.comic-tab.active {
+  opacity: 1;
+}
+
+.comic-dismiss {
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.comic-dismiss:hover {
+  opacity: 1;
+}
+
+.dismiss-mobile {
+  display: none;
+}
+
 .calvin-controls {
   display: flex;
   gap: 8px;
   align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.calvin-controls-mobile {
+  display: none;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
 }
 
 .calvin-container img {
@@ -860,6 +918,31 @@ select:focus {
   
   .mobile-position-card {
     display: block;
+  }
+  
+  /* Comic controls on mobile */
+  .calvin-controls {
+    display: none !important;
+  }
+  
+  .calvin-controls-mobile {
+    display: flex !important;
+  }
+  
+  .comic-header {
+    margin-bottom: 12px;
+  }
+  
+  .comic-tabs {
+    gap: 8px;
+  }
+  
+  .dismiss-desktop {
+    display: none;
+  }
+  
+  .dismiss-mobile {
+    display: inline;
   }
   
   /* Full bleed settings dialog on mobile */
