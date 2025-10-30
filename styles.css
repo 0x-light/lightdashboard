@@ -272,6 +272,11 @@ h1, h2, h3, h4, h5, h6 {
   50% { opacity: 0.3; }
 }
 
+@keyframes pulse-fade {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}
+
 .asset-cell {
   font-weight: 500;
 }
@@ -282,15 +287,16 @@ h1, h2, h3, h4, h5, h6 {
 
 .exchange-link {
   color: var(--muted);
-  text-decoration: none;
-  border-bottom: 1px dotted var(--muted);
-  transition: color 0.2s ease, opacity 0.2s ease, border-color 0.2s ease;
-  padding-bottom: 1px;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  transition: color 0.2s ease, opacity 0.2s ease;
 }
 
 .exchange-link:hover {
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  text-decoration-style: solid;
+  opacity: 0.8;
 }
 
 .positive-pnl {
@@ -701,6 +707,10 @@ select:focus {
   margin-bottom: 16px;
 }
 
+#comicSection.collapsed .comic-header {
+  justify-content: flex-start;
+}
+
 .comic-tabs {
   display: flex;
   gap: 16px;
@@ -743,8 +753,20 @@ select:focus {
   opacity: 1;
 }
 
+#comicSection.collapsed .comic-toggle {
+  flex: 1;
+  display: flex;
+}
+
 .toggle-collapsed {
   display: none;
+}
+
+#comicSection.collapsed .toggle-collapsed {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
 }
 
 .comic-content {
@@ -760,7 +782,7 @@ select:focus {
 }
 
 #comicSection.collapsed .toggle-collapsed {
-  display: inline;
+  display: flex;
 }
 
 #comicSection.collapsed .comic-tabs {
@@ -771,7 +793,7 @@ select:focus {
   display: flex;
   gap: 8px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   margin-top: 16px;
 }
 
@@ -793,6 +815,7 @@ select:focus {
 
 .calvin-container.fading img {
   opacity: 0.3;
+  animation: pulse-fade 2s ease-in-out infinite;
 }
 
 #calvinImage {
@@ -825,11 +848,6 @@ select:focus {
 
 .card-exchange {
   color: var(--muted);
-}
-
-.card-exchange .exchange-link {
-  color: var(--muted);
-  border-bottom-color: var(--muted);
 }
 
 .card-grid {
@@ -1042,11 +1060,13 @@ select:focus {
     line-height: 1.4;
   }
   
-  /* Prevent zoom on input focus on mobile */
-  input,
+  /* Scale inputs with user's font size on mobile */
+  input:not([type="checkbox"]):not([type="range"]),
   select,
   textarea {
-    font-size: 16px !important;
+    font-size: 1em !important;
+    padding: 4px 6px !important;
+    touch-action: manipulation; /* Prevents double-tap zoom */
   }
   
   /* Stack row elements vertically on mobile */
@@ -1510,7 +1530,7 @@ input[type="range"]:focus::-moz-range-thumb {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  width: 400px;
+  width: 350px;
   max-width: calc(100vw - 40px);
   max-height: calc(100vh - 100px);
   background: var(--bg);
@@ -1526,7 +1546,6 @@ input[type="range"]:focus::-moz-range-thumb {
   align-items: center;
   padding: 12px;
   border-bottom: 1px solid var(--border);
-  font-weight: bold;
 }
 
 .sticker-window-content {
@@ -1594,4 +1613,133 @@ input[type="range"]:focus::-moz-range-thumb {
 
 .position-edit-btn:hover {
   color: var(--text);
+}
+
+/* External link styling */
+.external-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  font-size: 0.9em;
+  transition: all 0.2s ease;
+}
+
+.external-link:hover,
+.external-link:focus {
+  text-decoration-style: solid;
+  opacity: 0.8;
+}
+
+/* Donate window styling - minimal */
+.donate-address-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.donate-address-row:last-child {
+  border-bottom: none;
+}
+
+.donate-label {
+  font-weight: 500;
+  color: var(--text);
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.donate-address {
+  font-family: 'Berkeley Mono', monospace;
+  color: var(--muted);
+  word-break: break-all;
+  line-height: 1.5;
+  margin: 4px 0;
+}
+
+.copy-address-btn {
+  align-self: flex-start;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+}
+
+.copy-address-btn:active {
+  opacity: 0.6;
+}
+
+/* Wallet breakdown tooltip */
+.wallet-breakdown-tooltip {
+  position: fixed;
+  z-index: 10000;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 12px;
+  min-width: 280px;
+  max-width: 400px;
+  font-size: inherit;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .wallet-breakdown-tooltip {
+    min-width: 240px;
+    max-width: calc(100vw - 32px);
+  }
+}
+
+.wallet-breakdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.wallet-breakdown-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wallet-breakdown-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.wallet-address {
+  font-family: 'Berkeley Mono', monospace;
+  color: var(--muted);
+  font-size: inherit;
+}
+
+.wallet-amount {
+  font-family: 'Berkeley Mono', monospace;
+  color: var(--text);
+  font-size: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.wallet-breakdown-bar {
+  display: flex;
+  width: 100%;
+  height: 8px;
+  border-radius: 2px;
+  overflow: hidden;
+  gap: 1px;
+}
+
+.wallet-bar-segment {
+  height: 100%;
+  transition: opacity 0.2s ease;
+}
+
+.has-wallet-breakdown {
+  cursor: help;
 }

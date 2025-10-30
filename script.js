@@ -51,13 +51,21 @@
   const stickerImages = {};
   const wallpapers = [];
   
-  // CoinGecko API rate limiting
+  // CoinGecko API rate limiting (optimized for speed)
   let lastCoinGeckoCall = 0;
-  const COINGECKO_DELAY = 1200; // 1.2 seconds between calls to avoid rate limits
+  const COINGECKO_DELAY = 300; // 300ms between calls (aggressive but respectful)
   const coinGeckoCache = new Map();
-  const CACHE_DURATION = 120000; // Cache for 2 minutes
-  const MAX_CACHE_SIZE = 100; // Limit cache size to prevent memory leaks
+  const CACHE_DURATION = 180000; // Cache for 3 minutes (longer caching)
+  const MAX_CACHE_SIZE = 200; // Larger cache for better performance
   let consecutiveRateLimits = 0;
+  
+  // Settings cache (avoid repeated localStorage reads)
+  let settingsCache = null;
+  let settingsCacheTime = 0;
+  
+  // NFT data cache (OpenSea is slow, cache aggressively)
+  const nftCache = new Map();
+  const NFT_CACHE_DURATION = 300000; // 5 minutes
   
   // === PYTH NETWORK PRICE FEEDS ===
   // Unified price source for portfolio calculations
@@ -101,10 +109,10 @@
     'FIL': '0x150ac9b959aee0051e4091f0ef5216d941f590e1c5e7f91cf7635b5c11628c0e',
     
     // Additional assets
-    'HYPE': '0xb2748e718cf3a75b0ca099cb467aea6aa8f7d960b381b3970769b5a2d6be26dc', // Crypto.HYPE/USD (Hyperliquid)
     'ZEC': '0xbe9b59d178f0d6a97ab4c343bff2aa69caa1eaae3e9048a65788c529b125bb24'  // Crypto.ZEC/USD (Zcash)
     
-    // USDC uses exchange price (more accurate at $1.00 stable)
+    // Note: HYPE uses Hyperliquid exchange price (more accurate)
+    // Note: USDC uses exchange price (more accurate at $1.00 stable)
   };
   
   async function fetchPythPrice(asset, timestamp = null) {
@@ -151,14 +159,20 @@
       .map(asset => PYTH_PRICE_FEEDS[asset])
       .filter(id => id);
     
-    if (feedIds.length === 0) return {};
+    if (feedIds.length === 0) {
+      console.log('  ⚠ Pyth: No feed IDs found for requested assets');
+      return {};
+    }
     
     try {
       const idsParam = feedIds.map(id => `ids[]=${id}`).join('&');
       const url = `https://hermes.pyth.network/v2/updates/price/latest?${idsParam}`;
       
       const response = await fetch(url);
-      if (!response.ok) return {};
+      if (!response.ok) {
+        console.log(`  ⚠ Pyth API error: ${response.status}`);
+        return {};
+      }
       
       const data = await response.json();
       
@@ -166,19 +180,27 @@
       const prices = {};
       if (data.parsed && data.parsed.length > 0) {
         for (const priceData of data.parsed) {
-          // Find asset symbol by feed ID
+          // Find asset symbol by feed ID (normalize to lowercase with 0x prefix)
+          const normalizedId = priceData.id.toLowerCase().startsWith('0x') 
+            ? priceData.id.toLowerCase() 
+            : `0x${priceData.id.toLowerCase()}`;
+          
           const asset = Object.keys(PYTH_PRICE_FEEDS).find(
-            key => PYTH_PRICE_FEEDS[key] === priceData.id
+            key => PYTH_PRICE_FEEDS[key].toLowerCase() === normalizedId
           );
+          
           if (asset) {
             const price = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
             prices[asset] = price;
           }
         }
+      } else {
+        console.log('  ⚠ Pyth: No parsed data in response');
       }
       
       return prices;
     } catch (err) {
+      console.log(`  ⚠ Pyth fetch error:`, err.message);
       return {};
     }
   }
@@ -187,7 +209,7 @@
   let isTabVisible = true;
   let updateInProgress = false;
   let lastFullRefresh = 0;
-  const MIN_REFRESH_INTERVAL = 30000; // Minimum 30s between full refreshes
+  const MIN_REFRESH_INTERVAL = 10000; // Minimum 10s between full refreshes (faster updates)
   
   async function rateLimitedFetch(url, cacheKey = null, retryCount = 0) {
     // Check cache first - extend cache if we've been rate limited recently
@@ -200,14 +222,15 @@
       }
     }
 
-    // Rate limit with exponential backoff
+    // Rate limit with exponential backoff (only if needed)
     const now = Date.now();
     const timeSinceLastCall = now - lastCoinGeckoCall;
-    const baseDelay = COINGECKO_DELAY * Math.pow(1.5, consecutiveRateLimits);
+    const baseDelay = consecutiveRateLimits > 0 
+      ? COINGECKO_DELAY * Math.pow(2, consecutiveRateLimits) 
+      : COINGECKO_DELAY;
     
     if (timeSinceLastCall < baseDelay) {
-      const delay = baseDelay - timeSinceLastCall;
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise(resolve => setTimeout(resolve, baseDelay - timeSinceLastCall));
     }
 
     lastCoinGeckoCall = Date.now();
@@ -265,6 +288,10 @@
     openStickersBtnMobile: document.getElementById('openStickersBtnMobile'),
     stickerWindow: document.getElementById('stickerWindow'),
     closeStickerWindowBtn: document.getElementById('closeStickerWindowBtn'),
+    openDonateBtn: document.getElementById('openDonateBtn'),
+    openDonateBtnMobile: document.getElementById('openDonateBtnMobile'),
+    donateWindow: document.getElementById('donateWindow'),
+    closeDonateWindowBtn: document.getElementById('closeDonateWindowBtn'),
     toggleAmountsBtn: document.getElementById('toggleAmountsBtn'),
     wallpaperSelect: document.getElementById('wallpaperSelect'),
     decreaseFontBtn: document.getElementById('decreaseFontBtn'),
@@ -287,6 +314,8 @@
     importSettingsBtn: document.getElementById('importSettingsBtn'),
     settingsExportArea: document.getElementById('settingsExportArea'),
     walletAddresses: document.getElementById('walletAddresses'),
+    alchemyApiKey: document.getElementById('alchemyApiKey'),
+    heliusApiKey: document.getElementById('heliusApiKey'),
     openSeaApiKey: document.getElementById('openSeaApiKey'),
     themeSelect: document.getElementById('themeSelect'),
     userName: document.getElementById('userName'),
@@ -333,6 +362,7 @@
     showAmountsBtn: document.getElementById('showAmountsBtn'),
     showFontSize: document.getElementById('showFontSize'),
     showStickersBtn: document.getElementById('showStickersBtn'),
+    showDonateBtn: document.getElementById('showDonateBtn'),
     toggleSnowBtn: document.getElementById('toggleSnowBtn'),
     toggleRainBtn: document.getElementById('toggleRainBtn'),
     fontSizeControls: document.getElementById('fontSizeControls'),
@@ -381,6 +411,12 @@
   }
 
   function loadSettings() {
+    // SPEED: Use cache to avoid repeated localStorage reads/decryption
+    const now = Date.now();
+    if (settingsCache && (now - settingsCacheTime) < 5000) {
+      return settingsCache;
+    }
+    
     try {
       const raw = localStorage.getItem(storageKey);
       if (!raw) return null;
@@ -389,6 +425,12 @@
       // Decrypt sensitive fields
       if (settings.walletAddresses) {
         settings.walletAddresses = simpleDecrypt(settings.walletAddresses);
+      }
+      if (settings.alchemyApiKey) {
+        settings.alchemyApiKey = simpleDecrypt(settings.alchemyApiKey);
+      }
+      if (settings.heliusApiKey) {
+        settings.heliusApiKey = simpleDecrypt(settings.heliusApiKey);
       }
       if (settings.openSeaApiKey) {
         settings.openSeaApiKey = simpleDecrypt(settings.openSeaApiKey);
@@ -400,6 +442,10 @@
       if (settings.lighterAddress) {
         settings.lighterAddress = simpleDecrypt(settings.lighterAddress);
       }
+      
+      // Cache the result
+      settingsCache = settings;
+      settingsCacheTime = now;
       
       return settings;
     } catch {
@@ -415,6 +461,12 @@
     if (settingsToSave.walletAddresses) {
       settingsToSave.walletAddresses = simpleEncrypt(settingsToSave.walletAddresses);
     }
+    if (settingsToSave.alchemyApiKey) {
+      settingsToSave.alchemyApiKey = simpleEncrypt(settingsToSave.alchemyApiKey);
+    }
+    if (settingsToSave.heliusApiKey) {
+      settingsToSave.heliusApiKey = simpleEncrypt(settingsToSave.heliusApiKey);
+    }
     if (settingsToSave.openSeaApiKey) {
       settingsToSave.openSeaApiKey = simpleEncrypt(settingsToSave.openSeaApiKey);
     }
@@ -427,6 +479,10 @@
     }
     
     localStorage.setItem(storageKey, JSON.stringify(settingsToSave));
+    
+    // Invalidate cache
+    settingsCache = null;
+    settingsCacheTime = 0;
   }
 
   function getDefaultSettings() {
@@ -437,6 +493,8 @@
       cryptoPositions: [],
       weather: { label: '', lat: null, lon: null },
       walletAddresses: '',
+      alchemyApiKey: '',
+      heliusApiKey: '',
       openSeaApiKey: '',
       fontSize: 15,
       comicStrip: 'calvinandhobbes',
@@ -455,6 +513,7 @@
       showAmountsBtn: true,
       showFontSize: true,
       showStickersBtn: true,
+      showDonateBtn: true,
       hiddenAssets: [] // Array of hidden asset keys: "ASSET_EXCHANGE"
     };
   }
@@ -468,24 +527,27 @@
   }
 
   function applyHeaderVisibility(settings) {
-    // Show/hide header bar elements based on settings
+    // Show/hide header bar elements based on settings (default to true for undefined)
     if (els.toggleSnowBtn) {
-      els.toggleSnowBtn.style.display = settings.showSnowBtn ? '' : 'none';
+      els.toggleSnowBtn.style.display = (settings.showSnowBtn ?? true) ? '' : 'none';
     }
     if (els.toggleRainBtn) {
-      els.toggleRainBtn.style.display = settings.showRainBtn ? '' : 'none';
+      els.toggleRainBtn.style.display = (settings.showRainBtn ?? true) ? '' : 'none';
     }
     if (els.toggleThemeBtn) {
-      els.toggleThemeBtn.style.display = settings.showThemeBtn ? '' : 'none';
+      els.toggleThemeBtn.style.display = (settings.showThemeBtn ?? true) ? '' : 'none';
     }
     if (els.toggleAmountsBtn) {
-      els.toggleAmountsBtn.style.display = settings.showAmountsBtn ? '' : 'none';
+      els.toggleAmountsBtn.style.display = (settings.showAmountsBtn ?? true) ? '' : 'none';
     }
     if (els.fontSizeControls) {
-      els.fontSizeControls.style.display = settings.showFontSize ? '' : 'none';
+      els.fontSizeControls.style.display = (settings.showFontSize ?? true) ? '' : 'none';
     }
     if (els.openStickersBtn) {
-      els.openStickersBtn.style.display = settings.showStickersBtn ? '' : 'none';
+      els.openStickersBtn.style.display = (settings.showStickersBtn ?? true) ? '' : 'none';
+    }
+    if (els.openDonateBtn) {
+      els.openDonateBtn.style.display = (settings.showDonateBtn ?? true) ? '' : 'none';
     }
   }
 
@@ -652,6 +714,54 @@
       document.removeEventListener('click', handleStickerWindowClickOutside);
     }
   }
+  
+  function openDonateWindow() {
+    if (els.donateWindow) {
+      els.donateWindow.style.display = 'flex';
+      
+      // Add click-outside-to-close after a short delay
+      setTimeout(() => {
+        document.addEventListener('click', handleDonateWindowClickOutside);
+      }, 100);
+    }
+    
+    // Close mobile menu if open
+    if (els.mobileMenu) {
+      els.mobileMenu.classList.remove('active');
+    }
+  }
+  
+  function handleDonateWindowClickOutside(e) {
+    if (els.donateWindow && 
+        els.donateWindow.style.display === 'flex' &&
+        !els.donateWindow.contains(e.target) &&
+        !els.openDonateBtn?.contains(e.target) &&
+        !els.openDonateBtnMobile?.contains(e.target)) {
+      closeDonateWindow();
+    }
+  }
+  
+  function closeDonateWindow() {
+    if (els.donateWindow) {
+      els.donateWindow.style.display = 'none';
+      document.removeEventListener('click', handleDonateWindowClickOutside);
+    }
+  }
+  
+  async function copyToClipboard(text, button) {
+    try {
+      await navigator.clipboard.writeText(text);
+      const originalText = button.textContent;
+      button.textContent = '[COPIED!]';
+      button.style.opacity = '0.6';
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.opacity = '1';
+      }, 1500);
+    } catch (err) {
+      console.error('Copy failed:', err);
+    }
+  }
 
   function openSettings() {
     const settings = loadSettings() || getDefaultSettings();
@@ -668,6 +778,8 @@
     
     // Populate settings
     els.walletAddresses.value = settings.walletAddresses || '';
+    els.alchemyApiKey.value = settings.alchemyApiKey || '';
+    els.heliusApiKey.value = settings.heliusApiKey || '';
     els.openSeaApiKey.value = settings.openSeaApiKey || '';
     els.themeSelect.value = settings.theme || 'light';
     els.userName.value = settings.userName || '';
@@ -701,6 +813,7 @@
     els.showAmountsBtn.checked = settings.showAmountsBtn ?? true;
     els.showFontSize.checked = settings.showFontSize ?? true;
     els.showStickersBtn.checked = settings.showStickersBtn ?? true;
+    els.showDonateBtn.checked = settings.showDonateBtn ?? true;
 
     // Show settings panel
     els.settingsDialog.style.display = 'block';
@@ -732,8 +845,10 @@
     const current = loadSettings() || getDefaultSettings();
     const newSettings = { ...current };
 
-    // Get wallet addresses
+    // Get wallet addresses and API keys
     newSettings.walletAddresses = els.walletAddresses.value.trim() || '';
+    newSettings.alchemyApiKey = els.alchemyApiKey.value.trim() || '';
+    newSettings.heliusApiKey = els.heliusApiKey.value.trim() || '';
     newSettings.openSeaApiKey = els.openSeaApiKey.value.trim() || '';
 
     const posInputs = els.positionsContainer.querySelectorAll('input');
@@ -781,6 +896,7 @@
     newSettings.showAmountsBtn = els.showAmountsBtn.checked;
     newSettings.showFontSize = els.showFontSize.checked;
     newSettings.showStickersBtn = els.showStickersBtn.checked;
+    newSettings.showDonateBtn = els.showDonateBtn.checked;
     
     return newSettings;
   }
@@ -818,6 +934,32 @@
     if (els.closeStickerWindowBtn) {
       els.closeStickerWindowBtn.addEventListener('click', closeStickerWindow);
     }
+    
+    // Donate window handlers
+    if (els.openDonateBtn) {
+      els.openDonateBtn.addEventListener('click', openDonateWindow);
+    }
+    
+    if (els.openDonateBtnMobile) {
+      els.openDonateBtnMobile.addEventListener('click', () => {
+        closeMobileMenu();
+        openDonateWindow();
+      });
+    }
+    
+    if (els.closeDonateWindowBtn) {
+      els.closeDonateWindowBtn.addEventListener('click', closeDonateWindow);
+    }
+    
+    // Copy address buttons - event delegation
+    document.addEventListener('click', (e) => {
+      if (e.target.classList.contains('copy-address-btn')) {
+        const address = e.target.getAttribute('data-address');
+        if (address) {
+          copyToClipboard(address, e.target);
+        }
+      }
+    });
     
     // Theme dropdown change handler
     if (els.themeSelect) {
@@ -1202,7 +1344,7 @@
         <div style="text-align: center; padding: 40px; width: 100%; color: var(--muted);">
           <p id="retryComicText" style="cursor: pointer;">Unable to load comic. Click to retry.</p>
           <p style="font-size: 13px; margin-top: 12px;">
-            <a href="${errorUrl}" target="_blank" style="color: var(--accent); text-decoration: none;">View online →</a>
+            <a href="${errorUrl}" target="_blank" class="external-link">View online ↗</a>
           </p>
         </div>
       `;
@@ -1714,7 +1856,8 @@
         hyperliquid: accountBalances.hyperliquid,
         lighter: accountBalances.lighter,
         nfts: accountBalances.nfts,
-        total: accountBalances.hyperliquid + accountBalances.lighter + accountBalances.nfts
+        multichain: accountBalances.multichain,
+        total: accountBalances.hyperliquid + accountBalances.lighter + accountBalances.nfts + accountBalances.multichain
       }
     };
     
@@ -1806,7 +1949,8 @@
         hyperliquid: accountBalances.hyperliquid,
         lighter: accountBalances.lighter,
         nfts: accountBalances.nfts,
-        total: accountBalances.hyperliquid + accountBalances.lighter + accountBalances.nfts
+        multichain: accountBalances.multichain,
+        total: accountBalances.hyperliquid + accountBalances.lighter + accountBalances.nfts + accountBalances.multichain
       }
     };
 
@@ -1872,13 +2016,15 @@
     return priceMap;
   }
 
-  async function refreshAll() {
+  async function refreshAll(priorityOnly = false) {
     // Throttle refreshes to prevent excessive API calls
     const now = Date.now();
     if (now - lastFullRefresh < MIN_REFRESH_INTERVAL) {
       return; // Skip if refreshed recently
     }
     lastFullRefresh = now;
+    
+    const startTime = performance.now();
     
     // Reset positions data
     allPositionsData = [];
@@ -1890,24 +2036,21 @@
       els.comicSection.style.display = settings.showComic ? 'block' : 'none';
     }
     
-    // Fetch all data
-    const tasks = [
-      fetchAndRenderPositions(),
-      fetchAndRenderWeather(),
-    ];
-    
-    // Only fetch comic if it's enabled in settings
-    if (settings.showComic) {
-      tasks.push(renderCalvin());
-    }
-    
-    await Promise.all(tasks);
-    
-    // Update hero section with summary
+    // PRIORITY: Fetch positions first (critical)
+    await fetchAndRenderPositions();
     await updateHeroSection();
-    
-    // Update last refresh timestamp
     updateLastUpdateTimestamp();
+    
+    const loadTime = ((performance.now() - startTime) / 1000).toFixed(2);
+    console.log(`⚡ Loaded in ${loadTime}s`);
+    
+    // BACKGROUND: Non-critical data (weather, comics) - don't block UI
+    if (!priorityOnly) {
+      Promise.all([
+        fetchAndRenderWeather(),
+        settings.showComic ? renderCalvin() : Promise.resolve()
+      ]).catch(err => console.error('Background data error:', err));
+    }
   }
   
   function updateLastUpdateTimestamp() {
@@ -1940,6 +2083,16 @@
   
   async function fetchOpenSeaNFTs(address) {
     if (!address) return null;
+    
+    // SPEED: Check cache first (OpenSea is very slow)
+    const cacheKey = `nft_${address}`;
+    if (nftCache.has(cacheKey)) {
+      const cached = nftCache.get(cacheKey);
+      const age = Date.now() - cached.timestamp;
+      if (age < NFT_CACHE_DURATION) {
+        return cached.data;
+      }
+    }
     
     const settings = loadSettings();
     const apiKey = settings?.openSeaApiKey || '';
@@ -2174,17 +2327,10 @@
                   : null;
                 const collectionName = statsData.name; // Use the proper display name from the API
                 
-                // OpenSea provides 24h change in different intervals
+                // Note: OpenSea API v2 does not provide floor price change data in intervals
+                // The intervals only contain volume/sales data, not floor price changes
+                // Setting to null so it displays as "—" in the dashboard
                 let floorChange1d = null;
-                if (statsData.intervals && statsData.intervals.length > 0) {
-                  const interval = statsData.intervals[0];
-                  if (interval) {
-                    const changeRaw = interval.floor_price_percent_change ?? interval.floor_price_change;
-                    if (changeRaw !== undefined && changeRaw !== null) {
-                      floorChange1d = parseFloat(changeRaw);
-                    }
-                  }
-                }
                 
                 if (collections[slug]) {
                   const collection = collections[slug];
@@ -2298,7 +2444,12 @@
                 }
               }
               
-              return { collections: Object.values(collections) };
+              const result = { collections: Object.values(collections) };
+              
+              // Cache the result
+              nftCache.set(cacheKey, { data: result, timestamp: Date.now() });
+              
+              return result;
             }
       }
       
@@ -2353,7 +2504,12 @@
               }
             }
             
-            return { collections: Object.values(collections) };
+            const result = { collections: Object.values(collections) };
+            
+            // Cache the result
+            nftCache.set(cacheKey, { data: result, timestamp: Date.now() });
+            
+            return result;
           }
       }
       
@@ -2458,6 +2614,224 @@
     return {};
   }
 
+  // Fetch EVM token balances using Alchemy's API (user brings their own free API key)
+  async function fetchAlchemyTokens(wallets, apiKey) {
+    if (!apiKey) {
+      console.log('⚠ Alchemy: No API key provided');
+      return [];
+    }
+    
+    console.log(`⟳ Alchemy: Fetching tokens for ${wallets.length} wallet(s)`);
+    console.log('  Supported: Ethereum, Arbitrum, Optimism, Polygon, Base, HyperEVM');
+    
+    // Alchemy supports these networks
+    // Docs: https://www.alchemy.com/docs/reference/hyperliquid-api-quickstart
+    const networks = [
+      { id: 'eth-mainnet', name: 'Ethereum' },
+      { id: 'arb-mainnet', name: 'Arbitrum' },
+      { id: 'opt-mainnet', name: 'Optimism' },
+      { id: 'polygon-mainnet', name: 'Polygon' },
+      { id: 'base-mainnet', name: 'Base' },
+      { id: 'hyperliquid-mainnet', name: 'HyperEVM' }
+    ];
+    
+    // SPEED: Parallelize all wallet×network combinations instead of sequential fetches
+    const fetchTasks = [];
+    for (const wallet of wallets) {
+      for (const network of networks) {
+        fetchTasks.push((async () => {
+          const data = [];
+          try {
+          const url = `https://${network.id}.g.alchemy.com/v2/${apiKey}`;
+          
+          // First, get native token balance (ETH, MATIC, etc.)
+          const nativeResponse = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'eth_getBalance',
+              params: [wallet, 'latest'],
+              id: 1
+            })
+          });
+          
+          if (nativeResponse.ok) {
+            const nativeData = await nativeResponse.json();
+            if (nativeData.result) {
+              const nativeBalance = parseInt(nativeData.result, 16) / 1e18; // Convert from Wei
+              
+              if (nativeBalance > 0.00001) {
+                // Map network to native token symbol
+                const nativeTokenMap = {
+                  'Ethereum': 'ETH',
+                  'Arbitrum': 'ETH',
+                  'Optimism': 'ETH',
+                  'Polygon': 'MATIC',
+                  'Base': 'ETH',
+                  'HyperEVM': 'HYPE'
+                };
+                
+                const tokenSymbol = nativeTokenMap[network.name] || 'ETH';
+                
+                data.push({
+                  address: wallet,
+                  blockchain: network.name,
+                  tokenSymbol: tokenSymbol,
+                  tokenName: tokenSymbol,
+                  balance: nativeBalance,
+                  balanceUsd: 0, // Will be calculated from prices
+                  tokenPrice: 0,
+                  contractAddress: null // Native token has no contract
+                });
+              }
+            }
+          }
+          
+          // Then get all ERC20 token balances
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'alchemy_getTokenBalances',
+              params: [wallet, 'erc20'],
+              id: 1
+            })
+          });
+          
+          if (response.ok) {
+            const responseData = await response.json();
+            
+            if (responseData.result && responseData.result.tokenBalances) {
+              for (const token of responseData.result.tokenBalances) {
+                const balance = parseInt(token.tokenBalance, 16);
+                if (balance === 0) continue;
+              
+              // Get token metadata
+              try {
+                const metaResp = await fetch(url, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'alchemy_getTokenMetadata',
+                    params: [token.contractAddress],
+                    id: 1
+                  })
+                });
+                
+                if (metaResp.ok) {
+                  const meta = await metaResp.json();
+                  if (meta.result) {
+                    const decimals = meta.result.decimals || 18;
+                    const balanceFormatted = balance / Math.pow(10, decimals);
+                    
+                    if (balanceFormatted < 0.000001) continue;
+                    
+                    data.push({
+                      address: wallet,
+                      blockchain: network.name,
+                      tokenSymbol: meta.result.symbol || 'Unknown',
+                      tokenName: meta.result.name,
+                      balance: balanceFormatted,
+                      balanceUsd: 0, // Will be calculated from prices
+                      tokenPrice: 0,
+                      contractAddress: token.contractAddress
+                    });
+                  }
+                }
+              } catch (err) {
+                // Skip token if metadata fetch fails
+              }
+            }
+            }
+          }
+          } catch (err) {
+            // Silently skip failed fetches
+          }
+          return data;
+        })());
+      }
+    }
+    
+    // SPEED: Execute all fetches in parallel
+    const results = await Promise.all(fetchTasks);
+    return results.flat(); // Flatten array of arrays
+  }
+
+  // Fetch Solana token balances using Helius API (user brings their own free API key)
+  async function fetchSolanaTokens(wallets, apiKey) {
+    if (!apiKey) {
+      console.log('⚠ Helius: No API key provided');
+      return [];
+    }
+    
+    console.log(`⟳ Helius: Fetching tokens for ${wallets.length} wallet(s)`);
+    const solanaData = [];
+    
+    for (const wallet of wallets) {
+      try {
+        const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'getAssetsByOwner',
+            params: {
+              ownerAddress: wallet,
+              page: 1,
+              limit: 1000
+            },
+            id: 1
+          })
+        });
+        
+        if (!response.ok) continue;
+        
+        const data = await response.json();
+        
+        if (data.result && data.result.items) {
+          for (const asset of data.result.items) {
+            if (asset.interface === 'FungibleToken' && asset.token_info) {
+              const balance = asset.token_info.balance / Math.pow(10, asset.token_info.decimals || 9);
+              
+              if (balance < 0.000001) continue;
+              
+              solanaData.push({
+                address: wallet,
+                blockchain: 'Solana',
+                tokenSymbol: asset.token_info.symbol || 'Unknown',
+                tokenName: asset.token_info.name,
+                balance: balance,
+                balanceUsd: asset.token_info.price_info?.total_price || 0,
+                tokenPrice: asset.token_info.price_info?.price_per_token || 0,
+                contractAddress: asset.id
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`Helius fetch failed for ${wallet}`);
+      }
+    }
+    
+    return solanaData;
+  }
+
+  // Combined multi-chain token fetcher
+  async function fetchMultiChainTokens(wallets, alchemyKey, heliusKey) {
+    const [evmTokens, solTokens] = await Promise.all([
+      fetchAlchemyTokens(wallets, alchemyKey),
+      fetchSolanaTokens(wallets, heliusKey)
+    ]);
+    
+    const allTokens = [...evmTokens, ...solTokens];
+    console.log(`✓ Multi-chain: Found ${allTokens.length} tokens (${evmTokens.length} EVM, ${solTokens.length} Solana)`);
+    
+    return allTokens;
+  }
+
   async function fetchAndRenderPositions() {
     allPositionsData = [];
     
@@ -2465,7 +2839,8 @@
     accountBalances = {
       hyperliquid: 0,
       lighter: 0,
-      nfts: 0
+      nfts: 0,
+      multichain: 0
     };
     
     // Collect NFT holdings across wallets; aggregate by collection
@@ -2482,65 +2857,92 @@
       return;
     }
     
-    // Fetch Hyperliquid market data for 24h changes
-    let hlMarketData = {};
-    try {
-      const marketResp = await fetch('https://api.hyperliquid.xyz/info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'metaAndAssetCtxs' })
-      });
-      if (marketResp.ok) {
-        const data = await marketResp.json();
-        if (data && data[0] && data[0].universe) {
-          for (const asset of data[0].universe) {
-            hlMarketData[asset.name] = {
-              funding: parseFloat(asset.funding || 0),
-              openInterest: parseFloat(asset.openInterest || 0),
-              volume24h: parseFloat(asset.dayNtlVlm || 0)
-            };
+    // SPEED: Fetch everything in parallel (market data + exchanges + multichain + NFTs)
+    const criticalDataStart = performance.now();
+    
+    const [hlMarketDataResult, allWalletData, multiChainTokens] = await Promise.all([
+      // Hyperliquid market data
+      (async () => {
+        const t1 = performance.now();
+        console.log('→ Fetching Hyperliquid market data...');
+        try {
+          const marketResp = await fetch('https://api.hyperliquid.xyz/info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'metaAndAssetCtxs' })
+          });
+          if (!marketResp.ok) return {};
+          
+          const data = await marketResp.json();
+          const marketData = {};
+          
+          if (data && data[0] && data[0].universe) {
+            for (const asset of data[0].universe) {
+              marketData[asset.name] = {
+                funding: parseFloat(asset.funding || 0),
+                openInterest: parseFloat(asset.openInterest || 0),
+                volume24h: parseFloat(asset.dayNtlVlm || 0)
+              };
+            }
           }
-        }
-        // Get current prices and 24h price changes from ctx data
-        if (data && data[1]) {
-          for (let i = 0; i < data[1].length; i++) {
-            const ctx = data[1][i];
-            const assetName = data[0].universe[i]?.name;
-            if (assetName && ctx) {
-              const prevDayPx = parseFloat(ctx.prevDayPx || 0);
-              const markPx = parseFloat(ctx.markPx || 0);
-              
-              // Store current mark price
-              if (!hlMarketData[assetName]) {
-                hlMarketData[assetName] = {};
-              }
-              hlMarketData[assetName].markPx = markPx;
-              
-              // Calculate 24h change
-              if (prevDayPx > 0) {
-                const change24h = ((markPx - prevDayPx) / prevDayPx) * 100;
-                  hlMarketData[assetName].change24h = change24h;
+          
+          if (data && data[1]) {
+            for (let i = 0; i < data[1].length; i++) {
+              const ctx = data[1][i];
+              const assetName = data[0].universe[i]?.name;
+              if (assetName && ctx) {
+                const prevDayPx = parseFloat(ctx.prevDayPx || 0);
+                const markPx = parseFloat(ctx.markPx || 0);
+                
+                if (!marketData[assetName]) {
+                  marketData[assetName] = {};
+                }
+                marketData[assetName].markPx = markPx;
+                
+                if (prevDayPx > 0) {
+                  marketData[assetName].change24h = ((markPx - prevDayPx) / prevDayPx) * 100;
                 }
               }
             }
           }
+          
+          return marketData;
+        } catch (err) {
+          return {};
+        } finally {
+          console.log(`  ✓ Market data: ${((performance.now() - t1) / 1000).toFixed(2)}s`);
         }
-    } catch (err) {
-      console.error('✗ Hyperliquid market data unavailable');
-    }
-    
-    // Fetch data for all wallets in parallel
-    const walletDataPromises = wallets.map(async (wallet) => {
-      const [hlData, lighterData, nftData] = await Promise.all([
-        fetchHyperliquidPositions(wallet),
-        fetchLighterPositions(wallet),
-        fetchOpenSeaNFTs(wallet)
-      ]);
+      })(),
       
-      return { hlData, lighterData, nftData };
-    });
+      // ALL wallet data in parallel (exchange + NFTs together)
+      Promise.all(wallets.map(async (wallet, i) => {
+        const t2 = performance.now();
+        console.log(`→ Wallet ${i + 1}: Fetching positions + NFTs...`);
+        const [hlData, lighterData, nftData] = await Promise.all([
+          fetchHyperliquidPositions(wallet),
+          fetchLighterPositions(wallet),
+          fetchOpenSeaNFTs(wallet).catch(() => null) // NFTs fail gracefully
+        ]);
+        console.log(`  ✓ Wallet ${i + 1}: ${((performance.now() - t2) / 1000).toFixed(2)}s`);
+        return { hlData, lighterData, nftData };
+      })),
+      
+      // Multi-chain tokens (if keys provided)
+      (async () => {
+        if (!settings.alchemyApiKey && !settings.heliusApiKey) {
+          return [];
+        }
+        const t3 = performance.now();
+        console.log('→ Fetching multi-chain tokens...');
+        const result = await fetchMultiChainTokens(wallets, settings.alchemyApiKey, settings.heliusApiKey);
+        console.log(`  ✓ Multi-chain: ${((performance.now() - t3) / 1000).toFixed(2)}s`);
+        return result;
+      })()
+    ]);
     
-    const allWalletData = await Promise.all(walletDataPromises);
+    const hlMarketData = hlMarketDataResult;
+    
+    console.log(`⚡ Loaded data: ${((performance.now() - criticalDataStart) / 1000).toFixed(2)}s`);
     
     // Process all collected wallet data
     
@@ -2809,6 +3211,149 @@
       }
     }
 
+    // === Multi-Chain Token Balances ===
+    // Process tokens from Alchemy (EVM) and Helius (Solana) APIs
+    // Fetch prices: Pyth first (faster, more accurate), then CoinGecko fallback
+    if (multiChainTokens.length > 0) {
+      // Step 1: Try Pyth prices first for all tokens without prices
+      const tokensNeedingPrice = multiChainTokens.filter(t => t.tokenPrice === 0);
+      if (tokensNeedingPrice.length > 0) {
+        const uniqueSymbols = [...new Set(tokensNeedingPrice.map(t => t.tokenSymbol))];
+        console.log(`⟳ Fetching prices for ${uniqueSymbols.length} unique tokens via Pyth: [${uniqueSymbols.join(', ')}]`);
+        
+        const pythPrices = await fetchPythPrices(uniqueSymbols);
+        console.log(`  Pyth returned prices for:`, Object.keys(pythPrices));
+        
+        let pythPricesFound = 0;
+        
+        for (const token of tokensNeedingPrice) {
+          if (pythPrices[token.tokenSymbol]) {
+            token.tokenPrice = pythPrices[token.tokenSymbol];
+            token.balanceUsd = token.balance * token.tokenPrice;
+            pythPricesFound++;
+          }
+        }
+        
+        if (pythPricesFound > 0) {
+          console.log(`✓ Pyth: Applied ${pythPricesFound}/${tokensNeedingPrice.length} prices`);
+        }
+      }
+      
+      // Step 1.5: Use Hyperliquid price for HYPE (more accurate than Pyth/others)
+      if (hlMarketData && hlMarketData['HYPE'] && hlMarketData['HYPE'].markPx) {
+        const hypePrice = hlMarketData['HYPE'].markPx;
+        for (const token of multiChainTokens) {
+          if (token.tokenSymbol === 'HYPE') {
+            token.tokenPrice = hypePrice;
+            token.balanceUsd = token.balance * hypePrice;
+            console.log(`  ✓ HYPE: $${hypePrice.toFixed(2)} (from Hyperliquid) → ${token.blockchain} balance = $${token.balanceUsd.toFixed(2)}`);
+          }
+        }
+      }
+      
+      // Step 2: Fallback to CoinGecko for tokens still without prices
+      const tokensByChain = {};
+      for (const token of multiChainTokens) {
+        if (token.blockchain !== 'Solana' && token.tokenPrice === 0 && token.contractAddress) {
+          if (!tokensByChain[token.blockchain]) {
+            tokensByChain[token.blockchain] = [];
+          }
+          tokensByChain[token.blockchain].push(token);
+        }
+      }
+      
+      // CoinGecko chain ID mapping
+      const chainIdMap = {
+        'Ethereum': 'ethereum',
+        'Arbitrum': 'arbitrum-one',
+        'Optimism': 'optimistic-ethereum',
+        'Polygon': 'polygon-pos',
+        'Base': 'base'
+      };
+      
+      // Fetch CoinGecko prices for remaining tokens
+      for (const [blockchain, tokens] of Object.entries(tokensByChain)) {
+        const chainId = chainIdMap[blockchain];
+        if (!chainId) continue;
+        
+        try {
+          const contracts = tokens.map(t => t.contractAddress).join(',');
+          const priceResp = await rateLimitedFetch(
+            `https://api.coingecko.com/api/v3/simple/token_price/${chainId}?contract_addresses=${contracts}&vs_currencies=usd`,
+            { cache: `price-${blockchain}-tokens`, cacheTTL: 60000 }
+          );
+          
+          if (priceResp) {
+            let pricesFound = 0;
+            for (const token of tokens) {
+              const priceData = priceResp[token.contractAddress.toLowerCase()];
+              if (priceData && priceData.usd) {
+                token.tokenPrice = priceData.usd;
+                token.balanceUsd = token.balance * priceData.usd;
+                pricesFound++;
+              }
+            }
+            if (pricesFound > 0) {
+              console.log(`✓ CoinGecko (${blockchain}): Found prices for ${pricesFound}/${tokens.length} tokens`);
+            }
+          }
+        } catch (err) {
+          console.log(`⚠ CoinGecko price fetch failed for ${blockchain}`);
+        }
+      }
+    }
+    
+    // Aggregate tokens by symbol + blockchain (combine same tokens from different wallets)
+    const tokenAggregates = {};
+    
+    for (const token of multiChainTokens) {
+      // Dust filter: Skip if value < $0.01 OR (no price data AND balance is tiny)
+      if (token.balanceUsd < 0.01 || (token.tokenPrice === 0 && token.balance < 1)) {
+        continue;
+      }
+      
+      const key = `${token.tokenSymbol}_${token.blockchain}`;
+      
+      if (!tokenAggregates[key]) {
+        tokenAggregates[key] = {
+          asset: token.tokenSymbol,
+          exchange: token.blockchain,
+          amount: 0,
+          value: 0,
+          price: token.tokenPrice,
+          change24h: null,
+          pnl: null,
+          pnlPercent: null,
+          walletBreakdown: []
+        };
+      }
+      
+      tokenAggregates[key].amount += token.balance;
+      tokenAggregates[key].value += token.balanceUsd;
+      tokenAggregates[key].walletBreakdown.push({
+        address: token.address,
+        balance: token.balance,
+        balanceUsd: token.balanceUsd
+      });
+      
+      if (token.balanceUsd > 0) {
+        accountBalances.multichain += token.balanceUsd;
+      }
+    }
+    
+    // Add aggregated tokens to positions
+    let tokensAdded = 0;
+    let dustTokensFiltered = Object.keys(tokenAggregates).length - tokensAdded;
+    for (const aggregate of Object.values(tokenAggregates)) {
+      allPositionsData.push(aggregate);
+      tokensAdded++;
+    }
+    
+    dustTokensFiltered = multiChainTokens.length - tokensAdded;
+    console.log(`✓ Multi-chain: Added ${tokensAdded} unique tokens (${multiChainTokens.length} total from ${wallets.length} wallet(s))`);
+    if (tokensAdded === 0 && dustTokensFiltered > 0) {
+      console.log('⚠ All tokens filtered as dust. Check [SHOW <$100] to view them.');
+    }
     
     // === Pyth Network Pricing ===
     // Fetch Pyth prices for unified portfolio calculations
@@ -2836,16 +3381,23 @@
     }
     
     // === Calculate TRUE 24h changes from local midnight prices ===
-    // This ensures all 24h changes are based on your local midnight, not exchange 24h periods
+    // SPEED: Use cached midnight prices, fetch new ones in background
     
     let midnightData = getDailyPrices();
     
-    // If no midnight data or it's from a previous day, fetch new midnight prices
+    // Background: Fetch fresh midnight prices if needed (non-blocking)
     if (!midnightData || isNewDay(midnightData.timestamp)) {
-      const midnightPrices = await fetchMidnightPrices();
-      saveDailyPrices(midnightPrices, getMidnightTimestamp());
-      midnightData = { prices: midnightPrices, timestamp: getMidnightTimestamp() };
-    } else {
+      fetchMidnightPrices().then(midnightPrices => {
+        saveDailyPrices(midnightPrices, getMidnightTimestamp());
+        // Re-render with updated 24h changes
+        renderPositionsTable();
+        updateHeroSection();
+      }).catch(() => {});
+      
+      // Use old data or empty for now
+      if (!midnightData) {
+        midnightData = { prices: {}, timestamp: getMidnightTimestamp() };
+      }
     }
     
     // Calculate 24h change for each position based on midnight price
@@ -3250,7 +3802,7 @@
       
       const marketLink = getMarketLink(pos.asset, pos.exchange, pos.positionType);
       const exchangeDisplay = marketLink 
-        ? `<a href="${marketLink}" target="_blank" class="exchange-link">${pos.exchange}</a>`
+        ? `<a href="${marketLink}" target="_blank" class="exchange-link">${pos.exchange} ↗</a>`
         : pos.exchange;
       
       // Format amounts based on visibility toggle
@@ -3286,8 +3838,13 @@
         ? `<button class="position-edit-btn" data-asset-key="${assetKey}">[${isHidden ? 'SHOW' : 'HIDE'}]</button>`
         : '';
       
+      // Generate wallet breakdown tooltip if available
+      const hasWalletBreakdown = pos.walletBreakdown && pos.walletBreakdown.length > 1;
+      const assetCellClass = hasWalletBreakdown ? 'asset-cell has-wallet-breakdown' : 'asset-cell';
+      const assetDisplay = hasWalletBreakdown ? `${pos.asset} (i)` : pos.asset;
+      
       tr.innerHTML = `
-        <td class="asset-cell">${pos.asset}${editButton}</td>
+        <td class="${assetCellClass}">${assetDisplay}${editButton}</td>
         <td class="exchange-cell">${exchangeDisplay}</td>
         <td>${amountDisplay}</td>
         <td>${priceDisplay}</td>
@@ -3296,15 +3853,25 @@
         <td class="${pnlClass}">${pnlDisplay}</td>
       `;
       
+      // Add wallet breakdown tooltip if applicable
+      if (hasWalletBreakdown) {
+        const assetCell = tr.querySelector('.asset-cell');
+        assetCell.setAttribute('data-wallet-breakdown', JSON.stringify(pos.walletBreakdown));
+      }
+      
       // Mobile card view
       const mobileCard = document.createElement('div');
       mobileCard.className = 'mobile-position-card';
       if (editMode && isHidden) {
         mobileCard.classList.add('position-row-hidden');
       }
+      
+      const assetClass = hasWalletBreakdown ? 'card-asset has-wallet-breakdown' : 'card-asset';
+      const mobileAssetDisplay = hasWalletBreakdown ? `(i) ${pos.asset}` : pos.asset;
+      
       mobileCard.innerHTML = `
         <div class="card-header">
-          <span class="card-asset">${pos.asset}${editButton}</span>
+          <span class="${assetClass}">${mobileAssetDisplay}${editButton}</span>
           <span class="card-exchange">${exchangeDisplay}</span>
         </div>
         <div class="card-grid">
@@ -3334,6 +3901,195 @@
       els.positionsBody.appendChild(tr);
       if (els.mobilePositionsContainer) {
         els.mobilePositionsContainer.appendChild(mobileCard);
+        
+        // Add wallet breakdown to mobile card asset span
+        if (hasWalletBreakdown) {
+          const mobileAssetSpan = mobileCard.querySelector('.card-asset.has-wallet-breakdown');
+          if (mobileAssetSpan) {
+            mobileAssetSpan.setAttribute('data-wallet-breakdown', JSON.stringify(pos.walletBreakdown));
+          }
+        }
+      }
+    }
+    
+    // Initialize wallet breakdown tooltips
+    initWalletBreakdownTooltips();
+  }
+  
+  function initWalletBreakdownTooltips() {
+    // Remove any existing tooltip
+    let tooltip = document.getElementById('wallet-breakdown-tooltip');
+    if (tooltip) {
+      tooltip.remove();
+    }
+    
+    // Create tooltip element
+    tooltip = document.createElement('div');
+    tooltip.id = 'wallet-breakdown-tooltip';
+    tooltip.className = 'wallet-breakdown-tooltip';
+    tooltip.style.display = 'none';
+    document.body.appendChild(tooltip);
+    
+    // Add hover/touch listeners to all asset cells with wallet breakdown (desktop & mobile)
+    const assetCells = document.querySelectorAll('.asset-cell.has-wallet-breakdown, .card-asset.has-wallet-breakdown');
+    
+    let activeTooltipCell = null;
+    let mouseMoveHandler = null;
+    
+    assetCells.forEach(cell => {
+      // Desktop: mouseenter/mouseleave
+      cell.addEventListener('mouseenter', (e) => {
+        const breakdownData = JSON.parse(cell.getAttribute('data-wallet-breakdown'));
+        showWalletBreakdownTooltip(e, breakdownData);
+        activeTooltipCell = cell;
+        
+        // Track mouse movement to update tooltip position
+        mouseMoveHandler = (moveEvent) => {
+          updateTooltipPosition(moveEvent);
+        };
+        document.addEventListener('mousemove', mouseMoveHandler);
+      });
+      
+      cell.addEventListener('mouseleave', () => {
+        tooltip.style.display = 'none';
+        activeTooltipCell = null;
+        
+        // Remove mouse tracking
+        if (mouseMoveHandler) {
+          document.removeEventListener('mousemove', mouseMoveHandler);
+          mouseMoveHandler = null;
+        }
+      });
+      
+      // Mobile: tap to toggle
+      cell.addEventListener('click', (e) => {
+        if (window.innerWidth <= 768) {
+          e.stopPropagation();
+          
+          if (activeTooltipCell === cell && tooltip.style.display === 'block') {
+            tooltip.style.display = 'none';
+            activeTooltipCell = null;
+          } else {
+            const breakdownData = JSON.parse(cell.getAttribute('data-wallet-breakdown'));
+            showWalletBreakdownTooltip(e, breakdownData);
+            activeTooltipCell = cell;
+          }
+        }
+      });
+    });
+    
+    // Helper function to update tooltip position based on mouse
+    function updateTooltipPosition(e) {
+      if (tooltip.style.display === 'none') return;
+      
+      const offset = 15; // Pixels away from cursor
+      let left = e.clientX + offset;
+      let top = e.clientY + offset;
+      
+      // Get tooltip dimensions (needs to be visible to measure)
+      const tooltipRect = tooltip.getBoundingClientRect();
+      
+      // Prevent tooltip from going off-screen (right edge)
+      if (left + tooltipRect.width > window.innerWidth) {
+        left = e.clientX - tooltipRect.width - offset;
+      }
+      
+      // Prevent tooltip from going off-screen (bottom edge)
+      if (top + tooltipRect.height > window.innerHeight) {
+        top = e.clientY - tooltipRect.height - offset;
+      }
+      
+      // Prevent tooltip from going off-screen (top edge)
+      if (top < 0) {
+        top = offset;
+      }
+      
+      // Prevent tooltip from going off-screen (left edge)
+      if (left < 0) {
+        left = offset;
+      }
+      
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+    }
+    
+    // Close tooltip when clicking outside on mobile
+    document.addEventListener('click', (e) => {
+      if (window.innerWidth <= 768 && activeTooltipCell) {
+        if (!tooltip.contains(e.target) && !activeTooltipCell.contains(e.target)) {
+          tooltip.style.display = 'none';
+          activeTooltipCell = null;
+        }
+      }
+    });
+  }
+  
+  function showWalletBreakdownTooltip(event, walletBreakdown) {
+    const tooltip = document.getElementById('wallet-breakdown-tooltip');
+    if (!tooltip || !walletBreakdown || walletBreakdown.length === 0) return;
+    
+    // Calculate total balance
+    const totalBalance = walletBreakdown.reduce((sum, w) => sum + w.balance, 0);
+    
+    // Generate tooltip content
+    let content = '<div class="wallet-breakdown-list">';
+    
+    walletBreakdown.forEach((wallet, index) => {
+      const percentage = (wallet.balance / totalBalance) * 100;
+      const shortAddress = `${wallet.address.substring(0, 6)}...${wallet.address.substring(wallet.address.length - 4)}`;
+      
+      content += `
+        <div class="wallet-breakdown-item">
+          <div class="wallet-breakdown-info">
+            <span class="wallet-address">${shortAddress}</span>
+            <span class="wallet-amount">${formatCompactNumber(wallet.balance)} (${percentage.toFixed(1)}%)</span>
+          </div>
+        </div>
+      `;
+    });
+    
+    content += '</div>';
+    
+    // Add visual bar chart
+    content += '<div class="wallet-breakdown-bar">';
+    walletBreakdown.forEach((wallet, index) => {
+      const percentage = (wallet.balance / totalBalance) * 100;
+      const colors = ['var(--accent)', 'var(--muted)', 'var(--text)'];
+      const color = colors[index % colors.length];
+      
+      content += `<div class="wallet-bar-segment" style="width: ${percentage}%; background-color: ${color}; opacity: ${0.8 - (index * 0.1)}"></div>`;
+    });
+    content += '</div>';
+    
+    tooltip.innerHTML = content;
+    tooltip.style.display = 'block';
+    
+    // Position tooltip at cursor (mobile uses tap position, desktop uses mouse position)
+    const offset = 15;
+    let left = event.clientX + offset;
+    let top = event.clientY + offset;
+    
+    // For mobile, position below tap point
+    if (window.innerWidth <= 768) {
+      const rect = event.target.getBoundingClientRect();
+      left = rect.left;
+      top = rect.bottom + 8;
+    }
+    
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+    
+    // Adjust if tooltip goes off screen
+    const tooltipRect = tooltip.getBoundingClientRect();
+    if (tooltipRect.right > window.innerWidth) {
+      tooltip.style.left = `${window.innerWidth - tooltipRect.width - 16}px`;
+    }
+    if (tooltipRect.bottom > window.innerHeight) {
+      if (window.innerWidth <= 768) {
+        const rect = event.target.getBoundingClientRect();
+        tooltip.style.top = `${rect.top - tooltipRect.height - 8}px`;
+      } else {
+        tooltip.style.top = `${event.clientY - tooltipRect.height - offset}px`;
       }
     }
   }
@@ -3372,6 +4128,7 @@
   async function updateHeroSection() {
     const settings = loadSettings() || getDefaultSettings();
     const userName = settings.userName || 'there';
+    const usePyth = settings.usePythPrices ?? true;
     
     // Get time of day
     const hour = new Date().getHours();
@@ -3386,39 +4143,25 @@
     
     // Calculate total portfolio value from actual account balances
     // This is more accurate than summing position values as it accounts for leverage
-    const totalValue = accountBalances.hyperliquid + accountBalances.lighter + accountBalances.nfts;
+    const totalValue = accountBalances.hyperliquid + accountBalances.lighter + accountBalances.nfts + accountBalances.multichain;
     
     // === Daily Change Calculation from TRUE Midnight Local Time ===
-    // Uses Hyperliquid historical candles API (with CoinGecko fallback) to get actual midnight prices
-    // This gives accurate 24h change from your local midnight, properly accounting for leverage
+    // SPEED: Use cached midnight prices (non-blocking)
     
     let midnightData = getDailyPrices();
-    const now = Date.now();
     
-    // If no snapshot exists or it's from a previous day, fetch TRUE midnight prices
-    if (!midnightData || isNewDay(midnightData.timestamp)) {
-      const midnightPrices = await fetchMidnightPrices();
-      saveDailyPrices(midnightPrices, getMidnightTimestamp());
-      midnightData = { prices: midnightPrices, timestamp: getMidnightTimestamp() };
-    } else {
-      const midnightDate = new Date(midnightData.timestamp);
+    // Use cached data or empty if not available
+    if (!midnightData) {
+      midnightData = { prices: {}, timestamp: getMidnightTimestamp() };
     }
     
     // === Calculate Daily P&L from Price Movements ===
     // For each position: amount × (current_price - midnight_price)
     // Reflects price changes only, not trades/transfers
     
-    // Fetch Pyth prices for unified hero section calculations
-    const usePyth = settings.usePythPrices ?? true;
-    let pythPricesForHero = {};
-    
-    if (usePyth && allPositionsData.length > 0) {
-      const assets = [...new Set(allPositionsData
-        .filter(pos => pos.exchange !== 'OpenSea')
-        .map(pos => pos.asset))];
-      
-      pythPricesForHero = await fetchPythPrices(assets);
-    }
+    // SPEED: Use existing position prices instead of fetching Pyth again
+    // Prices are already fetched during position loading
+    const pythPricesForHero = {};
     
     let totalDailyChange = 0;
     let portfolioValueAtMidnightPrices = 0;
@@ -3619,7 +4362,7 @@
   
 
   function init() {
-    console.log('✓ Dashboard initialized');
+    // console.log('✓ Dashboard initialized');
     const settings = loadSettings() || getDefaultSettings();
     if (!loadSettings()) saveSettings(settings);
     initTheme(settings);
@@ -4986,3 +5729,4 @@
   };
   
 })();
+
