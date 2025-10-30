@@ -1015,9 +1015,8 @@ select:focus {
   font-size: inherit;
   font-weight: 400;
   text-transform: uppercase;
-  width: auto;
-  width: 49px;
-  min-width: 49px;
+  width: 4em;
+  margin-top: 1px;
   display: inline-block;
   vertical-align: middle;
 }
@@ -1796,11 +1795,12 @@ input[type="range"]:focus::-moz-range-thumb {
 
 @media (max-width: 768px) {
   .sticker-window {
-    bottom: 10px;
-    right: 10px;
-    left: 10px;
+    bottom: 0;
+    right: 0;
+    left: 0;
     width: auto;
     max-width: none;
+    border-top: 1px solid var(--border);
   }
 }
 
