@@ -313,7 +313,8 @@
     tabCalvin: document.getElementById('tabCalvin'),
     tabPeanuts: document.getElementById('tabPeanuts'),
     tabFarside: document.getElementById('tabFarside'),
-    calvinDismissBtn: document.getElementById('calvinDismissBtn'),
+    comicToggleBtn: document.getElementById('comicToggleBtn'),
+    comicSection: document.getElementById('comicSection'),
     calvinPrevBtn: document.getElementById('calvinPrevBtn'),
     calvinNextBtn: document.getElementById('calvinNextBtn'),
     calvinRandomBtn: document.getElementById('calvinRandomBtn'),
@@ -440,7 +441,7 @@
       fontSize: 15,
       comicStrip: 'calvinandhobbes',
       showComic: true,
-      comicDismissedUntil: null, // Timestamp of when comic was dismissed (null = not dismissed)
+      comicCollapsed: false, // Whether comic section is collapsed
       showRainForecast: true,
       useColoredPnL: true,
       leftAligned: false,
@@ -933,19 +934,9 @@
       saveSettings(s);
       closeSettings();
       
-      // If user manually enables comic in settings, clear any dismiss state
-      if (s.showComic && s.comicDismissedUntil) {
-        s.comicDismissedUntil = null;
-        saveSettings(s);
-      }
-      
-      // Show/hide comic section immediately
-      const comicSection = document.querySelector('.data-section:has(.comic-header)');
-      if (comicSection) {
-        // Check if comic is dismissed
-        const now = Date.now();
-        const isDismissed = s.comicDismissedUntil && now < s.comicDismissedUntil;
-        comicSection.style.display = (s.showComic && !isDismissed) ? 'block' : 'none';
+      // Show/hide comic section immediately based on showComic setting
+      if (els.comicSection) {
+        els.comicSection.style.display = s.showComic ? 'block' : 'none';
       }
       
       // Apply alignment setting
@@ -1894,21 +1885,9 @@
     
     const settings = loadSettings() || getDefaultSettings();
     
-    // Check if comic is dismissed
-    let isDismissed = false;
-    if (settings.comicDismissedUntil && now < settings.comicDismissedUntil) {
-      isDismissed = true;
-    } else if (settings.comicDismissedUntil && now >= settings.comicDismissedUntil) {
-      // Dismiss period expired, re-enable comic and clear dismiss timestamp
-      settings.comicDismissedUntil = null;
-      settings.showComic = true;
-      saveSettings(settings);
-    }
-    
-    // Show/hide comic section
-    const comicSection = document.querySelector('.data-section:has(.comic-header)');
-    if (comicSection) {
-      comicSection.style.display = (settings.showComic && !isDismissed) ? 'block' : 'none';
+    // Show/hide comic section based on settings
+    if (els.comicSection) {
+      els.comicSection.style.display = settings.showComic ? 'block' : 'none';
     }
     
     // Fetch all data
@@ -1917,8 +1896,8 @@
       fetchAndRenderWeather(),
     ];
     
-    // Only fetch comic if it's visible and not dismissed
-    if (settings.showComic && !isDismissed) {
+    // Only fetch comic if it's enabled in settings
+    if (settings.showComic) {
       tasks.push(renderCalvin());
     }
     
@@ -3847,24 +3826,21 @@
       });
     }
 
-    // Calvin navigation handlers
-    if (els.calvinDismissBtn) {
-      els.calvinDismissBtn.addEventListener('click', () => {
-        // Dismiss comic until next day (midnight)
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        tomorrow.setHours(0, 0, 0, 0); // Set to midnight
-        
+    // Comic toggle handler (collapse/expand)
+    if (els.comicToggleBtn && els.comicSection) {
+      els.comicToggleBtn.addEventListener('click', () => {
         const settings = loadSettings() || getDefaultSettings();
-        settings.comicDismissedUntil = tomorrow.getTime();
-        settings.showComic = false; // Uncheck the setting
-        saveSettings(settings);
+        const isCollapsed = els.comicSection.classList.contains('collapsed');
         
-        // Hide comic section
-        const comicSection = document.querySelector('.data-section:has(.comic-header)');
-        if (comicSection) {
-          comicSection.style.display = 'none';
+        if (isCollapsed) {
+          els.comicSection.classList.remove('collapsed');
+          settings.comicCollapsed = false;
+        } else {
+          els.comicSection.classList.add('collapsed');
+          settings.comicCollapsed = true;
         }
+        
+        saveSettings(settings);
       });
     }
     
@@ -3948,10 +3924,21 @@
     });
     
     // Hero section click to refresh
-    if (els.heroValue) {
-      els.heroValue.style.cursor = 'pointer';
-      els.heroValue.addEventListener('click', async () => {
-        await refreshAll();
+    const heroSection = document.querySelector('.hero');
+    if (heroSection) {
+      heroSection.style.cursor = 'pointer';
+      heroSection.addEventListener('click', async () => {
+        if (els.summary) {
+          const originalText = els.summary.innerHTML;
+          els.summary.innerHTML = '<span class="loading-terminal">[Updating...]</span>';
+          await refreshAll();
+          // Text will be updated by refreshAll, but fallback if it fails
+          if (els.summary.innerHTML.includes('[Updating...]')) {
+            els.summary.innerHTML = originalText;
+          }
+        } else {
+          await refreshAll();
+        }
       });
     }
 
@@ -4962,6 +4949,11 @@
     const activeTab = comicTabMap[comicStrip];
     if (activeTab) {
       activeTab.classList.add('active');
+    }
+    
+    // Apply collapsed state
+    if (settings.comicCollapsed && els.comicSection) {
+      els.comicSection.classList.add('collapsed');
     }
     
     // Wallpaper change handler

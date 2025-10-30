@@ -189,6 +189,11 @@ h1, h2, h3, h4, h5, h6 {
 .hero {
   padding: 20px 0 0;
   text-align: left;
+  transition: opacity 0.2s;
+}
+
+.hero:hover {
+  opacity: 0.8;
 }
 
 .hero-summary {
@@ -724,16 +729,41 @@ select:focus {
   opacity: 1;
 }
 
-.comic-dismiss {
-  opacity: 0.6;
-  transition: opacity 0.2s;
+.tab-mobile {
+  display: none;
 }
 
-.comic-dismiss:hover {
+.comic-toggle {
+  opacity: 0.6;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+
+.comic-toggle:hover {
   opacity: 1;
 }
 
-.dismiss-mobile {
+.toggle-collapsed {
+  display: none;
+}
+
+.comic-content {
+  display: block;
+}
+
+#comicSection.collapsed .comic-content {
+  display: none;
+}
+
+#comicSection.collapsed .toggle-expanded {
+  display: none;
+}
+
+#comicSection.collapsed .toggle-collapsed {
+  display: inline;
+}
+
+#comicSection.collapsed .comic-tabs {
   display: none;
 }
 
@@ -758,7 +788,6 @@ select:focus {
   max-height: 500px;
   height: auto;
   border: 1px solid var(--border);
-  margin-top: 15px;
   transition: opacity 0.3s ease;
 }
 
@@ -937,11 +966,11 @@ select:focus {
     gap: 8px;
   }
   
-  .dismiss-desktop {
+  .tab-desktop {
     display: none;
   }
   
-  .dismiss-mobile {
+  .tab-mobile {
     display: inline;
   }
   
@@ -1485,7 +1514,7 @@ input[type="range"]:focus::-moz-range-thumb {
   max-width: calc(100vw - 40px);
   max-height: calc(100vh - 100px);
   background: var(--bg);
-  border: 2px solid var(--border);
+  border: 1px solid var(--border);
   z-index: 10000;
   display: flex;
   flex-direction: column;
