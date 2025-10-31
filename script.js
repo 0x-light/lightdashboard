@@ -293,6 +293,7 @@
     openDonateBtn: document.getElementById('openDonateBtn'),
     openDonateBtnMobile: document.getElementById('openDonateBtnMobile'),
     donateWindow: document.getElementById('donateWindow'),
+    donateBackdrop: document.getElementById('donateBackdrop'),
     closeDonateWindowBtn: document.getElementById('closeDonateWindowBtn'),
     toggleAmountsBtn: document.getElementById('toggleAmountsBtn'),
     wallpaperSelect: document.getElementById('wallpaperSelect'),
@@ -516,7 +517,9 @@
       showFontSize: true,
       showStickersBtn: true,
       showDonateBtn: true,
-      hiddenAssets: [] // Array of hidden asset keys: "ASSET_EXCHANGE"
+      hiddenAssets: [], // Array of hidden asset keys: "ASSET_EXCHANGE"
+      rainEnabled: false,
+      snowEnabled: false
     };
   }
   
@@ -570,11 +573,11 @@
     
     // Auto-enable snow for Christmas theme
     if (theme === 'christmas' && !snowActive) {
-      toggleSnow();
+      toggleSnow(true); // Pass true to indicate this is an auto-toggle
     }
     // Auto-disable snow when leaving Christmas theme (optional - you can remove this if you want snow to persist)
     else if (theme !== 'christmas' && snowActive) {
-      toggleSnow();
+      toggleSnow(true); // Pass true to indicate this is an auto-toggle
     }
     
     // Auto-enable yellow rain for Cyberpunk theme
@@ -725,6 +728,9 @@
   
   function openDonateWindow() {
     if (els.donateWindow) {
+      if (els.donateBackdrop) {
+        els.donateBackdrop.style.display = 'block';
+      }
       els.donateWindow.style.display = 'flex';
       
       // Add click-outside-to-close after a short delay
@@ -752,6 +758,9 @@
   function closeDonateWindow() {
     if (els.donateWindow) {
       els.donateWindow.style.display = 'none';
+      if (els.donateBackdrop) {
+        els.donateBackdrop.style.display = 'none';
+      }
       document.removeEventListener('click', handleDonateWindowClickOutside);
     }
   }
@@ -956,6 +965,11 @@
     
     if (els.closeDonateWindowBtn) {
       els.closeDonateWindowBtn.addEventListener('click', closeDonateWindow);
+    }
+    
+    // Backdrop click to close donate window
+    if (els.donateBackdrop) {
+      els.donateBackdrop.addEventListener('click', closeDonateWindow);
     }
     
     // Copy address buttons - event delegation
@@ -4495,6 +4509,25 @@
     if (!loadSettings()) saveSettings(settings);
     initTheme(settings);
     applyAlignment(settings.leftAligned ?? false);
+    
+    // Restore rain/snow preferences
+    if (settings.rainEnabled && !rainActive) {
+      toggleRain(true); // Use true to mark as auto-toggle (don't save again)
+      // Update button text
+      const rainBtn = document.getElementById('toggleRainBtn');
+      const rainMobileBtn = document.getElementById('toggleRainBtnMobile');
+      if (rainBtn) rainBtn.textContent = '[RAIN OFF]';
+      if (rainMobileBtn) rainMobileBtn.textContent = '[RAIN OFF]';
+    }
+    if (settings.snowEnabled && !snowActive) {
+      toggleSnow(true); // Use true to mark as auto-toggle (don't save again)
+      // Update button text
+      const snowBtn = document.getElementById('toggleSnowBtn');
+      const snowMobileBtn = document.getElementById('toggleSnowBtnMobile');
+      if (snowBtn) snowBtn.textContent = '[SNOW OFF]';
+      if (snowMobileBtn) snowMobileBtn.textContent = '[SNOW OFF]';
+    }
+    
     addHandlers();
     refreshAll();
     
@@ -5093,6 +5126,13 @@
       const snowMobileBtn = document.getElementById('toggleSnowBtnMobile');
       if (snowBtn) snowBtn.textContent = '[SNOW ON]';
       if (snowMobileBtn) snowMobileBtn.textContent = '[SNOW ON]';
+      
+      // Save snow state when rain is turned on (snow is turned off)
+      if (!isAutoToggle) {
+        const settings = loadSettings() || getDefaultSettings();
+        settings.snowEnabled = false;
+        saveSettings(settings);
+      }
     } else {
       rainCanvas.classList.remove('active');
       if (rainAnimationFrame) {
@@ -5100,9 +5140,16 @@
         rainAnimationFrame = null;
       }
     }
+    
+    // Save rain state to localStorage (but not for auto-toggles from theme changes)
+    if (!isAutoToggle) {
+      const settings = loadSettings() || getDefaultSettings();
+      settings.rainEnabled = rainActive;
+      saveSettings(settings);
+    }
   }
   
-  function toggleSnow() {
+  function toggleSnow(isAutoToggle = false) {
     snowActive = !snowActive;
     
     if (snowActive) {
@@ -5117,12 +5164,26 @@
       const rainMobileBtn = document.getElementById('toggleRainBtnMobile');
       if (rainBtn) rainBtn.textContent = '[RAIN ON]';
       if (rainMobileBtn) rainMobileBtn.textContent = '[RAIN ON]';
+      
+      // Save rain state when snow is turned on (rain is turned off)
+      if (!isAutoToggle) {
+        const settings = loadSettings() || getDefaultSettings();
+        settings.rainEnabled = false;
+        saveSettings(settings);
+      }
     } else {
       rainCanvas.classList.remove('active');
       if (rainAnimationFrame) {
         cancelAnimationFrame(rainAnimationFrame);
         rainAnimationFrame = null;
       }
+    }
+    
+    // Save snow state to localStorage
+    if (!isAutoToggle) {
+      const settings = loadSettings() || getDefaultSettings();
+      settings.snowEnabled = snowActive;
+      saveSettings(settings);
     }
   }
   

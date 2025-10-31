@@ -1011,6 +1011,7 @@ select:focus {
   color: transparent;
   cursor: pointer;
   margin: 0;
+  padding: 0;
   font-family: 'Berkeley Mono', 'Courier New', monospace !important;
   font-size: inherit;
   font-weight: 400;
@@ -1019,6 +1020,12 @@ select:focus {
   margin-top: 1px;
   display: inline-block;
   vertical-align: middle;
+}
+
+#toggleThemeBtnMobile,
+.theme-select-label { 
+  line-height: unset;
+  padding: 0!important;
 }
 
 /* Remove dropdown arrow */
@@ -1800,6 +1807,7 @@ input[type="range"]:focus::-moz-range-thumb {
     left: 0;
     width: auto;
     max-width: none;
+    border: none;
     border-top: 1px solid var(--border);
   }
 }
