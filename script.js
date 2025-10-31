@@ -73,51 +73,68 @@
   // Pyth price feed IDs for verified assets
   // To verify or find new feed IDs, visit: https://pyth.network/developers/price-feed-ids
   // These IDs are for mainnet and should be checked periodically for updates
-  const PYTH_PRICE_FEEDS = {
-    // Major assets
-    'BTC': '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43',
-    'ETH': '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
-    'SOL': '0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d',
+  // Dynamic Pyth price feed mapping (fetched from Hermes API)
+  // Cache: { symbol: feedId }
+  let PYTH_PRICE_FEEDS = null;
+  let pythFeedsLastFetched = 0;
+  const PYTH_FEEDS_CACHE_DURATION = 86400000; // Cache for 24 hours
+  
+  // Fetch Pyth price feed metadata from Hermes API
+  // https://hermes.pyth.network/docs/#/rest/price_feeds_metadata
+  async function fetchPythPriceFeeds() {
+    try {
+      const response = await fetch('https://hermes.pyth.network/v2/price_feeds');
+      if (!response.ok) {
+        console.warn('⚠ Pyth: Failed to fetch price feed metadata');
+        return {};
+      }
+      
+      const feeds = await response.json();
+      const feedMap = {};
+      
+      // Extract symbol mappings from metadata
+      // Pyth provides feeds like "Crypto.BTC/USD", we want "BTC" -> feedId
+      for (const feed of feeds) {
+        if (feed.attributes && feed.attributes.symbol && feed.id) {
+          const symbol = feed.attributes.symbol;
+          
+          // Parse symbols like "Crypto.BTC/USD" -> "BTC"
+          const match = symbol.match(/Crypto\.([A-Z0-9]+)\/USD/i);
+          if (match) {
+            const asset = match[1].toUpperCase();
+            feedMap[asset] = feed.id;
+          }
+        }
+      }
+      
+      console.log(`✓ Pyth: Loaded ${Object.keys(feedMap).length} price feeds from Hermes API`);
+      return feedMap;
+    } catch (err) {
+      console.warn('⚠ Pyth: Failed to fetch price feed metadata:', err.message);
+      return {};
+    }
+  }
+  
+  // Get or fetch Pyth price feeds with caching
+  async function getPythPriceFeeds() {
+    const now = Date.now();
     
-    // Stablecoins
-    'USDT': '0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b',
-    // Note: USDC price feed may vary by chain - using exchange fallback instead
+    // Return cached if available and fresh
+    if (PYTH_PRICE_FEEDS && (now - pythFeedsLastFetched) < PYTH_FEEDS_CACHE_DURATION) {
+      return PYTH_PRICE_FEEDS;
+    }
     
-    // L2s & Alt L1s
-    'ARB': '0x3fa4252848f9f0a1480be62745a4629d9eb1322aebab8a791e344b3b9c1adcf5',
-    'AVAX': '0x93da3352f9f1d105fdfe4971cfa80e9dd777bfc5d0f683ebb6e1294b92137bb7',
-    'MATIC': '0x5de33a9112c2b700b8d30b8a3402c103578ccfa2765696471cc672bd5cf6ac52',
-    'OP': '0x385f64d993f7b77d8182ed5003d97c60aa3361f3cecfe711544d2d59165e9bdf',
-    'APT': '0x03ae4db29ed4ae33d323568895aa00337e658e348b37509f5372ae51f0af00d5',
-    'SUI': '0x23d7315113f5b1d3ba7a83604c44b94d79f4fd69af77f804fc7f920a6dc65744',
-    'NEAR': '0xc415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750',
+    // Fetch fresh metadata
+    PYTH_PRICE_FEEDS = await fetchPythPriceFeeds();
+    pythFeedsLastFetched = now;
     
-    // DeFi & Other
-    'BNB': '0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f',
-    'DOGE': '0xdcef50dd0a4cd2dcc17e45df1676dcb336a11a61c69df7a0299b0150c672d25c',
-    'ADA': '0x2a01deaec9e51a579277b34b122399984d0bbf57e2458a7e42fecd2829867a0d',
-    'DOT': '0xca3eed9b267293f6595901c734c7525ce8ef49adafe8284606ceb307afa2ca5b',
-    'LINK': '0x8ac0c70fff57e9aefdf5edf44b51d62c2d433653cbb2cf5cc06bb115af04d221',
-    'UNI': '0x78d185a741d07edb3412b09008b7c5cfb9bbbd7d568bf00ba737b456ba171501',
-    'XRP': '0xec5d399846a9209f3fe5881d70aae9268c94339ff9817e8d18ff19fa05eea1c8',
-    'LTC': '0x6e3f3fa8253588df9326580180233eb791e03b443a3ba7a1d892e73874e19a54',
-    'ATOM': '0xb00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819',
-    'APE': '0x15add95022ae13563a11992e727c91bdb6b55bc183d9754a32f71c72c9daa5e',
-    'ICP': '0xc9907d786c5821547777780a1e4f89484f3417cb14dd244f09b9ea82b38aa65',
-    'MKR': '0x9375299e31c0deb9c6bc378e6329aab44cb48ec655552a70d4b9050346a30378',
-    'AAVE': '0x2b9ab1e972a281585084148ba1389800799bd4be63b957507db1349314e47445',
-    'FIL': '0x150ac9b959aee0051e4091f0ef5216d941f590e1c5e7f91cf7635b5c11628c0e',
-    
-    // Additional assets
-    'ZEC': '0xbe9b59d178f0d6a97ab4c343bff2aa69caa1eaae3e9048a65788c529b125bb24'  // Crypto.ZEC/USD (Zcash)
-    
-    // Note: HYPE uses Hyperliquid exchange price (more accurate)
-    // Note: USDC uses exchange price (more accurate at $1.00 stable)
-  };
+    return PYTH_PRICE_FEEDS;
+  }
   
   async function fetchPythPrice(asset, timestamp = null) {
     // Get Pyth price feed ID for asset
-    const feedId = PYTH_PRICE_FEEDS[asset];
+    const priceFeeds = await getPythPriceFeeds();
+    const feedId = priceFeeds[asset];
     if (!feedId) {
       return null; // Asset not supported by Pyth
     }
@@ -155,8 +172,9 @@
   
   async function fetchPythPrices(assets) {
     // Fetch multiple prices at once
+    const priceFeeds = await getPythPriceFeeds();
     const feedIds = assets
-      .map(asset => PYTH_PRICE_FEEDS[asset])
+      .map(asset => priceFeeds[asset])
       .filter(id => id);
     
     if (feedIds.length === 0) {
@@ -185,8 +203,8 @@
             ? priceData.id.toLowerCase() 
             : `0x${priceData.id.toLowerCase()}`;
           
-          const asset = Object.keys(PYTH_PRICE_FEEDS).find(
-            key => PYTH_PRICE_FEEDS[key].toLowerCase() === normalizedId
+          const asset = Object.keys(priceFeeds).find(
+            key => priceFeeds[key].toLowerCase() === normalizedId
           );
           
           if (asset) {
@@ -203,6 +221,213 @@
       console.log(`  ⚠ Pyth fetch error:`, err.message);
       return {};
     }
+  }
+  
+  // === WATCHLIST FUNCTIONS ===
+  
+  let allPythFeeds = []; // Cache of all available Pyth feeds with metadata
+  
+  async function fetchAllPythFeeds() {
+    if (allPythFeeds.length > 0) {
+      return allPythFeeds;
+    }
+    
+    try {
+      const response = await fetch('https://hermes.pyth.network/v2/price_feeds');
+      if (!response.ok) return [];
+      
+      const feeds = await response.json();
+      
+      // Filter for Crypto/USD pairs and format for display
+      allPythFeeds = feeds
+        .filter(feed => feed.attributes && feed.attributes.symbol && feed.attributes.symbol.includes('Crypto.') && feed.attributes.symbol.includes('/USD'))
+        .map(feed => ({
+          id: feed.id, // Keep original ID
+          idNormalized: feed.id.toLowerCase().startsWith('0x') ? feed.id.toLowerCase() : `0x${feed.id.toLowerCase()}`, // Add normalized version
+          symbol: feed.attributes.symbol.match(/Crypto\.([A-Z0-9]+)\/USD/i)?.[1] || feed.attributes.symbol,
+          fullSymbol: feed.attributes.symbol,
+          description: feed.attributes.description || feed.attributes.base || '', // Asset name like "Solana"
+          asset_type: feed.attributes.asset_type || 'Crypto'
+        }))
+        .sort((a, b) => a.symbol.localeCompare(b.symbol));
+      
+      return allPythFeeds;
+    } catch (err) {
+      console.warn('⚠ Pyth: Failed to fetch all feeds:', err.message);
+      return [];
+    }
+  }
+  
+  function searchWatchlistTokens(query) {
+    const lowerQuery = query.toLowerCase();
+    return allPythFeeds.filter(feed => 
+      feed.symbol.toLowerCase().includes(lowerQuery) ||
+      feed.fullSymbol.toLowerCase().includes(lowerQuery) ||
+      (feed.description && feed.description.toLowerCase().includes(lowerQuery))
+    ).slice(0, 50); // Limit to 50 results
+  }
+  
+  function addToWatchlist(feedId) {
+    const settings = loadSettings() || getDefaultSettings();
+    if (!settings.watchlist) settings.watchlist = [];
+    
+    if (!settings.watchlist.includes(feedId)) {
+      settings.watchlist.push(feedId);
+      saveSettings(settings);
+      renderWatchlist();
+    }
+  }
+  
+  function removeFromWatchlist(feedId) {
+    const settings = loadSettings() || getDefaultSettings();
+    if (!settings.watchlist) settings.watchlist = [];
+    
+    settings.watchlist = settings.watchlist.filter(id => id !== feedId);
+    saveSettings(settings);
+    renderWatchlist();
+  }
+  
+  async function fetchWatchlistPrices() {
+    const settings = loadSettings() || getDefaultSettings();
+    const watchlist = settings.watchlist || [];
+    
+    if (watchlist.length === 0) return [];
+    
+    // Ensure feeds are loaded
+    await fetchAllPythFeeds();
+    
+    try {
+      const idsParam = watchlist.map(id => `ids[]=${id}`).join('&');
+      const url = `https://hermes.pyth.network/v2/updates/price/latest?${idsParam}`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        return [];
+      }
+      
+      const data = await response.json();
+      
+      const watchlistData = [];
+      if (data.parsed && data.parsed.length > 0) {
+        for (const priceData of data.parsed) {
+          const normalizedId = priceData.id.toLowerCase().startsWith('0x') 
+            ? priceData.id.toLowerCase() 
+            : `0x${priceData.id.toLowerCase()}`;
+          
+          // Match using normalized IDs
+          const feedInfo = allPythFeeds.find(f => f.idNormalized === normalizedId);
+          
+          if (feedInfo) {
+            const price = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
+            
+            // Calculate 24h change (Pyth provides this in the EMA price)
+            let change24h = null;
+            if (priceData.ema_price && priceData.ema_price.price) {
+              const emaPrice = parseFloat(priceData.ema_price.price) * Math.pow(10, priceData.ema_price.expo);
+              if (emaPrice > 0) {
+                change24h = ((price - emaPrice) / emaPrice) * 100;
+              }
+            }
+            
+            watchlistData.push({
+              id: feedInfo.id,
+              symbol: feedInfo.symbol,
+              price: price,
+              change24h: change24h
+            });
+          }
+        }
+      }
+      
+      return watchlistData;
+    } catch (err) {
+      console.warn('⚠ Watchlist: Failed to fetch prices:', err.message);
+      return [];
+    }
+  }
+  
+  async function renderWatchlist() {
+    const watchlistBody = document.getElementById('watchlistBody');
+    
+    if (!watchlistBody) return;
+    
+    const watchlistData = await fetchWatchlistPrices();
+    
+    if (watchlistData.length === 0) {
+      watchlistBody.innerHTML = '<tr><td colspan="4" class="loading">No assets in watchlist</td></tr>';
+      return;
+    }
+    
+    // Get current settings to check hidden watchlist items
+    const settings = loadSettings() || getDefaultSettings();
+    const hiddenWatchlist = new Set(settings.hiddenWatchlist || []);
+    
+    // Render table rows
+    watchlistBody.innerHTML = '';
+    for (const item of watchlistData) {
+      const isHidden = hiddenWatchlist.has(item.id);
+      
+      // Skip hidden items if not in edit mode
+      if (isHidden && !watchlistEditMode) {
+        continue;
+      }
+      
+      const tr = document.createElement('tr');
+      tr.dataset.feedId = item.id; // Store feed ID for edit mode
+      
+      if (watchlistEditMode && isHidden) {
+        tr.classList.add('watchlist-row-hidden');
+      }
+      
+      const hasChange = item.change24h !== null && item.change24h !== undefined;
+      const changeClass = hasChange ? (item.change24h >= 0 ? 'positive-pnl' : 'negative-pnl') : 'neutral-value';
+      const changeSign = hasChange ? (item.change24h >= 0 ? '+' : '') : '';
+      const changeDisplay = hasChange ? `${changeSign}${item.change24h.toFixed(2)}%` : '—';
+      
+      const editButton = watchlistEditMode 
+        ? `<button class="watchlist-edit-btn" data-feed-id="${item.id}">[${isHidden ? 'SHOW' : 'HIDE'}]</button>`
+        : '';
+      
+      tr.innerHTML = `
+        <td class="symbol-cell">${item.symbol} ${editButton}</td>
+        <td class="price-cell">$${formatCompactNumber(item.price)}</td>
+        <td class="${changeClass} change-cell">${changeDisplay}</td>
+      `;
+      
+      watchlistBody.appendChild(tr);
+      
+      // Apply flash animations for value changes
+      const rowKey = `watchlist_${item.id}`;
+      flashCell(tr.querySelector('.price-cell'), `${rowKey}_price`, item.price);
+      if (hasChange) {
+        flashCell(tr.querySelector('.change-cell'), `${rowKey}_change`, item.change24h);
+      }
+    }
+  }
+  
+  let watchlistEditMode = false;
+  
+  function toggleWatchlistEditMode() {
+    watchlistEditMode = !watchlistEditMode;
+    const editBtn = document.getElementById('editWatchlistBtn');
+    
+    editBtn.textContent = watchlistEditMode ? '[SAVE CHANGES]' : '[EDIT LIST]';
+    renderWatchlist();
+  }
+  
+  function toggleWatchlistItemVisibility(feedId) {
+    const settings = loadSettings() || getDefaultSettings();
+    if (!settings.hiddenWatchlist) settings.hiddenWatchlist = [];
+    
+    const index = settings.hiddenWatchlist.indexOf(feedId);
+    if (index > -1) {
+      settings.hiddenWatchlist.splice(index, 1);
+    } else {
+      settings.hiddenWatchlist.push(feedId);
+    }
+    
+    saveSettings(settings);
+    renderWatchlist();
   }
   
   // Tab visibility tracking
@@ -320,6 +545,7 @@
     alchemyApiKey: document.getElementById('alchemyApiKey'),
     heliusApiKey: document.getElementById('heliusApiKey'),
     openSeaApiKey: document.getElementById('openSeaApiKey'),
+    zerionApiKey: document.getElementById('zerionApiKey'),
     themeSelect: document.getElementById('themeSelect'),
     userName: document.getElementById('userName'),
     positionsContainer: document.getElementById('positionsContainer'),
@@ -331,6 +557,7 @@
     useColoredPnL: document.getElementById('useColoredPnL'),
     leftAligned: document.getElementById('leftAligned'),
     usePythPrices: document.getElementById('usePythPrices'),
+    compactList: document.getElementById('compactList'),
     minBalanceThreshold: document.getElementById('minBalanceThreshold'),
     enableRealTimeUpdates: document.getElementById('enableRealTimeUpdates'),
     realTimeUpdateInterval: document.getElementById('realTimeUpdateInterval'),
@@ -358,6 +585,7 @@
     editListBtn: document.getElementById('editListBtn'),
     comicStrip: document.getElementById('comicStrip'),
     showComic: document.getElementById('showComic'),
+    showWatchlist: document.getElementById('showWatchlist'),
     lastUpdateTimestamp: document.getElementById('lastUpdateTimestamp'),
     showSnowBtn: document.getElementById('showSnowBtn'),
     showRainBtn: document.getElementById('showRainBtn'),
@@ -499,10 +727,12 @@
       alchemyApiKey: '',
       heliusApiKey: '',
       openSeaApiKey: '',
+      zerionApiKey: '',
       fontSize: 15,
       comicStrip: 'calvinandhobbes',
       showComic: true,
       comicCollapsed: false, // Whether comic section is collapsed
+      showWatchlist: true,
       showRainForecast: true,
       useColoredPnL: true,
       leftAligned: false,
@@ -519,7 +749,11 @@
       showDonateBtn: true,
       hiddenAssets: [], // Array of hidden asset keys: "ASSET_EXCHANGE"
       rainEnabled: false,
-      snowEnabled: false
+      snowEnabled: false,
+      watchlist: [], // Array of Pyth price feed IDs
+      watchlistCollapsed: false, // Whether watchlist section is collapsed
+      hiddenWatchlist: [], // Array of hidden watchlist feed IDs
+      compactList: false // Whether to use compact list mode
     };
   }
   
@@ -600,6 +834,24 @@
       } else {
         container.style.margin = '0 auto';
       }
+    }
+  }
+  
+  function applyCompactList(compact) {
+    const tables = document.querySelectorAll('.data-table');
+    tables.forEach(table => {
+      if (compact) {
+        table.classList.add('compact-mode');
+      } else {
+        table.classList.remove('compact-mode');
+      }
+    });
+    
+    // Add/remove class to body for mobile card visibility
+    if (compact) {
+      document.body.classList.add('compact-mode');
+    } else {
+      document.body.classList.remove('compact-mode');
     }
   }
 
@@ -798,6 +1050,7 @@
     els.alchemyApiKey.value = settings.alchemyApiKey || '';
     els.heliusApiKey.value = settings.heliusApiKey || '';
     els.openSeaApiKey.value = settings.openSeaApiKey || '';
+    els.zerionApiKey.value = settings.zerionApiKey || '';
     els.themeSelect.value = settings.theme || 'light';
     els.userName.value = settings.userName || '';
     els.positionsContainer.innerHTML = '';
@@ -816,10 +1069,12 @@
     els.useColoredPnL.checked = settings.useColoredPnL ?? true;
     els.leftAligned.checked = settings.leftAligned ?? false;
     els.usePythPrices.checked = settings.usePythPrices ?? false;
+    els.compactList.checked = settings.compactList ?? false;
     els.minBalanceThreshold.value = settings.minBalanceThreshold ?? 100;
     els.enableRealTimeUpdates.checked = settings.enableRealTimeUpdates ?? true;
     els.realTimeUpdateInterval.value = settings.realTimeUpdateInterval ?? 10;
     els.showComic.checked = settings.showComic ?? true;
+    els.showWatchlist.checked = settings.showWatchlist ?? true;
     els.refreshMins.value = settings.refreshMinutes ?? 30;
     els.comicStrip.value = settings.comicStrip || 'calvinandhobbes';
 
@@ -867,6 +1122,7 @@
     newSettings.alchemyApiKey = els.alchemyApiKey.value.trim() || '';
     newSettings.heliusApiKey = els.heliusApiKey.value.trim() || '';
     newSettings.openSeaApiKey = els.openSeaApiKey.value.trim() || '';
+    newSettings.zerionApiKey = els.zerionApiKey.value.trim() || '';
 
     const posInputs = els.positionsContainer.querySelectorAll('input');
     const positionsMap = new Map();
@@ -896,10 +1152,12 @@
     newSettings.refreshMinutes = Math.max(1, Number(els.refreshMins.value || 30));
     newSettings.comicStrip = els.comicStrip.value || 'calvinandhobbes';
     newSettings.showComic = els.showComic.checked;
+    newSettings.showWatchlist = els.showWatchlist.checked;
     newSettings.showRainForecast = els.showRainForecast.checked;
     newSettings.useColoredPnL = els.useColoredPnL.checked;
     newSettings.leftAligned = els.leftAligned.checked;
     newSettings.usePythPrices = els.usePythPrices.checked;
+    newSettings.compactList = els.compactList.checked;
     newSettings.minBalanceThreshold = Math.max(0, Number(els.minBalanceThreshold.value || 100));
     newSettings.theme = els.themeSelect.value || 'light';
     newSettings.wallpaper = els.wallpaperSelect ? els.wallpaperSelect.value : 'none';
@@ -1102,6 +1360,12 @@
         els.comicSection.style.display = s.showComic ? 'block' : 'none';
       }
       
+      // Show/hide watchlist section based on showWatchlist setting (default to visible)
+      const watchlistSection = document.getElementById('watchlistSection');
+      if (watchlistSection) {
+        watchlistSection.style.display = (s.showWatchlist ?? true) ? 'block' : 'none';
+      }
+      
       // Apply alignment setting
       applyAlignment(s.leftAligned);
       
@@ -1110,6 +1374,9 @@
       
       // Apply wallpaper
       applyWallpaper(s.wallpaper);
+      
+      // Apply compact list styling
+      applyCompactList(s.compactList);
       
       // Apply header visibility
       applyHeaderVisibility(s);
@@ -1122,6 +1389,66 @@
       
       refreshAll();
     });
+    
+    // Settings tabs switching
+    const settingsTabs = document.querySelectorAll('.settings-tab');
+    const settingsTabContents = document.querySelectorAll('.settings-tab-content');
+    const toggleSettingsViewBtn = document.getElementById('toggleSettingsViewBtn');
+    const settingsTabsContainer = document.getElementById('settingsTabs');
+    let showAllMode = false;
+    
+    settingsTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.getAttribute('data-tab');
+        
+        // If in show-all mode, exit it first
+        if (showAllMode) {
+          showAllMode = false;
+          toggleSettingsViewBtn.textContent = '[SHOW ALL]';
+          settingsTabsContainer.style.display = 'flex';
+          settingsTabContents.forEach(content => {
+            content.classList.remove('show-all-mode');
+          });
+        }
+        
+        // Switch tabs
+        settingsTabs.forEach(t => t.classList.remove('active'));
+        settingsTabContents.forEach(content => content.classList.remove('active'));
+        
+        tab.classList.add('active');
+        document.querySelector(`[data-tab-content="${tabName}"]`).classList.add('active');
+      });
+    });
+    
+    // Toggle between tabbed and show-all view
+    if (toggleSettingsViewBtn) {
+      toggleSettingsViewBtn.addEventListener('click', () => {
+        showAllMode = !showAllMode;
+        
+        if (showAllMode) {
+          // Show all settings in one list
+          toggleSettingsViewBtn.textContent = '[SHOW TABS]';
+          settingsTabsContainer.style.display = 'none';
+          settingsTabContents.forEach(content => {
+            content.classList.add('show-all-mode');
+            content.classList.add('active');
+          });
+        } else {
+          // Return to tabbed view
+          toggleSettingsViewBtn.textContent = '[SHOW ALL]';
+          settingsTabsContainer.style.display = 'flex';
+          settingsTabContents.forEach(content => {
+            content.classList.remove('show-all-mode');
+          });
+          
+          // Reactivate the first tab
+          settingsTabs.forEach(t => t.classList.remove('active'));
+          settingsTabContents.forEach(content => content.classList.remove('active'));
+          settingsTabs[0].classList.add('active');
+          settingsTabContents[0].classList.add('active');
+        }
+      });
+    }
 
     els.addPositionBtn.addEventListener('click', () => {
       const idx = (els.positionsContainer.querySelectorAll('.item-row').length) || 0;
@@ -1808,6 +2135,21 @@
   let allPositionsData = [];
   let weatherData = null;
   
+  // Track previous cell values for flash animation
+  let previousCellValues = {};
+  
+  // Helper function to apply flash animation to a cell
+  function flashCell(cell, key, newValue) {
+    const prevValue = previousCellValues[key];
+    if (prevValue !== undefined && prevValue !== newValue) {
+      cell.classList.remove('cell-flash');
+      // Force reflow to restart animation
+      void cell.offsetWidth;
+      cell.classList.add('cell-flash');
+    }
+    previousCellValues[key] = newValue;
+  }
+  
   // Store actual account balances for accurate total value calculation
   // This uses real account balances, not position notional values, to properly handle leverage
   // - Hyperliquid: accountValue from marginSummary (perp) + spot balance values
@@ -1999,38 +2341,48 @@
     const pricePromises = [];
     
     for (const pos of allPositionsData) {
-      if (pos.exchange === 'Hyperliquid' || pos.exchange === 'Lighter') {
-        pricePromises.push(
-          (async () => {
-            const key = `${pos.asset}_${pos.exchange}`;
-            let price = null;
-            
-            if (usePyth) {
-              // Pyth → Hyperliquid → CoinGecko fallback chain
-              price = await fetchPythPrice(pos.asset, midnightTs);
-              
-              if (price === null) {
-                price = await fetchHyperliquidHistoricalPrice(pos.asset, midnightTs);
-              }
-              
-              if (price === null && pos.coingeckoId) {
-                price = await fetchCoinGeckoHistoricalPrice(pos.coingeckoId, midnightTs);
-              }
-            } else {
-              // Hyperliquid → CoinGecko fallback (when Pyth disabled)
-              price = await fetchHyperliquidHistoricalPrice(pos.asset, midnightTs);
-              
-              if (price === null && pos.coingeckoId) {
-                price = await fetchCoinGeckoHistoricalPrice(pos.coingeckoId, midnightTs);
-              }
-            }
-            
-            if (price !== null) {
-              priceMap[key] = price;
-            }
-          })()
-        );
+      // Skip NFTs (they don't have historical price APIs)
+      if (pos.exchange === 'OpenSea') {
+        continue;
       }
+      
+      // Fetch prices for all crypto assets: Hyperliquid, Lighter, and multichain
+      pricePromises.push(
+        (async () => {
+          const key = `${pos.asset}_${pos.exchange}`;
+          let price = null;
+          
+          if (usePyth) {
+            // Priority: Pyth → Hyperliquid (for HL/HYPE assets) → CoinGecko fallback
+            price = await fetchPythPrice(pos.asset, midnightTs);
+            
+            // Use Hyperliquid historical API for:
+            // 1. Assets on Hyperliquid exchange
+            // 2. HYPE token (native to Hyperliquid, even on other chains)
+            if (price === null && (pos.exchange === 'Hyperliquid' || pos.asset === 'HYPE')) {
+              price = await fetchHyperliquidHistoricalPrice(pos.asset, midnightTs);
+            }
+            
+            // Final fallback to CoinGecko
+            if (price === null && pos.coingeckoId) {
+              price = await fetchCoinGeckoHistoricalPrice(pos.coingeckoId, midnightTs);
+            }
+          } else {
+            // Without Pyth: Hyperliquid (for HL/HYPE) → CoinGecko fallback
+            if (pos.exchange === 'Hyperliquid' || pos.asset === 'HYPE') {
+              price = await fetchHyperliquidHistoricalPrice(pos.asset, midnightTs);
+            }
+            
+            if (price === null && pos.coingeckoId) {
+              price = await fetchCoinGeckoHistoricalPrice(pos.coingeckoId, midnightTs);
+            }
+          }
+          
+          if (price !== null) {
+            priceMap[key] = price;
+          }
+        })()
+      );
     }
 
     await Promise.all(pricePromises);
@@ -2058,6 +2410,12 @@
     // Show/hide comic section based on settings
     if (els.comicSection) {
       els.comicSection.style.display = settings.showComic ? 'block' : 'none';
+    }
+    
+    // Show/hide watchlist section based on settings (default to visible)
+    const watchlistSection = document.getElementById('watchlistSection');
+    if (watchlistSection) {
+      watchlistSection.style.display = (settings.showWatchlist ?? true) ? 'block' : 'none';
     }
     
     // PRIORITY: Fetch positions first (critical)
@@ -2876,6 +3234,112 @@
     return solanaData;
   }
 
+  // Fetch cost basis and PnL data from Zerion API
+  // https://developers.zerion.io/reference/intro/getting-started
+  async function fetchZerionPositions(wallets, apiKey) {
+    if (!apiKey) {
+      return {};
+    }
+    
+    console.log(`⟳ Zerion: Fetching positions for ${wallets.length} wallet(s)`);
+    const zerionData = {};
+    
+    for (const wallet of wallets) {
+      try {
+        // Fetch fungible positions with PnL data
+        // https://developers.zerion.io/reference/listpositions
+        const response = await fetch(`https://api.zerion.io/v1/wallets/${wallet}/positions/?filter[positions]=only_simple&currency=usd&filter[trash]=only_non_trash&sort=value`, {
+          headers: {
+            'Authorization': `Basic ${btoa(apiKey + ':')}`,
+            'Accept': 'application/json'
+          }
+        });
+        
+        if (!response.ok) {
+          console.warn(`⚠ Zerion: Failed to fetch for ${wallet} (${response.status})`);
+          continue;
+        }
+        
+        const data = await response.json();
+        
+        // Process positions data
+        if (data && data.data && Array.isArray(data.data)) {
+          for (const position of data.data) {
+            if (position.attributes && position.attributes.fungible_info) {
+              const fungible = position.attributes.fungible_info;
+              const quantity = position.attributes.quantity?.float || 0;
+              const value = position.attributes.value || 0;
+              const price = position.attributes.price || 0;
+              
+              // Extract symbol and network
+              const symbol = fungible.symbol || 'Unknown';
+              const network = position.relationships?.chain?.data?.id || 'unknown';
+              
+              // Create key: symbol_network
+              const key = `${symbol}_${network}`;
+              
+              if (!zerionData[key]) {
+                zerionData[key] = {
+                  symbol: symbol,
+                  network: network,
+                  balance: 0,
+                  balanceUsd: 0,
+                  price: price,
+                  changes: position.attributes.changes || null
+                };
+              }
+              
+              // Aggregate balances
+              zerionData[key].balance += quantity;
+              zerionData[key].balanceUsd += value;
+            }
+          }
+        }
+        
+        // Fetch wallet-level PnL data
+        // https://developers.zerion.io/reference/getwalletpnl
+        try {
+          const pnlResponse = await fetch(`https://api.zerion.io/v1/wallets/${wallet}/pnl?currency=usd`, {
+            headers: {
+              'Authorization': `Basic ${btoa(apiKey + ':')}`,
+              'Accept': 'application/json'
+            }
+          });
+          
+          if (pnlResponse.ok) {
+            const pnlData = await pnlResponse.json();
+            
+            // Store wallet-level PnL for reference
+            if (pnlData && pnlData.data && pnlData.data.attributes) {
+              const pnl = pnlData.data.attributes;
+              
+              // We can use this for overall portfolio PnL tracking
+              // Store in a special key for wallet-level data
+              zerionData[`_wallet_${wallet}`] = {
+                wallet: wallet,
+                totalValue: pnl.total_value || 0,
+                totalProfit: pnl.total_profit || 0,
+                totalProfitPercent: pnl.total_profit_percent || 0,
+                positions: pnl.positions_count || 0
+              };
+            }
+          }
+        } catch (pnlErr) {
+          // PnL fetch is optional
+          console.warn(`⚠ Zerion: Could not fetch PnL for ${wallet}`);
+        }
+        
+      } catch (err) {
+        console.error(`⚠ Zerion: Failed to fetch for ${wallet}:`, err.message);
+      }
+    }
+    
+    const positionCount = Object.keys(zerionData).filter(key => !key.startsWith('_wallet_')).length;
+    console.log(`✓ Zerion: Found ${positionCount} positions across ${wallets.length} wallet(s)`);
+    
+    return zerionData;
+  }
+
   // Combined multi-chain token fetcher
   async function fetchMultiChainTokens(wallets, alchemyKey, heliusKey) {
     const [evmTokens, solTokens] = await Promise.all([
@@ -2914,10 +3378,10 @@
       return;
     }
     
-    // SPEED: Fetch everything in parallel (market data + exchanges + multichain + NFTs)
+    // SPEED: Fetch everything in parallel (market data + exchanges + multichain + NFTs + Zerion)
     const criticalDataStart = performance.now();
     
-    const [hlMarketDataResult, allWalletData, multiChainTokens] = await Promise.all([
+    const [hlMarketDataResult, allWalletData, multiChainTokens, zerionPositions] = await Promise.all([
       // Hyperliquid market data
       (async () => {
         const t1 = performance.now();
@@ -2984,20 +3448,42 @@
         return { hlData, lighterData, nftData };
       })),
       
-      // Multi-chain tokens (if keys provided)
+      // Multi-chain tokens (Alchemy/Helius - will be used as fallback if Zerion fails)
       (async () => {
         if (!settings.alchemyApiKey && !settings.heliusApiKey) {
           return [];
         }
         const t3 = performance.now();
-        console.log('→ Fetching multi-chain tokens...');
+        console.log('→ Fetching multi-chain tokens (Alchemy/Helius)...');
         const result = await fetchMultiChainTokens(wallets, settings.alchemyApiKey, settings.heliusApiKey);
         console.log(`  ✓ Multi-chain: ${((performance.now() - t3) / 1000).toFixed(2)}s`);
+        return result;
+      })(),
+      
+      // Zerion positions and PnL data (PRIMARY for multichain)
+      (async () => {
+        if (!settings.zerionApiKey) {
+          return {};
+        }
+        const t4 = performance.now();
+        console.log('→ Fetching Zerion positions & PnL (PRIMARY)...');
+        const result = await fetchZerionPositions(wallets, settings.zerionApiKey);
+        console.log(`  ✓ Zerion: ${((performance.now() - t4) / 1000).toFixed(2)}s`);
         return result;
       })()
     ]);
     
     const hlMarketData = hlMarketDataResult;
+    
+    // Determine data source strategy: Zerion is primary, Alchemy/Helius as fallback
+    const zerionPositionCount = Object.keys(zerionPositions).filter(key => !key.startsWith('_wallet_')).length;
+    const useZerionAsPrimary = zerionPositionCount > 0;
+    
+    if (useZerionAsPrimary) {
+      console.log(`✓ Using Zerion as primary (${zerionPositionCount} positions), Alchemy/Helius as supplement`);
+    } else if (multiChainTokens.length > 0) {
+      console.log(`✓ Using Alchemy/Helius as fallback (${multiChainTokens.length} tokens, no Zerion data)`);
+    }
     
     console.log(`⚡ Loaded data: ${((performance.now() - criticalDataStart) / 1000).toFixed(2)}s`);
     
@@ -3363,6 +3849,8 @@
     // Aggregate tokens by symbol + blockchain (combine same tokens from different wallets)
     const tokenAggregates = {};
     
+    console.log(`🔍 Processing ${multiChainTokens.length} multichain tokens...`);
+    
     for (const token of multiChainTokens) {
       // Dust filter: Skip if value < $0.01 OR (no price data AND balance is tiny)
       if (token.balanceUsd < 0.01 || (token.tokenPrice === 0 && token.balance < 1)) {
@@ -3378,10 +3866,12 @@
           amount: 0,
           value: 0,
           price: token.tokenPrice,
-          change24h: null,
-          pnl: null,
-          pnlPercent: null,
-          walletBreakdown: []
+          change24h: null, // Will be enriched from Zerion
+          pnl: null, // Will be enriched from Zerion (total PnL)
+          pnlPercent: null, // Will be enriched from Zerion (total PnL %)
+          pnl24h: null, // Will be enriched from Zerion (24h PnL in $)
+          walletBreakdown: [],
+          coingeckoId: symbolToCoingeckoId[token.tokenSymbol] || null
         };
       }
       
@@ -3398,6 +3888,80 @@
       }
     }
     
+    console.log(`✓ Created ${Object.keys(tokenAggregates).length} token aggregates:`, Object.keys(tokenAggregates));
+    
+    // Enrich token aggregates with Zerion data (24h changes, PnL if available)
+    if (zerionPositions && Object.keys(zerionPositions).length > 0) {
+      let zerionMatches = 0;
+      
+      console.log('🔍 Zerion: Attempting to enrich multichain tokens...');
+      console.log(`   Zerion data keys:`, Object.keys(zerionPositions).filter(k => !k.startsWith('_wallet_')).slice(0, 10));
+      console.log(`   Token aggregate keys:`, Object.keys(tokenAggregates).slice(0, 10));
+      
+      for (const [key, aggregate] of Object.entries(tokenAggregates)) {
+        // Try to match with Zerion data
+        // Zerion uses chain IDs like 'ethereum', 'arbitrum', 'optimism'
+        const chainNameMap = {
+          'Ethereum': 'ethereum',
+          'Arbitrum': 'arbitrum',
+          'Optimism': 'optimism',
+          'Polygon': 'polygon',
+          'Base': 'base',
+          'Avalanche': 'avalanche',
+          'BSC': 'binance-smart-chain',
+          'Solana': 'solana',
+          'HyperEVM': 'hyperevm' // Add HyperEVM mapping
+        };
+        
+        const zerionChain = chainNameMap[aggregate.exchange];
+        if (zerionChain) {
+          const zerionKey = `${aggregate.asset}_${zerionChain}`;
+          const zerionPos = zerionPositions[zerionKey];
+          
+          if (zerionPos) {
+            console.log(`   ✓ Matched: ${key} -> ${zerionKey}`);
+            console.log(`      Changes:`, zerionPos.changes);
+            
+            if (zerionPos.changes) {
+              // 24h change percentage
+              if (zerionPos.changes.percent_1d !== undefined) {
+                aggregate.change24h = zerionPos.changes.percent_1d;
+                console.log(`      → 24h%: ${aggregate.change24h.toFixed(2)}%`);
+              }
+              
+              // 24h change in $ value
+              if (zerionPos.changes.absolute_1d !== undefined) {
+                aggregate.pnl24h = zerionPos.changes.absolute_1d;
+                console.log(`      → 24h$: $${aggregate.pnl24h.toFixed(2)}`);
+              }
+              
+              // Total PnL from cost basis (if available)
+              if (zerionPos.changes.percent !== undefined) {
+                aggregate.pnlPercent = zerionPos.changes.percent;
+                console.log(`      → Total PnL%: ${aggregate.pnlPercent.toFixed(2)}%`);
+              }
+              if (zerionPos.changes.absolute !== undefined) {
+                aggregate.pnl = zerionPos.changes.absolute;
+                console.log(`      → Total PnL$: $${aggregate.pnl.toFixed(2)}`);
+              }
+              
+              zerionMatches++;
+            }
+          } else {
+            console.log(`   ✗ No match: ${key} (tried ${zerionKey})`);
+          }
+        } else {
+          console.log(`   ✗ Unknown chain: ${aggregate.exchange}`);
+        }
+      }
+      
+      if (zerionMatches > 0) {
+        console.log(`✓ Zerion: Enriched ${zerionMatches} multichain positions with 24h change data`);
+      } else {
+        console.log(`⚠ Zerion: No matches found between Zerion data and token aggregates`);
+      }
+    }
+    
     // Add aggregated tokens to positions
     let tokensAdded = 0;
     let dustTokensFiltered = Object.keys(tokenAggregates).length - tokensAdded;
@@ -3410,6 +3974,61 @@
     console.log(`✓ Multi-chain: Added ${tokensAdded} unique tokens (${multiChainTokens.length} total from ${wallets.length} wallet(s))`);
     if (tokensAdded === 0 && dustTokensFiltered > 0) {
       console.log('⚠ All tokens filtered as dust. Check [SHOW <$100] to view them.');
+    }
+    
+    // === Add Zerion positions that weren't matched with Alchemy/Helius ===
+    // This handles assets that Zerion sees but Alchemy/Helius doesn't
+    if (zerionPositions && Object.keys(zerionPositions).length > 0) {
+      console.log('🔍 Checking for Zerion-only positions...');
+      
+      // Build set of existing token keys from Alchemy/Helius
+      const existingKeys = new Set(Object.keys(tokenAggregates));
+      
+      let zerionOnlyAdded = 0;
+      for (const [zerionKey, pos] of Object.entries(zerionPositions)) {
+        // Skip wallet-level metadata
+        if (zerionKey.startsWith('_wallet_')) continue;
+        
+        // Map Zerion network names to display names
+        const networkDisplayMap = {
+          'ethereum': 'Ethereum',
+          'arbitrum': 'Arbitrum',
+          'optimism': 'Optimism',
+          'polygon': 'Polygon',
+          'base': 'Base',
+          'avalanche': 'Avalanche',
+          'binance-smart-chain': 'BSC',
+          'solana': 'Solana',
+          'hyperevm': 'HyperEVM'
+        };
+        
+        const displayNetwork = networkDisplayMap[pos.network] || pos.network;
+        const aggregateKey = `${pos.symbol}_${displayNetwork}`;
+        
+        // Only add if not already in aggregates (i.e., not from Alchemy/Helius)
+        if (!existingKeys.has(aggregateKey)) {
+          // Add to positions
+          allPositionsData.push({
+            asset: pos.symbol,
+            exchange: displayNetwork,
+            amount: pos.balance,
+            value: pos.balanceUsd,
+            price: pos.price,
+            change24h: pos.changes?.percent_1d || null,
+            pnl: pos.changes?.absolute || null, // Total PnL if available
+            pnlPercent: pos.changes?.percent || null, // Total PnL % if available
+            pnl24h: pos.changes?.absolute_1d || null, // 24h PnL in $
+            coingeckoId: symbolToCoingeckoId[pos.symbol] || null
+          });
+          
+          accountBalances.multichain += pos.balanceUsd;
+          zerionOnlyAdded++;
+        }
+      }
+      
+      if (zerionOnlyAdded > 0) {
+        console.log(`✓ Zerion: Added ${zerionOnlyAdded} positions not found in Alchemy/Helius`);
+      }
     }
     
     // === Pyth Network Pricing ===
@@ -3438,49 +4057,79 @@
     }
     
     // === Calculate TRUE 24h changes from local midnight prices ===
-    // SPEED: Use cached midnight prices, fetch new ones in background
+    // Fetch midnight prices if needed (first load or new day)
     
     let midnightData = getDailyPrices();
     
-    // Background: Fetch fresh midnight prices if needed (non-blocking)
+    // If no cached data or it's a new day, fetch fresh midnight prices
     if (!midnightData || isNewDay(midnightData.timestamp)) {
-      fetchMidnightPrices().then(midnightPrices => {
+      try {
+        console.log('⟳ Fetching midnight prices...');
+        const midnightPrices = await fetchMidnightPrices();
         saveDailyPrices(midnightPrices, getMidnightTimestamp());
-        // Re-render with updated 24h changes
-        renderPositionsTable();
-        updateHeroSection();
-      }).catch(() => {});
-      
-      // Use old data or empty for now
-      if (!midnightData) {
+        midnightData = { prices: midnightPrices, timestamp: getMidnightTimestamp() };
+        console.log(`✓ Midnight prices fetched: ${Object.keys(midnightPrices).length} assets`);
+        console.log(`   Sample keys:`, Object.keys(midnightPrices).slice(0, 15));
+      } catch (err) {
+        console.error('✗ Failed to fetch midnight prices:', err);
         midnightData = { prices: {}, timestamp: getMidnightTimestamp() };
       }
+    } else {
+      console.log(`✓ Using cached midnight prices (${Object.keys(midnightData.prices || {}).length} assets)`);
     }
     
     // Calculate 24h change for each position based on midnight price
-      for (const pos of allPositionsData) {
+    let change24hCalculated = 0;
+    let missingMidnightPrices = [];
+    
+    for (const pos of allPositionsData) {
       const currentPrice = pos.price || 0;
       let midnightPrice = null;
+      let lookupKey = '';
       
       if (pos.exchange === 'OpenSea') {
         // NFTs: Use stored midnight floor price by collection slug
         if (pos.collectionSlug) {
-          midnightPrice = midnightData.prices[`${pos.collectionSlug}_NFT`]
+          lookupKey = `${pos.collectionSlug}_NFT`;
+          midnightPrice = midnightData.prices[lookupKey]
             ?? midnightData.prices[`${pos.asset}_NFT`];
         }
       } else {
         // Crypto: Use stored midnight price for this asset on this exchange
-        const key = `${pos.asset}_${pos.exchange}`;
-        midnightPrice = midnightData.prices[key];
+        lookupKey = `${pos.asset}_${pos.exchange}`;
+        midnightPrice = midnightData.prices[lookupKey];
       }
       
-      // Calculate change if we have both prices
+      // Calculate change if we have both prices (but don't overwrite Zerion data)
       if (midnightPrice && midnightPrice > 0 && currentPrice > 0) {
-        const change24h = ((currentPrice - midnightPrice) / midnightPrice) * 100;
-        pos.change24h = change24h;
+        // Only calculate if we don't already have 24h change data (from Zerion, etc.)
+        if (pos.change24h === null || pos.change24h === undefined) {
+          const change24h = ((currentPrice - midnightPrice) / midnightPrice) * 100;
+          pos.change24h = change24h;
+          change24hCalculated++;
+        } else {
+          change24hCalculated++; // Count Zerion-provided changes too
+        }
+      } else if (currentPrice > 0 && !pos.change24h) {
+        // Track positions missing midnight prices (and no Zerion data)
+        missingMidnightPrices.push(lookupKey);
       }
     }
     
+    console.log(`✓ 24h changes: Calculated for ${change24hCalculated}/${allPositionsData.length} positions`);
+    if (missingMidnightPrices.length > 0) {
+      console.log(`   Missing midnight prices for:`, missingMidnightPrices.slice(0, 10));
+    }
+    
+    // Debug: Log position breakdown by exchange
+    const positionsByExchange = {};
+    for (const pos of allPositionsData) {
+      if (!positionsByExchange[pos.exchange]) {
+        positionsByExchange[pos.exchange] = [];
+      }
+      positionsByExchange[pos.exchange].push(pos.asset);
+    }
+    console.log('📋 Positions by exchange:', Object.entries(positionsByExchange).map(([ex, assets]) => `${ex}: ${assets.length}`).join(', '));
     
     // Render positions table
     renderPositionsTable();
@@ -3903,17 +4552,28 @@
       tr.innerHTML = `
         <td class="${assetCellClass}">${assetDisplay}${editButton}</td>
         <td class="exchange-cell">${exchangeDisplay}</td>
-        <td>${amountDisplay}</td>
-        <td>${priceDisplay}</td>
-        <td>${valueDisplay}</td>
-        <td class="${changeClass}">${change24hDisplay}</td>
-        <td class="${pnlClass}">${pnlDisplay}</td>
+        <td class="amount-cell">${amountDisplay}</td>
+        <td class="price-cell">${priceDisplay}</td>
+        <td class="value-cell">${valueDisplay}</td>
+        <td class="${changeClass} change-cell">${change24hDisplay}</td>
+        <td class="${pnlClass} pnl-cell">${pnlDisplay}</td>
       `;
       
       // Add wallet breakdown tooltip if applicable
       if (hasWalletBreakdown) {
         const assetCell = tr.querySelector('.asset-cell');
         assetCell.setAttribute('data-wallet-breakdown', JSON.stringify(pos.walletBreakdown));
+      }
+      
+      // Apply flash animations for value changes
+      const rowKey = `${pos.asset}_${pos.exchange}`;
+      if (amountsVisible) {
+        flashCell(tr.querySelector('.price-cell'), `${rowKey}_price`, pos.price);
+        flashCell(tr.querySelector('.value-cell'), `${rowKey}_value`, pos.value);
+        flashCell(tr.querySelector('.change-cell'), `${rowKey}_change`, pos.change24h);
+        if (hasPnl) {
+          flashCell(tr.querySelector('.pnl-cell'), `${rowKey}_pnl`, pos.pnl);
+        }
       }
       
       // Mobile card view
@@ -4198,22 +4858,53 @@
       els.greetingMobile.textContent = `${timeOfDay}, ${userName}.`;
     }
     
-    // Calculate total portfolio value from actual account balances
-    // This is more accurate than summing position values as it accounts for leverage
-    const totalValue = accountBalances.hyperliquid + accountBalances.lighter + accountBalances.nfts + accountBalances.multichain;
+    // Filter out hidden assets
+    const hiddenAssets = settings.hiddenAssets || [];
+    const visiblePositions = allPositionsData.filter(pos => {
+      const assetKey = `${pos.asset}_${pos.exchange}`;
+      return !hiddenAssets.includes(assetKey);
+    });
+    
+    // Calculate total portfolio value: Start with all account balances, subtract hidden positions
+    // NOTE: For Hyperliquid/Lighter, account balances are account-level (all positions share margin)
+    // For NFTs and multichain, we subtract individual hidden positions from their totals
+    let totalValue = accountBalances.hyperliquid + accountBalances.lighter + accountBalances.nfts + accountBalances.multichain;
+    
+    // Subtract hidden positions (only NFTs and multichain can be individually hidden)
+    const hiddenPositions = allPositionsData.filter(pos => {
+      const assetKey = `${pos.asset}_${pos.exchange}`;
+      return hiddenAssets.includes(assetKey);
+    });
+    
+    for (const pos of hiddenPositions) {
+      if (pos.exchange === 'OpenSea' || (pos.exchange !== 'Hyperliquid' && pos.exchange !== 'Lighter')) {
+        totalValue -= (pos.value || 0);
+      }
+    }
     
     // === Daily Change Calculation from TRUE Midnight Local Time ===
-    // SPEED: Use cached midnight prices (non-blocking)
+    // Fetch midnight prices if needed (first load or new day)
     
     let midnightData = getDailyPrices();
     
-    // Use cached data or empty if not available
-    if (!midnightData) {
-      midnightData = { prices: {}, timestamp: getMidnightTimestamp() };
+    // If no cached data or it's a new day, fetch fresh midnight prices
+    if (!midnightData || isNewDay(midnightData.timestamp)) {
+      try {
+        console.log('⟳ Hero: Fetching midnight prices...');
+        const midnightPrices = await fetchMidnightPrices();
+        saveDailyPrices(midnightPrices, getMidnightTimestamp());
+        midnightData = { prices: midnightPrices, timestamp: getMidnightTimestamp() };
+        console.log(`✓ Hero: Midnight prices fetched: ${Object.keys(midnightPrices).length} assets`);
+      } catch (err) {
+        console.error('✗ Hero: Failed to fetch midnight prices:', err);
+        midnightData = { prices: {}, timestamp: getMidnightTimestamp() };
+      }
+    } else {
+      console.log(`✓ Hero: Using cached midnight prices (${Object.keys(midnightData.prices).length} assets)`);
     }
     
     // === Calculate Daily P&L from Price Movements ===
-    // For each position: amount × (current_price - midnight_price)
+    // For each VISIBLE position: amount × (current_price - midnight_price)
     // Reflects price changes only, not trades/transfers
     
     // SPEED: Use existing position prices instead of fetching Pyth again
@@ -4223,8 +4914,7 @@
     let totalDailyChange = 0;
     let portfolioValueAtMidnightPrices = 0;
     
-    
-    for (const pos of allPositionsData) {
+    for (const pos of visiblePositions) {
       // Use Pyth price for hero calculations if enabled, otherwise use exchange price
       let currentPrice = pos.price || 0;
       if (usePyth && pos.exchange !== 'OpenSea' && pythPricesForHero[pos.asset]) {
@@ -4232,6 +4922,8 @@
       }
       
       const amount = Math.abs(pos.amount || 0); // Use absolute value for position size
+      const originalAmount = pos.amount || 0; // Keep original for display
+      const positionType = originalAmount >= 0 ? 'LONG' : 'SHORT';
       let midnightPrice = null;
       
       if (pos.exchange === 'OpenSea') {
@@ -4253,12 +4945,13 @@
         
         // Calculate what this position was worth at midnight
         const midnightValue = amount * midnightPrice;
+        const currentValue = amount * currentPrice;
         portfolioValueAtMidnightPrices += midnightValue;
         
-        const pnlPercent = ((currentPrice - midnightPrice) / midnightPrice) * 100;
       } else {
         // If no midnight price, use current value as midnight value
-        portfolioValueAtMidnightPrices += (amount * currentPrice);
+        const currentValue = amount * currentPrice;
+        portfolioValueAtMidnightPrices += currentValue;
       }
     }
     
@@ -4268,10 +4961,10 @@
       : 0;
     
     
-    // Get asset highlights based on 24h change (for individual assets)
+    // Get asset highlights based on 24h change (for individual assets, visible only)
     const highlights = [];
     const assetGroups = {};
-    for (const pos of allPositionsData) {
+    for (const pos of visiblePositions) {
       if (!assetGroups[pos.asset]) {
         assetGroups[pos.asset] = { 
           change24h: pos.change24h || 0, 
@@ -4509,6 +5202,7 @@
     if (!loadSettings()) saveSettings(settings);
     initTheme(settings);
     applyAlignment(settings.leftAligned ?? false);
+    applyCompactList(settings.compactList ?? false);
     
     // Restore rain/snow preferences
     if (settings.rainEnabled && !rainActive) {
@@ -5854,6 +6548,11 @@
     setupRainControls();
     restoreStickyStickers();
     
+    // Preload Pyth price feed metadata (non-blocking)
+    getPythPriceFeeds().catch(err => {
+      console.warn('⚠ Failed to preload Pyth price feeds:', err);
+    });
+    
     // Apply settings on load
     const settings = loadSettings() || getDefaultSettings();
     if (settings.wallpaper) {
@@ -5882,6 +6581,153 @@
     if (settings.comicCollapsed && els.comicSection) {
       els.comicSection.classList.add('collapsed');
     }
+    
+    // === WATCHLIST SETUP ===
+    
+    // Preload all Pyth feeds for watchlist (non-blocking)
+    fetchAllPythFeeds().catch(err => {
+      console.warn('⚠ Failed to preload Pyth feeds for watchlist:', err);
+    });
+    
+    // Apply watchlist collapsed state
+    const watchlistSection = document.getElementById('watchlistSection');
+    if (settings.watchlistCollapsed && watchlistSection) {
+      watchlistSection.classList.add('collapsed');
+    }
+    
+    // Watchlist toggle button
+    const watchlistToggleBtn = document.getElementById('watchlistToggleBtn');
+    if (watchlistToggleBtn && watchlistSection) {
+      watchlistToggleBtn.addEventListener('click', () => {
+        watchlistSection.classList.toggle('collapsed');
+        const settings = loadSettings() || getDefaultSettings();
+        settings.watchlistCollapsed = watchlistSection.classList.contains('collapsed');
+        saveSettings(settings);
+      });
+    }
+    
+    // Add to watchlist button
+    const addToWatchlistBtn = document.getElementById('addToWatchlistBtn');
+    const watchlistSearchWindow = document.getElementById('watchlistSearchWindow');
+    const watchlistSearchBackdrop = document.getElementById('watchlistSearchBackdrop');
+    const closeWatchlistSearchBtn = document.getElementById('closeWatchlistSearchBtn');
+    const watchlistSearchInput = document.getElementById('watchlistSearchInput');
+    const watchlistSearchResults = document.getElementById('watchlistSearchResults');
+    
+    if (addToWatchlistBtn) {
+      addToWatchlistBtn.addEventListener('click', async () => {
+        // Ensure feeds are loaded
+        await fetchAllPythFeeds();
+        
+        // Show modal
+        if (watchlistSearchWindow) watchlistSearchWindow.style.display = 'block';
+        if (watchlistSearchBackdrop) watchlistSearchBackdrop.style.display = 'block';
+        
+        // Focus search input
+        if (watchlistSearchInput) {
+          watchlistSearchInput.value = '';
+          watchlistSearchInput.focus();
+          watchlistSearchResults.innerHTML = '<div class="loading-terminal">[Type to search...]</div>';
+        }
+      });
+    }
+    
+    // Close watchlist search
+    let addedFeeds = new Set();
+    
+    const closeWatchlistSearch = () => {
+      if (watchlistSearchWindow) watchlistSearchWindow.style.display = 'none';
+      if (watchlistSearchBackdrop) watchlistSearchBackdrop.style.display = 'none';
+      addedFeeds.clear();
+    };
+    
+    // Edit watchlist button
+    const editWatchlistBtn = document.getElementById('editWatchlistBtn');
+    if (editWatchlistBtn) {
+      editWatchlistBtn.addEventListener('click', toggleWatchlistEditMode);
+    }
+    
+    // Add event delegation for watchlist edit buttons (they're created dynamically)
+    const watchlistBody = document.getElementById('watchlistBody');
+    if (watchlistBody) {
+      watchlistBody.addEventListener('click', (e) => {
+        if (e.target.classList.contains('watchlist-edit-btn')) {
+          const feedId = e.target.getAttribute('data-feed-id');
+          toggleWatchlistItemVisibility(feedId);
+        }
+      });
+    }
+    
+    // Search functionality with multi-select
+    
+    if (watchlistSearchInput) {
+      watchlistSearchInput.addEventListener('input', (e) => {
+        const query = e.target.value.trim();
+        
+        if (query.length < 1) {
+          watchlistSearchResults.innerHTML = '<div class="loading-terminal">[Type to search...]</div>';
+          addedFeeds.clear();
+          return;
+        }
+        
+        const results = searchWatchlistTokens(query);
+        const settings = loadSettings() || getDefaultSettings();
+        const currentWatchlist = settings.watchlist || [];
+        
+        if (results.length === 0) {
+          watchlistSearchResults.innerHTML = '<div class="loading-terminal">[No matches found]</div>';
+          return;
+        }
+        
+        watchlistSearchResults.innerHTML = '';
+        for (const feed of results) {
+          const resultDiv = document.createElement('div');
+          resultDiv.className = 'watchlist-search-result';
+          
+          // Check if already in watchlist or just added
+          const isInWatchlist = currentWatchlist.includes(feed.id);
+          const isAdded = addedFeeds.has(feed.id);
+          
+          if (isInWatchlist || isAdded) {
+            resultDiv.classList.add('added');
+          }
+          
+          resultDiv.innerHTML = `
+            <span>${feed.symbol}</span>
+            <button class="btn-text ${isInWatchlist || isAdded ? 'added' : ''}" data-feed-id="${feed.id}">
+              ${isInWatchlist ? '[IN LIST]' : isAdded ? '[ADDED]' : '[ADD]'}
+            </button>
+          `;
+          
+          const btn = resultDiv.querySelector('button');
+          if (!isInWatchlist) {
+            btn.addEventListener('click', () => {
+              if (!isAdded) {
+                addToWatchlist(feed.id);
+                addedFeeds.add(feed.id);
+                btn.textContent = '[ADDED]';
+                btn.classList.add('added');
+                resultDiv.classList.add('added');
+              }
+            });
+          }
+          
+          watchlistSearchResults.appendChild(resultDiv);
+        }
+      });
+    }
+    
+    // Add event listeners for close buttons
+    if (closeWatchlistSearchBtn) {
+      closeWatchlistSearchBtn.addEventListener('click', closeWatchlistSearch);
+    }
+    
+    if (watchlistSearchBackdrop) {
+      watchlistSearchBackdrop.addEventListener('click', closeWatchlistSearch);
+    }
+    
+    // Initial render
+    renderWatchlist();
     
     // Wallpaper change handler
     if (els.wallpaperSelect) {

@@ -138,6 +138,22 @@
   100% { opacity: 1; }
 }
 
+@keyframes cell-flash {
+  0% { 
+    background-color: var(--flash-start); 
+  }
+  50% { 
+    background-color: var(--flash-mid); 
+  }
+  100% { 
+    background-color: transparent; 
+  }
+}
+
+.cell-flash {
+  animation: cell-flash 0.6s ease-out;
+}
+
 .flash-update {
   animation: flash-update 0.2s ease-out;
 }
@@ -477,16 +493,64 @@ h1, h2, h3, h4, h5, h6 {
 .settings-form section {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
-  max-width: 500px;
+  padding: 0 15px 15px 15px;
 }
 
 .settings-form header, .settings-actions {
   padding: 16px;
   border-bottom: 1px solid var(--border);
-  max-width: 500px;
   box-sizing: border-box;
   overflow-x: hidden;
+}
+
+/* Settings Tabs */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+
+.settings-tab {
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.settings-tab:hover {
+  color: var(--text);
+  background: var(--border);
+}
+
+.settings-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.settings-tab-content {
+  display: none;
+}
+
+.settings-tab-content.active {
+  display: block;
+}
+
+.settings-tab-content.show-all-mode {
+  display: block !important;
 }
 
 .settings-form fieldset,
@@ -553,24 +617,19 @@ h1, h2, h3, h4, h5, h6 {
 fieldset {
   border: none;
   border-bottom: 1px solid var(--border);
-  padding: 16px 0;
+  padding: 0;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
   background: transparent;
   max-width: 100%;
   box-sizing: border-box;
 }
 
-fieldset:last-child {
-  border-bottom: none;
-}
-
-fieldset label:first-of-type {
-  margin-top: 8px;
-}
-
 legend {
-  color: var(--text);
-  font-weight: 400;
   padding: 0;
+  margin-bottom: 10px;
+  color: var(--accent);
+  font-weight: 400;
   text-transform: uppercase;
   max-width: 100%;
   overflow-wrap: break-word;
@@ -580,11 +639,15 @@ legend {
 label {
   display: grid;
   gap: 6px;
-  margin-top: 6px;
+  margin-top: 10px;
   color: var(--text);
   max-width: 100%;
   overflow-x: hidden;
   box-sizing: border-box;
+}
+
+label:first-of-type {
+  margin-top: 0;
 }
 
 /* Checkbox labels should not be grid */
@@ -654,7 +717,7 @@ select:focus {
 
 .help {
   color: var(--muted);
-  margin-bottom: 8px;
+  margin: 8px 0;
   opacity: 0.7;
   max-width: 100%;
   overflow-wrap: break-word;
@@ -1113,6 +1176,41 @@ select:focus {
     display: none;
   }
   
+  /* Keep watchlist table visible on mobile */
+  #watchlistTable {
+    display: table;
+  }
+  
+  /* Show positions table on mobile in compact mode */
+  .data-table.compact-mode {
+    display: table;
+    width: 100%;
+    min-width: 100%;
+  }
+  
+  /* Make table wrapper scrollable on mobile in compact mode */
+  body.compact-mode .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Hide exchange column on mobile in compact mode */
+  .data-table.compact-mode th:nth-child(2),
+  .data-table.compact-mode td:nth-child(2) {
+    display: none;
+  }
+  
+  /* Prevent text wrapping in compact mode cells on mobile */
+  .data-table.compact-mode th,
+  .data-table.compact-mode td {
+    white-space: nowrap;
+  }
+  
+  /* Hide mobile cards when compact mode is active */
+  body.compact-mode .mobile-positions-container {
+    display: none;
+  }
+  
   .mobile-positions-container {
     display: block;
     max-width: 100%;
@@ -1161,6 +1259,44 @@ select:focus {
     overflow-x: hidden;
   }
   
+  /* Compact tabs on mobile */
+  .settings-tabs {
+    padding: 0 8px;
+    gap: 2px;
+  }
+  
+  .settings-tab {
+    padding: 10px 8px;
+    font-size: 1em;
+    letter-spacing: 0.3px;
+  }
+  
+  fieldset {
+    border: none;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 10px;
+  }
+  
+  legend {
+    padding: 0;
+  }
+  
+  /* Fullscreen watchlist search on mobile */
+  #watchlistSearchWindow {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-width: 100vw;
+    max-height: 100vh;
+    max-height: 100dvh;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    top: 0;
+    left: 0;
+    transform: none;
+  }
+  
   .settings::backdrop {
     background: rgba(0, 0, 0, 0.8);
   }
@@ -1204,10 +1340,14 @@ select:focus {
   label {
     margin-top: 12px;
   }
+
+  label:first-of-type {
+    margin-top: 0;
+  }
   
   legend {
-    margin-bottom: 8px;
-    font-size: 0.9em;
+    color: var(--accent);
+    margin-bottom: 0;
   }
   
   .help {
@@ -1464,6 +1604,139 @@ html[data-theme="ft"] {
   --cyan: #0077b6;
   --flash-start: rgba(153, 15, 61, 0.25);
   --flash-mid: rgba(153, 15, 61, 0.1);
+}
+
+html[data-theme="refined-white"] {
+  /* Refined White by sacred.computer */
+  --bg: #ffffff;
+  --bg-elev: #f5f5f5;
+  --text: #000000;
+  --text-bright: #000000;
+  --muted: #666666;
+  --accent: #000000;
+  --border: rgba(0, 0, 0, 0.15);
+  --card-bg: #ffffff;
+  --green: #00aa00;
+  --red: #cc0000;
+  --orange: #ff6600;
+  --yellow: #ffaa00;
+  --cyan: #0088cc;
+  --flash-start: rgba(0, 0, 0, 0.3);
+  --flash-mid: rgba(0, 0, 0, 0.1);
+}
+
+html[data-theme="black-midnight"] {
+  /* Black Midnight Vapor by sacred.computer */
+  --bg: #000000;
+  --bg-elev: #0a0a0a;
+  --text: #c0c0c0;
+  --text-bright: #ffffff;
+  --muted: #808080;
+  --accent: #ffffff;
+  --border: rgba(192, 192, 192, 0.15);
+  --card-bg: #000000;
+  --green: #00ff00;
+  --red: #ff0000;
+  --orange: #ff9900;
+  --yellow: #ffff00;
+  --cyan: #00ffff;
+  --flash-start: rgba(255, 255, 255, 0.3);
+  --flash-mid: rgba(255, 255, 255, 0.1);
+}
+
+html[data-theme="code-red"] {
+  /* U-571 Code Red by sacred.computer */
+  --bg: #1a0000;
+  --bg-elev: #2a0000;
+  --text: #ff6666;
+  --text-bright: #ff0000;
+  --muted: #cc3333;
+  --accent: #ff0000;
+  --border: rgba(255, 102, 102, 0.2);
+  --card-bg: #1a0000;
+  --green: #ff4444;
+  --red: #ff0000;
+  --orange: #ff3333;
+  --yellow: #ff8888;
+  --cyan: #ff5555;
+  --flash-start: rgba(255, 0, 0, 0.4);
+  --flash-mid: rgba(255, 0, 0, 0.15);
+}
+
+html[data-theme="bioluminescence"] {
+  /* Digital Bioluminescence by sacred.computer */
+  --bg: #000a0f;
+  --bg-elev: #001a24;
+  --text: #00ffff;
+  --text-bright: #66ffff;
+  --muted: #008888;
+  --accent: #00ffff;
+  --border: rgba(0, 255, 255, 0.2);
+  --card-bg: #000a0f;
+  --green: #00ffaa;
+  --red: #ff0088;
+  --orange: #ffaa00;
+  --yellow: #ffff00;
+  --cyan: #00ffff;
+  --flash-start: rgba(0, 255, 255, 0.4);
+  --flash-mid: rgba(0, 255, 255, 0.15);
+}
+
+html[data-theme="safe-blue"] {
+  /* Operation Safe Blue by sacred.computer */
+  --bg: #000814;
+  --bg-elev: #001d3d;
+  --text: #5599ff;
+  --text-bright: #aaccff;
+  --muted: #3377cc;
+  --accent: #5599ff;
+  --border: rgba(85, 153, 255, 0.2);
+  --card-bg: #000814;
+  --green: #00cc88;
+  --red: #ff4466;
+  --orange: #ff8833;
+  --yellow: #ffcc00;
+  --cyan: #00ccff;
+  --flash-start: rgba(85, 153, 255, 0.4);
+  --flash-mid: rgba(85, 153, 255, 0.15);
+}
+
+html[data-theme="neon-green"] {
+  /* Neon Green Garden by sacred.computer */
+  --bg: #001a00;
+  --bg-elev: #002a00;
+  --text: #00ff00;
+  --text-bright: #66ff66;
+  --muted: #00aa00;
+  --accent: #00ff00;
+  --border: rgba(0, 255, 0, 0.2);
+  --card-bg: #001a00;
+  --green: #00ff00;
+  --red: #ff0066;
+  --orange: #ff9900;
+  --yellow: #ffff00;
+  --cyan: #00ffaa;
+  --flash-start: rgba(0, 255, 0, 0.4);
+  --flash-mid: rgba(0, 255, 0, 0.15);
+}
+
+html[data-theme="as400"] {
+  /* Kirkland Signature AS/400 by sacred.computer */
+  --bg: #000000;
+  --bg-elev: #1a1a1a;
+  --text: #00ff00;
+  --text-bright: #00ff00;
+  --muted: #00aa00;
+  --accent: #00ff00;
+  --border: rgba(0, 255, 0, 0.3);
+  --card-bg: #000000;
+  --green: #00ff00;
+  --red: #ff0000;
+  --orange: #ffaa00;
+  --yellow: #ffff00;
+  --cyan: #00ffff;
+  --flash-start: rgba(0, 255, 0, 0.4);
+  --flash-mid: rgba(0, 255, 0, 0.15);
 }
 
 /* Sticker grid container */
@@ -1865,11 +2138,183 @@ input[type="range"]:focus::-moz-range-thumb {
 /* External link styling */
 .external-link {
   color: var(--accent);
+  background-color: var(--border);
   text-decoration: underline;
   text-decoration-style: dotted;
   text-underline-offset: 3px;
   font-size: 0.9em;
-  transition: all 0.2s ease;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* Watchlist Section */
+.watchlist-content {
+  display: block;
+  transition: all 0.3s ease;
+}
+
+#watchlistSection.collapsed .watchlist-content {
+  display: none;
+}
+
+#watchlistSection.collapsed .toggle-expanded {
+  display: none;
+}
+
+#watchlistSection.collapsed .toggle-collapsed {
+  display: flex;
+}
+
+#watchlistSection:not(.collapsed) .toggle-collapsed {
+  display: none;
+}
+
+#watchlistSection:not(.collapsed) .toggle-expanded {
+  display: inline;
+}
+
+.watchlist-search-result {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.2s ease;
+}
+
+.watchlist-search-result:hover {
+  background: var(--bg);
+}
+
+.watchlist-search-result:last-child {
+  border-bottom: none;
+}
+
+.watchlist-search-result.added {
+  background: var(--bg-elev);
+}
+
+.watchlist-search-result .asset-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.watchlist-search-result .asset-full-name {
+  font-size: 0.95em;
+  color: var(--text);
+}
+
+.watchlist-search-result .asset-symbol {
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.watchlist-search-result button.added {
+  color: var(--accent);
+}
+
+.watchlist-remove-btn {
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-family: inherit;
+  transition: color 0.2s ease;
+}
+
+.watchlist-remove-btn:hover {
+  color: var(--text);
+}
+
+.watchlist-row-hidden {
+  opacity: 0.3;
+}
+
+.watchlist-edit-btn {
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 8px;
+  font-family: inherit;
+  transition: color 0.2s ease;
+  margin-left: 8px;
+}
+
+.watchlist-edit-btn:hover {
+  color: var(--text);
+}
+
+/* Watchlist table layout */
+#watchlistTable {
+  width: 100%;
+  table-layout: fixed;
+}
+
+#watchlistTable th:nth-child(1),
+#watchlistTable td:nth-child(1) {
+  text-align: left;
+  width: 30%;
+}
+
+#watchlistTable th:nth-child(2),
+#watchlistTable td:nth-child(2) {
+  text-align: left;
+  width: 35%;
+}
+
+#watchlistTable th:nth-child(3),
+#watchlistTable td:nth-child(3) {
+  text-align: right;
+  width: 35%;
+}
+
+/* Compact list mode - inspired by sacred.computer terminal tables */
+.data-table.compact-mode {
+  border-collapse: collapse;
+}
+
+.data-table.compact-mode th,
+.data-table.compact-mode td {
+  padding: 4px 8px;
+  line-height: 1.2;
+}
+
+/* Remove padding from edge cells in compact mode */
+.data-table.compact-mode th:first-child,
+.data-table.compact-mode td:first-child {
+  padding-left: 0;
+}
+
+.data-table.compact-mode th:last-child,
+.data-table.compact-mode td:last-child {
+  padding-right: 0;
+}
+
+.data-table.compact-mode thead th {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table.compact-mode tbody tr {
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table.compact-mode tbody tr:last-child {
+  border-bottom: none;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 6px;
+  background: var(--border);
+  color: var(--muted);
+  font-size: 0.85em;
+  border-radius: 3px;
 }
 
 .external-link:hover,
