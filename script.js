@@ -55,13 +55,14 @@
   let lastCoinGeckoCall = 0;
   const COINGECKO_DELAY = 300; // 300ms between calls (aggressive but respectful)
   const coinGeckoCache = new Map();
-  const CACHE_DURATION = 180000; // Cache for 3 minutes (longer caching)
-  const MAX_CACHE_SIZE = 200; // Larger cache for better performance
+  const CACHE_DURATION = 300000; // Cache for 5 minutes (aggressive caching for performance)
+  const MAX_CACHE_SIZE = 250; // Larger cache for better performance
   let consecutiveRateLimits = 0;
   
   // Settings cache (avoid repeated localStorage reads)
   let settingsCache = null;
   let settingsCacheTime = 0;
+  const SETTINGS_CACHE_DURATION = 10000; // Cache settings for 10s for better performance
   
   // NFT data cache (OpenSea is slow, cache aggressively)
   const nftCache = new Map();
@@ -107,7 +108,6 @@
         }
       }
       
-      console.log(`✓ Pyth: Loaded ${Object.keys(feedMap).length} price feeds from Hermes API`);
       return feedMap;
     } catch (err) {
       console.warn('⚠ Pyth: Failed to fetch price feed metadata:', err.message);
@@ -196,7 +196,6 @@
     const feedIds = Object.keys(feedIdToAsset);
     
     if (feedIds.length === 0) {
-      console.log('  ⚠ Pyth: No feed IDs found for requested assets');
       return {};
     }
     
@@ -206,7 +205,6 @@
       
       const response = await fetch(url);
       if (!response.ok) {
-        console.log(`  ⚠ Pyth API error: ${response.status}`);
         return {};
       }
       
@@ -228,13 +226,10 @@
             prices[asset] = price;
           }
         }
-      } else {
-        console.log('  ⚠ Pyth: No parsed data in response');
       }
       
       return prices;
     } catch (err) {
-      console.log(`  ⚠ Pyth fetch error:`, err.message);
       return {};
     }
   }
@@ -459,6 +454,20 @@
   let lastFullRefresh = 0;
   const MIN_REFRESH_INTERVAL = 10000; // Minimum 10s between full refreshes (faster updates)
   
+  // === Performance Utilities ===
+  // Debounce helper for search inputs to reduce unnecessary operations
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+  
   async function rateLimitedFetch(url, cacheKey = null, retryCount = 0) {
     // Check cache first - extend cache if we've been rate limited recently
     if (cacheKey && coinGeckoCache.has(cacheKey)) {
@@ -669,7 +678,7 @@
   function loadSettings() {
     // SPEED: Use cache to avoid repeated localStorage reads/decryption
     const now = Date.now();
-    if (settingsCache && (now - settingsCacheTime) < 5000) {
+    if (settingsCache && (now - settingsCacheTime) < SETTINGS_CACHE_DURATION) {
       return settingsCache;
     }
     
@@ -703,7 +712,6 @@
       settingsCache = settings;
       settingsCacheTime = now;
       
-      console.log('📖 Loading settings. Manual positions count:', settings.cryptoPositions?.length || 0);
       return settings;
     } catch {
       return null;
@@ -735,7 +743,6 @@
       settingsToSave.lighterAddress = simpleEncrypt(settingsToSave.lighterAddress);
     }
     
-    console.log('💾 Saving settings. Manual positions count:', settingsToSave.cryptoPositions?.length || 0);
     localStorage.setItem(storageKey, JSON.stringify(settingsToSave));
     
     // Invalidate cache
@@ -889,14 +896,14 @@
       const headerRow = positionsTable.querySelector('thead tr');
       if (headerRow) {
         if (compact) {
-          // Compact mode: Asset, 24H%, P&L, Price, Amount, Value, Exchange
+          // Compact mode: Asset, 24H%, P&L, Price, Value, Amount, Exchange
           headerRow.innerHTML = `
             <th class="th-asset">Asset</th>
             <th class="th-change">24H%</th>
             <th class="th-pnl">P&L</th>
             <th class="th-price">Price</th>
-            <th class="th-amount">Amount</th>
             <th class="th-value">Value</th>
+            <th class="th-amount">Amount</th>
             <th class="th-exchange">Exchange</th>
           `;
         } else {
@@ -1187,8 +1194,6 @@
   function collectSettingsFromForm() {
     const current = loadSettings() || getDefaultSettings();
     const newSettings = { ...current };
-    
-    console.log('📋 collectSettingsFromForm: current.cryptoPositions =', current.cryptoPositions?.length || 0);
 
     // Get wallet addresses and API keys
     newSettings.walletAddresses = els.walletAddresses.value.trim() || '';
@@ -1200,7 +1205,6 @@
     // Preserve existing cryptoPositions (added via ADD POSITION button)
     // Don't read from the deprecated manual positions form
     // newSettings.cryptoPositions is already set from { ...current }
-    console.log('📋 collectSettingsFromForm: newSettings.cryptoPositions =', newSettings.cryptoPositions?.length || 0);
 
     newSettings.userName = els.userName.value.trim() || '';
     
@@ -2448,9 +2452,6 @@
     await updateHeroSection();
     updateLastUpdateTimestamp();
     
-    const loadTime = ((performance.now() - startTime) / 1000).toFixed(2);
-    console.log(`⚡ Loaded in ${loadTime}s`);
-    
     // Hide mini loader after data fetch completes
     hideMiniLoader();
     
@@ -2526,7 +2527,6 @@
     try {
       // Try OpenSea API first if we have an API key
       if (apiKey) {
-        console.log(`⟳ OpenSea: Fetching NFTs for ${address.substring(0, 6)}...${address.substring(address.length - 4)}`);
         // Fetch from multiple chains
         const chains = [
           'ethereum', 
@@ -2561,7 +2561,6 @@
             if (chainResp.ok) {
               const chainData = await chainResp.json();
               if (chainData.nfts && chainData.nfts.length > 0) {
-                console.log(`  ✓ ${chain}: Found ${chainData.nfts.length} NFT(s)`);
                 // Tag each NFT with its chain
                 chainData.nfts.forEach(nft => {
                   nft._chain = chain;
@@ -2569,7 +2568,6 @@
                 return chainData.nfts;
               }
             } else {
-              console.log(`  ⚠ ${chain}: ${chainResp.status} ${chainResp.statusText}`);
             }
             return [];
           })
@@ -2582,7 +2580,6 @@
         const chainResults = await Promise.all(chainPromises);
         const allNfts = chainResults.flat();
         
-        console.log(`⟳ OpenSea: Total ${allNfts.length} NFT(s) found across all chains`);
         
         if (allNfts.length > 0) {
         const openSeaData = { nfts: allNfts };
@@ -2881,15 +2878,12 @@
               
               const result = { collections: Object.values(collections) };
               
-              // Cache the result
+              // Cache the result              
               nftCache.set(cacheKey, { data: result, timestamp: Date.now() });
-              
-              console.log(`✓ OpenSea: Processed ${result.collections.length} collection(s)`);
               
               return result;
             }
       } else {
-        console.log('⚠ OpenSea: No NFTs found');
       }
       
       // Fallback: Try Reservoir API (aggregates multiple marketplaces)
@@ -3057,12 +3051,9 @@
   // Fetch EVM token balances using Alchemy's API (user brings their own free API key)
   async function fetchAlchemyTokens(wallets, apiKey) {
     if (!apiKey) {
-      console.log('⚠ Alchemy: No API key provided');
       return [];
     }
     
-    console.log(`⟳ Alchemy: Fetching tokens for ${wallets.length} wallet(s)`);
-    console.log('  Supported: Ethereum, Arbitrum, Optimism, Polygon, Base, HyperEVM');
     
     // Alchemy supports these networks
     // Docs: https://www.alchemy.com/docs/reference/hyperliquid-api-quickstart
@@ -3203,11 +3194,9 @@
   // Fetch Solana token balances using Helius API (user brings their own free API key)
   async function fetchSolanaTokens(wallets, apiKey) {
     if (!apiKey) {
-      console.log('⚠ Helius: No API key provided');
       return [];
     }
     
-    console.log(`⟳ Helius: Fetching tokens for ${wallets.length} wallet(s)`);
     const solanaData = [];
     
     for (const wallet of wallets) {
@@ -3266,7 +3255,6 @@
       return {};
     }
     
-    console.log(`⟳ Zerion: Fetching positions for ${wallets.length} wallet(s)`);
     const zerionData = {};
     
     for (const wallet of wallets) {
@@ -3360,7 +3348,6 @@
     }
     
     const positionCount = Object.keys(zerionData).filter(key => !key.startsWith('_wallet_')).length;
-    console.log(`✓ Zerion: Found ${positionCount} positions across ${wallets.length} wallet(s)`);
     
     return zerionData;
   }
@@ -3373,7 +3360,6 @@
     ]);
     
     const allTokens = [...evmTokens, ...solTokens];
-    console.log(`✓ Multi-chain: Found ${allTokens.length} tokens (${evmTokens.length} EVM, ${solTokens.length} Solana)`);
     
     return allTokens;
   }
@@ -3410,7 +3396,6 @@
       // Hyperliquid market data
       (async () => {
         const t1 = performance.now();
-        console.log('→ Fetching Hyperliquid market data...');
         try {
           const marketResp = await fetch('https://api.hyperliquid.xyz/info', {
             method: 'POST',
@@ -3456,20 +3441,17 @@
         } catch (err) {
           return {};
         } finally {
-          console.log(`  ✓ Market data: ${((performance.now() - t1) / 1000).toFixed(2)}s`);
         }
       })(),
       
       // ALL wallet data in parallel (exchange + NFTs together)
       Promise.all(wallets.map(async (wallet, i) => {
         const t2 = performance.now();
-        console.log(`→ Wallet ${i + 1}: Fetching positions + NFTs...`);
         const [hlData, lighterData, nftData] = await Promise.all([
           fetchHyperliquidPositions(wallet),
           fetchLighterPositions(wallet),
           fetchOpenSeaNFTs(wallet).catch(() => null) // NFTs fail gracefully
         ]);
-        console.log(`  ✓ Wallet ${i + 1}: ${((performance.now() - t2) / 1000).toFixed(2)}s`);
         return { hlData, lighterData, nftData };
       })),
       
@@ -3479,9 +3461,7 @@
           return [];
         }
         const t3 = performance.now();
-        console.log('→ Fetching multi-chain tokens (Alchemy/Helius)...');
         const result = await fetchMultiChainTokens(wallets, settings.alchemyApiKey, settings.heliusApiKey);
-        console.log(`  ✓ Multi-chain: ${((performance.now() - t3) / 1000).toFixed(2)}s`);
         return result;
       })(),
       
@@ -3491,9 +3471,7 @@
           return {};
         }
         const t4 = performance.now();
-        console.log('→ Fetching Zerion positions & PnL (PRIMARY)...');
         const result = await fetchZerionPositions(wallets, settings.zerionApiKey);
-        console.log(`  ✓ Zerion: ${((performance.now() - t4) / 1000).toFixed(2)}s`);
         return result;
       })()
     ]);
@@ -3505,12 +3483,9 @@
     const useZerionAsPrimary = zerionPositionCount > 0;
     
     if (useZerionAsPrimary) {
-      console.log(`✓ Using Zerion as primary (${zerionPositionCount} positions), Alchemy/Helius as supplement`);
     } else if (multiChainTokens.length > 0) {
-      console.log(`✓ Using Alchemy/Helius as fallback (${multiChainTokens.length} tokens, no Zerion data)`);
     }
     
-    console.log(`⚡ Loaded data: ${((performance.now() - criticalDataStart) / 1000).toFixed(2)}s`);
     
     // Process all collected wallet data
     
@@ -3787,10 +3762,8 @@
       const tokensNeedingPrice = multiChainTokens.filter(t => t.tokenPrice === 0);
       if (tokensNeedingPrice.length > 0) {
         const uniqueSymbols = [...new Set(tokensNeedingPrice.map(t => t.tokenSymbol))];
-        console.log(`⟳ Fetching prices for ${uniqueSymbols.length} unique tokens via Pyth: [${uniqueSymbols.join(', ')}]`);
         
         const pythPrices = await fetchPythPrices(uniqueSymbols);
-        console.log(`  Pyth returned prices for:`, Object.keys(pythPrices));
         
         let pythPricesFound = 0;
         
@@ -3803,7 +3776,6 @@
         }
         
         if (pythPricesFound > 0) {
-          console.log(`✓ Pyth: Applied ${pythPricesFound}/${tokensNeedingPrice.length} prices`);
         }
       }
       
@@ -3814,7 +3786,6 @@
           if (token.tokenSymbol === 'HYPE') {
             token.tokenPrice = hypePrice;
             token.balanceUsd = token.balance * hypePrice;
-            console.log(`  ✓ HYPE: $${hypePrice.toFixed(2)} (from Hyperliquid) → ${token.blockchain} balance = $${token.balanceUsd.toFixed(2)}`);
           }
         }
       }
@@ -3862,11 +3833,9 @@
               }
             }
             if (pricesFound > 0) {
-              console.log(`✓ CoinGecko (${blockchain}): Found prices for ${pricesFound}/${tokens.length} tokens`);
             }
           }
         } catch (err) {
-          console.log(`⚠ CoinGecko price fetch failed for ${blockchain}`);
         }
       }
     }
@@ -3874,7 +3843,6 @@
     // Aggregate tokens by symbol + blockchain (combine same tokens from different wallets)
     const tokenAggregates = {};
     
-    console.log(`🔍 Processing ${multiChainTokens.length} multichain tokens...`);
     
     for (const token of multiChainTokens) {
       // Dust filter: Skip if value < $0.01 OR (no price data AND balance is tiny)
@@ -3913,15 +3881,11 @@
       }
     }
     
-    console.log(`✓ Created ${Object.keys(tokenAggregates).length} token aggregates:`, Object.keys(tokenAggregates));
     
     // Enrich token aggregates with Zerion data (24h changes, PnL if available)
     if (zerionPositions && Object.keys(zerionPositions).length > 0) {
       let zerionMatches = 0;
       
-      console.log('🔍 Zerion: Attempting to enrich multichain tokens...');
-      console.log(`   Zerion data keys:`, Object.keys(zerionPositions).filter(k => !k.startsWith('_wallet_')).slice(0, 10));
-      console.log(`   Token aggregate keys:`, Object.keys(tokenAggregates).slice(0, 10));
       
       for (const [key, aggregate] of Object.entries(tokenAggregates)) {
         // Try to match with Zerion data
@@ -3944,46 +3908,36 @@
           const zerionPos = zerionPositions[zerionKey];
           
           if (zerionPos) {
-            console.log(`   ✓ Matched: ${key} -> ${zerionKey}`);
-            console.log(`      Changes:`, zerionPos.changes);
             
             if (zerionPos.changes) {
               // 24h change percentage
               if (zerionPos.changes.percent_1d !== undefined) {
                 aggregate.change24h = zerionPos.changes.percent_1d;
-                console.log(`      → 24h%: ${aggregate.change24h.toFixed(2)}%`);
               }
               
               // 24h change in $ value
               if (zerionPos.changes.absolute_1d !== undefined) {
                 aggregate.pnl24h = zerionPos.changes.absolute_1d;
-                console.log(`      → 24h$: $${aggregate.pnl24h.toFixed(2)}`);
               }
               
               // Total PnL from cost basis (if available)
               if (zerionPos.changes.percent !== undefined) {
                 aggregate.pnlPercent = zerionPos.changes.percent;
-                console.log(`      → Total PnL%: ${aggregate.pnlPercent.toFixed(2)}%`);
               }
               if (zerionPos.changes.absolute !== undefined) {
                 aggregate.pnl = zerionPos.changes.absolute;
-                console.log(`      → Total PnL$: $${aggregate.pnl.toFixed(2)}`);
               }
               
               zerionMatches++;
             }
           } else {
-            console.log(`   ✗ No match: ${key} (tried ${zerionKey})`);
           }
         } else {
-          console.log(`   ✗ Unknown chain: ${aggregate.exchange}`);
         }
       }
       
       if (zerionMatches > 0) {
-        console.log(`✓ Zerion: Enriched ${zerionMatches} multichain positions with 24h change data`);
       } else {
-        console.log(`⚠ Zerion: No matches found between Zerion data and token aggregates`);
       }
     }
     
@@ -3996,15 +3950,12 @@
     }
     
     dustTokensFiltered = multiChainTokens.length - tokensAdded;
-    console.log(`✓ Multi-chain: Added ${tokensAdded} unique tokens (${multiChainTokens.length} total from ${wallets.length} wallet(s))`);
     if (tokensAdded === 0 && dustTokensFiltered > 0) {
-      console.log('⚠ All tokens filtered as dust. Check [SHOW <$100] to view them.');
     }
     
     // === Add Zerion positions that weren't matched with Alchemy/Helius ===
     // This handles assets that Zerion sees but Alchemy/Helius doesn't
     if (zerionPositions && Object.keys(zerionPositions).length > 0) {
-      console.log('🔍 Checking for Zerion-only positions...');
       
       // Build set of existing token keys from Alchemy/Helius
       const existingKeys = new Set(Object.keys(tokenAggregates));
@@ -4052,7 +4003,6 @@
       }
       
       if (zerionOnlyAdded > 0) {
-        console.log(`✓ Zerion: Added ${zerionOnlyAdded} positions not found in Alchemy/Helius`);
       }
     }
     
@@ -4064,8 +4014,6 @@
     }
     
     if (settings.cryptoPositions.length > 0) {
-      console.log(`→ Adding ${settings.cryptoPositions.length} manual positions...`);
-      console.log('  Manual positions:', settings.cryptoPositions);
       
       for (const manualPos of settings.cryptoPositions) {
         if (manualPos.type === 'custom') {
@@ -4104,8 +4052,6 @@
           accountBalances.multichain += currentValue;
         }
       }
-      console.log(`✓ Manual positions: Added ${settings.cryptoPositions.length} positions`);
-      console.log(`  Balance from manual: multichain = $${accountBalances.multichain.toFixed(2)}`);
     }
     
     // === Pyth Network Pricing ===
@@ -4125,7 +4071,6 @@
         .map(pos => ({ asset: pos.asset, feedId: pos.pythFeedId }));
       
       if (manualPythFeedIds.length > 0) {
-        console.log(`→ Found ${manualPythFeedIds.length} manual Pyth positions with explicit feed IDs:`, manualPythFeedIds.map(m => m.asset));
       }
       
       const pythPrices = await fetchPythPrices(assets, manualPythFeedIds);
@@ -4153,13 +4098,11 @@
               const costBasis = Math.abs(pos.amount) * pos.entryPrice;
               pos.pnl = pos.value - costBasis;
               pos.pnlPercent = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
-              console.log(`  ✓ Manual Pyth ${pos.asset}: Entry=$${pos.entryPrice.toFixed(2)}, Current=$${currentPrice.toFixed(2)}, P&L=$${pos.pnl.toFixed(2)} (${pos.pnlPercent.toFixed(1)}%)`);
             }
             
             // Update balance with the difference (we already added initial value)
             accountBalances.multichain += (pos.value - oldValue);
           } else {
-            console.log(`  ⚠ Manual Pyth ${pos.asset}: No price found in pythPricesMap`);
           }
         }
       }
@@ -4173,18 +4116,14 @@
     // If no cached data or it's a new day, fetch fresh midnight prices
     if (!midnightData || isNewDay(midnightData.timestamp)) {
       try {
-        console.log('⟳ Fetching midnight prices...');
         const midnightPrices = await fetchMidnightPrices();
         saveDailyPrices(midnightPrices, getMidnightTimestamp());
         midnightData = { prices: midnightPrices, timestamp: getMidnightTimestamp() };
-        console.log(`✓ Midnight prices fetched: ${Object.keys(midnightPrices).length} assets`);
-        console.log(`   Sample keys:`, Object.keys(midnightPrices).slice(0, 15));
       } catch (err) {
         console.error('✗ Failed to fetch midnight prices:', err);
         midnightData = { prices: {}, timestamp: getMidnightTimestamp() };
       }
     } else {
-      console.log(`✓ Using cached midnight prices (${Object.keys(midnightData.prices || {}).length} assets)`);
     }
     
     // Calculate 24h change for each position based on midnight price
@@ -4225,9 +4164,7 @@
       }
     }
     
-    console.log(`✓ 24h changes: Calculated for ${change24hCalculated}/${allPositionsData.length} positions`);
     if (missingMidnightPrices.length > 0) {
-      console.log(`   Missing midnight prices for:`, missingMidnightPrices.slice(0, 10));
     }
     
     // Debug: Log position breakdown by exchange
@@ -4238,7 +4175,6 @@
       }
       positionsByExchange[pos.exchange].push(pos.asset);
     }
-    console.log('📋 Positions by exchange:', Object.entries(positionsByExchange).map(([ex, assets]) => `${ex}: ${assets.length}`).join(', '));
     
     // Render positions table
     renderPositionsTable();
@@ -4257,6 +4193,7 @@
     
     if (allPositionsData.length === 0) return;
     
+    // Use requestAnimationFrame for smoother DOM updates
     updateInProgress = true;
     
     try {
@@ -4661,15 +4598,15 @@
       const assetCellClass = hasWalletBreakdown ? 'asset-cell has-wallet-breakdown' : 'asset-cell';
       const assetDisplay = hasWalletBreakdown ? `${pos.asset} (i)` : pos.asset;
       
-      // In compact mode, reorder columns: Asset, 24H%, P&L, Price, Amount, Value, Exchange (last)
+      // In compact mode, reorder columns: Asset, 24H%, P&L, Price, Value, Amount, Exchange (last)
       if (isCompactMode) {
         tr.innerHTML = `
           <td class="${assetCellClass}">${assetDisplay}${editButton}</td>
           <td class="${changeClass} change-cell">${change24hDisplay}</td>
           <td class="${pnlClass} pnl-cell">${pnlDisplay}</td>
           <td class="price-cell">${priceDisplay}</td>
-          <td class="amount-cell">${amountDisplay}</td>
           <td class="value-cell">${valueDisplay}</td>
+          <td class="amount-cell">${amountDisplay}</td>
           <td class="exchange-cell">${exchangeDisplay}</td>
         `;
       } else {
@@ -5016,17 +4953,14 @@
     // If no cached data or it's a new day, fetch fresh midnight prices
     if (!midnightData || isNewDay(midnightData.timestamp)) {
       try {
-        console.log('⟳ Hero: Fetching midnight prices...');
         const midnightPrices = await fetchMidnightPrices();
         saveDailyPrices(midnightPrices, getMidnightTimestamp());
         midnightData = { prices: midnightPrices, timestamp: getMidnightTimestamp() };
-        console.log(`✓ Hero: Midnight prices fetched: ${Object.keys(midnightPrices).length} assets`);
       } catch (err) {
         console.error('✗ Hero: Failed to fetch midnight prices:', err);
         midnightData = { prices: {}, timestamp: getMidnightTimestamp() };
       }
     } else {
-      console.log(`✓ Hero: Using cached midnight prices (${Object.keys(midnightData.prices).length} assets)`);
     }
     
     // === Calculate Daily P&L from Price Movements ===
@@ -5369,7 +5303,6 @@
     initDotGrid();
     initMiniLoader();
     
-    // console.log('✓ Dashboard initialized');
     const settings = loadSettings() || getDefaultSettings();
     if (!loadSettings()) saveSettings(settings);
     initTheme(settings);
@@ -6834,8 +6767,8 @@
     // Search functionality with multi-select
     
     if (watchlistSearchInput) {
-      watchlistSearchInput.addEventListener('input', (e) => {
-        const query = e.target.value.trim();
+      // Debounce search for better performance (300ms delay)
+      const performSearch = debounce((query) => {
         
         if (query.length < 1) {
           watchlistSearchResults.innerHTML = '';
@@ -6887,6 +6820,11 @@
           
           watchlistSearchResults.appendChild(resultDiv);
         }
+      }, 300); // 300ms debounce delay
+      
+      watchlistSearchInput.addEventListener('input', (e) => {
+        const query = e.target.value.trim();
+        performSearch(query);
       });
     }
     
@@ -7002,9 +6940,8 @@
     
     // Pyth search functionality
     if (addPositionPythSearch) {
-      addPositionPythSearch.addEventListener('input', (e) => {
-        const query = e.target.value.trim();
-        
+      // Debounce search for better performance (200ms delay - faster for this modal)
+      const performPythSearch = debounce((query) => {
         // Show results when typing
         addPositionPythResults.style.display = 'block';
         
@@ -7052,6 +6989,11 @@
           
           addPositionPythResults.appendChild(resultDiv);
         }
+      }, 200); // 200ms debounce delay
+      
+      addPositionPythSearch.addEventListener('input', (e) => {
+        const query = e.target.value.trim();
+        performPythSearch(query);
       });
     }
     
@@ -7116,9 +7058,7 @@
           });
         }
         
-        console.log('💾 Saving manual position. Total positions:', settings.cryptoPositions.length);
         saveSettings(settings);
-        console.log('✓ Position saved successfully');
         closeAddPosition();
         
         // Refresh positions
