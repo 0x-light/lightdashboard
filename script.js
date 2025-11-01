@@ -3971,6 +3971,12 @@
           .catch(err => console.warn('⚠ Weather load failed:', err));
       });
       
+      // Watchlist (fast, non-critical)
+      scheduleSecondaryLoad(() => {
+        perfMonitor.measure('Stage2:Watchlist', () => renderWatchlist())
+          .catch(err => console.warn('⚠ Watchlist load failed:', err));
+      });
+      
       // Comics (slow, lazy-load on scroll)
       if (settings.showComic && els.comicSection) {
         const comicLoader = () => {
@@ -4231,22 +4237,45 @@
             'unichain': { symbol: 'ETH', coingeckoId: 'ethereum' }
           };
           
-          // Fetch prices for all unique native tokens
-          const uniqueCoingeckoIds = [...new Set(Object.values(chainTokenMap).map(t => t.coingeckoId))];
+          // Fetch prices for all unique native tokens using Pyth (faster and more reliable)
+          const uniqueSymbols = [...new Set(Object.values(chainTokenMap).map(t => t.symbol))];
           const tokenPrices = {};
           const tokenPricesBySymbol = {};
           
           try {
-            const pricesData = await rateLimitedFetch(
-              `https://api.coingecko.com/api/v3/simple/price?ids=${uniqueCoingeckoIds.join(',')}&vs_currencies=usd`,
-              `nft-token-prices-${uniqueCoingeckoIds.join(',')}`
-            );
-            if (pricesData) {
-              for (const [chain, tokenInfo] of Object.entries(chainTokenMap)) {
-                const price = pricesData[tokenInfo.coingeckoId]?.usd;
-                if (price && price > 0) {
-                  tokenPrices[chain] = price;
-                  tokenPricesBySymbol[tokenInfo.symbol.toUpperCase()] = price;
+            // Use our Pyth price fetching (already optimized with deduplication)
+            const pythPrices = await fetchPythPrices(uniqueSymbols);
+            
+            // Map Pyth prices to chains
+            for (const [chain, tokenInfo] of Object.entries(chainTokenMap)) {
+              const price = pythPrices[tokenInfo.symbol];
+              if (price && price > 0) {
+                tokenPrices[chain] = price;
+                tokenPricesBySymbol[tokenInfo.symbol.toUpperCase()] = price;
+              }
+            }
+            
+            // Fallback to CoinGecko for tokens Pyth doesn't have
+            const missingSymbols = Object.entries(chainTokenMap)
+              .filter(([chain]) => !tokenPrices[chain])
+              .map(([, info]) => info.coingeckoId);
+            
+            if (missingSymbols.length > 0) {
+              const uniqueCoinGeckoIds = [...new Set(missingSymbols)];
+              const pricesData = await rateLimitedFetch(
+                `https://api.coingecko.com/api/v3/simple/price?ids=${uniqueCoinGeckoIds.join(',')}&vs_currencies=usd`,
+                `nft-token-prices-${uniqueCoinGeckoIds.join(',')}`
+              );
+              
+              if (pricesData) {
+                for (const [chain, tokenInfo] of Object.entries(chainTokenMap)) {
+                  if (!tokenPrices[chain]) {
+                    const price = pricesData[tokenInfo.coingeckoId]?.usd;
+                    if (price && price > 0) {
+                      tokenPrices[chain] = price;
+                      tokenPricesBySymbol[tokenInfo.symbol.toUpperCase()] = price;
+                    }
+                  }
                 }
               }
             }
