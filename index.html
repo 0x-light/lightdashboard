@@ -259,11 +259,30 @@
             <fieldset class="essential-fieldset">
               <legend>Wallets (Required to show positions and assets)</legend>
               <div class="help">Add wallet addresses (comma-separated) to track positions and assets</div>
+              
               <label>
-                Wallet Addresses
-                <input id="walletAddresses" type="text" class="settings-input">
+                EVM Wallet Addresses
+                <textarea id="walletAddresses" class="settings-input" placeholder="0xYourAddress1, 0xYourAddress2" rows="2"></textarea>
               </label>
-              <div class="help">Comma-separated addresses for EVM, Solana, Hyperliquid, and Lighter.</div>
+              <div class="help" style="margin-bottom: 12px;">Ethereum, Arbitrum, Optimism, Polygon, Base, HyperEVM</div>
+              
+              <label>
+                Solana Wallet Addresses
+                <textarea id="solanaAddresses" class="settings-input" placeholder="YourSolanaAddress1, YourSolanaAddress2" rows="2"></textarea>
+              </label>
+              <div class="help" style="margin-bottom: 12px;">Solana mainnet addresses</div>
+              
+              <label>
+                Bitcoin Addresses
+                <textarea id="bitcoinAddresses" class="settings-input" placeholder="bc1qxxx, 1xxx, 3xxx" rows="2"></textarea>
+              </label>
+              <div class="help" style="margin-bottom: 12px;">Bitcoin mainnet - all address types supported</div>
+              
+              <label>
+                Zcash Addresses
+                <textarea id="zcashAddresses" class="settings-input" placeholder="t1xxx, zs1xxx" rows="2"></textarea>
+              </label>
+              <div class="help">Zcash transparent (t-addr) and shielded (z-addr) addresses</div>
             </fieldset>
 
             <fieldset class="essential-fieldset">

@@ -705,6 +705,7 @@ h3 {
 
 input,
 select,
+textarea,
 button {
   background: var(--card-bg);
   color: var(--text);
@@ -716,8 +717,17 @@ button {
   box-sizing: border-box;
 }
 
+/* Text fields styling */
+input:not([type="checkbox"]):not([type="range"]),
+textarea {
+  background-color: var(--border);
+  color: var(--accent);
+  border: none;
+}
+
 input:not([type="checkbox"]),
-select {
+select,
+textarea {
   width: 100%;
 }
 
@@ -727,7 +737,8 @@ input[type="checkbox"] {
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   outline: none;
   border-color: var(--accent);
 }

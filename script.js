@@ -574,6 +574,9 @@
     importSettingsBtn: document.getElementById('importSettingsBtn'),
     settingsExportArea: document.getElementById('settingsExportArea'),
     walletAddresses: document.getElementById('walletAddresses'),
+    solanaAddresses: document.getElementById('solanaAddresses'),
+    bitcoinAddresses: document.getElementById('bitcoinAddresses'),
+    zcashAddresses: document.getElementById('zcashAddresses'),
     alchemyApiKey: document.getElementById('alchemyApiKey'),
     heliusApiKey: document.getElementById('heliusApiKey'),
     openSeaApiKey: document.getElementById('openSeaApiKey'),
@@ -758,6 +761,9 @@
       cryptoPositions: [], // { type: 'pyth', symbol, feedId, amount, entryPrice } or { type: 'custom', name, value }
       weather: { label: '', lat: null, lon: null },
       walletAddresses: '',
+      solanaAddresses: '',
+      bitcoinAddresses: '',
+      zcashAddresses: '',
       alchemyApiKey: '',
       heliusApiKey: '',
       openSeaApiKey: '',
@@ -799,6 +805,22 @@
       .split(',')
       .map(w => w.trim())
       .filter(w => w.length > 0);
+  }
+  
+  function parseBitcoinAddresses(addressString) {
+    if (!addressString) return [];
+    return addressString
+      .split(',')
+      .map(a => a.trim())
+      .filter(a => a.length > 0);
+  }
+  
+  function parseZcashAddresses(addressString) {
+    if (!addressString) return [];
+    return addressString
+      .split(',')
+      .map(a => a.trim())
+      .filter(a => a.length > 0);
   }
 
   function applyHeaderVisibility(settings) {
@@ -1130,6 +1152,9 @@
     
     // Populate settings
     els.walletAddresses.value = settings.walletAddresses || '';
+    els.solanaAddresses.value = settings.solanaAddresses || '';
+    els.bitcoinAddresses.value = settings.bitcoinAddresses || '';
+    els.zcashAddresses.value = settings.zcashAddresses || '';
     els.alchemyApiKey.value = settings.alchemyApiKey || '';
     els.heliusApiKey.value = settings.heliusApiKey || '';
     els.openSeaApiKey.value = settings.openSeaApiKey || '';
@@ -1197,6 +1222,9 @@
 
     // Get wallet addresses and API keys
     newSettings.walletAddresses = els.walletAddresses.value.trim() || '';
+    newSettings.solanaAddresses = els.solanaAddresses.value.trim() || '';
+    newSettings.bitcoinAddresses = els.bitcoinAddresses.value.trim() || '';
+    newSettings.zcashAddresses = els.zcashAddresses.value.trim() || '';
     newSettings.alchemyApiKey = els.alchemyApiKey.value.trim() || '';
     newSettings.heliusApiKey = els.heliusApiKey.value.trim() || '';
     newSettings.openSeaApiKey = els.openSeaApiKey.value.trim() || '';
@@ -3248,6 +3276,122 @@
     return solanaData;
   }
 
+  // Fetch Bitcoin balances using blockchain.info API (public, no API key needed)
+  async function fetchBitcoinBalances(addresses) {
+    if (!addresses || addresses.length === 0) return [];
+    
+    const btcData = [];
+    
+    // Fetch BTC price first
+    let btcPrice = 0;
+    try {
+      const priceResp = await fetch('https://blockchain.info/ticker');
+      if (priceResp.ok) {
+        const priceData = await priceResp.json();
+        btcPrice = priceData.USD?.last || 0;
+      }
+    } catch (err) {
+      console.error('Failed to fetch BTC price:', err);
+    }
+    
+    if (!btcPrice) return btcData;
+    
+    // Fetch balance for each address
+    for (const address of addresses) {
+      try {
+        const balanceResp = await fetch(`https://blockchain.info/balance?active=${address}`);
+        if (balanceResp.ok) {
+          const data = await balanceResp.json();
+          const addressData = data[address];
+          
+          if (addressData) {
+            const balanceBTC = addressData.final_balance / 100000000; // Satoshis to BTC
+            
+            if (balanceBTC > 0) {
+              btcData.push({
+                address,
+                blockchain: 'Bitcoin',
+                tokenSymbol: 'BTC',
+                tokenName: 'Bitcoin',
+                balance: balanceBTC,
+                tokenPrice: btcPrice,
+                balanceUsd: balanceBTC * btcPrice,
+                contractAddress: null,
+                isSolana: false
+              });
+            }
+          }
+        }
+        
+        // Rate limit: wait 300ms between requests
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } catch (err) {
+        console.error(`Failed to fetch Bitcoin balance for ${address}:`, err);
+      }
+    }
+    
+    return btcData;
+  }
+
+  // Fetch Zcash balances using Zcash block explorer API
+  async function fetchZcashBalances(addresses) {
+    if (!addresses || addresses.length === 0) return [];
+    
+    const zecData = [];
+    
+    // Fetch ZEC price from CoinGecko
+    let zecPrice = 0;
+    try {
+      const priceResp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=zcash&vs_currencies=usd');
+      if (priceResp.ok) {
+        const priceData = await priceResp.json();
+        zecPrice = priceData.zcash?.usd || 0;
+      }
+    } catch (err) {
+      console.error('Failed to fetch ZEC price:', err);
+    }
+    
+    if (!zecPrice) return zecData;
+    
+    // Fetch balance for each address using Zcash block explorer
+    for (const address of addresses) {
+      try {
+        // Using zcha.in API for Zcash transparent addresses
+        const apiUrl = `https://api.zcha.in/v2/mainnet/accounts/${address}`;
+        const balanceResp = await fetch(apiUrl);
+        
+        if (balanceResp.ok) {
+          const data = await balanceResp.json();
+          
+          if (data && data.balance) {
+            const balanceZEC = data.balance / 100000000; // Zatoshis to ZEC
+            
+            if (balanceZEC > 0) {
+              zecData.push({
+                address,
+                blockchain: 'Zcash',
+                tokenSymbol: 'ZEC',
+                tokenName: 'Zcash',
+                balance: balanceZEC,
+                tokenPrice: zecPrice,
+                balanceUsd: balanceZEC * zecPrice,
+                contractAddress: null,
+                isSolana: false
+              });
+            }
+          }
+        }
+        
+        // Rate limit: wait 500ms between requests
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (err) {
+        console.error(`Failed to fetch Zcash balance for ${address}:`, err);
+      }
+    }
+    
+    return zecData;
+  }
+
   // Fetch cost basis and PnL data from Zerion API
   // https://developers.zerion.io/reference/intro/getting-started
   async function fetchZerionPositions(wallets, apiKey) {
@@ -3353,13 +3497,15 @@
   }
 
   // Combined multi-chain token fetcher
-  async function fetchMultiChainTokens(wallets, alchemyKey, heliusKey) {
-    const [evmTokens, solTokens] = await Promise.all([
+  async function fetchMultiChainTokens(wallets, alchemyKey, heliusKey, bitcoinAddrs, zcashAddrs) {
+    const [evmTokens, solTokens, btcBalances, zecBalances] = await Promise.all([
       fetchAlchemyTokens(wallets, alchemyKey),
-      fetchSolanaTokens(wallets, heliusKey)
+      fetchSolanaTokens(wallets, heliusKey),
+      fetchBitcoinBalances(bitcoinAddrs),
+      fetchZcashBalances(zcashAddrs)
     ]);
     
-    const allTokens = [...evmTokens, ...solTokens];
+    const allTokens = [...evmTokens, ...solTokens, ...btcBalances, ...zecBalances];
     
     return allTokens;
   }
@@ -3382,8 +3528,11 @@
     // Fetch data for all wallets
     const settings = loadSettings() || getDefaultSettings();
     const wallets = parseWallets(settings.walletAddresses);
+    const solanaAddrs = parseWallets(settings.solanaAddresses || '');
+    const bitcoinAddrs = parseBitcoinAddresses(settings.bitcoinAddresses || '');
+    const zcashAddrs = parseZcashAddresses(settings.zcashAddresses || '');
     
-    if (wallets.length === 0) {
+    if (wallets.length === 0 && solanaAddrs.length === 0 && bitcoinAddrs.length === 0 && zcashAddrs.length === 0) {
       renderPositionsTable();
       await updateHeroSection();
       return;
@@ -3461,7 +3610,9 @@
           return [];
         }
         const t3 = performance.now();
-        const result = await fetchMultiChainTokens(wallets, settings.alchemyApiKey, settings.heliusApiKey);
+        // Combine EVM and Solana addresses for Alchemy/Helius
+        const allWallets = [...wallets, ...solanaAddrs];
+        const result = await fetchMultiChainTokens(allWallets, settings.alchemyApiKey, settings.heliusApiKey, bitcoinAddrs, zcashAddrs);
         return result;
       })(),
       
@@ -3471,7 +3622,9 @@
           return {};
         }
         const t4 = performance.now();
-        const result = await fetchZerionPositions(wallets, settings.zerionApiKey);
+        // Combine all wallet addresses for Zerion
+        const allWallets = [...wallets, ...solanaAddrs];
+        const result = await fetchZerionPositions(allWallets, settings.zerionApiKey);
         return result;
       })()
     ]);
