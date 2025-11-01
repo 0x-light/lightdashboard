@@ -2480,3 +2480,86 @@ input[type="range"]:focus::-moz-range-thumb {
   color: var(--muted);
   font-size: 0.9em;
 }
+
+/* === SKELETON LOADING STATES === */
+
+.skeleton-row {
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-text {
+  height: 1rem;
+  background: var(--border);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-text::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    transparent 100%
+  );
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+.skeleton-text-short {
+  flex: 0 0 20%;
+}
+
+.skeleton-text-medium {
+  flex: 0 0 30%;
+}
+
+.skeleton-text-long {
+  flex: 1;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Loading indicator for sections */
+.section-loading {
+  position: relative;
+}
+
+.section-loading::after {
+  content: '⏳';
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-size: 0.9rem;
+  animation: skeleton-pulse 1s ease-in-out infinite;
+}

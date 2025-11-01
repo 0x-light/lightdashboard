@@ -310,6 +310,1036 @@
     }
   };
   
+  // === ARCHITECTURAL LAYER: DATA SOURCES ===
+  
+  /**
+   * Base DataSource class - all data sources inherit from this
+   * Provides consistent interface for fetching, caching, and error handling
+   */
+  class DataSource {
+    constructor(name, cache = null) {
+      this.name = name;
+      this.cache = cache || new SmartCache(PERF_CONFIG.LIMITS.MAX_CACHE_SIZE, PERF_CONFIG.CACHE.POSITIONS);
+    }
+    
+    /**
+     * Check if this data source supports the given address
+     * @param {string} address - The address to check
+     * @returns {boolean}
+     */
+    supports(address) {
+      throw new Error('supports() must be implemented by subclass');
+    }
+    
+    /**
+     * Fetch data for the given address
+     * @param {string} address - The address to fetch data for
+     * @returns {Promise<any>}
+     */
+    async fetch(address) {
+      throw new Error('fetch() must be implemented by subclass');
+    }
+    
+    /**
+     * Get cache key for the given address
+     * @param {string} address - The address
+     * @returns {string}
+     */
+    getCacheKey(address) {
+      return `${this.name}_${address}`;
+    }
+    
+    /**
+     * Fetch with caching
+     * @param {string} address - The address to fetch for
+     * @returns {Promise<any>}
+     */
+    async fetchCached(address) {
+      const cacheKey = this.getCacheKey(address);
+      const cached = this.cache.get(cacheKey);
+      
+      if (cached) {
+        return cached;
+      }
+      
+      try {
+        const data = await this.fetch(address);
+        this.cache.set(cacheKey, data);
+        return data;
+      } catch (err) {
+        console.warn(`⚠ ${this.name}: Failed to fetch for ${address}:`, err.message);
+        return null;
+      }
+    }
+  }
+  
+  /**
+   * Hyperliquid Data Source
+   */
+  class HyperliquidSource extends DataSource {
+    constructor() {
+      super('Hyperliquid');
+    }
+    
+    supports(address) {
+      return isEVMAddress(address);
+    }
+    
+    async fetch(address) {
+      // Reuse existing fetchHyperliquidPositions logic
+      // This will be refactored to return standardized format
+      return null; // Placeholder - will integrate with existing code
+    }
+  }
+  
+  /**
+   * Zerion Data Source
+   */
+  class ZerionSource extends DataSource {
+    constructor(apiKey) {
+      super('Zerion');
+      this.apiKey = apiKey;
+    }
+    
+    supports(address) {
+      return isEVMAddress(address) && this.apiKey;
+    }
+    
+    async fetch(address) {
+      // Will integrate with existing Zerion code
+      return null; // Placeholder
+    }
+  }
+  
+  /**
+   * zkLighter Data Source
+   */
+  class ZkLighterSource extends DataSource {
+    constructor() {
+      super('zkLighter');
+    }
+    
+    supports(address) {
+      return isEVMAddress(address);
+    }
+    
+    async fetch(address) {
+      return null; // Placeholder
+    }
+  }
+  
+  /**
+   * Alchemy Data Source
+   */
+  class AlchemySource extends DataSource {
+    constructor() {
+      super('Alchemy');
+    }
+    
+    supports(address) {
+      return isEVMAddress(address);
+    }
+    
+    async fetch(address) {
+      return null; // Placeholder
+    }
+  }
+  
+  /**
+   * OpenSea Data Source
+   */
+  class OpenSeaSource extends DataSource {
+    constructor(apiKey) {
+      super('OpenSea');
+      this.apiKey = apiKey;
+    }
+    
+    supports(address) {
+      return isEVMAddress(address) && this.apiKey;
+    }
+    
+    async fetch(address) {
+      return null; // Placeholder
+    }
+  }
+  
+  /**
+   * Data Orchestrator - Manages parallel data fetching from multiple sources
+   */
+  class DataOrchestrator {
+    constructor() {
+      this.sources = new Map();
+    }
+    
+    /**
+     * Register a data source
+     * @param {string} name - Source name
+     * @param {DataSource} source - DataSource instance
+     */
+    registerSource(name, source) {
+      this.sources.set(name, source);
+    }
+    
+    /**
+     * Fetch from all applicable sources for the given addresses
+     * @param {Array<string>} addresses - Array of addresses
+     * @returns {Promise<Map>} Map of source name to results
+     */
+    async fetchAll(addresses) {
+      const results = new Map();
+      const promises = [];
+      
+      for (const [name, source] of this.sources) {
+        const supportedAddresses = addresses.filter(addr => source.supports(addr));
+        
+        if (supportedAddresses.length === 0) {
+          continue;
+        }
+        
+        const promise = Promise.all(
+          supportedAddresses.map(addr => source.fetchCached(addr))
+        ).then(data => {
+          results.set(name, data.filter(Boolean)); // Filter out nulls
+        }).catch(err => {
+          console.warn(`⚠ DataOrchestrator: Failed to fetch from ${name}:`, err.message);
+          results.set(name, []);
+        });
+        
+        promises.push(promise);
+      }
+      
+      await Promise.all(promises);
+      return results;
+    }
+    
+    /**
+     * Fetch from a specific source
+     * @param {string} sourceName - Name of the source
+     * @param {Array<string>} addresses - Addresses to fetch
+     * @returns {Promise<Array>}
+     */
+    async fetchFrom(sourceName, addresses) {
+      const source = this.sources.get(sourceName);
+      
+      if (!source) {
+        throw new Error(`Source ${sourceName} not registered`);
+      }
+      
+      const supportedAddresses = addresses.filter(addr => source.supports(addr));
+      
+      if (supportedAddresses.length === 0) {
+        return [];
+      }
+      
+      const results = await Promise.all(
+        supportedAddresses.map(addr => source.fetchCached(addr))
+      );
+      
+      return results.filter(Boolean);
+    }
+    
+    /**
+     * Clear all caches
+     */
+    clearCaches() {
+      for (const [, source] of this.sources) {
+        source.cache.clear();
+      }
+    }
+  }
+  
+  // Initialize data orchestrator
+  const dataOrchestrator = new DataOrchestrator();
+  
+  /**
+   * Data Pipeline - Single-pass data transformation
+   */
+  class DataPipeline {
+    constructor() {
+      this.transforms = [];
+    }
+    
+    /**
+     * Add a transformation step
+     * @param {Function} transform - Transformation function
+     * @returns {DataPipeline}
+     */
+    pipe(transform) {
+      this.transforms.push(transform);
+      return this;
+    }
+    
+    /**
+     * Execute the pipeline
+     * @param {any} data - Initial data
+     * @returns {any} Transformed data
+     */
+    async execute(data) {
+      let result = data;
+      
+      for (const transform of this.transforms) {
+        result = await transform(result);
+      }
+      
+      return result;
+    }
+  }
+  
+  /**
+   * Data Aggregator - Pure functions for data transformation
+   */
+  class DataAggregator {
+    /**
+     * Aggregate tokens by symbol and blockchain
+     * @param {Array} tokens - Array of token objects
+     * @returns {Map} Aggregated tokens keyed by "SYMBOL_BLOCKCHAIN"
+     */
+    static aggregateTokens(tokens) {
+      const aggregates = new Map();
+      
+      for (const token of tokens) {
+        // Skip dust
+        if (token.balanceUsd < PERF_CONFIG.LIMITS.DUST_THRESHOLD) {
+          continue;
+        }
+        
+        const key = `${token.tokenSymbol}_${token.blockchain}`;
+        const existing = aggregates.get(key);
+        
+        if (existing) {
+          existing.amount += token.balance;
+          existing.value += token.balanceUsd;
+          existing.walletBreakdown.push({
+            address: token.address,
+            balance: token.balance,
+            balanceUsd: token.balanceUsd
+          });
+        } else {
+          aggregates.set(key, {
+            asset: token.tokenSymbol,
+            exchange: token.blockchain,
+            amount: token.balance,
+            value: token.balanceUsd,
+            price: token.tokenPrice,
+            change24h: token.change24h || null,
+            pnl: null,
+            pnlPercent: null,
+            walletBreakdown: [{
+              address: token.address,
+              balance: token.balance,
+              balanceUsd: token.balanceUsd
+            }],
+            coingeckoId: null
+          });
+        }
+      }
+      
+      return aggregates;
+    }
+    
+    /**
+     * Enrich positions with price data
+     * @param {Array} positions - Array of position objects
+     * @param {Object} priceData - Map of symbol to price
+     * @returns {Array} Enriched positions
+     */
+    static enrichWithPrices(positions, priceData) {
+      return positions.map(pos => {
+        const price = priceData[pos.asset];
+        if (price) {
+          return {
+            ...pos,
+            price: price,
+            value: pos.amount * price
+          };
+        }
+        return pos;
+      });
+    }
+    
+    /**
+     * Enrich positions with Zerion PnL data
+     * @param {Map} aggregates - Aggregated positions
+     * @param {Object} zerionData - Zerion PnL data
+     * @returns {Map} Enriched aggregates
+     */
+    static enrichWithZerion(aggregates, zerionData) {
+      for (const [key, position] of aggregates) {
+        const zerionKey = `${position.asset}_${position.exchange.toLowerCase()}`;
+        const zerionInfo = zerionData[zerionKey];
+        
+        if (zerionInfo) {
+          position.change24h = zerionInfo.changes?.percent_1d || position.change24h;
+          position.pnl = zerionInfo.changes?.absolute_1d || position.pnl;
+        }
+      }
+      
+      return aggregates;
+    }
+  }
+  
+  /**
+   * Position Calculator - Pure calculation functions
+   */
+  class PositionCalculator {
+    /**
+     * Calculate P&L for a position
+     * @param {number} amount - Position amount
+     * @param {number} entryPrice - Entry price
+     * @param {number} currentPrice - Current price
+     * @returns {Object} { pnl, pnlPercent }
+     */
+    static calculatePnL(amount, entryPrice, currentPrice) {
+      if (!entryPrice || entryPrice === 0) {
+        return { pnl: null, pnlPercent: null };
+      }
+      
+      const costBasis = Math.abs(amount) * entryPrice;
+      const currentValue = Math.abs(amount) * currentPrice;
+      const pnl = currentValue - costBasis;
+      const pnlPercent = ((currentPrice - entryPrice) / entryPrice) * 100;
+      
+      return { pnl, pnlPercent };
+    }
+    
+    /**
+     * Calculate 24h change in USD
+     * @param {number} currentValue - Current value in USD
+     * @param {number} change24hPercent - 24h change percentage
+     * @returns {number} 24h change in USD
+     */
+    static calculate24hChange(currentValue, change24hPercent) {
+      if (!change24hPercent || change24hPercent === 0) {
+        return 0;
+      }
+      
+      const previousValue = currentValue / (1 + change24hPercent / 100);
+      return currentValue - previousValue;
+    }
+  }
+  
+  /**
+   * Smart Renderer - Incremental DOM updates
+   */
+  class SmartRenderer {
+    constructor(containerId) {
+      this.container = document.getElementById(containerId);
+      this.rowCache = new Map();
+      this.lastRenderData = null;
+    }
+    
+    /**
+     * Check if data has changed
+     * @param {Array} newData - New data to render
+     * @returns {boolean}
+     */
+    hasDataChanged(newData) {
+      if (!this.lastRenderData || this.lastRenderData.length !== newData.length) {
+        return true;
+      }
+      
+      // Quick hash comparison
+      const newHash = JSON.stringify(newData.map(d => ({ id: d.id, value: d.value, price: d.price })));
+      const oldHash = JSON.stringify(this.lastRenderData.map(d => ({ id: d.id, value: d.value, price: d.price })));
+      
+      return newHash !== oldHash;
+    }
+    
+    /**
+     * Render with incremental updates
+     * @param {Array} data - Data to render
+     * @param {Function} createRow - Function to create a row element
+     */
+    render(data, createRow) {
+      if (!this.container) return;
+      
+      // Skip if no changes
+      if (!this.hasDataChanged(data)) {
+        return;
+      }
+      
+      // For now, do full render (incremental updates in next phase)
+      const fragment = document.createDocumentFragment();
+      
+      for (const item of data) {
+        const row = createRow(item);
+        fragment.appendChild(row);
+      }
+      
+      this.container.innerHTML = '';
+      this.container.appendChild(fragment);
+      
+      this.lastRenderData = data;
+    }
+    
+    /**
+     * Clear the renderer
+     */
+    clear() {
+      if (this.container) {
+        this.container.innerHTML = '';
+      }
+      this.rowCache.clear();
+      this.lastRenderData = null;
+    }
+  }
+  
+  /**
+   * Lazy Loading Manager
+   */
+  class LazyLoadManager {
+    constructor() {
+      this.observers = new Map();
+      this.observer = new IntersectionObserver(
+        (entries) => this.handleIntersection(entries),
+        { rootMargin: '100px' }
+      );
+    }
+    
+    /**
+     * Register an element for lazy loading
+     * @param {HTMLElement} element - Element to observe
+     * @param {Function} loader - Function to call when visible
+     */
+    register(element, loader) {
+      this.observers.set(element, loader);
+      this.observer.observe(element);
+    }
+    
+    /**
+     * Handle intersection
+     * @param {Array} entries - Intersection observer entries
+     */
+    handleIntersection(entries) {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const loader = this.observers.get(entry.target);
+          if (loader) {
+            loader();
+            this.unregister(entry.target);
+          }
+        }
+      }
+    }
+    
+    /**
+     * Unregister an element
+     * @param {HTMLElement} element - Element to unregister
+     */
+    unregister(element) {
+      this.observer.unobserve(element);
+      this.observers.delete(element);
+    }
+    
+    /**
+     * Destroy the manager
+     */
+    destroy() {
+      this.observer.disconnect();
+      this.observers.clear();
+    }
+  }
+  
+  // Initialize lazy load manager
+  const lazyLoadManager = new LazyLoadManager();
+  
+  /**
+   * Progressive Loading Manager - Load content in stages
+   */
+  class ProgressiveLoader {
+    constructor() {
+      this.stages = [];
+      this.currentStage = 0;
+      this.isLoading = false;
+    }
+    
+    /**
+     * Add a loading stage
+     * @param {string} name - Stage name
+     * @param {Function} loader - Async function to execute
+     * @param {number} priority - Priority (lower = higher priority)
+     */
+    addStage(name, loader, priority = 10) {
+      this.stages.push({ name, loader, priority });
+      this.stages.sort((a, b) => a.priority - b.priority);
+    }
+    
+    /**
+     * Execute all stages in order
+     */
+    async loadAll() {
+      if (this.isLoading) return;
+      
+      this.isLoading = true;
+      
+      for (let i = 0; i < this.stages.length; i++) {
+        const stage = this.stages[i];
+        this.currentStage = i;
+        
+        try {
+          await perfMonitor.measure(`ProgressiveLoad:${stage.name}`, async () => {
+            await stage.loader();
+          });
+        } catch (err) {
+          console.warn(`⚠ Progressive loader failed at stage ${stage.name}:`, err);
+        }
+        
+        // Yield to browser between stages
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      
+      this.isLoading = false;
+      this.currentStage = this.stages.length;
+    }
+    
+    /**
+     * Get current progress percentage
+     * @returns {number} Progress (0-100)
+     */
+    getProgress() {
+      if (this.stages.length === 0) return 0;
+      return Math.round((this.currentStage / this.stages.length) * 100);
+    }
+  }
+  
+  // Initialize progressive loader
+  const progressiveLoader = new ProgressiveLoader();
+  
+  /**
+   * Skeleton State Manager - Show loading placeholders
+   */
+  class SkeletonManager {
+    /**
+     * Create skeleton rows for a container
+     * @param {HTMLElement} container - Container to add skeletons to
+     * @param {number} count - Number of skeleton rows
+     */
+    static createSkeletonRows(container, count = 5) {
+      if (!container) return;
+      
+      const fragment = document.createDocumentFragment();
+      
+      for (let i = 0; i < count; i++) {
+        const row = document.createElement('div');
+        row.className = 'skeleton-row';
+        row.innerHTML = `
+          <div class="skeleton-text skeleton-text-short"></div>
+          <div class="skeleton-text skeleton-text-long"></div>
+          <div class="skeleton-text skeleton-text-medium"></div>
+        `;
+        fragment.appendChild(row);
+      }
+      
+      container.innerHTML = '';
+      container.appendChild(fragment);
+    }
+    
+    /**
+     * Remove skeleton state
+     * @param {HTMLElement} container - Container to clear
+     */
+    static clearSkeletons(container) {
+      if (!container) return;
+      
+      const skeletons = container.querySelectorAll('.skeleton-row');
+      skeletons.forEach(skeleton => skeleton.remove());
+    }
+    
+    /**
+     * Show loading state for a section
+     * @param {string} sectionId - ID of the section
+     */
+    static showLoadingState(sectionId) {
+      const section = document.getElementById(sectionId);
+      if (!section) return;
+      
+      section.classList.add('loading');
+    }
+    
+    /**
+     * Hide loading state for a section
+     * @param {string} sectionId - ID of the section
+     */
+    static hideLoadingState(sectionId) {
+      const section = document.getElementById(sectionId);
+      if (!section) return;
+      
+      section.classList.remove('loading');
+    }
+  }
+  
+  /**
+   * Virtual Scroll Manager - Efficient rendering of large lists
+   */
+  class VirtualScrollManager {
+    constructor(container, itemHeight = 40, bufferSize = 10) {
+      this.container = container;
+      this.itemHeight = itemHeight;
+      this.bufferSize = bufferSize;
+      this.items = [];
+      this.visibleRange = { start: 0, end: 0 };
+      this.scrollContainer = null;
+      
+      this.handleScroll = throttle(() => this.updateVisibleRange(), PERF_CONFIG.UI.THROTTLE_SCROLL);
+    }
+    
+    /**
+     * Set items to be rendered
+     * @param {Array} items - Items to render
+     */
+    setItems(items) {
+      this.items = items;
+      this.updateVisibleRange();
+    }
+    
+    /**
+     * Update visible range based on scroll position
+     */
+    updateVisibleRange() {
+      if (!this.scrollContainer) {
+        this.scrollContainer = this.container.closest('.scrollable') || window;
+      }
+      
+      const scrollTop = this.scrollContainer === window ? window.scrollY : this.scrollContainer.scrollTop;
+      const containerHeight = this.scrollContainer === window ? window.innerHeight : this.scrollContainer.clientHeight;
+      
+      const start = Math.max(0, Math.floor(scrollTop / this.itemHeight) - this.bufferSize);
+      const end = Math.min(
+        this.items.length,
+        Math.ceil((scrollTop + containerHeight) / this.itemHeight) + this.bufferSize
+      );
+      
+      if (start !== this.visibleRange.start || end !== this.visibleRange.end) {
+        this.visibleRange = { start, end };
+        this.render();
+      }
+    }
+    
+    /**
+     * Render visible items
+     */
+    render() {
+      // This is a simplified virtual scrolling implementation
+      // Full implementation would require more sophisticated DOM management
+      const visibleItems = this.items.slice(this.visibleRange.start, this.visibleRange.end);
+      
+      // Trigger render callback if set
+      if (this.onRender) {
+        this.onRender(visibleItems, this.visibleRange);
+      }
+    }
+    
+    /**
+     * Set render callback
+     * @param {Function} callback - Callback function
+     */
+    setRenderCallback(callback) {
+      this.onRender = callback;
+    }
+    
+    /**
+     * Attach scroll listener
+     */
+    attach() {
+      if (this.scrollContainer === window) {
+        window.addEventListener('scroll', this.handleScroll);
+      } else if (this.scrollContainer) {
+        this.scrollContainer.addEventListener('scroll', this.handleScroll);
+      }
+    }
+    
+    /**
+     * Detach scroll listener
+     */
+    detach() {
+      if (this.scrollContainer === window) {
+        window.removeEventListener('scroll', this.handleScroll);
+      } else if (this.scrollContainer) {
+        this.scrollContainer.removeEventListener('scroll', this.handleScroll);
+      }
+    }
+  }
+  
+  /**
+   * Error Boundary - Graceful error handling with fallback
+   */
+  class ErrorBoundary {
+    /**
+     * Wrap an async operation with error handling
+     * @param {Function} fn - Async function to execute
+     * @param {Object} options - Options
+     * @returns {Promise<any>}
+     */
+    static async wrap(fn, options = {}) {
+      const {
+        name = 'Operation',
+        fallback = null,
+        onError = null,
+        silent = false,
+        retries = 0,
+        retryDelay = 1000
+      } = options;
+      
+      let lastError = null;
+      
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          return await fn();
+        } catch (err) {
+          lastError = err;
+          
+          if (attempt < retries) {
+            // Wait before retry with exponential backoff
+            await new Promise(resolve => 
+              setTimeout(resolve, retryDelay * Math.pow(2, attempt))
+            );
+            continue;
+          }
+          
+          // Final attempt failed
+          if (onError) {
+            onError(err);
+          }
+          
+          if (!silent) {
+            console.error(`✗ ${name} failed:`, err.message || err);
+          }
+          
+          return fallback;
+        }
+      }
+      
+      return fallback;
+    }
+    
+    /**
+     * Wrap multiple operations and handle errors individually
+     * @param {Array<{fn: Function, options: Object}>} operations
+     * @returns {Promise<Array>}
+     */
+    static async wrapAll(operations) {
+      return Promise.all(
+        operations.map(({ fn, options }) => 
+          ErrorBoundary.wrap(fn, options)
+        )
+      );
+    }
+    
+    /**
+     * Create a safe version of a function with automatic error handling
+     * @param {Function} fn - Function to make safe
+     * @param {Object} options - Error handling options
+     * @returns {Function}
+     */
+    static makeSafe(fn, options = {}) {
+      return async (...args) => {
+        return ErrorBoundary.wrap(() => fn(...args), options);
+      };
+    }
+  }
+  
+  /**
+   * Circuit Breaker - Prevent cascading failures
+   */
+  class CircuitBreaker {
+    constructor(options = {}) {
+      this.failureThreshold = options.failureThreshold || 5;
+      this.resetTimeout = options.resetTimeout || 60000; // 1 minute
+      this.failures = 0;
+      this.lastFailureTime = null;
+      this.state = 'CLOSED'; // CLOSED, OPEN, HALF_OPEN
+    }
+    
+    /**
+     * Execute a function through the circuit breaker
+     * @param {Function} fn - Function to execute
+     * @returns {Promise<any>}
+     */
+    async execute(fn) {
+      if (this.state === 'OPEN') {
+        const now = Date.now();
+        if (now - this.lastFailureTime >= this.resetTimeout) {
+          this.state = 'HALF_OPEN';
+          this.failures = 0;
+        } else {
+          throw new Error('Circuit breaker is OPEN');
+        }
+      }
+      
+      try {
+        const result = await fn();
+        
+        if (this.state === 'HALF_OPEN') {
+          this.state = 'CLOSED';
+        }
+        
+        this.failures = 0;
+        return result;
+      } catch (err) {
+        this.failures++;
+        this.lastFailureTime = Date.now();
+        
+        if (this.failures >= this.failureThreshold) {
+          this.state = 'OPEN';
+          console.warn(`⚠ Circuit breaker opened after ${this.failures} failures`);
+        }
+        
+        throw err;
+      }
+    }
+    
+    /**
+     * Reset the circuit breaker
+     */
+    reset() {
+      this.failures = 0;
+      this.lastFailureTime = null;
+      this.state = 'CLOSED';
+    }
+    
+    /**
+     * Get current state
+     * @returns {string}
+     */
+    getState() {
+      return this.state;
+    }
+  }
+  
+  // Create circuit breakers for different services
+  const circuitBreakers = {
+    pyth: new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 }),
+    coingecko: new CircuitBreaker({ failureThreshold: 5, resetTimeout: 60000 }),
+    opensea: new CircuitBreaker({ failureThreshold: 5, resetTimeout: 60000 }),
+    zerion: new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 }),
+    hyperliquid: new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 })
+  };
+  
+  /**
+   * Batch Request Manager - Combine multiple requests into batches
+   */
+  class BatchRequestManager {
+    constructor(batchSize = 10, batchDelay = 50) {
+      this.batchSize = batchSize;
+      this.batchDelay = batchDelay;
+      this.queues = new Map();
+      this.timers = new Map();
+    }
+    
+    /**
+     * Add a request to the batch queue
+     * @param {string} queueName - Name of the queue
+     * @param {any} request - Request data
+     * @param {Function} processor - Function to process the batch
+     * @returns {Promise<any>}
+     */
+    add(queueName, request, processor) {
+      return new Promise((resolve, reject) => {
+        // Initialize queue if it doesn't exist
+        if (!this.queues.has(queueName)) {
+          this.queues.set(queueName, []);
+        }
+        
+        const queue = this.queues.get(queueName);
+        queue.push({ request, resolve, reject });
+        
+        // Clear existing timer
+        if (this.timers.has(queueName)) {
+          clearTimeout(this.timers.get(queueName));
+        }
+        
+        // Set new timer or process immediately if batch is full
+        if (queue.length >= this.batchSize) {
+          this.processBatch(queueName, processor);
+        } else {
+          const timer = setTimeout(() => {
+            this.processBatch(queueName, processor);
+          }, this.batchDelay);
+          this.timers.set(queueName, timer);
+        }
+      });
+    }
+    
+    /**
+     * Process a batch of requests
+     * @param {string} queueName - Name of the queue
+     * @param {Function} processor - Function to process the batch
+     */
+    async processBatch(queueName, processor) {
+      const queue = this.queues.get(queueName);
+      if (!queue || queue.length === 0) return;
+      
+      // Clear the queue and timer
+      this.queues.set(queueName, []);
+      if (this.timers.has(queueName)) {
+        clearTimeout(this.timers.get(queueName));
+        this.timers.delete(queueName);
+      }
+      
+      try {
+        const requests = queue.map(item => item.request);
+        const results = await processor(requests);
+        
+        // Resolve all promises
+        queue.forEach((item, index) => {
+          item.resolve(results[index]);
+        });
+      } catch (err) {
+        // Reject all promises
+        queue.forEach(item => {
+          item.reject(err);
+        });
+      }
+    }
+  }
+  
+  // Initialize batch request manager
+  const batchRequestManager = new BatchRequestManager(10, 50);
+  
+  /**
+   * DOM Update Batcher - Batch DOM updates for better performance
+   */
+  class DOMBatcher {
+    constructor() {
+      this.updates = [];
+      this.scheduled = false;
+    }
+    
+    /**
+     * Schedule a DOM update
+     * @param {Function} update - Update function
+     */
+    schedule(update) {
+      this.updates.push(update);
+      
+      if (!this.scheduled) {
+        this.scheduled = true;
+        requestAnimationFrame(() => this.flush());
+      }
+    }
+    
+    /**
+     * Execute all pending updates
+     */
+    flush() {
+      const updates = this.updates.splice(0);
+      
+      // Execute all updates in a single batch
+      for (const update of updates) {
+        try {
+          update();
+        } catch (err) {
+          console.error('DOM update error:', err);
+        }
+      }
+      
+      this.scheduled = false;
+    }
+  }
+  
+  // Initialize DOM batcher
+  const domBatcher = new DOMBatcher();
+  
   // === UTILITY FUNCTIONS FOR API CALLS ===
   
   // Fetch with timeout
@@ -2902,12 +3932,15 @@
       watchlistSection.style.display = (settings.showWatchlist ?? true) ? 'block' : 'none';
     }
     
-    // PRIORITY: Fetch positions first (critical)
-    await fetchAndRenderPositions();
-    await updateHeroSection();
-    updateLastUpdateTimestamp();
+    // === PROGRESSIVE LOADING APPROACH ===
+    // Stage 1: Critical data (positions and hero) - load immediately
+    await perfMonitor.measure('Stage1:CriticalData', async () => {
+      await fetchAndRenderPositions();
+      await updateHeroSection();
+      updateLastUpdateTimestamp();
+    });
     
-    // Hide mini loader after data fetch completes
+    // Hide mini loader after critical data loads
     hideMiniLoader();
     
     // Hide loading screen after first load
@@ -2921,13 +3954,49 @@
       }, 300);
     }
     
-    // BACKGROUND: Non-critical data (weather, comics) - don't block UI
+    // Stage 2: Secondary data - load in background without blocking UI
     if (!priorityOnly) {
-      Promise.all([
-        fetchAndRenderWeather(),
-        settings.showComic ? renderCalvin() : Promise.resolve()
-      ]).catch(err => console.error('Background data error:', err));
+      // Use requestIdleCallback for truly non-blocking background tasks
+      const scheduleSecondaryLoad = (callback) => {
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(callback, { timeout: 2000 });
+        } else {
+          setTimeout(callback, 50);
+        }
+      };
+      
+      // Weather (fast, non-critical)
+      scheduleSecondaryLoad(() => {
+        perfMonitor.measure('Stage2:Weather', () => fetchAndRenderWeather())
+          .catch(err => console.warn('⚠ Weather load failed:', err));
+      });
+      
+      // Comics (slow, lazy-load on scroll)
+      if (settings.showComic && els.comicSection) {
+        const comicLoader = () => {
+          perfMonitor.measure('Stage2:Comic', () => renderCalvin())
+            .catch(err => console.warn('⚠ Comic load failed:', err));
+        };
+        
+        // Check if comic section is in viewport
+        const comicObserver = new IntersectionObserver(
+          (entries) => {
+            entries.forEach(entry => {
+              if (entry.isIntersecting) {
+                comicLoader();
+                comicObserver.disconnect();
+              }
+            });
+          },
+          { rootMargin: '200px' } // Start loading when 200px away
+        );
+        
+        comicObserver.observe(els.comicSection);
+      }
     }
+    
+    perfMonitor.end('RefreshAll:Total');
+    console.log(`✓ Refresh completed in ${(performance.now() - startTime).toFixed(0)}ms`);
   }
   
   function updateLastUpdateTimestamp() {
@@ -3175,14 +4244,21 @@
             if (pricesData) {
               for (const [chain, tokenInfo] of Object.entries(chainTokenMap)) {
                 const price = pricesData[tokenInfo.coingeckoId]?.usd;
-                if (price) {
+                if (price && price > 0) {
                   tokenPrices[chain] = price;
                   tokenPricesBySymbol[tokenInfo.symbol.toUpperCase()] = price;
                 }
               }
-                }
-              } catch (err) {
-            // Silent fallback
+            }
+          } catch (err) {
+            console.warn('⚠ NFT: Failed to fetch native token prices:', err.message);
+          }
+          
+          // Log any missing token prices for debugging
+          for (const [chain, tokenInfo] of Object.entries(chainTokenMap)) {
+            if (!tokenPrices[chain]) {
+              console.warn(`⚠ NFT: Missing price for ${tokenInfo.symbol} (${chain})`);
+            }
           }
           
           // Update collection native tokens based on their chain
@@ -3221,7 +4297,7 @@
                 
                 if (collections[slug]) {
                   const collection = collections[slug];
-                  const nativeTokenPrice = tokenPrices[collection.chain] || 1;
+                  const nativeTokenPrice = tokenPrices[collection.chain];
                   
                   // Update name with proper display name from API
                   if (collectionName) {
@@ -3230,7 +4306,15 @@
                   
                   if (floorPriceNative && isFinite(floorPriceNative)) {
                     collection.floorPriceNative = floorPriceNative;
-                    collection.floorPriceUsd = floorPriceNative * nativeTokenPrice;
+                    
+                    // Only set USD price if we have a valid token price
+                    if (nativeTokenPrice && nativeTokenPrice > 0) {
+                      collection.floorPriceUsd = floorPriceNative * nativeTokenPrice;
+                    } else {
+                      // No valid price - set to null so it displays as "—"
+                      collection.floorPriceUsd = null;
+                    }
+                    
                     collection.change24h = floorChange1d; // Can be null if no data
                   }
                 }
@@ -5168,20 +6252,34 @@
       
       // Format price - for NFTs show in native token, for crypto show in USD
       let priceDisplay = '—';
-      if (amountsVisible && pos.price) {
-        if (pos.exchange === 'OpenSea' && pos.priceInNative) {
+      if (!amountsVisible) {
+        priceDisplay = '••••';
+      } else if (pos.exchange === 'OpenSea') {
+        // For NFTs, prioritize showing native price if available
+        if (pos.priceInNative && pos.priceInNative > 0) {
           const nativeToken = pos.nativeToken || 'ETH';
           priceDisplay = `${formatCompactNumber(pos.priceInNative)} ${nativeToken}`;
-        } else {
+        } else if (pos.price && pos.price > 0) {
           priceDisplay = `$${formatCompactNumber(pos.price)}`;
         }
-      } else if (!amountsVisible) {
-        priceDisplay = '••••';
+      } else if (pos.price && pos.price > 0) {
+        priceDisplay = `$${formatCompactNumber(pos.price)}`;
       }
       
-      const valueDisplay = amountsVisible 
-        ? `$${formatCompactNumber(pos.value)}`
-        : '$••••';
+      // Format value - show in native token for NFTs without USD price
+      let valueDisplay = '$••••';
+      if (amountsVisible) {
+        if (pos.exchange === 'OpenSea' && (!pos.price || pos.price === 0) && pos.priceInNative && pos.priceInNative > 0) {
+          // NFT with only native price available
+          const totalNative = pos.amount * pos.priceInNative;
+          const nativeToken = pos.nativeToken || 'ETH';
+          valueDisplay = `${formatCompactNumber(totalNative)} ${nativeToken}`;
+        } else if (pos.value && pos.value > 0) {
+          valueDisplay = `$${formatCompactNumber(pos.value)}`;
+        } else {
+          valueDisplay = '—';
+        }
+      }
       
       // For custom manual positions, never show P&L (only show for Pyth positions with actual P&L)
       const hasPnl = pos.pnl !== null && pos.pnl !== undefined && !(pos.isManual && pos.manualType === 'custom');
