@@ -1008,6 +1008,51 @@
       .map(a => a.trim())
       .filter(a => a.length > 0);
   }
+  
+  // === ADDRESS VALIDATION UTILITIES ===
+  
+  function isEVMAddress(address) {
+    // EVM addresses start with 0x and are 42 characters long
+    return address && address.startsWith('0x') && address.length === 42;
+  }
+  
+  function isSolanaAddress(address) {
+    // Solana addresses are base58 encoded, typically 32-44 characters, no 0x prefix
+    return address && !address.startsWith('0x') && !address.startsWith('t1') && !address.startsWith('t3') 
+      && !address.startsWith('bc1') && !address.startsWith('1') && !address.startsWith('3')
+      && address.length >= 32 && address.length <= 44;
+  }
+  
+  function isBitcoinAddress(address) {
+    // Bitcoin addresses: bc1 (bech32), 1 (P2PKH), 3 (P2SH)
+    return address && (address.startsWith('bc1') || address.startsWith('1') || address.startsWith('3'));
+  }
+  
+  function isZcashAddress(address) {
+    // Zcash transparent addresses start with t1 or t3
+    return address && (address.startsWith('t1') || address.startsWith('t3'));
+  }
+  
+  function separateAddressesByType(addresses) {
+    const evm = [];
+    const solana = [];
+    const bitcoin = [];
+    const zcash = [];
+    
+    for (const addr of addresses) {
+      if (isEVMAddress(addr)) {
+        evm.push(addr);
+      } else if (isSolanaAddress(addr)) {
+        solana.push(addr);
+      } else if (isBitcoinAddress(addr)) {
+        bitcoin.push(addr);
+      } else if (isZcashAddress(addr)) {
+        zcash.push(addr);
+      }
+    }
+    
+    return { evm, solana, bitcoin, zcash };
+  }
 
   function applyHeaderVisibility(settings) {
     // Show/hide header bar elements based on settings (default to true for undefined)
@@ -2106,7 +2151,7 @@
   }
 
   async function fetchHyperliquidPositions(address) {
-    if (!address) return null;
+    if (!address || !isEVMAddress(address)) return null;
     
     try {
       // Fetch perpetual positions
@@ -2134,7 +2179,7 @@
       
       return { perp: perpData, spot: spotData };
     } catch (err) {
-      console.error('✗ Hyperliquid connection failed');
+      // Silent fail - user likely doesn't have Hyperliquid positions
       return null;
     }
   }
@@ -2286,29 +2331,37 @@
   }
 
   async function fetchLighterPositions(address) {
-    if (!address) return null;
+    if (!address || !isEVMAddress(address)) return null;
     
     try {
       // Try different Lighter API endpoints from https://apidocs.lighter.xyz
       let resp;
       
-      // Try mainnet endpoint with correct v1 API format
-      resp = await fetch(`https://mainnet.zklighter.elliot.ai/api/v1/account?by=l1_address&value=${address}`);
-      if (resp.ok) {
-        const data = await resp.json();
-        return data;
+      // Try mainnet endpoint with correct v1 API format (silent fail for 400)
+      try {
+        resp = await fetch(`https://mainnet.zklighter.elliot.ai/api/v1/account?by=l1_address&value=${address}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          return data;
+        }
+      } catch (err) {
+        // Silent fail
       }
       
-      // Try testnet endpoint
-      resp = await fetch(`https://testnet.zklighter.elliot.ai/api/v1/account?by=l1_address&value=${address}`);
-      if (resp.ok) {
-        const data = await resp.json();
-        return data;
+      // Try testnet endpoint (silent fail for 400)
+      try {
+        resp = await fetch(`https://testnet.zklighter.elliot.ai/api/v1/account?by=l1_address&value=${address}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          return data;
+        }
+      } catch (err) {
+        // Silent fail
       }
       
       return null;
     } catch (err) {
-      console.error('✗ Lighter connection failed');
+      // Silent fail - user likely doesn't have Lighter positions
       return null;
     }
   }
@@ -2718,7 +2771,7 @@
   }
   
   async function fetchOpenSeaNFTs(address) {
-    if (!address) return null;
+    if (!address || !isEVMAddress(address)) return null;
     
     // SPEED: Check cache first (OpenSea is very slow)
     const cacheKey = `nft_${address}`;
@@ -3213,6 +3266,12 @@
       return [];
     }
     
+    // Filter to only EVM addresses - Alchemy only supports EVM chains
+    const evmWallets = wallets.filter(wallet => isEVMAddress(wallet));
+    
+    if (evmWallets.length === 0) {
+      return [];
+    }
     
     // Alchemy supports these networks
     // Docs: https://www.alchemy.com/docs/reference/hyperliquid-api-quickstart
@@ -3227,7 +3286,7 @@
     
     // SPEED: Parallelize all wallet×network combinations instead of sequential fetches
     const fetchTasks = [];
-    for (const wallet of wallets) {
+    for (const wallet of evmWallets) {
       for (const network of networks) {
         fetchTasks.push((async () => {
           const data = [];
@@ -3588,9 +3647,16 @@
       return {};
     }
     
+    // Filter to only EVM addresses - Zerion only supports EVM chains
+    const evmWallets = wallets.filter(wallet => isEVMAddress(wallet));
+    
+    if (evmWallets.length === 0) {
+      return {};
+    }
+    
     const zerionData = {};
     
-    for (const wallet of wallets) {
+    for (const wallet of evmWallets) {
       try {
         // Fetch fungible positions with PnL data
         // https://developers.zerion.io/reference/listpositions
@@ -3602,7 +3668,7 @@
         });
         
         if (!response.ok) {
-          console.warn(`⚠ Zerion: Failed to fetch for ${wallet} (${response.status})`);
+          // Silent fail for expected errors (500s are common for addresses with no data)
           continue;
         }
         
@@ -4943,7 +5009,7 @@
       // Generate wallet breakdown tooltip if available
       const hasWalletBreakdown = pos.walletBreakdown && pos.walletBreakdown.length > 1;
       const assetCellClass = hasWalletBreakdown ? 'asset-cell has-wallet-breakdown' : 'asset-cell';
-      const assetDisplay = hasWalletBreakdown ? `${pos.asset} (i)` : pos.asset;
+      const assetDisplay = hasWalletBreakdown ? `${pos.asset} <span class="wallet-breakdown-indicator">(i)</span>` : pos.asset;
       
       // In compact mode, reorder columns: Asset, 24H%, P&L, Price, Value, Amount, Exchange (last)
       if (isCompactMode) {
@@ -4993,7 +5059,7 @@
       }
       
       const assetClass = hasWalletBreakdown ? 'card-asset has-wallet-breakdown' : 'card-asset';
-      const mobileAssetDisplay = hasWalletBreakdown ? `(i) ${pos.asset}` : pos.asset;
+      const mobileAssetDisplay = hasWalletBreakdown ? `<span class="wallet-breakdown-indicator">(i)</span> ${pos.asset}` : pos.asset;
       
       mobileCard.innerHTML = `
         <div class="card-header">
