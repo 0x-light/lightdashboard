@@ -51,6 +51,61 @@
   const stickerImages = {};
   const wallpapers = [];
   
+  // === UTILITY FUNCTIONS FOR API CALLS ===
+  
+  // Fetch with timeout
+  async function fetchWithTimeout(url, options = {}, timeout = 10000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        throw new Error('Request timeout');
+      }
+      throw err;
+    }
+  }
+  
+  // Retry with exponential backoff
+  async function fetchWithRetry(url, options = {}, maxRetries = 3, baseDelay = 1000) {
+    let lastError;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const response = await fetchWithTimeout(url, options, 15000);
+        
+        // If rate limited (429), wait and retry
+        if (response.status === 429) {
+          if (attempt < maxRetries - 1) {
+            const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
+            console.log(`⏳ Rate limited, retrying in ${Math.round(delay)}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+        }
+        
+        return response;
+      } catch (err) {
+        lastError = err;
+        if (attempt < maxRetries - 1) {
+          const delay = baseDelay * Math.pow(2, attempt);
+          console.log(`⏳ Request failed, retrying in ${Math.round(delay)}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    throw lastError;
+  }
+  
   // CoinGecko API rate limiting (optimized for speed)
   let lastCoinGeckoCall = 0;
   const COINGECKO_DELAY = 300; // 300ms between calls (aggressive but respectful)
@@ -84,7 +139,7 @@
   // https://hermes.pyth.network/docs/#/rest/price_feeds_metadata
   async function fetchPythPriceFeeds() {
     try {
-      const response = await fetch('https://hermes.pyth.network/v2/price_feeds');
+      const response = await fetchWithTimeout('https://hermes.pyth.network/v2/price_feeds', {}, 10000);
       if (!response.ok) {
         console.warn('⚠ Pyth: Failed to fetch price feed metadata');
         return {};
@@ -244,7 +299,7 @@
     }
     
     try {
-      const response = await fetch('https://hermes.pyth.network/v2/price_feeds');
+      const response = await fetchWithTimeout('https://hermes.pyth.network/v2/price_feeds', {}, 10000);
       if (!response.ok) return [];
       
       const feeds = await response.json();
@@ -369,32 +424,17 @@
       return;
     }
     
-    // Get current settings to check hidden watchlist items
+    // Get current settings to check if colored P&L is enabled
     const settings = loadSettings() || getDefaultSettings();
-    const hiddenWatchlist = new Set(settings.hiddenWatchlist || []);
+    const useColoredPnL = settings.useColoredPnL ?? true;
     
     // Render table rows
     watchlistBody.innerHTML = '';
     for (const item of watchlistData) {
-      const isHidden = hiddenWatchlist.has(item.id);
-      
-      // Skip hidden items if not in edit mode
-      if (isHidden && !watchlistEditMode) {
-        continue;
-      }
-      
       const tr = document.createElement('tr');
       tr.dataset.feedId = item.id; // Store feed ID for edit mode
       
-      if (watchlistEditMode && isHidden) {
-        tr.classList.add('watchlist-row-hidden');
-      }
-      
       const hasChange = item.change24h !== null && item.change24h !== undefined;
-      
-      // Get settings to check if colored P&L is enabled
-      const settings = loadSettings() || getDefaultSettings();
-      const useColoredPnL = settings.useColoredPnL ?? true;
       
       const changeClass = useColoredPnL
         ? (hasChange ? (item.change24h >= 0 ? 'positive-pnl' : 'negative-pnl') : 'neutral-value')
@@ -403,7 +443,7 @@
       const changeDisplay = hasChange ? `${changeSign}${item.change24h.toFixed(2)}%` : '—';
       
       const editButton = watchlistEditMode 
-        ? `<button class="watchlist-edit-btn" data-feed-id="${item.id}">[${isHidden ? 'SHOW' : 'HIDE'}]</button>`
+        ? `<button class="watchlist-edit-btn" data-feed-id="${item.id}">[REMOVE]</button>`
         : '';
       
       tr.innerHTML = `
@@ -433,19 +473,9 @@
     renderWatchlist();
   }
   
-  function toggleWatchlistItemVisibility(feedId) {
-    const settings = loadSettings() || getDefaultSettings();
-    if (!settings.hiddenWatchlist) settings.hiddenWatchlist = [];
-    
-    const index = settings.hiddenWatchlist.indexOf(feedId);
-    if (index > -1) {
-      settings.hiddenWatchlist.splice(index, 1);
-    } else {
-      settings.hiddenWatchlist.push(feedId);
-    }
-    
-    saveSettings(settings);
-    renderWatchlist();
+  function removeWatchlistItemInEditMode(feedId) {
+    // Completely remove the item from the watchlist
+    removeFromWatchlist(feedId);
   }
   
   // Tab visibility tracking
@@ -950,7 +980,6 @@
       snowEnabled: false,
       watchlist: [], // Array of Pyth price feed IDs
       watchlistCollapsed: false, // Whether watchlist section is collapsed
-      hiddenWatchlist: [], // Array of hidden watchlist feed IDs
       compactList: false, // Whether to use compact list mode
       buttonBackgrounds: false // Whether to add backgrounds to buttons
     };
@@ -2735,31 +2764,33 @@
           'unichain'
         ];
         // Fetch from all chains in parallel for speed
-        const chainPromises = chains.map(chain =>
-          fetch(`https://api.opensea.io/api/v2/chain/${chain}/account/${address}/nfts?limit=200`, {
-            headers: {
-              'X-API-KEY': apiKey,
-              'accept': 'application/json'
-            }
-          })
-          .then(async (chainResp) => {
-            if (chainResp.ok) {
-              const chainData = await chainResp.json();
-              if (chainData.nfts && chainData.nfts.length > 0) {
-                // Tag each NFT with its chain
-                chainData.nfts.forEach(nft => {
-                  nft._chain = chain;
-                });
-                return chainData.nfts;
+        // Add small delay between requests to reduce rate limiting
+        const chainPromises = chains.map((chain, index) =>
+          new Promise(resolve => setTimeout(resolve, index * 100)).then(() =>
+            fetchWithRetry(`https://api.opensea.io/api/v2/chain/${chain}/account/${address}/nfts?limit=200`, {
+              headers: {
+                'X-API-KEY': apiKey,
+                'accept': 'application/json'
               }
-            } else {
-            }
-            return [];
-          })
-          .catch((err) => {
-            console.error(`  ✗ ${chain}: ${err.message}`);
-            return [];
-          })
+            }, 2, 3000)
+            .then(async (chainResp) => {
+              if (chainResp.ok) {
+                const chainData = await chainResp.json();
+                if (chainData.nfts && chainData.nfts.length > 0) {
+                  // Tag each NFT with its chain
+                  chainData.nfts.forEach(nft => {
+                    nft._chain = chain;
+                  });
+                  return chainData.nfts;
+                }
+              }
+              return [];
+            })
+            .catch((err) => {
+              // Silent fail for rate limits
+              return [];
+            })
+          )
         );
         
         const chainResults = await Promise.all(chainPromises);
@@ -2923,17 +2954,18 @@
           }
           
           // Fetch floor prices and stats using OpenSea Collection Stats API (in parallel)
-          
-          const statsPromises = Array.from(collectionSlugs).map(slug =>
-            fetch(`https://api.opensea.io/api/v2/collections/${slug}/stats`, {
-                    headers: {
-                      'X-API-KEY': apiKey,
-                      'accept': 'application/json'
-                    }
-            })
-            .then(async (statsResp) => {
-                  if (statsResp.ok) {
-                    const statsData = await statsResp.json();
+          // Add small delay between requests to reduce rate limiting
+          const statsPromises = Array.from(collectionSlugs).map((slug, index) =>
+            new Promise(resolve => setTimeout(resolve, index * 150)).then(() =>
+              fetchWithRetry(`https://api.opensea.io/api/v2/collections/${slug}/stats`, {
+                headers: {
+                  'X-API-KEY': apiKey,
+                  'accept': 'application/json'
+                }
+              }, 2, 3000)
+              .then(async (statsResp) => {
+                if (statsResp.ok) {
+                  const statsData = await statsResp.json();
                 
                 // Get floor price and proper collection name from stats
                 const floorPriceNativeRaw = statsData.total?.floor_price
@@ -2968,6 +3000,7 @@
               return slug;
             })
             .catch(() => slug)
+            )
           );
           
           await Promise.all(statsPromises);
@@ -3009,15 +3042,14 @@
                 // Fetch sale events from OpenSea Events API (more reliable than last_sale field)
                 const eventsUrl = `https://api.opensea.io/api/v2/events/chain/${chain}/contract/${contractAddress}/nfts/${tokenId}?event_type=sale`;
                 
-                const eventsResp = await fetch(eventsUrl, {
-                      headers: {
-                        'X-API-KEY': apiKey,
-                        'accept': 'application/json'
-                      }
-                    });
+                const eventsResp = await fetchWithRetry(eventsUrl, {
+                  headers: {
+                    'X-API-KEY': apiKey,
+                    'accept': 'application/json'
+                  }
+                }, 2, 3000);
                     
                 if (!eventsResp.ok) {
-                  const errorText = await eventsResp.text();
                   continue;
                 }
                 
@@ -3068,68 +3100,10 @@
               
               return result;
             }
-      } else {
       }
       
-      // Fallback: Try Reservoir API (aggregates multiple marketplaces)
-        const reservoirResp = await fetch(`https://api.reservoir.tools/users/${address}/tokens/v10?limit=100`, {
-          headers: {
-            'accept': 'application/json'
-          }
-        });
-        
-        if (reservoirResp.ok) {
-          const reservoirData = await reservoirResp.json();
-          
-          if (reservoirData.tokens && reservoirData.tokens.length > 0) {
-            const collections = {};
-            const contractAddresses = new Set();
-            
-            for (const token of reservoirData.tokens) {
-              const collectionName = token.token?.collection?.name || 'Unknown';
-              const contractAddr = token.token?.contract;
-              
-              if (contractAddr) {
-                contractAddresses.add(contractAddr);
-              }
-              
-              if (!collections[contractAddr]) {
-                collections[contractAddr] = {
-                  name: collectionName,
-                  contract: contractAddr,
-                  count: 0,
-                  floorPriceUsd: 0,
-                  floorPriceNative: 0,
-                  nativeToken: 'ETH',
-                  change24h: 0
-                };
-              }
-              collections[contractAddr].count += parseInt(token.ownership?.tokenCount || 1);
-            }
-            
-            // Fetch floor prices from Reservoir collections API
-            for (const contractAddr of contractAddresses) {
-              try {
-                const collResp = await fetch(`https://api.reservoir.tools/collections/v7?id=${contractAddr}`);
-                if (collResp.ok) {
-                  const collData = await collResp.json();
-                  if (collData.collections?.[0]?.floorAsk?.price?.amount?.usd) {
-                    collections[contractAddr].floorPriceUsd = collData.collections[0].floorAsk.price.amount.usd;
-                  }
-                }
-              } catch (err) {
-                // Silent fallback
-              }
-            }
-            
-            const result = { collections: Object.values(collections) };
-            
-            // Cache the result
-            nftCache.set(cacheKey, { data: result, timestamp: Date.now() });
-            
-            return result;
-          }
-      }
+      // Note: Reservoir API fallback removed due to CORS restrictions
+      // The OpenSea API should provide all necessary NFT data
       
       return null;
     } catch (err) {
@@ -3455,14 +3429,14 @@
     // Fallback to CoinGecko if Pyth fails
     if (!btcPrice || btcPrice === 0) {
       try {
-        const priceResp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true');
+        const priceResp = await fetchWithRetry('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true', {}, 2, 2000);
         if (priceResp.ok) {
           const priceData = await priceResp.json();
           btcPrice = priceData.bitcoin?.usd || 0;
           btcChange24h = priceData.bitcoin?.usd_24h_change || null;
         }
       } catch (err) {
-        console.error('Failed to fetch BTC price from CoinGecko:', err);
+        console.error('Failed to fetch BTC price from CoinGecko:', err.message);
       }
     }
     
@@ -3513,6 +3487,22 @@
   async function fetchZcashBalances(addresses) {
     if (!addresses || addresses.length === 0) return [];
     
+    // Filter out shielded addresses (z-addr) - only transparent addresses (t-addr) are supported
+    const transparentAddresses = addresses.filter(addr => {
+      const trimmed = addr.trim();
+      return trimmed.startsWith('t1') || trimmed.startsWith('t3');
+    });
+    
+    if (transparentAddresses.length === 0) {
+      console.warn('No transparent Zcash addresses provided. Shielded addresses are not supported.');
+      return [];
+    }
+    
+    // Log if any shielded addresses were filtered out
+    if (transparentAddresses.length < addresses.length) {
+      console.warn(`Filtered out ${addresses.length - transparentAddresses.length} shielded Zcash address(es). Only transparent addresses (t-addr) are supported.`);
+    }
+    
     const zecData = [];
     
     // Try Pyth first for ZEC price
@@ -3531,14 +3521,14 @@
     // Fallback to CoinGecko if Pyth fails
     if (!zecPrice || zecPrice === 0) {
       try {
-        const priceResp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=zcash&vs_currencies=usd&include_24hr_change=true');
+        const priceResp = await fetchWithRetry('https://api.coingecko.com/api/v3/simple/price?ids=zcash&vs_currencies=usd&include_24hr_change=true', {}, 2, 2000);
         if (priceResp.ok) {
           const priceData = await priceResp.json();
           zecPrice = priceData.zcash?.usd || 0;
           zecChange24h = priceData.zcash?.usd_24h_change || null;
         }
       } catch (err) {
-        console.error('Failed to fetch ZEC price from CoinGecko:', err);
+        console.error('Failed to fetch ZEC price from CoinGecko:', err.message);
       }
     }
     
@@ -3548,39 +3538,43 @@
     }
     
     // Fetch balance for each address using Zcash block explorer
-    for (const address of addresses) {
+    for (const address of transparentAddresses) {
       try {
-        // Using zcha.in API for Zcash transparent addresses
+        // Using zcha.in API for Zcash transparent addresses only
         const apiUrl = `https://api.zcha.in/v2/mainnet/accounts/${address}`;
-        const balanceResp = await fetch(apiUrl);
+        
+        // Use retry logic for network errors
+        const balanceResp = await fetchWithRetry(apiUrl, {}, 2, 2000);
         
         if (balanceResp.ok) {
           const data = await balanceResp.json();
           
-          if (data && data.balance) {
+          if (data && data.balance !== undefined) {
             const balanceZEC = data.balance / 100000000; // Zatoshis to ZEC
             
-            if (balanceZEC > 0) {
-              zecData.push({
-                address,
-                blockchain: 'Zcash',
-                tokenSymbol: 'ZEC',
-                tokenName: 'Zcash',
-                balance: balanceZEC,
-                tokenPrice: zecPrice,
-                balanceUsd: balanceZEC * zecPrice,
-                change24h: zecChange24h,
-                contractAddress: null,
-                isSolana: false
-              });
-            }
+            // Include even zero balances (user added the address for a reason)
+            zecData.push({
+              address,
+              blockchain: 'Zcash',
+              tokenSymbol: 'ZEC',
+              tokenName: 'Zcash',
+              balance: balanceZEC,
+              tokenPrice: zecPrice,
+              balanceUsd: balanceZEC * zecPrice,
+              change24h: zecChange24h,
+              contractAddress: null,
+              isSolana: false
+            });
           }
+        } else {
+          console.warn(`⚠ Zcash API returned ${balanceResp.status} for ${address}`);
         }
         
         // Rate limit: wait 500ms between requests
         await new Promise(resolve => setTimeout(resolve, 500));
       } catch (err) {
-        console.error(`Failed to fetch Zcash balance for ${address}:`, err);
+        console.warn(`⚠ Failed to fetch Zcash balance for ${address}: ${err.message}`);
+        // Continue with next address instead of failing completely
       }
     }
     
@@ -5160,13 +5154,22 @@
     const tooltip = document.getElementById('wallet-breakdown-tooltip');
     if (!tooltip || !walletBreakdown || walletBreakdown.length === 0) return;
     
+    // Filter out shielded Zcash addresses (z-addr) - only show transparent addresses
+    const filteredBreakdown = walletBreakdown.filter(wallet => {
+      const addr = wallet.address;
+      // Filter out if it starts with 'z' (shielded Zcash address)
+      return !addr.startsWith('z');
+    });
+    
+    if (filteredBreakdown.length === 0) return;
+    
     // Calculate total balance
-    const totalBalance = walletBreakdown.reduce((sum, w) => sum + w.balance, 0);
+    const totalBalance = filteredBreakdown.reduce((sum, w) => sum + w.balance, 0);
     
     // Generate tooltip content
     let content = '<div class="wallet-breakdown-list">';
     
-    walletBreakdown.forEach((wallet, index) => {
+    filteredBreakdown.forEach((wallet, index) => {
       const percentage = (wallet.balance / totalBalance) * 100;
       const shortAddress = `${wallet.address.substring(0, 6)}...${wallet.address.substring(wallet.address.length - 4)}`;
       
@@ -5184,7 +5187,7 @@
     
     // Add visual bar chart
     content += '<div class="wallet-breakdown-bar">';
-    walletBreakdown.forEach((wallet, index) => {
+    filteredBreakdown.forEach((wallet, index) => {
       const percentage = (wallet.balance / totalBalance) * 100;
       const colors = ['var(--accent)', 'var(--muted)', 'var(--text)'];
       const color = colors[index % colors.length];
@@ -7112,7 +7115,7 @@
       watchlistBody.addEventListener('click', (e) => {
         if (e.target.classList.contains('watchlist-edit-btn')) {
           const feedId = e.target.getAttribute('data-feed-id');
-          toggleWatchlistItemVisibility(feedId);
+          removeWatchlistItemInEditMode(feedId);
         }
       });
     }

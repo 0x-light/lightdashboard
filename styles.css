@@ -2275,10 +2275,6 @@ input[type="range"]:focus::-moz-range-thumb {
   color: var(--text);
 }
 
-.watchlist-row-hidden {
-  opacity: 0.3;
-}
-
 .watchlist-edit-btn {
   color: var(--muted);
   background: none;
