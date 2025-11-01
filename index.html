@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>Dashboard</title>
     
     <!-- Favicons with dark mode support -->
@@ -142,13 +142,13 @@
           <table id="positionsTable" class="data-table">
             <thead>
               <tr>
-                <th>Asset</th>
-                <th>Exchange</th>
-                <th>Amount</th>
-                <th>Price</th>
-                <th>Value</th>
-                <th>24h Change</th>
-                <th>P&L</th>
+                <th class="th-asset">Asset</th>
+                <th class="th-exchange">Exchange</th>
+                <th class="th-amount">Amount</th>
+                <th class="th-price">Price</th>
+                <th class="th-value">Value</th>
+                <th class="th-change">24H%</th>
+                <th class="th-pnl">P&L</th>
               </tr>
             </thead>
             <tbody id="positionsBody">
@@ -181,7 +181,7 @@
                 <tr>
                   <th>Asset</th>
                   <th>Price</th>
-                  <th>24h Change</th>
+                  <th>24H%</th>
                 </tr>
               </thead>
               <tbody id="watchlistBody">
@@ -394,7 +394,7 @@
               <div class="help" style="margin-top: 4px; margin-left: 24px;">Dense, terminal-style tables with minimal spacing</div>
               <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
                 <input id="buttonBackgrounds" type="checkbox" class="settings-input">
-                Button backgrounds
+                Button backgrounds (BETA)
               </label>
               <div class="help" style="margin-top: 4px; margin-left: 24px;">Add background color to all buttons</div>
               <label style="margin-top: 8px;">
@@ -641,8 +641,7 @@
       <div class="sticker-window-content">
         <div class="help" style="margin-bottom: 12px;">Search for tokens from Pyth Network oracle</div>
         <input type="text" id="watchlistSearchInput" class="settings-input" placeholder="Search tokens..." style="width: 100%; margin-bottom: 12px;">
-        <div id="watchlistSearchResults" style="max-height: 400px; overflow-y: auto; padding: 8px; background: var(--bg-elev); border: 1px solid var(--border);">
-          <div class="loading-terminal">[Type to search...]</div>
+        <div id="watchlistSearchResults" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border);">
         </div>
       </div>
     </div>
@@ -670,8 +669,7 @@
         <div id="addPositionPythSection">
           <label style="display: block; margin-bottom: 8px;">Search Token</label>
           <input type="text" id="addPositionPythSearch" class="settings-input" placeholder="Search Pyth tokens..." style="width: 100%; margin-bottom: 12px;">
-          <div id="addPositionPythResults" style="max-height: 200px; overflow-y: auto; padding: 8px; background: var(--bg-elev); border: 1px solid var(--border); margin-bottom: 16px;">
-            <div class="loading-terminal">[Type to search...]</div>
+          <div id="addPositionPythResults" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border); margin-bottom: 16px;">
           </div>
           
           <label style="display: block; margin-bottom: 8px;">Amount</label>

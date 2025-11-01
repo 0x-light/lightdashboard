@@ -588,7 +588,7 @@ h1, h2, h3, h4, h5, h6 {
 .settings-export-area {
   height: 80px;
   font-family: monospace;
-  font-size: 11px;
+  font-size: 1em;
   background-color: var(--border);
   border: none;
   resize: none;
@@ -740,7 +740,7 @@ select:focus {
 }
 
 .manual-positions-header {
-  font-size: 0.85em;
+  font-size: 1em;
   color: var(--muted);
   margin-bottom: 4px;
   font-weight: 400;
@@ -1014,7 +1014,7 @@ select:focus {
 }
 
 .card-label {
-  font-size: 0.85em;
+  font-size: 1em;
   color: var(--muted);
   opacity: 0.6;
   text-transform: uppercase;
@@ -1149,6 +1149,13 @@ select:focus {
     overflow-x: hidden;
   }
   
+  /* Prevent auto-zoom on input focus */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+  
   .app-header {
     padding: 20px 20px 0;
   }
@@ -1195,8 +1202,9 @@ select:focus {
   }
   
   /* Hide exchange column on mobile in compact mode for positions table only */
-  #positionsTable.data-table.compact-mode th:nth-child(2),
-  #positionsTable.data-table.compact-mode td:nth-child(2) {
+  /* Exchange is now the last column (7th) in compact mode */
+  #positionsTable.data-table.compact-mode th:nth-child(7),
+  #positionsTable.data-table.compact-mode td:nth-child(7) {
     display: none;
   }
   
@@ -1360,7 +1368,7 @@ select:focus {
   select,
   textarea {
     font-size: 1em !important;
-    padding: 4px 6px !important;
+    padding: 10px !important;
     touch-action: manipulation; /* Prevents double-tap zoom */
   }
   
@@ -2184,7 +2192,7 @@ input[type="range"]:focus::-moz-range-thumb {
 }
 
 .watchlist-search-result {
-  padding: 0 10px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   display: flex;
@@ -2212,12 +2220,12 @@ input[type="range"]:focus::-moz-range-thumb {
 }
 
 .watchlist-search-result .asset-full-name {
-  font-size: 0.95em;
+  font-size: 1em;
   color: var(--text);
 }
 
 .watchlist-search-result .asset-symbol {
-  font-size: 0.85em;
+  font-size: 1em;
   color: var(--muted);
 }
 
@@ -2307,7 +2315,6 @@ input[type="range"]:focus::-moz-range-thumb {
 .data-table.compact-mode thead th {
   padding-top: 6px;
   padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
 }
 
 .data-table.compact-mode tbody tr {
@@ -2323,7 +2330,7 @@ input[type="range"]:focus::-moz-range-thumb {
   padding: 2px 6px;
   background: var(--border);
   color: var(--muted);
-  font-size: 0.85em;
+  font-size: 1em;
   border-radius: 3px;
 }
 

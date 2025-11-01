@@ -170,12 +170,30 @@
     }
   }
   
-  async function fetchPythPrices(assets) {
+  async function fetchPythPrices(assets, manualFeedIds = []) {
     // Fetch multiple prices at once
     const priceFeeds = await getPythPriceFeeds();
-    const feedIds = assets
-      .map(asset => priceFeeds[asset])
-      .filter(id => id);
+    
+    // Build feedId to asset mapping
+    const feedIdToAsset = {};
+    
+    // Add feed IDs from asset symbol lookups
+    for (const asset of assets) {
+      const feedId = priceFeeds[asset];
+      if (feedId) {
+        feedIdToAsset[feedId.toLowerCase()] = asset;
+      }
+    }
+    
+    // Add explicit feed IDs from manual Pyth positions (these take priority)
+    for (const manual of manualFeedIds) {
+      const normalizedId = manual.feedId.toLowerCase().startsWith('0x') 
+        ? manual.feedId.toLowerCase() 
+        : `0x${manual.feedId.toLowerCase()}`;
+      feedIdToAsset[normalizedId] = manual.asset;
+    }
+    
+    const feedIds = Object.keys(feedIdToAsset);
     
     if (feedIds.length === 0) {
       console.log('  ⚠ Pyth: No feed IDs found for requested assets');
@@ -194,18 +212,16 @@
       
       const data = await response.json();
       
-      // Map results back to asset symbols
+      // Map results back to asset symbols using our feedId mapping
       const prices = {};
       if (data.parsed && data.parsed.length > 0) {
         for (const priceData of data.parsed) {
-          // Find asset symbol by feed ID (normalize to lowercase with 0x prefix)
+          // Find asset symbol by feed ID
           const normalizedId = priceData.id.toLowerCase().startsWith('0x') 
             ? priceData.id.toLowerCase() 
             : `0x${priceData.id.toLowerCase()}`;
           
-          const asset = Object.keys(priceFeeds).find(
-            key => priceFeeds[key].toLowerCase() === normalizedId
-          );
+          const asset = feedIdToAsset[normalizedId];
           
           if (asset) {
             const price = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
@@ -687,6 +703,7 @@
       settingsCache = settings;
       settingsCacheTime = now;
       
+      console.log('📖 Loading settings. Manual positions count:', settings.cryptoPositions?.length || 0);
       return settings;
     } catch {
       return null;
@@ -718,6 +735,7 @@
       settingsToSave.lighterAddress = simpleEncrypt(settingsToSave.lighterAddress);
     }
     
+    console.log('💾 Saving settings. Manual positions count:', settingsToSave.cryptoPositions?.length || 0);
     localStorage.setItem(storageKey, JSON.stringify(settingsToSave));
     
     // Invalidate cache
@@ -863,6 +881,42 @@
       document.body.classList.add('compact-mode');
     } else {
       document.body.classList.remove('compact-mode');
+    }
+    
+    // Update positions table header for compact mode
+    const positionsTable = document.getElementById('positionsTable');
+    if (positionsTable) {
+      const headerRow = positionsTable.querySelector('thead tr');
+      if (headerRow) {
+        if (compact) {
+          // Compact mode: Asset, 24H%, P&L, Price, Amount, Value, Exchange
+          headerRow.innerHTML = `
+            <th class="th-asset">Asset</th>
+            <th class="th-change">24H%</th>
+            <th class="th-pnl">P&L</th>
+            <th class="th-price">Price</th>
+            <th class="th-amount">Amount</th>
+            <th class="th-value">Value</th>
+            <th class="th-exchange">Exchange</th>
+          `;
+        } else {
+          // Normal mode: Asset, Exchange, Amount, Price, Value, 24H%, P&L
+          headerRow.innerHTML = `
+            <th class="th-asset">Asset</th>
+            <th class="th-exchange">Exchange</th>
+            <th class="th-amount">Amount</th>
+            <th class="th-price">Price</th>
+            <th class="th-value">Value</th>
+            <th class="th-change">24H%</th>
+            <th class="th-pnl">P&L</th>
+          `;
+        }
+      }
+    }
+    
+    // Re-render positions table to update column order (only if data is loaded)
+    if (allPositionsData && allPositionsData.length > 0) {
+      renderPositionsTable();
     }
   }
   
@@ -1133,6 +1187,8 @@
   function collectSettingsFromForm() {
     const current = loadSettings() || getDefaultSettings();
     const newSettings = { ...current };
+    
+    console.log('📋 collectSettingsFromForm: current.cryptoPositions =', current.cryptoPositions?.length || 0);
 
     // Get wallet addresses and API keys
     newSettings.walletAddresses = els.walletAddresses.value.trim() || '';
@@ -1144,6 +1200,7 @@
     // Preserve existing cryptoPositions (added via ADD POSITION button)
     // Don't read from the deprecated manual positions form
     // newSettings.cryptoPositions is already set from { ...current }
+    console.log('📋 collectSettingsFromForm: newSettings.cryptoPositions =', newSettings.cryptoPositions?.length || 0);
 
     newSettings.userName = els.userName.value.trim() || '';
     
@@ -4062,7 +4119,16 @@
         .filter(pos => pos.exchange !== 'OpenSea')
         .map(pos => pos.asset))];
       
-      const pythPrices = await fetchPythPrices(assets);
+      // Collect feed IDs from manual Pyth positions (they have explicit feed IDs)
+      const manualPythFeedIds = allPositionsData
+        .filter(pos => pos.isManual && pos.manualType === 'pyth' && pos.pythFeedId)
+        .map(pos => ({ asset: pos.asset, feedId: pos.pythFeedId }));
+      
+      if (manualPythFeedIds.length > 0) {
+        console.log(`→ Found ${manualPythFeedIds.length} manual Pyth positions with explicit feed IDs:`, manualPythFeedIds.map(m => m.asset));
+      }
+      
+      const pythPrices = await fetchPythPrices(assets, manualPythFeedIds);
       Object.assign(pythPricesMap, pythPrices);
       
       // Only use Pyth as fallback when exchange price is missing or zero
@@ -4075,21 +4141,26 @@
         }
         
         // Update manual Pyth positions with current price and calculate P&L
-        if (pos.isManual && pos.manualType === 'pyth' && pythPricesMap[pos.asset]) {
-          const oldValue = pos.value;
-          const currentPrice = pythPricesMap[pos.asset];
-          pos.price = currentPrice;
-          pos.value = Math.abs(pos.amount) * currentPrice;
-          
-          // Calculate P&L if entry price exists
-          if (pos.entryPrice && pos.entryPrice > 0) {
-            const costBasis = Math.abs(pos.amount) * pos.entryPrice;
-            pos.pnl = pos.value - costBasis;
-            pos.pnlPercent = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
+        if (pos.isManual && pos.manualType === 'pyth') {
+          if (pythPricesMap[pos.asset]) {
+            const oldValue = pos.value;
+            const currentPrice = pythPricesMap[pos.asset];
+            pos.price = currentPrice;
+            pos.value = Math.abs(pos.amount) * currentPrice;
+            
+            // Calculate P&L if entry price exists
+            if (pos.entryPrice && pos.entryPrice > 0) {
+              const costBasis = Math.abs(pos.amount) * pos.entryPrice;
+              pos.pnl = pos.value - costBasis;
+              pos.pnlPercent = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
+              console.log(`  ✓ Manual Pyth ${pos.asset}: Entry=$${pos.entryPrice.toFixed(2)}, Current=$${currentPrice.toFixed(2)}, P&L=$${pos.pnl.toFixed(2)} (${pos.pnlPercent.toFixed(1)}%)`);
+            }
+            
+            // Update balance with the difference (we already added initial value)
+            accountBalances.multichain += (pos.value - oldValue);
+          } else {
+            console.log(`  ⚠ Manual Pyth ${pos.asset}: No price found in pythPricesMap`);
           }
-          
-          // Update balance with the difference (we already added initial value)
-          accountBalances.multichain += (pos.value - oldValue);
         }
       }
     }
@@ -4491,6 +4562,7 @@
     const settings = loadSettings() || getDefaultSettings();
     const minThreshold = settings.minBalanceThreshold || 100;
     const hiddenAssets = settings.hiddenAssets || [];
+    const isCompactMode = settings.compactList ?? false;
     
     if (hideSmallPositions) {
       filteredPositions = filteredPositions.filter(pos => pos.value >= minThreshold);
@@ -4589,15 +4661,28 @@
       const assetCellClass = hasWalletBreakdown ? 'asset-cell has-wallet-breakdown' : 'asset-cell';
       const assetDisplay = hasWalletBreakdown ? `${pos.asset} (i)` : pos.asset;
       
-      tr.innerHTML = `
-        <td class="${assetCellClass}">${assetDisplay}${editButton}</td>
-        <td class="exchange-cell">${exchangeDisplay}</td>
-        <td class="amount-cell">${amountDisplay}</td>
-        <td class="price-cell">${priceDisplay}</td>
-        <td class="value-cell">${valueDisplay}</td>
-        <td class="${changeClass} change-cell">${change24hDisplay}</td>
-        <td class="${pnlClass} pnl-cell">${pnlDisplay}</td>
-      `;
+      // In compact mode, reorder columns: Asset, 24H%, P&L, Price, Amount, Value, Exchange (last)
+      if (isCompactMode) {
+        tr.innerHTML = `
+          <td class="${assetCellClass}">${assetDisplay}${editButton}</td>
+          <td class="${changeClass} change-cell">${change24hDisplay}</td>
+          <td class="${pnlClass} pnl-cell">${pnlDisplay}</td>
+          <td class="price-cell">${priceDisplay}</td>
+          <td class="amount-cell">${amountDisplay}</td>
+          <td class="value-cell">${valueDisplay}</td>
+          <td class="exchange-cell">${exchangeDisplay}</td>
+        `;
+      } else {
+        tr.innerHTML = `
+          <td class="${assetCellClass}">${assetDisplay}${editButton}</td>
+          <td class="exchange-cell">${exchangeDisplay}</td>
+          <td class="amount-cell">${amountDisplay}</td>
+          <td class="price-cell">${priceDisplay}</td>
+          <td class="value-cell">${valueDisplay}</td>
+          <td class="${changeClass} change-cell">${change24hDisplay}</td>
+          <td class="${pnlClass} pnl-cell">${pnlDisplay}</td>
+        `;
+      }
       
       // Add wallet breakdown tooltip if applicable
       if (hasWalletBreakdown) {
@@ -4645,7 +4730,7 @@
             <span class="card-value">${valueDisplay}</span>
           </div>
           <div class="card-field">
-            <span class="card-label">24H CHANGE</span>
+            <span class="card-label">24H%</span>
             <span class="card-value ${changeClass}">${change24hDisplay}</span>
           </div>
           <div class="card-field card-field-wide">
@@ -6715,7 +6800,7 @@
         if (watchlistSearchInput) {
           watchlistSearchInput.value = '';
           watchlistSearchInput.focus();
-          watchlistSearchResults.innerHTML = '<div class="loading-terminal">[Type to search...]</div>';
+          watchlistSearchResults.innerHTML = '';
         }
       });
     }
@@ -6753,7 +6838,7 @@
         const query = e.target.value.trim();
         
         if (query.length < 1) {
-          watchlistSearchResults.innerHTML = '<div class="loading-terminal">[Type to search...]</div>';
+          watchlistSearchResults.innerHTML = '';
           addedFeeds.clear();
           return;
         }
@@ -6763,7 +6848,7 @@
         const currentWatchlist = settings.watchlist || [];
         
         if (results.length === 0) {
-          watchlistSearchResults.innerHTML = '<div class="loading-terminal">[No matches found]</div>';
+          watchlistSearchResults.innerHTML = '';
           return;
         }
         
@@ -6856,7 +6941,7 @@
         if (addPositionPythEntryPrice) addPositionPythEntryPrice.value = '';
         if (addPositionCustomName) addPositionCustomName.value = '';
         if (addPositionCustomValue) addPositionCustomValue.value = '';
-        if (addPositionPythResults) addPositionPythResults.innerHTML = '<div class="loading-terminal">[Type to search...]</div>';
+        if (addPositionPythResults) addPositionPythResults.innerHTML = '';
         
         // Set initial view
         if (addPositionPythSection) addPositionPythSection.style.display = 'block';
@@ -6920,15 +7005,18 @@
       addPositionPythSearch.addEventListener('input', (e) => {
         const query = e.target.value.trim();
         
+        // Show results when typing
+        addPositionPythResults.style.display = 'block';
+        
         if (query.length < 1) {
-          addPositionPythResults.innerHTML = '<div class="loading-terminal">[Type to search...]</div>';
+          addPositionPythResults.innerHTML = '';
           return;
         }
         
         const results = searchWatchlistTokens(query);
         
         if (results.length === 0) {
-          addPositionPythResults.innerHTML = '<div class="loading-terminal">[No matches found]</div>';
+          addPositionPythResults.innerHTML = '';
           return;
         }
         
@@ -6957,6 +7045,9 @@
               el.classList.remove('added');
             });
             resultDiv.classList.add('added');
+            
+            // Hide search results after selection
+            addPositionPythResults.style.display = 'none';
           });
           
           addPositionPythResults.appendChild(resultDiv);
