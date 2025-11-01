@@ -1194,9 +1194,9 @@ select:focus {
     -webkit-overflow-scrolling: touch;
   }
   
-  /* Hide exchange column on mobile in compact mode */
-  .data-table.compact-mode th:nth-child(2),
-  .data-table.compact-mode td:nth-child(2) {
+  /* Hide exchange column on mobile in compact mode for positions table only */
+  #positionsTable.data-table.compact-mode th:nth-child(2),
+  #positionsTable.data-table.compact-mode td:nth-child(2) {
     display: none;
   }
   
