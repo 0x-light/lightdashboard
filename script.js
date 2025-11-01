@@ -51,6 +51,265 @@
   const stickerImages = {};
   const wallpapers = [];
   
+  // === PERFORMANCE CONFIGURATION ===
+  const PERF_CONFIG = {
+    // Cache durations (milliseconds)
+    CACHE: {
+      PRICES: 60000,      // 1 minute - prices change frequently
+      NFT: 300000,        // 5 minutes - NFTs change rarely
+      POSITIONS: 30000,   // 30 seconds - positions need freshness
+      PYTH_FEEDS: 86400000, // 24 hours - feed metadata is static
+      SETTINGS: 10000     // 10 seconds - settings accessed frequently
+    },
+    
+    // API timeouts (milliseconds)
+    TIMEOUTS: {
+      PYTH: 10000,
+      COINGECKO: 15000,
+      OPENSEA: 30000,
+      ZERION: 15000,
+      ALCHEMY: 15000,
+      HYPERLIQUID: 10000
+    },
+    
+    // Rate limiting
+    RATE_LIMITS: {
+      COINGECKO_DELAY: 300,
+      MIN_REFRESH_INTERVAL: 10000,
+      OPENSEA_BATCH_DELAY: 100,
+      OPENSEA_STATS_DELAY: 150
+    },
+    
+    // UI performance
+    UI: {
+      DEBOUNCE_RENDER: 100,
+      ANIMATION_DURATION: 300,
+      FLASH_DURATION: 500,
+      THROTTLE_SCROLL: 16 // 60fps
+    },
+    
+    // Data limits
+    LIMITS: {
+      MAX_CACHE_SIZE: 250,
+      MAX_POSITIONS_PER_PAGE: 1000,
+      DUST_THRESHOLD: 0.01 // USD
+    }
+  };
+  
+  // === API ENDPOINTS ===
+  const API_ENDPOINTS = {
+    HYPERLIQUID: 'https://api.hyperliquid.xyz/info',
+    PYTH: 'https://hermes.pyth.network/v2',
+    COINGECKO: 'https://api.coingecko.com/api/v3',
+    OPENSEA: 'https://api.opensea.io/api/v2',
+    ZERION: 'https://api.zerion.io/v1',
+    BLOCKCHAIN_INFO: 'https://blockchain.info',
+    ZCHA: 'https://api.zcha.in/v2/mainnet',
+    ZKLIGHTER_MAIN: 'https://mainnet.zklighter.elliot.ai/api/v1',
+    ZKLIGHTER_TEST: 'https://testnet.zklighter.elliot.ai/api/v1'
+  };
+  
+  // === UTILITY FUNCTIONS ===
+  
+  // Generic memoization utility
+  function memoize(fn, keyFn = (...args) => JSON.stringify(args)) {
+    const cache = new Map();
+    const maxSize = PERF_CONFIG.LIMITS.MAX_CACHE_SIZE;
+    
+    return function(...args) {
+      const key = keyFn(...args);
+      
+      if (cache.has(key)) {
+        return cache.get(key);
+      }
+      
+      const result = fn.apply(this, args);
+      
+      // Prevent memory leak with size limit
+      if (cache.size >= maxSize) {
+        const firstKey = cache.keys().next().value;
+        cache.delete(firstKey);
+      }
+      
+      cache.set(key, result);
+      return result;
+    };
+  }
+  
+  // Debounce function
+  function debounce(fn, delay) {
+    let timeoutId = null;
+    
+    return function(...args) {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => fn.apply(this, args), delay);
+    };
+  }
+  
+  // Throttle function
+  function throttle(fn, limit) {
+    let inThrottle;
+    
+    return function(...args) {
+      if (!inThrottle) {
+        fn.apply(this, args);
+        inThrottle = true;
+        setTimeout(() => inThrottle = false, limit);
+      }
+    };
+  }
+  
+  // Request deduplication
+  class RequestDeduplicator {
+    constructor() {
+      this.pending = new Map();
+    }
+    
+    async dedupe(key, fetcher) {
+      // Return existing promise if request is in flight
+      if (this.pending.has(key)) {
+        return this.pending.get(key);
+      }
+      
+      // Execute new request
+      const promise = (async () => {
+        try {
+          const result = await fetcher();
+          return result;
+        } finally {
+          // Clean up after completion
+          this.pending.delete(key);
+        }
+      })();
+      
+      this.pending.set(key, promise);
+      return promise;
+    }
+    
+    clear() {
+      this.pending.clear();
+    }
+  }
+  
+  const requestDeduplicator = new RequestDeduplicator();
+  
+  // Smart Cache with automatic pruning
+  class SmartCache {
+    constructor(maxSize = 250, ttl = 300000) {
+      this.cache = new Map();
+      this.timestamps = new Map();
+      this.maxSize = maxSize;
+      this.ttl = ttl;
+      
+      // Auto-prune every 5 minutes
+      this.pruneInterval = setInterval(() => this.prune(), 300000);
+    }
+    
+    set(key, value) {
+      // Prune if at capacity
+      if (this.cache.size >= this.maxSize) {
+        this.pruneOldest();
+      }
+      
+      this.cache.set(key, value);
+      this.timestamps.set(key, Date.now());
+    }
+    
+    get(key) {
+      const value = this.cache.get(key);
+      const timestamp = this.timestamps.get(key);
+      
+      // Check if expired
+      if (value && timestamp && Date.now() - timestamp < this.ttl) {
+        return value;
+      }
+      
+      // Remove expired
+      this.cache.delete(key);
+      this.timestamps.delete(key);
+      return null;
+    }
+    
+    has(key) {
+      const value = this.get(key);
+      return value !== null;
+    }
+    
+    prune() {
+      const now = Date.now();
+      const toDelete = [];
+      
+      for (const [key, timestamp] of this.timestamps) {
+        if (now - timestamp > this.ttl) {
+          toDelete.push(key);
+        }
+      }
+      
+      for (const key of toDelete) {
+        this.cache.delete(key);
+        this.timestamps.delete(key);
+      }
+      
+      if (toDelete.length > 0) {
+        console.log(`🧹 Pruned ${toDelete.length} expired cache entries`);
+      }
+    }
+    
+    pruneOldest() {
+      // Remove oldest entry
+      const oldestKey = this.timestamps.keys().next().value;
+      if (oldestKey) {
+        this.cache.delete(oldestKey);
+        this.timestamps.delete(oldestKey);
+      }
+    }
+    
+    clear() {
+      this.cache.clear();
+      this.timestamps.clear();
+    }
+    
+    destroy() {
+      if (this.pruneInterval) {
+        clearInterval(this.pruneInterval);
+      }
+      this.clear();
+    }
+  }
+  
+  // Performance monitoring utility
+  const perfMonitor = {
+    marks: new Map(),
+    
+    start(name) {
+      this.marks.set(name, performance.now());
+    },
+    
+    end(name) {
+      const start = this.marks.get(name);
+      if (start) {
+        const duration = performance.now() - start;
+        console.log(`⏱️  ${name}: ${duration.toFixed(2)}ms`);
+        this.marks.delete(name);
+        return duration;
+      }
+    },
+    
+    measure(name, fn) {
+      this.start(name);
+      const result = fn();
+      this.end(name);
+      return result;
+    },
+    
+    async measureAsync(name, fn) {
+      this.start(name);
+      const result = await fn();
+      this.end(name);
+      return result;
+    }
+  };
+  
   // === UTILITY FUNCTIONS FOR API CALLS ===
   
   // Fetch with timeout
@@ -108,20 +367,15 @@
   
   // CoinGecko API rate limiting (optimized for speed)
   let lastCoinGeckoCall = 0;
-  const COINGECKO_DELAY = 300; // 300ms between calls (aggressive but respectful)
-  const coinGeckoCache = new Map();
-  const CACHE_DURATION = 300000; // Cache for 5 minutes (aggressive caching for performance)
-  const MAX_CACHE_SIZE = 250; // Larger cache for better performance
   let consecutiveRateLimits = 0;
+  
+  // Smart caches with automatic pruning
+  const coinGeckoCache = new SmartCache(PERF_CONFIG.LIMITS.MAX_CACHE_SIZE, PERF_CONFIG.CACHE.PRICES);
+  const nftCache = new SmartCache(PERF_CONFIG.LIMITS.MAX_CACHE_SIZE, PERF_CONFIG.CACHE.NFT);
   
   // Settings cache (avoid repeated localStorage reads)
   let settingsCache = null;
   let settingsCacheTime = 0;
-  const SETTINGS_CACHE_DURATION = 10000; // Cache settings for 10s for better performance
-  
-  // NFT data cache (OpenSea is slow, cache aggressively)
-  const nftCache = new Map();
-  const NFT_CACHE_DURATION = 300000; // 5 minutes
   
   // === PYTH NETWORK PRICE FEEDS ===
   // Unified price source for portfolio calculations
@@ -133,7 +387,6 @@
   // Cache: { symbol: feedId }
   let PYTH_PRICE_FEEDS = null;
   let pythFeedsLastFetched = 0;
-  const PYTH_FEEDS_CACHE_DURATION = 86400000; // Cache for 24 hours
   
   // Fetch Pyth price feed metadata from Hermes API
   // https://hermes.pyth.network/docs/#/rest/price_feeds_metadata
@@ -175,7 +428,7 @@
     const now = Date.now();
     
     // Return cached if available and fresh
-    if (PYTH_PRICE_FEEDS && (now - pythFeedsLastFetched) < PYTH_FEEDS_CACHE_DURATION) {
+    if (PYTH_PRICE_FEEDS && (now - pythFeedsLastFetched) < PERF_CONFIG.CACHE.PYTH_FEEDS) {
       return PYTH_PRICE_FEEDS;
     }
     
@@ -226,67 +479,72 @@
   }
   
   async function fetchPythPrices(assets, manualFeedIds = []) {
-    // Fetch multiple prices at once
-    const priceFeeds = await getPythPriceFeeds();
+    // Use request deduplication to avoid duplicate concurrent requests
+    const cacheKey = `pyth:${assets.sort().join(',')}_${JSON.stringify(manualFeedIds)}`;
     
-    // Build feedId to asset mapping
-    const feedIdToAsset = {};
-    
-    // Add feed IDs from asset symbol lookups
-    for (const asset of assets) {
-      const feedId = priceFeeds[asset];
-      if (feedId) {
-        feedIdToAsset[feedId.toLowerCase()] = asset;
-      }
-    }
-    
-    // Add explicit feed IDs from manual Pyth positions (these take priority)
-    for (const manual of manualFeedIds) {
-      const normalizedId = manual.feedId.toLowerCase().startsWith('0x') 
-        ? manual.feedId.toLowerCase() 
-        : `0x${manual.feedId.toLowerCase()}`;
-      feedIdToAsset[normalizedId] = manual.asset;
-    }
-    
-    const feedIds = Object.keys(feedIdToAsset);
-    
-    if (feedIds.length === 0) {
-      return {};
-    }
-    
-    try {
-      const idsParam = feedIds.map(id => `ids[]=${id}`).join('&');
-      const url = `https://hermes.pyth.network/v2/updates/price/latest?${idsParam}`;
+    return requestDeduplicator.dedupe(cacheKey, async () => {
+      // Fetch multiple prices at once
+      const priceFeeds = await getPythPriceFeeds();
       
-      const response = await fetch(url);
-      if (!response.ok) {
-        return {};
-      }
+      // Build feedId to asset mapping
+      const feedIdToAsset = {};
       
-      const data = await response.json();
-      
-      // Map results back to asset symbols using our feedId mapping
-      const prices = {};
-      if (data.parsed && data.parsed.length > 0) {
-        for (const priceData of data.parsed) {
-          // Find asset symbol by feed ID
-          const normalizedId = priceData.id.toLowerCase().startsWith('0x') 
-            ? priceData.id.toLowerCase() 
-            : `0x${priceData.id.toLowerCase()}`;
-          
-          const asset = feedIdToAsset[normalizedId];
-          
-          if (asset) {
-            const price = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
-            prices[asset] = price;
-          }
+      // Add feed IDs from asset symbol lookups
+      for (const asset of assets) {
+        const feedId = priceFeeds[asset];
+        if (feedId) {
+          feedIdToAsset[feedId.toLowerCase()] = asset;
         }
       }
       
-      return prices;
-    } catch (err) {
-      return {};
-    }
+      // Add explicit feed IDs from manual Pyth positions (these take priority)
+      for (const manual of manualFeedIds) {
+        const normalizedId = manual.feedId.toLowerCase().startsWith('0x') 
+          ? manual.feedId.toLowerCase() 
+          : `0x${manual.feedId.toLowerCase()}`;
+        feedIdToAsset[normalizedId] = manual.asset;
+      }
+      
+      const feedIds = Object.keys(feedIdToAsset);
+      
+      if (feedIds.length === 0) {
+        return {};
+      }
+      
+      try {
+        const idsParam = feedIds.map(id => `ids[]=${id}`).join('&');
+        const url = `https://hermes.pyth.network/v2/updates/price/latest?${idsParam}`;
+        
+        const response = await fetchWithTimeout(url, {}, PERF_CONFIG.TIMEOUTS.PYTH);
+        if (!response.ok) {
+          return {};
+        }
+        
+        const data = await response.json();
+        
+        // Map results back to asset symbols using our feedId mapping
+        const prices = {};
+        if (data.parsed && data.parsed.length > 0) {
+          for (const priceData of data.parsed) {
+            // Find asset symbol by feed ID
+            const normalizedId = priceData.id.toLowerCase().startsWith('0x') 
+              ? priceData.id.toLowerCase() 
+              : `0x${priceData.id.toLowerCase()}`;
+            
+            const asset = feedIdToAsset[normalizedId];
+            
+            if (asset) {
+              const price = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
+              prices[asset] = price;
+            }
+          }
+        }
+        
+        return prices;
+      } catch (err) {
+        return {};
+      }
+    });
   }
   
   // === WATCHLIST FUNCTIONS ===
@@ -482,67 +740,7 @@
   let isTabVisible = true;
   let updateInProgress = false;
   let lastFullRefresh = 0;
-  const MIN_REFRESH_INTERVAL = 10000; // Minimum 10s between full refreshes (faster updates)
-  
-  // === Performance Utilities ===
-  // Debounce helper for search inputs to reduce unnecessary operations
-  function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-      const later = () => {
-        clearTimeout(timeout);
-        func(...args);
-      };
-      clearTimeout(timeout);
-      timeout = setTimeout(later, wait);
-    };
-  }
-  
-  // Intelligent retry logic for failed API calls
-  async function fetchWithRetry(url, options = {}, maxRetries = 2, baseDelay = 500) {
-    let lastError;
-    
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-        
-        const response = await fetch(url, {
-          ...options,
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        // Return response even if not ok - let caller handle HTTP errors
-        if (response.ok || attempt === maxRetries) {
-          return response;
-        }
-        
-        // Don't retry client errors (4xx), only server errors (5xx) and network issues
-        if (response.status >= 400 && response.status < 500) {
-          return response;
-        }
-        
-        lastError = new Error(`HTTP ${response.status}`);
-      } catch (error) {
-        lastError = error;
-        
-        // Don't retry if aborted intentionally
-        if (error.name === 'AbortError' && !error.message.includes('timeout')) {
-          throw error;
-        }
-      }
-      
-      // Exponential backoff with jitter
-      if (attempt < maxRetries) {
-        const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 500;
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-    
-    throw lastError;
-  }
+  const MIN_REFRESH_INTERVAL = PERF_CONFIG.RATE_LIMITS.MIN_REFRESH_INTERVAL;
   
   // Performance monitoring
   const perfMetrics = {
@@ -656,13 +854,11 @@
   }
   
   async function rateLimitedFetch(url, cacheKey = null, retryCount = 0) {
-    // Check cache first - extend cache if we've been rate limited recently
-    if (cacheKey && coinGeckoCache.has(cacheKey)) {
+    // Check cache first (SmartCache handles expiration automatically)
+    if (cacheKey) {
       const cached = coinGeckoCache.get(cacheKey);
-      const cacheAge = Date.now() - cached.timestamp;
-      const extendedDuration = consecutiveRateLimits > 0 ? CACHE_DURATION * 2 : CACHE_DURATION;
-      if (cacheAge < extendedDuration) {
-        return cached.data;
+      if (cached) {
+        return cached;
       }
     }
 
@@ -670,8 +866,8 @@
     const now = Date.now();
     const timeSinceLastCall = now - lastCoinGeckoCall;
     const baseDelay = consecutiveRateLimits > 0 
-      ? COINGECKO_DELAY * Math.pow(2, consecutiveRateLimits) 
-      : COINGECKO_DELAY;
+      ? PERF_CONFIG.RATE_LIMITS.COINGECKO_DELAY * Math.pow(2, consecutiveRateLimits) 
+      : PERF_CONFIG.RATE_LIMITS.COINGECKO_DELAY;
     
     if (timeSinceLastCall < baseDelay) {
       await new Promise(resolve => setTimeout(resolve, baseDelay - timeSinceLastCall));
@@ -701,19 +897,9 @@
       consecutiveRateLimits = Math.max(0, consecutiveRateLimits - 1);
       const data = await resp.json();
 
-      // Cache the result
+      // Cache the result (SmartCache handles size limiting and pruning automatically)
       if (cacheKey) {
-        coinGeckoCache.set(cacheKey, { data, timestamp: Date.now() });
-        
-        // Clean up old cache entries if cache is too large
-        if (coinGeckoCache.size > MAX_CACHE_SIZE) {
-          const oldestKeys = Array.from(coinGeckoCache.entries())
-            .sort((a, b) => a[1].timestamp - b[1].timestamp)
-            .slice(0, coinGeckoCache.size - MAX_CACHE_SIZE)
-            .map(entry => entry[0]);
-          
-          oldestKeys.forEach(key => coinGeckoCache.delete(key));
-        }
+        coinGeckoCache.set(cacheKey, data);
       }
 
       return data;
@@ -853,22 +1039,24 @@
   };
 
   // Format numbers in a compact way
-  function formatCompactNumber(num) {
-    if (num >= 1000000) {
-      return (num / 1000000).toFixed(1) + 'M';
-    } else if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'k';
-    } else if (num >= 1) {
-      return num.toFixed(2);
-    } else {
-      return num.toFixed(4);
-    }
-  }
+  // Memoized number formatting (called thousands of times)
+  const formatCompactNumber = memoize((num) => {
+    if (num === null || num === undefined || isNaN(num)) return '—';
+    
+    const absNum = Math.abs(num);
+    if (absNum >= 1e9) return (num / 1e9).toFixed(2) + 'B';
+    if (absNum >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+    if (absNum >= 1e3) return (num / 1e3).toFixed(2) + 'K';
+    if (absNum >= 1) return num.toFixed(2);
+    if (absNum >= 0.01) return num.toFixed(4);
+    if (absNum >= 0.0001) return num.toFixed(6);
+    return num.toExponential(2);
+  }, (num) => `${num}`); // Simple key function
 
   function loadSettings() {
     // SPEED: Use cache to avoid repeated localStorage reads/decryption
     const now = Date.now();
-    if (settingsCache && (now - settingsCacheTime) < SETTINGS_CACHE_DURATION) {
+    if (settingsCache && (now - settingsCacheTime) < PERF_CONFIG.CACHE.SETTINGS) {
       return settingsCache;
     }
     
@@ -2775,12 +2963,9 @@
     
     // SPEED: Check cache first (OpenSea is very slow)
     const cacheKey = `nft_${address}`;
-    if (nftCache.has(cacheKey)) {
-      const cached = nftCache.get(cacheKey);
-      const age = Date.now() - cached.timestamp;
-      if (age < NFT_CACHE_DURATION) {
-        return cached.data;
-      }
+    const cached = nftCache.get(cacheKey);
+    if (cached) {
+      return cached;
     }
     
     const settings = loadSettings();
@@ -3148,8 +3333,8 @@
               
               const result = { collections: Object.values(collections) };
               
-              // Cache the result              
-              nftCache.set(cacheKey, { data: result, timestamp: Date.now() });
+              // Cache the result (SmartCache handles timestamp automatically)
+              nftCache.set(cacheKey, result);
               
               return result;
             }
@@ -3766,6 +3951,8 @@
   }
 
   async function fetchAndRenderPositions() {
+    perfMonitor.start('fetchAndRenderPositions');
+    
     allPositionsData = [];
     
     // Reset account balances
@@ -4592,6 +4779,8 @@
     // Render positions table
     renderPositionsTable();
     await updateHeroSection();
+    
+    perfMonitor.end('fetchAndRenderPositions');
   }
   
   // Real-time price update functionality
