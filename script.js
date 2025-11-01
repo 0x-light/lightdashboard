@@ -3282,19 +3282,37 @@
     
     const btcData = [];
     
-    // Fetch BTC price first
+    // Try Pyth first for BTC price
     let btcPrice = 0;
+    let btcChange24h = null;
+    
     try {
-      const priceResp = await fetch('https://blockchain.info/ticker');
-      if (priceResp.ok) {
-        const priceData = await priceResp.json();
-        btcPrice = priceData.USD?.last || 0;
+      const pythPrices = await fetchPythPrices(['BTC']);
+      if (pythPrices && pythPrices.BTC && pythPrices.BTC > 0) {
+        btcPrice = pythPrices.BTC;
       }
     } catch (err) {
-      console.error('Failed to fetch BTC price:', err);
+      console.error('Failed to fetch BTC price from Pyth:', err);
     }
     
-    if (!btcPrice) return btcData;
+    // Fallback to CoinGecko if Pyth fails
+    if (!btcPrice || btcPrice === 0) {
+      try {
+        const priceResp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true');
+        if (priceResp.ok) {
+          const priceData = await priceResp.json();
+          btcPrice = priceData.bitcoin?.usd || 0;
+          btcChange24h = priceData.bitcoin?.usd_24h_change || null;
+        }
+      } catch (err) {
+        console.error('Failed to fetch BTC price from CoinGecko:', err);
+      }
+    }
+    
+    if (!btcPrice || btcPrice === 0) {
+      console.warn('Failed to fetch BTC price from both Pyth and CoinGecko');
+      return btcData;
+    }
     
     // Fetch balance for each address
     for (const address of addresses) {
@@ -3316,6 +3334,7 @@
                 balance: balanceBTC,
                 tokenPrice: btcPrice,
                 balanceUsd: balanceBTC * btcPrice,
+                change24h: btcChange24h,
                 contractAddress: null,
                 isSolana: false
               });
@@ -3339,19 +3358,37 @@
     
     const zecData = [];
     
-    // Fetch ZEC price from CoinGecko
+    // Try Pyth first for ZEC price
     let zecPrice = 0;
+    let zecChange24h = null;
+    
     try {
-      const priceResp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=zcash&vs_currencies=usd');
-      if (priceResp.ok) {
-        const priceData = await priceResp.json();
-        zecPrice = priceData.zcash?.usd || 0;
+      const pythPrices = await fetchPythPrices(['ZEC']);
+      if (pythPrices && pythPrices.ZEC && pythPrices.ZEC > 0) {
+        zecPrice = pythPrices.ZEC;
       }
     } catch (err) {
-      console.error('Failed to fetch ZEC price:', err);
+      console.error('Failed to fetch ZEC price from Pyth:', err);
     }
     
-    if (!zecPrice) return zecData;
+    // Fallback to CoinGecko if Pyth fails
+    if (!zecPrice || zecPrice === 0) {
+      try {
+        const priceResp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=zcash&vs_currencies=usd&include_24hr_change=true');
+        if (priceResp.ok) {
+          const priceData = await priceResp.json();
+          zecPrice = priceData.zcash?.usd || 0;
+          zecChange24h = priceData.zcash?.usd_24h_change || null;
+        }
+      } catch (err) {
+        console.error('Failed to fetch ZEC price from CoinGecko:', err);
+      }
+    }
+    
+    if (!zecPrice || zecPrice === 0) {
+      console.warn('Failed to fetch ZEC price from both Pyth and CoinGecko');
+      return zecData;
+    }
     
     // Fetch balance for each address using Zcash block explorer
     for (const address of addresses) {
@@ -3375,6 +3412,7 @@
                 balance: balanceZEC,
                 tokenPrice: zecPrice,
                 balanceUsd: balanceZEC * zecPrice,
+                change24h: zecChange24h,
                 contractAddress: null,
                 isSolana: false
               });
@@ -4012,7 +4050,7 @@
           amount: 0,
           value: 0,
           price: token.tokenPrice,
-          change24h: null, // Will be enriched from Zerion
+          change24h: token.change24h || null, // Use token's 24h change if available (BTC, ZEC), otherwise will be enriched from Zerion
           pnl: null, // Will be enriched from Zerion (total PnL)
           pnlPercent: null, // Will be enriched from Zerion (total PnL %)
           pnl24h: null, // Will be enriched from Zerion (24h PnL in $)
@@ -4023,6 +4061,11 @@
       
       tokenAggregates[key].amount += token.balance;
       tokenAggregates[key].value += token.balanceUsd;
+      
+      // Update 24h change if token has it and aggregate doesn't (for BTC/ZEC)
+      if (token.change24h !== null && token.change24h !== undefined && !tokenAggregates[key].change24h) {
+        tokenAggregates[key].change24h = token.change24h;
+      }
       tokenAggregates[key].walletBreakdown.push({
         address: token.address,
         balance: token.balance,
