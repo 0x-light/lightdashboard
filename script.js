@@ -1425,16 +1425,6 @@
       tab.addEventListener('click', () => {
         const tabName = tab.getAttribute('data-tab');
         
-        // If in show-all mode, exit it first
-        if (showAllMode) {
-          showAllMode = false;
-          toggleSettingsViewBtn.textContent = '[SHOW ALL]';
-          settingsTabsContainer.style.display = 'flex';
-          settingsTabContents.forEach(content => {
-            content.classList.remove('show-all-mode');
-          });
-        }
-        
         // Switch tabs
         settingsTabs.forEach(t => t.classList.remove('active'));
         settingsTabContents.forEach(content => content.classList.remove('active'));
