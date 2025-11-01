@@ -565,6 +565,7 @@
     leftAligned: document.getElementById('leftAligned'),
     usePythPrices: document.getElementById('usePythPrices'),
     compactList: document.getElementById('compactList'),
+    buttonBackgrounds: document.getElementById('buttonBackgrounds'),
     minBalanceThreshold: document.getElementById('minBalanceThreshold'),
     enableRealTimeUpdates: document.getElementById('enableRealTimeUpdates'),
     realTimeUpdateInterval: document.getElementById('realTimeUpdateInterval'),
@@ -760,7 +761,8 @@
       watchlist: [], // Array of Pyth price feed IDs
       watchlistCollapsed: false, // Whether watchlist section is collapsed
       hiddenWatchlist: [], // Array of hidden watchlist feed IDs
-      compactList: false // Whether to use compact list mode
+      compactList: false, // Whether to use compact list mode
+      buttonBackgrounds: false // Whether to add backgrounds to buttons
     };
   }
   
@@ -860,6 +862,17 @@
     } else {
       document.body.classList.remove('compact-mode');
     }
+  }
+  
+  function applyButtonBackgrounds(enabled) {
+    const buttons = document.querySelectorAll('button, .btn-text');
+    buttons.forEach(button => {
+      if (enabled) {
+        button.style.backgroundColor = 'var(--card-bg)';
+      } else {
+        button.style.backgroundColor = '';
+      }
+    });
   }
 
   function applyFontSize(size) {
@@ -1077,6 +1090,7 @@
     els.leftAligned.checked = settings.leftAligned ?? false;
     els.usePythPrices.checked = settings.usePythPrices ?? false;
     els.compactList.checked = settings.compactList ?? false;
+    els.buttonBackgrounds.checked = settings.buttonBackgrounds ?? false;
     els.minBalanceThreshold.value = settings.minBalanceThreshold ?? 100;
     els.enableRealTimeUpdates.checked = settings.enableRealTimeUpdates ?? true;
     els.realTimeUpdateInterval.value = settings.realTimeUpdateInterval ?? 10;
@@ -1165,6 +1179,7 @@
     newSettings.leftAligned = els.leftAligned.checked;
     newSettings.usePythPrices = els.usePythPrices.checked;
     newSettings.compactList = els.compactList.checked;
+    newSettings.buttonBackgrounds = els.buttonBackgrounds.checked;
     newSettings.minBalanceThreshold = Math.max(0, Number(els.minBalanceThreshold.value || 100));
     newSettings.theme = els.themeSelect.value || 'light';
     newSettings.wallpaper = els.wallpaperSelect ? els.wallpaperSelect.value : 'none';
@@ -1384,6 +1399,9 @@
       
       // Apply compact list styling
       applyCompactList(s.compactList);
+      
+      // Apply button backgrounds
+      applyButtonBackgrounds(s.buttonBackgrounds);
       
       // Apply header visibility
       applyHeaderVisibility(s);
@@ -5179,6 +5197,7 @@
     initTheme(settings);
     applyAlignment(settings.leftAligned ?? false);
     applyCompactList(settings.compactList ?? false);
+    applyButtonBackgrounds(settings.buttonBackgrounds ?? false);
     
     // Restore rain/snow preferences
     if (settings.rainEnabled && !rainActive) {
