@@ -6,9 +6,14 @@
     <title>Bonfire | Portfolio Tracker</title>
     
     <!-- Performance: Preconnect to critical external origins -->
-    <link rel="preconnect" href="https://api.hyperliquid.xyz">
-    <link rel="preconnect" href="https://hermes.pyth.network">
-    <link rel="preconnect" href="https://api.coingecko.com">
+    <link rel="preconnect" href="https://api.hyperliquid.xyz" crossorigin>
+    <link rel="preconnect" href="https://hermes.pyth.network" crossorigin>
+    <link rel="preconnect" href="https://api.coingecko.com" crossorigin>
+    <link rel="dns-prefetch" href="https://blockchain.info">
+    <link rel="dns-prefetch" href="https://api.zcha.in">
+    <link rel="dns-prefetch" href="https://api.helius.xyz">
+    <link rel="dns-prefetch" href="https://api.zerion.io">
+    <link rel="dns-prefetch" href="https://api.opensea.io">
     
     <!-- Favicons with dark mode support -->
     <link rel="icon" href="/favicon-light.svg" type="image/svg+xml" media="(prefers-color-scheme: light)">
@@ -32,6 +37,25 @@
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
     
     <link rel="stylesheet" href="styles.css">
+    
+    <!-- Service Worker Registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+              console.log('SW registered:', registration.scope);
+              // Check for updates every 5 minutes
+              setInterval(() => {
+                registration.update();
+              }, 5 * 60 * 1000);
+            })
+            .catch(err => {
+              console.warn('SW registration failed:', err);
+            });
+        });
+      }
+    </script>
   </head>
   <body>
     <!-- Loading Screen -->

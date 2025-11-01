@@ -1,24 +1,22 @@
 {
-  "name": "Dashboard",
-  "short_name": "Dashboard",
-  "description": "Privacy-first portfolio dashboard",
+  "name": "Bonfire Portfolio Tracker",
+  "short_name": "Bonfire",
+  "description": "Privacy-first crypto portfolio tracker with real-time positions",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
-  "orientation": "any",
+  "orientation": "portrait-primary",
   "icons": [
     {
       "src": "/favicon-light.svg",
       "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/favicon-dark.svg",
-      "sizes": "any",
       "type": "image/svg+xml"
     }
-  ]
+  ],
+  "categories": ["finance", "utilities"],
+  "lang": "en-US",
+  "dir": "ltr",
+  "scope": "/",
+  "prefer_related_applications": false
 }
-

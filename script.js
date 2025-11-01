@@ -468,6 +468,163 @@
     };
   }
   
+  // Intelligent retry logic for failed API calls
+  async function fetchWithRetry(url, options = {}, maxRetries = 2, baseDelay = 500) {
+    let lastError;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+        
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        // Return response even if not ok - let caller handle HTTP errors
+        if (response.ok || attempt === maxRetries) {
+          return response;
+        }
+        
+        // Don't retry client errors (4xx), only server errors (5xx) and network issues
+        if (response.status >= 400 && response.status < 500) {
+          return response;
+        }
+        
+        lastError = new Error(`HTTP ${response.status}`);
+      } catch (error) {
+        lastError = error;
+        
+        // Don't retry if aborted intentionally
+        if (error.name === 'AbortError' && !error.message.includes('timeout')) {
+          throw error;
+        }
+      }
+      
+      // Exponential backoff with jitter
+      if (attempt < maxRetries) {
+        const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 500;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError;
+  }
+  
+  // Performance monitoring
+  const perfMetrics = {
+    apiCalls: new Map(),
+    renders: new Map(),
+    startTime: Date.now()
+  };
+  
+  function trackPerf(category, operation, duration) {
+    if (!perfMetrics[category]) {
+      perfMetrics[category] = new Map();
+    }
+    
+    const key = operation;
+    const existing = perfMetrics[category].get(key) || { count: 0, total: 0, max: 0, min: Infinity };
+    
+    existing.count++;
+    existing.total += duration;
+    existing.max = Math.max(existing.max, duration);
+    existing.min = Math.min(existing.min, duration);
+    existing.avg = existing.total / existing.count;
+    
+    perfMetrics[category].set(key, existing);
+  }
+  
+  function getPerfReport() {
+    const report = {
+      uptime: Math.round((Date.now() - perfMetrics.startTime) / 1000) + 's',
+      apiCalls: {},
+      renders: {}
+    };
+    
+    for (const [key, stats] of perfMetrics.apiCalls) {
+      report.apiCalls[key] = {
+        calls: stats.count,
+        avgMs: Math.round(stats.avg),
+        maxMs: Math.round(stats.max),
+        minMs: Math.round(stats.min)
+      };
+    }
+    
+    for (const [key, stats] of perfMetrics.renders) {
+      report.renders[key] = {
+        renders: stats.count,
+        avgMs: Math.round(stats.avg),
+        maxMs: Math.round(stats.max),
+        minMs: Math.round(stats.min)
+      };
+    }
+    
+    return report;
+  }
+  
+  // Expose performance metrics to console for debugging
+  window.getDashboardPerf = getPerfReport;
+  
+  // Global error boundary with recovery
+  function withErrorBoundary(fn, fallback = null, context = 'operation') {
+    return async function(...args) {
+      try {
+        return await fn(...args);
+      } catch (error) {
+        console.error(`Error in ${context}:`, error);
+        
+        // Try to recover gracefully
+        if (fallback) {
+          try {
+            return await fallback(...args);
+          } catch (fallbackError) {
+            console.error(`Fallback also failed for ${context}:`, fallbackError);
+          }
+        }
+        
+        // Return sensible defaults based on context
+        if (context.includes('fetch') || context.includes('load')) {
+          return null;
+        }
+        if (context.includes('render') || context.includes('update')) {
+          return;
+        }
+        
+        throw error;
+      }
+    };
+  }
+  
+  // Batch DOM updates for better performance
+  let domUpdateQueue = [];
+  let domUpdateScheduled = false;
+  
+  function scheduleDOMUpdate(updateFn) {
+    domUpdateQueue.push(updateFn);
+    
+    if (!domUpdateScheduled) {
+      domUpdateScheduled = true;
+      requestAnimationFrame(() => {
+        const updates = domUpdateQueue.slice();
+        domUpdateQueue = [];
+        domUpdateScheduled = false;
+        
+        // Execute all updates in one frame
+        updates.forEach(fn => {
+          try {
+            fn();
+          } catch (error) {
+            console.error('DOM update failed:', error);
+          }
+        });
+      });
+    }
+  }
+  
   async function rateLimitedFetch(url, cacheKey = null, retryCount = 0) {
     // Check cache first - extend cache if we've been rate limited recently
     if (cacheKey && coinGeckoCache.has(cacheKey)) {
