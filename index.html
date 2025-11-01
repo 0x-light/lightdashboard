@@ -157,7 +157,8 @@
           </table>
         </div>
         <div id="mobilePositionsContainer" class="mobile-positions-container"></div>
-        <div style="margin-top: 16px;">
+        <div style="margin-top: 16px; display: flex; gap: 8px;">
+          <button id="addPositionBtn" class="btn-text">[ADD POSITION]</button>
           <button id="editListBtn" class="btn-text">[EDIT LIST]</button>
         </div>
       </section>
@@ -236,7 +237,7 @@
       <div class="settings-form">
         <header style="display: flex; justify-content: space-between; align-items: center;">
           <h3>Settings</h3>
-          <button type="button" id="toggleSettingsViewBtn" class="btn-text">[SHOW ALL]</button>
+          <button type="button" id="closeSettingsDialogBtn" class="btn-text">[CLOSE]</button>
         </header>
         
         <!-- Settings Tabs -->
@@ -540,8 +541,8 @@
               </label>
             </fieldset>
 
-            <fieldset>
-              <legend>Manual Positions</legend>
+            <fieldset style="display: none;">
+              <legend>Manual Positions (Deprecated)</legend>
               <div class="help">Add manual crypto positions. Find CoinGecko IDs at coingecko.com</div>
               <div class="item-row item-row-wide manual-positions-header">
                 <span>Symbol</span>
@@ -630,6 +631,53 @@
         <div id="watchlistSearchResults" style="max-height: 400px; overflow-y: auto; padding: 8px; background: var(--bg-elev); border: 1px solid var(--border);">
           <div class="loading-terminal">[Type to search...]</div>
         </div>
+      </div>
+    </div>
+
+    <!-- Add Position Modal -->
+    <div id="addPositionBackdrop" class="settings-backdrop" style="display: none;"></div>
+    <div id="addPositionModal" class="sticker-window" style="display: none;">
+      <div class="sticker-window-header">
+        <span>ADD POSITION</span>
+        <button id="closeAddPositionBtn" class="btn-text">[CLOSE]</button>
+      </div>
+      <div class="sticker-window-content">
+        <div class="help" style="margin-bottom: 12px;">Add a manual position using Pyth Network oracle or custom asset</div>
+        
+        <!-- Type Selection -->
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; margin-bottom: 8px;">Position Type</label>
+          <div style="display: flex; gap: 8px;">
+            <button id="addPositionTypePyth" class="btn-text" style="flex: 1; background: var(--accent); color: var(--bg);">[PYTH ORACLE]</button>
+            <button id="addPositionTypeCustom" class="btn-text" style="flex: 1;">[CUSTOM ASSET]</button>
+          </div>
+        </div>
+        
+        <!-- Pyth Oracle Section -->
+        <div id="addPositionPythSection">
+          <label style="display: block; margin-bottom: 8px;">Search Token</label>
+          <input type="text" id="addPositionPythSearch" class="settings-input" placeholder="Search Pyth tokens..." style="width: 100%; margin-bottom: 12px;">
+          <div id="addPositionPythResults" style="max-height: 200px; overflow-y: auto; padding: 8px; background: var(--bg-elev); border: 1px solid var(--border); margin-bottom: 16px;">
+            <div class="loading-terminal">[Type to search...]</div>
+          </div>
+          
+          <label style="display: block; margin-bottom: 8px;">Amount</label>
+          <input type="number" id="addPositionPythAmount" class="settings-input" placeholder="0.00" style="width: 100%; margin-bottom: 16px;" step="any">
+          
+          <label style="display: block; margin-bottom: 8px;">Entry Price (USD)</label>
+          <input type="number" id="addPositionPythEntryPrice" class="settings-input" placeholder="0.00" style="width: 100%; margin-bottom: 16px;" step="any">
+        </div>
+        
+        <!-- Custom Asset Section -->
+        <div id="addPositionCustomSection" style="display: none;">
+          <label style="display: block; margin-bottom: 8px;">Asset Name</label>
+          <input type="text" id="addPositionCustomName" class="settings-input" placeholder="e.g., Gold bars, Real estate, etc." style="width: 100%; margin-bottom: 16px;">
+          
+          <label style="display: block; margin-bottom: 8px;">Value (USD)</label>
+          <input type="number" id="addPositionCustomValue" class="settings-input" placeholder="5000" style="width: 100%; margin-bottom: 16px;" step="any">
+        </div>
+        
+        <button id="savePositionBtn" class="btn-text" style="width: 100%; background: var(--accent); color: var(--bg);">[SAVE POSITION]</button>
       </div>
     </div>
 

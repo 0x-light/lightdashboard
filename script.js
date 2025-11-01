@@ -380,7 +380,14 @@
       }
       
       const hasChange = item.change24h !== null && item.change24h !== undefined;
-      const changeClass = hasChange ? (item.change24h >= 0 ? 'positive-pnl' : 'negative-pnl') : 'neutral-value';
+      
+      // Get settings to check if colored P&L is enabled
+      const settings = loadSettings() || getDefaultSettings();
+      const useColoredPnL = settings.useColoredPnL ?? true;
+      
+      const changeClass = useColoredPnL
+        ? (hasChange ? (item.change24h >= 0 ? 'positive-pnl' : 'negative-pnl') : 'neutral-value')
+        : (hasChange ? (item.change24h >= 0 ? 'positive-neutral' : 'negative-neutral') : 'neutral-value');
       const changeSign = hasChange ? (item.change24h >= 0 ? '+' : '') : '';
       const changeDisplay = hasChange ? `${changeSign}${item.change24h.toFixed(2)}%` : '—';
       
@@ -721,7 +728,7 @@
       theme: 'light',
       refreshMinutes: 30,
       userName: '',
-      cryptoPositions: [],
+      cryptoPositions: [], // { type: 'pyth', symbol, feedId, amount, entryPrice } or { type: 'custom', name, value }
       weather: { label: '', lat: null, lon: null },
       walletAddresses: '',
       alchemyApiKey: '',
@@ -1393,9 +1400,8 @@
     // Settings tabs switching
     const settingsTabs = document.querySelectorAll('.settings-tab');
     const settingsTabContents = document.querySelectorAll('.settings-tab-content');
-    const toggleSettingsViewBtn = document.getElementById('toggleSettingsViewBtn');
+    const closeSettingsDialogBtn = document.getElementById('closeSettingsDialogBtn');
     const settingsTabsContainer = document.getElementById('settingsTabs');
-    let showAllMode = false;
     
     settingsTabs.forEach(tab => {
       tab.addEventListener('click', () => {
@@ -1420,40 +1426,10 @@
       });
     });
     
-    // Toggle between tabbed and show-all view
-    if (toggleSettingsViewBtn) {
-      toggleSettingsViewBtn.addEventListener('click', () => {
-        showAllMode = !showAllMode;
-        
-        if (showAllMode) {
-          // Show all settings in one list
-          toggleSettingsViewBtn.textContent = '[SHOW TABS]';
-          settingsTabsContainer.style.display = 'none';
-          settingsTabContents.forEach(content => {
-            content.classList.add('show-all-mode');
-            content.classList.add('active');
-          });
-        } else {
-          // Return to tabbed view
-          toggleSettingsViewBtn.textContent = '[SHOW ALL]';
-          settingsTabsContainer.style.display = 'flex';
-          settingsTabContents.forEach(content => {
-            content.classList.remove('show-all-mode');
-          });
-          
-          // Reactivate the first tab
-          settingsTabs.forEach(t => t.classList.remove('active'));
-          settingsTabContents.forEach(content => content.classList.remove('active'));
-          settingsTabs[0].classList.add('active');
-          settingsTabContents[0].classList.add('active');
-        }
-      });
+    // Close settings dialog button
+    if (closeSettingsDialogBtn) {
+      closeSettingsDialogBtn.addEventListener('click', closeSettings);
     }
-
-    els.addPositionBtn.addEventListener('click', () => {
-      const idx = (els.positionsContainer.querySelectorAll('.item-row').length) || 0;
-      els.positionsContainer.appendChild(renderPositionRow({ symbol: '', coingeckoId: '', amount: 0, entryPrice: 0 }, idx));
-    });
 
     // Get location button
     if (els.getLocationBtn) {
@@ -6729,7 +6705,217 @@
     // Initial render
     renderWatchlist();
     
-    // Wallpaper change handler
+    // Wallpaper change handler    
+    // === ADD POSITION MODAL SETUP ===
+    const addPositionBtn = document.getElementById('addPositionBtn');
+    const addPositionModal = document.getElementById('addPositionModal');
+    const addPositionBackdrop = document.getElementById('addPositionBackdrop');
+    const closeAddPositionBtn = document.getElementById('closeAddPositionBtn');
+    const addPositionTypePyth = document.getElementById('addPositionTypePyth');
+    const addPositionTypeCustom = document.getElementById('addPositionTypeCustom');
+    const addPositionPythSection = document.getElementById('addPositionPythSection');
+    const addPositionCustomSection = document.getElementById('addPositionCustomSection');
+    const addPositionPythSearch = document.getElementById('addPositionPythSearch');
+    const addPositionPythResults = document.getElementById('addPositionPythResults');
+    const addPositionPythAmount = document.getElementById('addPositionPythAmount');
+    const addPositionPythEntryPrice = document.getElementById('addPositionPythEntryPrice');
+    const addPositionCustomName = document.getElementById('addPositionCustomName');
+    const addPositionCustomValue = document.getElementById('addPositionCustomValue');
+    const savePositionBtn = document.getElementById('savePositionBtn');
+    
+    let selectedPositionType = 'pyth';
+    let selectedPythFeed = null;
+    
+    // Open add position modal
+    if (addPositionBtn) {
+      addPositionBtn.addEventListener('click', async () => {
+        // Ensure feeds are loaded
+        await fetchAllPythFeeds();
+        
+        // Show modal
+        if (addPositionModal) addPositionModal.style.display = 'block';
+        if (addPositionBackdrop) addPositionBackdrop.style.display = 'block';
+        
+        // Reset state
+        selectedPositionType = 'pyth';
+        selectedPythFeed = null;
+        if (addPositionPythSearch) addPositionPythSearch.value = '';
+        if (addPositionPythAmount) addPositionPythAmount.value = '';
+        if (addPositionPythEntryPrice) addPositionPythEntryPrice.value = '';
+        if (addPositionCustomName) addPositionCustomName.value = '';
+        if (addPositionCustomValue) addPositionCustomValue.value = '';
+        if (addPositionPythResults) addPositionPythResults.innerHTML = '<div class="loading-terminal">[Type to search...]</div>';
+        
+        // Set initial view
+        if (addPositionPythSection) addPositionPythSection.style.display = 'block';
+        if (addPositionCustomSection) addPositionCustomSection.style.display = 'none';
+        if (addPositionTypePyth) {
+          addPositionTypePyth.style.background = 'var(--accent)';
+          addPositionTypePyth.style.color = 'var(--bg)';
+        }
+        if (addPositionTypeCustom) {
+          addPositionTypeCustom.style.background = '';
+          addPositionTypeCustom.style.color = '';
+        }
+      });
+    }
+    
+    // Close add position modal
+    const closeAddPosition = () => {
+      if (addPositionModal) addPositionModal.style.display = 'none';
+      if (addPositionBackdrop) addPositionBackdrop.style.display = 'none';
+    };
+    
+    if (closeAddPositionBtn) {
+      closeAddPositionBtn.addEventListener('click', closeAddPosition);
+    }
+    
+    if (addPositionBackdrop) {
+      addPositionBackdrop.addEventListener('click', closeAddPosition);
+    }
+    
+    // Toggle position type
+    if (addPositionTypePyth) {
+      addPositionTypePyth.addEventListener('click', () => {
+        selectedPositionType = 'pyth';
+        if (addPositionPythSection) addPositionPythSection.style.display = 'block';
+        if (addPositionCustomSection) addPositionCustomSection.style.display = 'none';
+        addPositionTypePyth.style.background = 'var(--accent)';
+        addPositionTypePyth.style.color = 'var(--bg)';
+        if (addPositionTypeCustom) {
+          addPositionTypeCustom.style.background = '';
+          addPositionTypeCustom.style.color = '';
+        }
+      });
+    }
+    
+    if (addPositionTypeCustom) {
+      addPositionTypeCustom.addEventListener('click', () => {
+        selectedPositionType = 'custom';
+        if (addPositionPythSection) addPositionPythSection.style.display = 'none';
+        if (addPositionCustomSection) addPositionCustomSection.style.display = 'block';
+        addPositionTypeCustom.style.background = 'var(--accent)';
+        addPositionTypeCustom.style.color = 'var(--bg)';
+        if (addPositionTypePyth) {
+          addPositionTypePyth.style.background = '';
+          addPositionTypePyth.style.color = '';
+        }
+      });
+    }
+    
+    // Pyth search functionality
+    if (addPositionPythSearch) {
+      addPositionPythSearch.addEventListener('input', (e) => {
+        const query = e.target.value.trim();
+        
+        if (query.length < 1) {
+          addPositionPythResults.innerHTML = '<div class="loading-terminal">[Type to search...]</div>';
+          return;
+        }
+        
+        const results = searchWatchlistTokens(query);
+        
+        if (results.length === 0) {
+          addPositionPythResults.innerHTML = '<div class="loading-terminal">[No matches found]</div>';
+          return;
+        }
+        
+        addPositionPythResults.innerHTML = '';
+        for (const feed of results) {
+          const resultDiv = document.createElement('div');
+          resultDiv.className = 'watchlist-search-result';
+          resultDiv.style.cursor = 'pointer';
+          
+          if (selectedPythFeed && selectedPythFeed.id === feed.id) {
+            resultDiv.classList.add('added');
+          }
+          
+          resultDiv.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div class="asset-symbol">${feed.symbol}</div>
+              </div>
+            </div>
+          `;
+          
+          resultDiv.addEventListener('click', () => {
+            selectedPythFeed = feed;
+            // Update UI to show selected
+            addPositionPythResults.querySelectorAll('.watchlist-search-result').forEach(el => {
+              el.classList.remove('added');
+            });
+            resultDiv.classList.add('added');
+          });
+          
+          addPositionPythResults.appendChild(resultDiv);
+        }
+      });
+    }
+    
+    // Save position
+    if (savePositionBtn) {
+      savePositionBtn.addEventListener('click', () => {
+        const settings = loadSettings() || getDefaultSettings();
+        
+        if (selectedPositionType === 'pyth') {
+          // Validate Pyth position
+          if (!selectedPythFeed) {
+            alert('Please select a token from the search results');
+            return;
+          }
+          
+          const amount = parseFloat(addPositionPythAmount.value);
+          const entryPrice = parseFloat(addPositionPythEntryPrice.value);
+          
+          if (!amount || amount <= 0) {
+            alert('Please enter a valid amount');
+            return;
+          }
+          
+          if (!entryPrice || entryPrice <= 0) {
+            alert('Please enter a valid entry price');
+            return;
+          }
+          
+          // Add Pyth position
+          settings.cryptoPositions.push({
+            type: 'pyth',
+            symbol: selectedPythFeed.symbol,
+            feedId: selectedPythFeed.id,
+            amount: amount,
+            entryPrice: entryPrice
+          });
+        } else {
+          // Validate custom position
+          const name = addPositionCustomName.value.trim();
+          const value = parseFloat(addPositionCustomValue.value);
+          
+          if (!name) {
+            alert('Please enter an asset name');
+            return;
+          }
+          
+          if (!value || value <= 0) {
+            alert('Please enter a valid value');
+            return;
+          }
+          
+          // Add custom position
+          settings.cryptoPositions.push({
+            type: 'custom',
+            name: name,
+            value: value
+          });
+        }
+        
+        saveSettings(settings);
+        closeAddPosition();
+        
+        // Refresh positions
+        refreshAll();
+      });
+    }
+    
     if (els.wallpaperSelect) {
       els.wallpaperSelect.addEventListener('change', (e) => {
         applyWallpaper(e.target.value);

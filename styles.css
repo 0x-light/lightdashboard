@@ -467,7 +467,7 @@ h1, h2, h3, h4, h5, h6 {
   border: 1px solid var(--border);
   padding: 0;
   color: var(--text);
-  background: var(--card-bg);
+  background: var(--bg);
   font-family: 'Berkeley Mono', 'Courier New', monospace !important;
   overflow-x: hidden;
   box-sizing: border-box;
@@ -2192,7 +2192,7 @@ input[type="range"]:focus::-moz-range-thumb {
 }
 
 .watchlist-search-result.added {
-  background: var(--bg-elev);
+  background: var(--card-bg);
 }
 
 .watchlist-search-result .asset-name {
