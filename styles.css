@@ -2065,12 +2065,24 @@ input[type="range"]:focus::-moz-range-thumb {
   align-items: center;
   padding: 12px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .sticker-window-content {
   padding: 12px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
+}
+
+/* Primary button style */
+.btn-primary {
+  width: 100%;
+  color: var(--accent);
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
 }
 
 @media (max-width: 768px) {
@@ -2142,9 +2154,7 @@ input[type="range"]:focus::-moz-range-thumb {
   text-decoration: underline;
   text-decoration-style: dotted;
   text-underline-offset: 3px;
-  font-size: 0.9em;
   padding: 2px 6px;
-  border-radius: 3px;
 }
 
 /* Watchlist Section */
@@ -2174,7 +2184,7 @@ input[type="range"]:focus::-moz-range-thumb {
 }
 
 .watchlist-search-result {
-  padding: 12px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   display: flex;

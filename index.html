@@ -157,7 +157,7 @@
           </table>
         </div>
         <div id="mobilePositionsContainer" class="mobile-positions-container"></div>
-        <div style="margin-top: 16px; display: flex; gap: 8px;">
+        <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: space-between;">
           <button id="addPositionBtn" class="btn-text">[ADD POSITION]</button>
           <button id="editListBtn" class="btn-text">[EDIT LIST]</button>
         </div>
@@ -189,7 +189,7 @@
               </tbody>
             </table>
           </div>
-          <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: space-between;">
             <button id="addToWatchlistBtn" class="btn-text">[ADD TO WATCHLIST]</button>
             <button id="editWatchlistBtn" class="btn-text">[EDIT LIST]</button>
           </div>
@@ -268,7 +268,7 @@
                 <a href="https://developers.zerion.io/reference/intro/getting-started" target="_blank" rel="noopener noreferrer" class="external-link">Go to Zerion ↗</a>
               </div>
               <input id="zerionApiKey" type="text" class="settings-input" placeholder="Paste your Zerion API key here">
-              <div class="help">Primary source for multichain portfolio data.</div>
+              <div class="help">Primary source for multichain portfolio data. You can get a key for free at the <a href="https://developers.zerion.io/reference/intro/getting-started" target="_blank" rel="noopener noreferrer" class="external-link">Zerion website</a></div>
             </fieldset>
 
             <fieldset>
@@ -379,6 +379,14 @@
                 Use Pyth Network prices
               </label>
               <div class="help" style="margin-top: 4px; margin-left: 24px;">Pyth provides unified pricing for portfolio calculations. Table shows exchange prices with Pyth fallback. Hero uses Pyth for consistency. NFTs use OpenSea.</div>
+              <label style="margin-top: 8px;">
+                Hero P&L Mode
+                <select id="heroPnLMode" class="settings-input">
+                  <option value="total">Total P&L</option>
+                  <option value="24h">24h Change</option>
+                </select>
+              </label>
+              <div class="help" style="margin-top: 4px; margin-left: 24px;">Choose whether the hero shows total P&L (profit/loss from entry) or 24h change (daily price movement).</div>
               <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
                 <input id="compactList" type="checkbox" class="settings-input">
                 Compact list
@@ -682,7 +690,7 @@
           <input type="number" id="addPositionCustomValue" class="settings-input" placeholder="5000" style="width: 100%; margin-bottom: 16px;" step="any">
         </div>
         
-        <button id="savePositionBtn" class="btn-text" style="width: 100%; background: var(--accent); color: var(--bg);">[SAVE POSITION]</button>
+        <button id="savePositionBtn" class="btn-text btn-primary">[SAVE POSITION]</button>
       </div>
     </div>
 

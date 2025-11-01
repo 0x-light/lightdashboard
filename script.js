@@ -564,6 +564,7 @@
     useColoredPnL: document.getElementById('useColoredPnL'),
     leftAligned: document.getElementById('leftAligned'),
     usePythPrices: document.getElementById('usePythPrices'),
+    heroPnLMode: document.getElementById('heroPnLMode'),
     compactList: document.getElementById('compactList'),
     buttonBackgrounds: document.getElementById('buttonBackgrounds'),
     minBalanceThreshold: document.getElementById('minBalanceThreshold'),
@@ -748,6 +749,7 @@
       minBalanceThreshold: 100,
       enableRealTimeUpdates: true,
       realTimeUpdateInterval: 10, // seconds
+      heroPnLMode: 'total', // 'total' or '24h'
       showSnowBtn: true,
       showRainBtn: true,
       showThemeBtn: true,
@@ -1073,15 +1075,8 @@
     els.zerionApiKey.value = settings.zerionApiKey || '';
     els.themeSelect.value = settings.theme || 'light';
     els.userName.value = settings.userName || '';
+    // Don't populate the deprecated manual positions form - it's hidden and causes conflicts
     els.positionsContainer.innerHTML = '';
-    if (settings.cryptoPositions.length === 0) {
-      // Always show at least one empty row
-      els.positionsContainer.appendChild(renderPositionRow({ symbol: '', coingeckoId: '', amount: 0, entryPrice: 0 }, 0));
-    } else {
-    settings.cryptoPositions.forEach((p, i) => {
-      els.positionsContainer.appendChild(renderPositionRow(p, i));
-    });
-    }
     els.weatherLabel.value = settings.weather.label || '';
     els.weatherLat.value = settings.weather.lat ?? '';
     els.weatherLon.value = settings.weather.lon ?? '';
@@ -1089,6 +1084,7 @@
     els.useColoredPnL.checked = settings.useColoredPnL ?? true;
     els.leftAligned.checked = settings.leftAligned ?? false;
     els.usePythPrices.checked = settings.usePythPrices ?? false;
+    els.heroPnLMode.value = settings.heroPnLMode ?? 'total';
     els.compactList.checked = settings.compactList ?? false;
     els.buttonBackgrounds.checked = settings.buttonBackgrounds ?? false;
     els.minBalanceThreshold.value = settings.minBalanceThreshold ?? 100;
@@ -1145,24 +1141,11 @@
     newSettings.openSeaApiKey = els.openSeaApiKey.value.trim() || '';
     newSettings.zerionApiKey = els.zerionApiKey.value.trim() || '';
 
-    const posInputs = els.positionsContainer.querySelectorAll('input');
-    const positionsMap = new Map();
-    posInputs.forEach((inp) => {
-      const idx = Number(inp.dataset.idx);
-      const field = inp.dataset.field;
-      const prev = positionsMap.get(idx) || {};
-      if (field === 'amount' || field === 'entryPrice') {
-        prev[field] = Number(inp.value || 0);
-      } else if (field === 'symbol') {
-        prev[field] = inp.value.trim().toUpperCase();
-      } else if (field === 'coingeckoId') {
-        prev[field] = inp.value.trim().toLowerCase();
-      }
-      positionsMap.set(idx, prev);
-    });
-    newSettings.cryptoPositions = Array.from(positionsMap.values()).filter(p => p.symbol);
+    // Preserve existing cryptoPositions (added via ADD POSITION button)
+    // Don't read from the deprecated manual positions form
+    // newSettings.cryptoPositions is already set from { ...current }
 
-    newSettings.userName = els.userName.value.trim() || 'Tomas';
+    newSettings.userName = els.userName.value.trim() || '';
     
     newSettings.weather = {
       label: els.weatherLabel.value.trim(),
@@ -1178,6 +1161,7 @@
     newSettings.useColoredPnL = els.useColoredPnL.checked;
     newSettings.leftAligned = els.leftAligned.checked;
     newSettings.usePythPrices = els.usePythPrices.checked;
+    newSettings.heroPnLMode = els.heroPnLMode.value || 'total';
     newSettings.compactList = els.compactList.checked;
     newSettings.buttonBackgrounds = els.buttonBackgrounds.checked;
     newSettings.minBalanceThreshold = Math.max(0, Number(els.minBalanceThreshold.value || 100));
@@ -4015,6 +3999,58 @@
       }
     }
     
+    // === Manual Positions ===
+    // Add manual positions from settings (Pyth Oracle or Custom Assets)
+    // Ensure cryptoPositions exists
+    if (!settings.cryptoPositions) {
+      settings.cryptoPositions = [];
+    }
+    
+    if (settings.cryptoPositions.length > 0) {
+      console.log(`→ Adding ${settings.cryptoPositions.length} manual positions...`);
+      console.log('  Manual positions:', settings.cryptoPositions);
+      
+      for (const manualPos of settings.cryptoPositions) {
+        if (manualPos.type === 'custom') {
+          // Custom asset with fixed value
+          allPositionsData.push({
+            asset: manualPos.name,
+            exchange: 'Manual',
+            amount: 1, // Represent as 1 unit
+            value: manualPos.value,
+            price: manualPos.value,
+            change24h: null,
+            pnl: null, // No P&L for custom assets
+            pnlPercent: null,
+            isManual: true,
+            manualType: 'custom'
+          });
+          accountBalances.multichain += manualPos.value;
+        } else if (manualPos.type === 'pyth') {
+          // Pyth oracle position - will get price later in Pyth pricing section
+          const currentValue = manualPos.amount * (manualPos.entryPrice || 0);
+          allPositionsData.push({
+            asset: manualPos.symbol,
+            exchange: 'Manual',
+            amount: manualPos.amount,
+            value: currentValue, // Temporary, will be updated with Pyth price
+            price: manualPos.entryPrice || 0, // Will be updated with Pyth price
+            change24h: null,
+            pnl: null, // Will be calculated after price is fetched
+            pnlPercent: null,
+            entryPrice: manualPos.entryPrice,
+            pythFeedId: manualPos.feedId,
+            isManual: true,
+            manualType: 'pyth'
+          });
+          // Add initial value based on entry price (will be updated with Pyth price)
+          accountBalances.multichain += currentValue;
+        }
+      }
+      console.log(`✓ Manual positions: Added ${settings.cryptoPositions.length} positions`);
+      console.log(`  Balance from manual: multichain = $${accountBalances.multichain.toFixed(2)}`);
+    }
+    
     // === Pyth Network Pricing ===
     // Fetch Pyth prices for unified portfolio calculations
     // Exchange prices shown in table; Pyth used for hero section and as fallback
@@ -4036,6 +4072,24 @@
             pos.price = pythPricesMap[pos.asset];
             pos.value = Math.abs(pos.amount) * pos.price;
           }
+        }
+        
+        // Update manual Pyth positions with current price and calculate P&L
+        if (pos.isManual && pos.manualType === 'pyth' && pythPricesMap[pos.asset]) {
+          const oldValue = pos.value;
+          const currentPrice = pythPricesMap[pos.asset];
+          pos.price = currentPrice;
+          pos.value = Math.abs(pos.amount) * currentPrice;
+          
+          // Calculate P&L if entry price exists
+          if (pos.entryPrice && pos.entryPrice > 0) {
+            const costBasis = Math.abs(pos.amount) * pos.entryPrice;
+            pos.pnl = pos.value - costBasis;
+            pos.pnlPercent = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
+          }
+          
+          // Update balance with the difference (we already added initial value)
+          accountBalances.multichain += (pos.value - oldValue);
         }
       }
     }
@@ -4476,7 +4530,8 @@
         tr.classList.add('position-row-hidden');
       }
       
-      const hasPnlValue = pos.pnl !== null && pos.pnl !== undefined;
+      // For custom manual positions, never show P&L (only show for Pyth positions with actual P&L)
+      const hasPnlValue = pos.pnl !== null && pos.pnl !== undefined && !(pos.isManual && pos.manualType === 'custom');
       const pnlClass = useColoredPnL 
         ? (hasPnlValue && pos.pnl >= 0 ? 'positive-pnl' : hasPnlValue ? 'negative-pnl' : 'neutral-value')
         : (hasPnlValue && pos.pnl >= 0 ? 'positive-neutral' : hasPnlValue ? 'negative-neutral' : 'neutral-value');
@@ -4517,7 +4572,8 @@
         ? `$${formatCompactNumber(pos.value)}`
         : '$••••';
       
-      const hasPnl = pos.pnl !== null && pos.pnl !== undefined;
+      // For custom manual positions, never show P&L (only show for Pyth positions with actual P&L)
+      const hasPnl = pos.pnl !== null && pos.pnl !== undefined && !(pos.isManual && pos.manualType === 'custom');
       const pnlAmount = hasPnl ? Math.abs(pos.pnl) : 0;
       const pnlDisplay = amountsVisible 
         ? (hasPnl ? `${pnlSign}$${formatCompactNumber(pnlAmount)}${pos.pnlPercent !== 0 ? ` (${pnlSign}${Math.abs(pos.pnlPercent).toFixed(1)}%)` : ''}` : '—')
@@ -4830,6 +4886,7 @@
     const settings = loadSettings() || getDefaultSettings();
     const userName = settings.userName || 'there';
     const usePyth = settings.usePythPrices ?? true;
+    const heroPnLMode = settings.heroPnLMode ?? 'total';
     
     // Get time of day
     const hour = new Date().getHours();
@@ -4944,6 +5001,30 @@
       ? (totalDailyChange / portfolioValueAtMidnightPrices) * 100 
       : 0;
     
+    // === Calculate Total P&L from Entry Prices ===
+    // Sum up P&L for all visible positions (includes realized + unrealized PnL)
+    let totalPnL = 0;
+    let totalCostBasis = 0;
+    
+    for (const pos of visiblePositions) {
+      // Add position P&L if available (including 0, but not null/undefined)
+      if (pos.pnl !== null && pos.pnl !== undefined && !isNaN(pos.pnl)) {
+        totalPnL += pos.pnl;
+        
+        // Calculate cost basis for positions with P&L
+        const currentValue = pos.value || 0;
+        const costBasis = currentValue - pos.pnl;
+        if (costBasis > 0) {
+          totalCostBasis += costBasis;
+        }
+      }
+    }
+    
+    // Calculate total P&L percentage based on cost basis
+    const totalPnLPercent = totalCostBasis > 0 
+      ? (totalPnL / totalCostBasis) * 100 
+      : 0;
+    
     
     // Get asset highlights based on 24h change (for individual assets, visible only)
     const highlights = [];
@@ -4986,23 +5067,45 @@
       ? `$${totalValue.toLocaleString(undefined, {maximumFractionDigits: 0})}`
       : '$••••';
     
-    // Daily change from midnight local time (includes all assets: crypto positions + NFTs)
-    if (totalDailyChange !== 0 && Math.abs(totalDailyChange) > 0.01) {
-      const changeSign = totalDailyChange >= 0 ? 'up' : 'down';
-      const changeAmountText = amountsVisible 
-        ? `$${Math.abs(totalDailyChange).toLocaleString(undefined, {maximumFractionDigits: 0})}`
-        : '$••••';
-      
-      // Apply color based on useColoredPnL setting
-      const colorClass = useColoredPnL 
-        ? (totalDailyChange >= 0 ? 'positive-pnl' : 'negative-pnl')
-        : (totalDailyChange >= 0 ? 'positive-neutral' : 'negative-neutral');
-      const colorStyle = ` class="${colorClass}"`;
-      
-      const sign = totalDailyChangePercent >= 0 ? '+' : '-';
-      summaryParts.push(`Your portfolio is worth ${valueText}, <strong${colorStyle}>${changeSign} ${changeAmountText} (${sign}${Math.abs(totalDailyChangePercent).toFixed(2)}%)</strong>`);
+    // Choose which P&L mode to display based on settings
+    if (heroPnLMode === 'total') {
+      // Total P&L from entry prices (includes all positions with entry prices)
+      if (totalPnL !== 0 && Math.abs(totalPnL) > 0.01) {
+        const changeSign = totalPnL >= 0 ? 'up' : 'down';
+        const changeAmountText = amountsVisible 
+          ? `$${Math.abs(totalPnL).toLocaleString(undefined, {maximumFractionDigits: 0})}`
+          : '$••••';
+        
+        // Apply color based on useColoredPnL setting
+        const colorClass = useColoredPnL 
+          ? (totalPnL >= 0 ? 'positive-pnl' : 'negative-pnl')
+          : (totalPnL >= 0 ? 'positive-neutral' : 'negative-neutral');
+        const colorStyle = ` class="${colorClass}"`;
+        
+        const sign = totalPnLPercent >= 0 ? '+' : '';
+        summaryParts.push(`Your portfolio is worth ${valueText}, <strong${colorStyle}>${changeSign} ${changeAmountText} (${sign}${totalPnLPercent.toFixed(2)}%)</strong>`);
+      } else {
+        summaryParts.push(`Your portfolio is worth ${valueText}`);
+      }
     } else {
-      summaryParts.push(`Your portfolio is worth ${valueText}`);
+      // Daily change from midnight local time (includes all assets: crypto positions + NFTs)
+      if (totalDailyChange !== 0 && Math.abs(totalDailyChange) > 0.01) {
+        const changeSign = totalDailyChange >= 0 ? 'up' : 'down';
+        const changeAmountText = amountsVisible 
+          ? `$${Math.abs(totalDailyChange).toLocaleString(undefined, {maximumFractionDigits: 0})}`
+          : '$••••';
+        
+        // Apply color based on useColoredPnL setting
+        const colorClass = useColoredPnL 
+          ? (totalDailyChange >= 0 ? 'positive-pnl' : 'negative-pnl')
+          : (totalDailyChange >= 0 ? 'positive-neutral' : 'negative-neutral');
+        const colorStyle = ` class="${colorClass}"`;
+        
+        const sign = totalDailyChangePercent >= 0 ? '+' : '-';
+        summaryParts.push(`Your portfolio is worth ${valueText}, <strong${colorStyle}>${changeSign} ${changeAmountText} (${sign}${Math.abs(totalDailyChangePercent).toFixed(2)}%)</strong> today`);
+      } else {
+        summaryParts.push(`Your portfolio is worth ${valueText}`);
+      }
     }
     
     // Weather
@@ -6866,6 +6969,11 @@
       savePositionBtn.addEventListener('click', () => {
         const settings = loadSettings() || getDefaultSettings();
         
+        // Ensure cryptoPositions array exists
+        if (!settings.cryptoPositions) {
+          settings.cryptoPositions = [];
+        }
+        
         if (selectedPositionType === 'pyth') {
           // Validate Pyth position
           if (!selectedPythFeed) {
@@ -6917,7 +7025,9 @@
           });
         }
         
+        console.log('💾 Saving manual position. Total positions:', settings.cryptoPositions.length);
         saveSettings(settings);
+        console.log('✓ Position saved successfully');
         closeAddPosition();
         
         // Refresh positions
