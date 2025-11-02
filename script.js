@@ -4626,10 +4626,11 @@
                   blockchain: network.name,
                   tokenSymbol: tokenSymbol,
                   tokenName: tokenSymbol,
-                  balance: nativeBalance,
-                  balanceUsd: 0, // Will be calculated from prices
-                  tokenPrice: 0,
-                  contractAddress: null // Native token has no contract
+              balance: nativeBalance,
+              balanceUsd: 0, // Will be calculated from prices
+              tokenPrice: 0,
+              change24h: null, // Will be enriched later
+              contractAddress: null // Native token has no contract
                 });
               }
             }
@@ -4681,10 +4682,11 @@
                       blockchain: network.name,
                       tokenSymbol: meta.result.symbol || 'Unknown',
                       tokenName: meta.result.name,
-                      balance: balanceFormatted,
-                      balanceUsd: 0, // Will be calculated from prices
-                      tokenPrice: 0,
-                      contractAddress: token.contractAddress
+                  balance: balanceFormatted,
+                  balanceUsd: 0, // Will be calculated from prices
+                  tokenPrice: 0,
+                  change24h: null, // Will be enriched later
+                  contractAddress: token.contractAddress
                     });
                   }
                 }
@@ -4748,10 +4750,11 @@
                 blockchain: 'Solana',
                 tokenSymbol: asset.token_info.symbol || 'Unknown',
                 tokenName: asset.token_info.name,
-                balance: balance,
-                balanceUsd: asset.token_info.price_info?.total_price || 0,
-                tokenPrice: asset.token_info.price_info?.price_per_token || 0,
-                contractAddress: asset.id
+              balance: balance,
+              balanceUsd: asset.token_info.price_info?.total_price || 0,
+              tokenPrice: asset.token_info.price_info?.price_per_token || 0,
+              change24h: null, // Will be enriched later
+              contractAddress: asset.id
               });
             }
           }
@@ -5465,6 +5468,7 @@
     // === Multi-Chain Token Balances ===
     // Process tokens from Alchemy (EVM) and Helius (Solana) APIs
     // Fetch prices: Pyth first (faster, more accurate), then CoinGecko fallback
+    // Fetch 24h changes: CoinGecko (Pyth doesn't provide 24h change)
     if (multiChainTokens.length > 0) {
       // Step 1: Try Pyth prices first for all tokens without prices
       const tokensNeedingPrice = multiChainTokens.filter(t => t.tokenPrice === 0);
@@ -5490,22 +5494,47 @@
       // Step 1.5: Use Hyperliquid price for HYPE (more accurate than Pyth/others)
       if (hlMarketData && hlMarketData['HYPE'] && hlMarketData['HYPE'].markPx) {
         const hypePrice = hlMarketData['HYPE'].markPx;
+        const hypeChange = hlMarketData['HYPE'].change24h || 0;
         for (const token of multiChainTokens) {
           if (token.tokenSymbol === 'HYPE') {
             token.tokenPrice = hypePrice;
             token.balanceUsd = token.balance * hypePrice;
+            token.change24h = hypeChange;
           }
         }
       }
       
-      // Step 2: Fallback to CoinGecko for tokens still without prices
+      // Step 2: Fallback to CoinGecko for tokens still without prices OR 24h changes
       const tokensByChain = {};
       for (const token of multiChainTokens) {
-        if (token.blockchain !== 'Solana' && token.tokenPrice === 0 && token.contractAddress) {
+        if (token.blockchain !== 'Solana' && token.contractAddress && 
+            (token.tokenPrice === 0 || token.change24h === null)) {
           if (!tokensByChain[token.blockchain]) {
             tokensByChain[token.blockchain] = [];
           }
           tokensByChain[token.blockchain].push(token);
+        }
+      }
+      
+      // Also fetch 24h changes from CoinGecko for tokens by symbol (BTC, ETH, etc.)
+      const tokensBySymbol = multiChainTokens.filter(t => 
+        !t.contractAddress && t.change24h === null && symbolToCoingeckoId[t.tokenSymbol]
+      );
+      
+      if (tokensBySymbol.length > 0) {
+        const uniqueSymbols = [...new Set(tokensBySymbol.map(t => t.tokenSymbol))];
+        const cgData = await fetchCoinGeckoPricesAndChanges(uniqueSymbols);
+        
+        for (const token of tokensBySymbol) {
+          if (cgData[token.tokenSymbol]) {
+            if (token.tokenPrice === 0 && cgData[token.tokenSymbol].price) {
+              token.tokenPrice = cgData[token.tokenSymbol].price;
+              token.balanceUsd = token.balance * token.tokenPrice;
+            }
+            if (token.change24h === null && cgData[token.tokenSymbol].change24h !== undefined) {
+              token.change24h = cgData[token.tokenSymbol].change24h;
+            }
+          }
         }
       }
       
@@ -5518,7 +5547,7 @@
         'Base': 'base'
       };
       
-      // Fetch CoinGecko prices for remaining tokens
+      // Fetch CoinGecko prices + 24h changes for remaining tokens
       for (const [blockchain, tokens] of Object.entries(tokensByChain)) {
         const chainId = chainIdMap[blockchain];
         if (!chainId) continue;
@@ -5526,7 +5555,7 @@
         try {
           const contracts = tokens.map(t => t.contractAddress).join(',');
           const priceResp = await rateLimitedFetch(
-            `https://api.coingecko.com/api/v3/simple/token_price/${chainId}?contract_addresses=${contracts}&vs_currencies=usd`,
+            `https://api.coingecko.com/api/v3/simple/token_price/${chainId}?contract_addresses=${contracts}&vs_currencies=usd&include_24hr_change=true`,
             { cache: `price-${blockchain}-tokens`, cacheTTL: 60000 }
           );
           
@@ -5534,10 +5563,15 @@
             let pricesFound = 0;
             for (const token of tokens) {
               const priceData = priceResp[token.contractAddress.toLowerCase()];
-              if (priceData && priceData.usd) {
-                token.tokenPrice = priceData.usd;
-                token.balanceUsd = token.balance * priceData.usd;
-                pricesFound++;
+              if (priceData) {
+                if (priceData.usd && token.tokenPrice === 0) {
+                  token.tokenPrice = priceData.usd;
+                  token.balanceUsd = token.balance * priceData.usd;
+                  pricesFound++;
+                }
+                if (priceData.usd_24h_change !== undefined && token.change24h === null) {
+                  token.change24h = priceData.usd_24h_change;
+                }
               }
             }
             if (pricesFound > 0) {
@@ -8428,10 +8462,14 @@
     
     // === WATCHLIST SETUP ===
     
-    // Preload all Pyth feeds for watchlist (non-blocking)
-    fetchAllPythFeeds().catch(err => {
+    // Preload all Pyth feeds for watchlist (blocking - wait for it)
+    try {
+      await fetchAllPythFeeds();
+      // Initial render after feeds are loaded
+      await renderWatchlist();
+    } catch (err) {
       console.warn('⚠ Failed to preload Pyth feeds for watchlist:', err);
-    });
+    }
     
     // Apply watchlist collapsed state
     const watchlistSection = document.getElementById('watchlistSection');
@@ -8574,9 +8612,6 @@
     if (watchlistSearchBackdrop) {
       watchlistSearchBackdrop.addEventListener('click', closeWatchlistSearch);
     }
-    
-    // Initial render
-    renderWatchlist();
     
     // Wallpaper change handler    
     // === ADD POSITION MODAL SETUP ===
