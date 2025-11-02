@@ -5234,10 +5234,13 @@
       return;
     }
     
-    // SPEED: Fetch everything in parallel (market data + exchanges + multichain + NFTs + Zerion)
+    // SPEED: Fetch EVERYTHING in parallel (market data + exchanges + multichain + NFTs + Zerion + Pyth + Historical)
     const criticalDataStart = performance.now();
     
-    const [hlMarketDataResult, allWalletData, multiChainTokens, zerionPositions] = await Promise.all([
+    // Pre-calculate what assets we'll need prices for (to parallelize Pyth fetch)
+    const estimatedAssets = new Set();
+    
+    const [hlMarketDataResult, allWalletData, multiChainTokens, zerionPositions, pythPricesPreload, historicalPricesPreload] = await Promise.all([
       // Hyperliquid market data
       (async () => {
         const t1 = performance.now();
@@ -5322,8 +5325,45 @@
         const allWallets = [...wallets, ...solanaAddrs];
         const result = await fetchZerionPositions(allWallets, settings.zerionApiKey);
         return result;
+      })(),
+      
+      // Pyth prices preload (parallel with everything else - MASSIVE speed improvement)
+      (async () => {
+        if (!(settings.usePythPrices ?? true)) return {};
+        try {
+          // Fetch prices for common assets (will be enriched with actual assets later)
+          const commonAssets = ['BTC', 'ETH', 'SOL', 'HYPE', 'USDC', 'USDT'];
+          const result = await fetchPythPrices(commonAssets, [], true);
+          return result;
+        } catch (err) {
+          console.warn('⚠ Pyth preload failed:', err.message);
+          return {};
+        }
+      })(),
+      
+      // Historical prices preload (parallel with everything else)
+      (async () => {
+        try {
+          // Check if cache is fresh
+          const cached = getDailyPrices();
+          const currentTime = Math.floor(Date.now() / 1000);
+          if (cached && !isCacheStale(cached.timestamp, 1)) {
+            return cached.prices;
+          }
+          // Fetch fresh historical prices
+          const prices = await fetchMidnightPrices();
+          saveDailyPrices(prices, currentTime);
+          return prices;
+        } catch (err) {
+          console.warn('⚠ Historical prices preload failed:', err.message);
+          return {};
+        }
       })()
     ]);
+    
+    // Performance logging
+    const parallelFetchTime = performance.now() - criticalDataStart;
+    console.log(`✅ Parallel data fetch completed in ${parallelFetchTime.toFixed(0)}ms`);
     
     const hlMarketData = hlMarketDataResult;
     
@@ -5913,10 +5953,9 @@
     }
     
     // === Pyth Network Pricing ===
-    // Fetch Pyth prices for unified portfolio calculations
-    // Exchange prices shown in table; Pyth used for hero section and as fallback
+    // Use preloaded Pyth prices (fetched in parallel) and enrich with any missing assets
     const usePyth = settings.usePythPrices ?? true;
-    const pythPricesMap = {};
+    const pythPricesMap = { ...pythPricesPreload }; // Start with preloaded data
     
     if (usePyth && allPositionsData.length > 0) {
       const assets = [...new Set(allPositionsData
@@ -5928,11 +5967,17 @@
         .filter(pos => pos.isManual && pos.manualType === 'pyth' && pos.pythFeedId)
         .map(pos => ({ asset: pos.asset, feedId: pos.pythFeedId }));
       
-      if (manualPythFeedIds.length > 0) {
-      }
+      // Find assets not in preload
+      const missingAssets = assets.filter(asset => !pythPricesMap[asset]);
       
-      const pythPrices = await fetchPythPrices(assets, manualPythFeedIds, true);
-      Object.assign(pythPricesMap, pythPrices);
+      if (missingAssets.length > 0 || manualPythFeedIds.length > 0) {
+        try {
+          const additionalPrices = await fetchPythPrices(missingAssets, manualPythFeedIds, true);
+          Object.assign(pythPricesMap, additionalPrices);
+        } catch (err) {
+          console.warn('⚠ Failed to fetch additional Pyth prices:', err);
+        }
+      }
       
       // Only use Pyth as fallback when exchange price is missing or zero
       for (const pos of allPositionsData) {
@@ -5979,63 +6024,107 @@
     }
     
     // === Calculate TRUE 24h changes from prices 24 hours ago ===
-    // Fetch historical prices if needed (first load or cache is stale)
+    // Use preloaded historical prices (fetched in parallel - MUCH faster!)
+    const historicalData = { 
+      prices: historicalPricesPreload || {}, 
+      timestamp: Math.floor(Date.now() / 1000) 
+    };
     
-    let historicalData = getDailyPrices();
-    const currentTime = Math.floor(Date.now() / 1000);
-    
-    // If no cached data or cache is stale (older than 1 hour), fetch fresh historical prices
-    if (!historicalData || isCacheStale(historicalData.timestamp, 1)) {
-      try {
-        const prices24hAgo = await fetchMidnightPrices(); // Function name kept for compatibility
-        saveDailyPrices(prices24hAgo, currentTime);
-        historicalData = { prices: prices24hAgo, timestamp: currentTime };
-      } catch (err) {
-        console.error('✗ Failed to fetch 24h historical prices:', err);
-        historicalData = { prices: {}, timestamp: currentTime };
-      }
-    } else {
-    }
-    
-    // Calculate 24h change for each position based on historical price (24h ago)
+    // Calculate 24h change for each position - with fallback chain for robustness
     let change24hCalculated = 0;
-    let missingHistoricalPrices = [];
+    let missingSources = [];
     
     for (const pos of allPositionsData) {
+      // Skip if we already have 24h change from a reliable source (Zerion, Hyperliquid)
+      if (pos.change24h !== null && pos.change24h !== undefined && pos.change24h !== 0) {
+        change24hCalculated++;
+        continue;
+      }
+      
       const currentPrice = pos.price || 0;
-      let historicalPrice = null;
+      let change24h = null;
       let lookupKey = '';
       
       if (pos.exchange === 'OpenSea') {
         // NFTs: Use stored historical floor price by collection slug
         if (pos.collectionSlug) {
           lookupKey = `${pos.collectionSlug}_NFT`;
-          historicalPrice = historicalData.prices[lookupKey]
+          const historicalPrice = historicalData.prices[lookupKey]
             ?? historicalData.prices[`${pos.asset}_NFT`];
+          if (historicalPrice && historicalPrice > 0 && currentPrice > 0) {
+            change24h = ((currentPrice - historicalPrice) / historicalPrice) * 100;
+          }
         }
       } else {
-        // Crypto: Use stored historical price (24h ago) for this asset on this exchange
+        // Crypto: Multi-source fallback chain for robustness
+        
+        // Source 1: Historical price calculation (from preloaded data)
         lookupKey = `${pos.asset}_${pos.exchange}`;
-        historicalPrice = historicalData.prices[lookupKey];
+        const historicalPrice = historicalData.prices[lookupKey];
+        if (historicalPrice && historicalPrice > 0 && currentPrice > 0) {
+          change24h = ((currentPrice - historicalPrice) / historicalPrice) * 100;
+        }
+        
+        // Source 2: Pyth 24h change (if historical calc failed)
+        if (change24h === null && pythPricesMap[pos.asset] && pythPricesMap[pos.asset].change24h !== null) {
+          change24h = pythPricesMap[pos.asset].change24h;
+        }
+        
+        // Source 3: Hyperliquid prevDayPx (most reliable for HL assets)
+        if (change24h === null && pos.exchange === 'Hyperliquid' && hlMarketData[pos.asset] && hlMarketData[pos.asset].change24h) {
+          change24h = hlMarketData[pos.asset].change24h;
+        }
       }
       
-      // Calculate change if we have both prices (but don't overwrite Zerion data)
-      if (historicalPrice && historicalPrice > 0 && currentPrice > 0) {
-        // Only calculate if we don't already have 24h change data (from Zerion, etc.)
-        if (pos.change24h === null || pos.change24h === undefined) {
-          const change24h = ((currentPrice - historicalPrice) / historicalPrice) * 100;
-          pos.change24h = change24h;
-          change24hCalculated++;
-        } else {
-          change24hCalculated++; // Count Zerion-provided changes too
-        }
-      } else if (currentPrice > 0 && !pos.change24h) {
-        // Track positions missing historical prices (and no Zerion data)
-        missingHistoricalPrices.push(lookupKey);
+      if (change24h !== null) {
+        pos.change24h = change24h;
+        change24hCalculated++;
+      } else if (currentPrice > 0) {
+        missingSources.push(`${pos.asset} (${pos.exchange})`);
       }
     }
     
-    if (missingHistoricalPrices.length > 0) {
+    // CoinGecko fallback for remaining assets (last resort)
+    if (missingSources.length > 0) {
+      try {
+        const assetSymbols = [...new Set(allPositionsData
+          .filter(pos => pos.change24h === null || pos.change24h === undefined)
+          .map(pos => pos.asset))];
+        
+        if (assetSymbols.length > 0 && assetSymbols.length < 20) {
+          // Map common symbols to CoinGecko IDs
+          const symbolMap = {
+            'BTC': 'bitcoin', 'ETH': 'ethereum', 'SOL': 'solana',
+            'USDC': 'usd-coin', 'USDT': 'tether', 'HYPE': 'hyperliquid'
+          };
+          
+          const ids = assetSymbols.map(s => symbolMap[s] || s.toLowerCase()).join(',');
+          const cgResp = await rateLimitedFetch(
+            `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
+            { cache: 'coingecko-24h-fallback', cacheTTL: 60000 }
+          );
+          
+          if (cgResp) {
+            for (const pos of allPositionsData) {
+              if (pos.change24h === null || pos.change24h === undefined) {
+                const cgId = symbolMap[pos.asset] || pos.asset.toLowerCase();
+                if (cgResp[cgId] && cgResp[cgId].usd_24h_change !== undefined) {
+                  pos.change24h = cgResp[cgId].usd_24h_change;
+                  change24hCalculated++;
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('⚠ CoinGecko 24h fallback failed:', err.message);
+      }
+      
+      // Final warning for still-missing data
+      const stillMissing = allPositionsData.filter(p => !p.change24h && p.price > 0).length;
+      if (stillMissing > 0 && stillMissing < 10) {
+        console.warn(`⚠ Still missing 24h change for ${stillMissing} assets after all fallbacks`);
+      }
     }
     
     // Debug: Log position breakdown by exchange
