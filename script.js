@@ -1508,9 +1508,65 @@
     }
   }
   
-  async function fetchPythPrices(assets, manualFeedIds = []) {
+  /**
+   * Fetch Pyth price at a specific timestamp
+   * @param {Array<string>} feedIds - Array of Pyth feed IDs (with 0x prefix)
+   * @param {number} timestamp - Unix timestamp in SECONDS
+   * @returns {Promise<Object>} Map of feedId to price
+   */
+  async function fetchPythPricesAtTimestamp(feedIds, timestamp) {
+    if (feedIds.length === 0) return {};
+    
+    try {
+      // Ensure feedIds have 0x prefix
+      const normalizedIds = feedIds.map(id => 
+        id.toLowerCase().startsWith('0x') ? id : `0x${id}`
+      );
+      
+      const idsParam = normalizedIds.map(id => `ids[]=${id}`).join('&');
+      // Pyth API: /v2/updates/price/{publish_time} where publish_time is Unix timestamp in seconds
+      const url = `${API_ENDPOINTS.PYTH}/updates/price/${timestamp}?${idsParam}&parsed=true`;
+      
+      console.log(`Fetching Pyth historical prices at timestamp ${timestamp} (${new Date(timestamp * 1000).toISOString()})`);
+      
+      const response = await fetchWithTimeout(url, {}, PERF_CONFIG.TIMEOUTS.PYTH);
+      if (!response.ok) {
+        console.warn(`⚠ Pyth historical API returned ${response.status}`);
+        return {};
+      }
+      
+      const data = await response.json();
+      const prices = {};
+      
+      if (data.parsed && data.parsed.length > 0) {
+        for (const priceData of data.parsed) {
+          const normalizedId = priceData.id.toLowerCase().startsWith('0x') 
+            ? priceData.id.toLowerCase() 
+            : `0x${priceData.id.toLowerCase()}`;
+          
+          const price = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
+          prices[normalizedId] = price;
+        }
+        console.log(`✓ Pyth: Fetched ${Object.keys(prices).length} historical prices`);
+      } else {
+        console.warn('⚠ Pyth: No historical prices in response');
+      }
+      
+      return prices;
+    } catch (err) {
+      console.warn('⚠ Pyth: Failed to fetch historical prices:', err.message);
+      return {};
+    }
+  }
+
+  /**
+   * Enhanced Pyth price fetching with 24h change calculation
+   * Uses local midnight prices for accurate 24h change
+   * Returns: { asset: { price, change24h } }
+   */
+  async function fetchPythPrices(assets, manualFeedIds = [], includeChange24h = true) {
     // Use request deduplication to avoid duplicate concurrent requests
-    const cacheKey = `pyth:${assets.sort().join(',')}_${JSON.stringify(manualFeedIds)}`;
+    const cacheKey = `pyth:${assets.sort().join(',')}_${JSON.stringify(manualFeedIds)}_${includeChange24h}`;
     
     return requestDeduplicator.dedupe(cacheKey, async () => {
       // Fetch multiple prices at once
@@ -1518,12 +1574,15 @@
       
       // Build feedId to asset mapping
       const feedIdToAsset = {};
+      const assetToFeedId = {};
       
       // Add feed IDs from asset symbol lookups
       for (const asset of assets) {
         const feedId = priceFeeds[asset];
         if (feedId) {
-          feedIdToAsset[feedId.toLowerCase()] = asset;
+          const normalizedId = feedId.toLowerCase();
+          feedIdToAsset[normalizedId] = asset;
+          assetToFeedId[asset] = normalizedId;
         }
       }
       
@@ -1533,6 +1592,7 @@
           ? manual.feedId.toLowerCase() 
           : `0x${manual.feedId.toLowerCase()}`;
         feedIdToAsset[normalizedId] = manual.asset;
+        assetToFeedId[manual.asset] = normalizedId;
       }
       
       const feedIds = Object.keys(feedIdToAsset);
@@ -1542,20 +1602,40 @@
       }
       
       try {
+        // Parallel fetch: current prices AND midnight prices (if needed)
         const idsParam = feedIds.map(id => `ids[]=${id}`).join('&');
-        const url = `https://hermes.pyth.network/v2/updates/price/latest?${idsParam}`;
         
-        const response = await fetchWithTimeout(url, {}, PERF_CONFIG.TIMEOUTS.PYTH);
-        if (!response.ok) {
+        const fetchPromises = [
+          // Current prices
+          fetchWithTimeout(
+            `https://hermes.pyth.network/v2/updates/price/latest?${idsParam}`,
+            {},
+            PERF_CONFIG.TIMEOUTS.PYTH
+          )
+        ];
+        
+        // Add midnight price fetch if we need 24h changes
+        let midnightTimestamp = null;
+        if (includeChange24h) {
+          midnightTimestamp = getMidnightTimestamp();
+          console.log(`Fetching midnight prices for ${feedIds.length} feeds at local midnight: ${new Date(midnightTimestamp * 1000).toISOString()}`);
+          fetchPromises.push(
+            fetchPythPricesAtTimestamp(feedIds, midnightTimestamp)
+          );
+        }
+        
+        const [currentResponse, midnightPrices] = await Promise.all(fetchPromises);
+        
+        if (!currentResponse.ok) {
           return {};
         }
         
-        const data = await response.json();
+        const currentData = await currentResponse.json();
         
-        // Map results back to asset symbols using our feedId mapping
-        const prices = {};
-        if (data.parsed && data.parsed.length > 0) {
-          for (const priceData of data.parsed) {
+        // Map results back to asset symbols with both price and 24h change
+        const result = {};
+        if (currentData.parsed && currentData.parsed.length > 0) {
+          for (const priceData of currentData.parsed) {
             // Find asset symbol by feed ID
             const normalizedId = priceData.id.toLowerCase().startsWith('0x') 
               ? priceData.id.toLowerCase() 
@@ -1564,14 +1644,30 @@
             const asset = feedIdToAsset[normalizedId];
             
             if (asset) {
-              const price = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
-              prices[asset] = price;
+              const currentPrice = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
+              
+              let change24h = null;
+              if (includeChange24h && midnightPrices && midnightPrices[normalizedId]) {
+                const midnightPrice = midnightPrices[normalizedId];
+                if (midnightPrice > 0) {
+                  change24h = ((currentPrice - midnightPrice) / midnightPrice) * 100;
+                  console.log(`${asset}: midnight=$${midnightPrice.toFixed(2)}, current=$${currentPrice.toFixed(2)}, change=${change24h.toFixed(2)}%`);
+                }
+              } else if (includeChange24h) {
+                console.warn(`${asset}: No midnight price available for 24h change calculation`);
+              }
+              
+              result[asset] = {
+                price: currentPrice,
+                change24h: change24h
+              };
             }
           }
         }
         
-        return prices;
+        return result;
       } catch (err) {
+        console.warn('⚠ Pyth: Failed to fetch prices:', err.message);
         return {};
       }
     });
@@ -3718,7 +3814,8 @@
     const now = new Date();
     const midnight = new Date(now);
     midnight.setHours(0, 0, 0, 0);
-    return midnight.getTime();
+    // Return Unix timestamp in SECONDS (Pyth API requirement)
+    return Math.floor(midnight.getTime() / 1000);
   }
   
   function isNewDay(timestamp) {
@@ -3969,12 +4066,6 @@
       scheduleSecondaryLoad(() => {
         perfMonitor.measure('Stage2:Weather', () => fetchAndRenderWeather())
           .catch(err => console.warn('⚠ Weather load failed:', err));
-      });
-      
-      // Watchlist (fast, non-critical)
-      scheduleSecondaryLoad(() => {
-        perfMonitor.measure('Stage2:Watchlist', () => renderWatchlist())
-          .catch(err => console.warn('⚠ Watchlist load failed:', err));
       });
       
       // Comics (slow, lazy-load on scroll)
@@ -4237,44 +4328,39 @@
             'unichain': { symbol: 'ETH', coingeckoId: 'ethereum' }
           };
           
-          // Fetch prices for all unique native tokens using Pyth (faster and more reliable)
+          // Fetch prices for all unique native tokens using Pyth (blazing fast, single call)
           const uniqueSymbols = [...new Set(Object.values(chainTokenMap).map(t => t.symbol))];
           const tokenPrices = {};
           const tokenPricesBySymbol = {};
           
           try {
-            // Use our Pyth price fetching (already optimized with deduplication)
-            const pythPrices = await fetchPythPrices(uniqueSymbols);
+            // Use Pyth API for prices + 24h changes (fast and reliable)
+            const pythData = await fetchPythPrices(uniqueSymbols, [], true);
             
-            // Map Pyth prices to chains
+            // Map Pyth data to chains
             for (const [chain, tokenInfo] of Object.entries(chainTokenMap)) {
-              const price = pythPrices[tokenInfo.symbol];
-              if (price && price > 0) {
-                tokenPrices[chain] = price;
-                tokenPricesBySymbol[tokenInfo.symbol.toUpperCase()] = price;
+              if (pythData[tokenInfo.symbol]) {
+                tokenPrices[chain] = pythData[tokenInfo.symbol].price;
+                tokenPricesBySymbol[tokenInfo.symbol.toUpperCase()] = pythData[tokenInfo.symbol].price;
               }
             }
             
-            // Fallback to CoinGecko for tokens Pyth doesn't have
-            const missingSymbols = Object.entries(chainTokenMap)
-              .filter(([chain]) => !tokenPrices[chain])
-              .map(([, info]) => info.coingeckoId);
+            // Fallback to CoinGecko ONLY for tokens Pyth doesn't have
+            const missingChains = Object.entries(chainTokenMap).filter(([chain]) => !tokenPrices[chain]);
             
-            if (missingSymbols.length > 0) {
-              const uniqueCoinGeckoIds = [...new Set(missingSymbols)];
+            if (missingChains.length > 0) {
+              const uniqueCoinGeckoIds = [...new Set(missingChains.map(([, info]) => info.coingeckoId))];
               const pricesData = await rateLimitedFetch(
                 `https://api.coingecko.com/api/v3/simple/price?ids=${uniqueCoinGeckoIds.join(',')}&vs_currencies=usd`,
                 `nft-token-prices-${uniqueCoinGeckoIds.join(',')}`
               );
               
               if (pricesData) {
-                for (const [chain, tokenInfo] of Object.entries(chainTokenMap)) {
-                  if (!tokenPrices[chain]) {
-                    const price = pricesData[tokenInfo.coingeckoId]?.usd;
-                    if (price && price > 0) {
-                      tokenPrices[chain] = price;
-                      tokenPricesBySymbol[tokenInfo.symbol.toUpperCase()] = price;
-                    }
+                for (const [chain, tokenInfo] of missingChains) {
+                  const price = pricesData[tokenInfo.coingeckoId]?.usd;
+                  if (price && price > 0) {
+                    tokenPrices[chain] = price;
+                    tokenPricesBySymbol[tokenInfo.symbol.toUpperCase()] = price;
                   }
                 }
               }
@@ -5467,22 +5553,23 @@
 
     // === Multi-Chain Token Balances ===
     // Process tokens from Alchemy (EVM) and Helius (Solana) APIs
-    // Fetch prices: Pyth first (faster, more accurate), then CoinGecko fallback
-    // Fetch 24h changes: CoinGecko (Pyth doesn't provide 24h change)
+    // Fetch prices AND 24h changes from Pyth (blazing fast, single API call per token)
     if (multiChainTokens.length > 0) {
-      // Step 1: Try Pyth prices first for all tokens without prices
+      // Step 1: Fetch Pyth prices + 24h changes for all tokens in parallel
       const tokensNeedingPrice = multiChainTokens.filter(t => t.tokenPrice === 0);
       if (tokensNeedingPrice.length > 0) {
         const uniqueSymbols = [...new Set(tokensNeedingPrice.map(t => t.tokenSymbol))];
         
-        const pythPrices = await fetchPythPrices(uniqueSymbols);
+        // Pyth now returns { symbol: { price, change24h } }
+        const pythData = await fetchPythPrices(uniqueSymbols, [], true);
         
         let pythPricesFound = 0;
         
         for (const token of tokensNeedingPrice) {
-          if (pythPrices[token.tokenSymbol]) {
-            token.tokenPrice = pythPrices[token.tokenSymbol];
+          if (pythData[token.tokenSymbol]) {
+            token.tokenPrice = pythData[token.tokenSymbol].price;
             token.balanceUsd = token.balance * token.tokenPrice;
+            token.change24h = pythData[token.tokenSymbol].change24h;
             pythPricesFound++;
           }
         }
@@ -5491,7 +5578,7 @@
         }
       }
       
-      // Step 1.5: Use Hyperliquid price for HYPE (more accurate than Pyth/others)
+      // Step 2: Use Hyperliquid price for HYPE (most accurate for HyperEVM chain)
       if (hlMarketData && hlMarketData['HYPE'] && hlMarketData['HYPE'].markPx) {
         const hypePrice = hlMarketData['HYPE'].markPx;
         const hypeChange = hlMarketData['HYPE'].change24h || 0;
@@ -5504,37 +5591,14 @@
         }
       }
       
-      // Step 2: Fallback to CoinGecko for tokens still without prices OR 24h changes
+      // Step 3: CoinGecko fallback ONLY for tokens Pyth doesn't have (rare)
       const tokensByChain = {};
       for (const token of multiChainTokens) {
-        if (token.blockchain !== 'Solana' && token.contractAddress && 
-            (token.tokenPrice === 0 || token.change24h === null)) {
+        if (token.blockchain !== 'Solana' && token.contractAddress && token.tokenPrice === 0) {
           if (!tokensByChain[token.blockchain]) {
             tokensByChain[token.blockchain] = [];
           }
           tokensByChain[token.blockchain].push(token);
-        }
-      }
-      
-      // Also fetch 24h changes from CoinGecko for tokens by symbol (BTC, ETH, etc.)
-      const tokensBySymbol = multiChainTokens.filter(t => 
-        !t.contractAddress && t.change24h === null && symbolToCoingeckoId[t.tokenSymbol]
-      );
-      
-      if (tokensBySymbol.length > 0) {
-        const uniqueSymbols = [...new Set(tokensBySymbol.map(t => t.tokenSymbol))];
-        const cgData = await fetchCoinGeckoPricesAndChanges(uniqueSymbols);
-        
-        for (const token of tokensBySymbol) {
-          if (cgData[token.tokenSymbol]) {
-            if (token.tokenPrice === 0 && cgData[token.tokenSymbol].price) {
-              token.tokenPrice = cgData[token.tokenSymbol].price;
-              token.balanceUsd = token.balance * token.tokenPrice;
-            }
-            if (token.change24h === null && cgData[token.tokenSymbol].change24h !== undefined) {
-              token.change24h = cgData[token.tokenSymbol].change24h;
-            }
-          }
         }
       }
       
@@ -5547,7 +5611,7 @@
         'Base': 'base'
       };
       
-      // Fetch CoinGecko prices + 24h changes for remaining tokens
+      // Fetch CoinGecko prices + 24h changes for remaining tokens (only if Pyth failed)
       for (const [blockchain, tokens] of Object.entries(tokensByChain)) {
         const chainId = chainIdMap[blockchain];
         if (!chainId) continue;
@@ -5560,24 +5624,21 @@
           );
           
           if (priceResp) {
-            let pricesFound = 0;
             for (const token of tokens) {
               const priceData = priceResp[token.contractAddress.toLowerCase()];
               if (priceData) {
-                if (priceData.usd && token.tokenPrice === 0) {
+                if (priceData.usd) {
                   token.tokenPrice = priceData.usd;
                   token.balanceUsd = token.balance * priceData.usd;
-                  pricesFound++;
                 }
                 if (priceData.usd_24h_change !== undefined && token.change24h === null) {
                   token.change24h = priceData.usd_24h_change;
                 }
               }
             }
-            if (pricesFound > 0) {
-            }
           }
         } catch (err) {
+          // Silent fallback
         }
       }
     }
@@ -5820,15 +5881,22 @@
       if (manualPythFeedIds.length > 0) {
       }
       
-      const pythPrices = await fetchPythPrices(assets, manualPythFeedIds);
+      const pythPrices = await fetchPythPrices(assets, manualPythFeedIds, true);
       Object.assign(pythPricesMap, pythPrices);
       
       // Only use Pyth as fallback when exchange price is missing or zero
       for (const pos of allPositionsData) {
         if (pos.exchange !== 'OpenSea' && pythPricesMap[pos.asset]) {
+          const pythData = pythPricesMap[pos.asset];
+          
           if (!pos.price || pos.price === 0) {
-            pos.price = pythPricesMap[pos.asset];
+            pos.price = pythData.price;
             pos.value = Math.abs(pos.amount) * pos.price;
+          }
+          
+          // Use Pyth's 24h change if we don't have one yet
+          if ((pos.change24h === null || pos.change24h === undefined) && pythData.change24h !== null) {
+            pos.change24h = pythData.change24h;
           }
         }
         
@@ -5836,9 +5904,15 @@
         if (pos.isManual && pos.manualType === 'pyth') {
           if (pythPricesMap[pos.asset]) {
             const oldValue = pos.value;
-            const currentPrice = pythPricesMap[pos.asset];
+            const pythData = pythPricesMap[pos.asset];
+            const currentPrice = pythData.price;
             pos.price = currentPrice;
             pos.value = Math.abs(pos.amount) * currentPrice;
+            
+            // Use Pyth's 24h change
+            if (pythData.change24h !== null) {
+              pos.change24h = pythData.change24h;
+            }
             
             // Calculate P&L if entry price exists
             if (pos.entryPrice && pos.entryPrice > 0) {
