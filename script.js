@@ -250,9 +250,7 @@
         this.timestamps.delete(key);
       }
       
-      if (toDelete.length > 0) {
-        console.log(`🧹 Pruned ${toDelete.length} expired cache entries`);
-      }
+      toDelete.forEach(key => this.delete(key));
     }
     
     pruneOldest() {
@@ -289,7 +287,6 @@
       const start = this.marks.get(name);
       if (start) {
         const duration = performance.now() - start;
-        console.log(`⏱️  ${name}: ${duration.toFixed(2)}ms`);
         this.marks.delete(name);
         return duration;
       }
@@ -367,7 +364,6 @@
         this.cache.set(cacheKey, data);
         return data;
       } catch (err) {
-        console.warn(`⚠ ${this.name}: Failed to fetch for ${address}:`, err.message);
         return null;
       }
     }
@@ -501,7 +497,6 @@
         ).then(data => {
           results.set(name, data.filter(Boolean)); // Filter out nulls
         }).catch(err => {
-          console.warn(`⚠ DataOrchestrator: Failed to fetch from ${name}:`, err.message);
           results.set(name, []);
         });
         
@@ -881,7 +876,7 @@
             await stage.loader();
           });
         } catch (err) {
-          console.warn(`⚠ Progressive loader failed at stage ${stage.name}:`, err);
+          // Silently continue
         }
         
         // Yield to browser between stages
@@ -1181,7 +1176,6 @@
         
         if (this.failures >= this.failureThreshold) {
           this.state = 'OPEN';
-          console.warn(`⚠ Circuit breaker opened after ${this.failures} failures`);
         }
         
         throw err;
@@ -1375,7 +1369,6 @@
         if (response.status === 429) {
           if (attempt < maxRetries - 1) {
             const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
-            console.log(`⏳ Rate limited, retrying in ${Math.round(delay)}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }
@@ -1386,7 +1379,6 @@
         lastError = err;
         if (attempt < maxRetries - 1) {
           const delay = baseDelay * Math.pow(2, attempt);
-          console.log(`⏳ Request failed, retrying in ${Math.round(delay)}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
@@ -1423,10 +1415,7 @@
   async function fetchPythPriceFeeds() {
     try {
       const response = await fetchWithTimeout('https://hermes.pyth.network/v2/price_feeds', {}, 10000);
-      if (!response.ok) {
-        console.warn('⚠ Pyth: Failed to fetch price feed metadata');
-        return {};
-      }
+      if (!response.ok) return {};
       
       const feeds = await response.json();
       const feedMap = {};
@@ -1448,7 +1437,6 @@
       
       return feedMap;
     } catch (err) {
-      console.warn('⚠ Pyth: Failed to fetch price feed metadata:', err.message);
       return {};
     }
   }
@@ -1524,14 +1512,13 @@
       );
       
       const idsParam = normalizedIds.map(id => `ids[]=${id}`).join('&');
-      // Pyth API: /v2/updates/price/{publish_time} where publish_time is Unix timestamp in seconds
       const url = `${API_ENDPOINTS.PYTH}/updates/price/${timestamp}?${idsParam}&parsed=true`;
       
-      console.log(`Fetching Pyth historical prices at timestamp ${timestamp} (${new Date(timestamp * 1000).toISOString()})`);
+      console.log(`🔍 Fetching Pyth historical: ${url.substring(0, 100)}... (${new Date(timestamp * 1000).toISOString()})`);
       
       const response = await fetchWithTimeout(url, {}, PERF_CONFIG.TIMEOUTS.PYTH);
       if (!response.ok) {
-        console.warn(`⚠ Pyth historical API returned ${response.status}`);
+        console.error(`❌ Pyth historical failed: ${response.status} ${response.statusText}`);
         return {};
       }
       
@@ -1545,16 +1532,17 @@
             : `0x${priceData.id.toLowerCase()}`;
           
           const price = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
+          const priceTime = new Date(priceData.price.publish_time * 1000).toISOString();
           prices[normalizedId] = price;
+          console.log(`  ✓ ${normalizedId.substring(0, 10)}...: $${price.toFixed(2)} @ ${priceTime}`);
         }
-        console.log(`✓ Pyth: Fetched ${Object.keys(prices).length} historical prices`);
       } else {
-        console.warn('⚠ Pyth: No historical prices in response');
+        console.warn(`⚠️ Pyth returned no prices for timestamp ${timestamp}`);
       }
       
       return prices;
     } catch (err) {
-      console.warn('⚠ Pyth: Failed to fetch historical prices:', err.message);
+      console.error(`❌ Pyth historical error:`, err);
       return {};
     }
   }
@@ -1572,6 +1560,9 @@
       // Fetch multiple prices at once
       const priceFeeds = await getPythPriceFeeds();
       
+      console.log(`🔑 Pyth price feeds available: ${Object.keys(priceFeeds).length}`);
+      console.log(`🎯 Fetching prices for assets:`, assets);
+      
       // Build feedId to asset mapping
       const feedIdToAsset = {};
       const assetToFeedId = {};
@@ -1580,9 +1571,15 @@
       for (const asset of assets) {
         const feedId = priceFeeds[asset];
         if (feedId) {
-          const normalizedId = feedId.toLowerCase();
+          // Ensure consistent normalization with 0x prefix
+          const normalizedId = feedId.toLowerCase().startsWith('0x') 
+            ? feedId.toLowerCase() 
+            : `0x${feedId.toLowerCase()}`;
           feedIdToAsset[normalizedId] = asset;
           assetToFeedId[asset] = normalizedId;
+          console.log(`  ✓ ${asset} → ${normalizedId.substring(0, 12)}...`);
+        } else {
+          console.log(`  ✗ ${asset} - NOT FOUND in Pyth feeds`);
         }
       }
       
@@ -1597,7 +1594,10 @@
       
       const feedIds = Object.keys(feedIdToAsset);
       
+      console.log(`🎲 Found ${feedIds.length} feed IDs to fetch`);
+      
       if (feedIds.length === 0) {
+        console.warn(`⚠️ No feed IDs found for requested assets!`);
         return {};
       }
       
@@ -1618,7 +1618,7 @@
         let midnightTimestamp = null;
         if (includeChange24h) {
           midnightTimestamp = getMidnightTimestamp();
-          console.log(`Fetching midnight prices for ${feedIds.length} feeds at local midnight: ${new Date(midnightTimestamp * 1000).toISOString()}`);
+          console.log(`⏰ Fetching midnight prices for ${feedIds.length} feeds`);
           fetchPromises.push(
             fetchPythPricesAtTimestamp(feedIds, midnightTimestamp)
           );
@@ -1626,22 +1626,33 @@
         
         const [currentResponse, midnightPrices] = await Promise.all(fetchPromises);
         
+        if (includeChange24h) {
+          console.log(`🌙 Received ${Object.keys(midnightPrices || {}).length} midnight prices`);
+        }
+        
         if (!currentResponse.ok) {
+          console.error(`❌ Current prices fetch failed: ${currentResponse.status}`);
           return {};
         }
         
         const currentData = await currentResponse.json();
+        console.log(`📥 Received ${currentData.parsed?.length || 0} current prices from Pyth`);
         
         // Map results back to asset symbols with both price and 24h change
         const result = {};
         if (currentData.parsed && currentData.parsed.length > 0) {
+          console.log(`🔎 Mapping ${currentData.parsed.length} prices back to asset symbols...`);
+          console.log(`🗺️ feedIdToAsset keys:`, Object.keys(feedIdToAsset).map(k => k.substring(0, 12)));
+          
           for (const priceData of currentData.parsed) {
             // Find asset symbol by feed ID
             const normalizedId = priceData.id.toLowerCase().startsWith('0x') 
               ? priceData.id.toLowerCase() 
               : `0x${priceData.id.toLowerCase()}`;
             
+            console.log(`  🔍 Trying to map ${normalizedId.substring(0, 12)}... to asset`);
             const asset = feedIdToAsset[normalizedId];
+            console.log(`    → Asset: ${asset || 'NOT FOUND'}`);
             
             if (asset) {
               const currentPrice = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
@@ -1651,10 +1662,10 @@
                 const midnightPrice = midnightPrices[normalizedId];
                 if (midnightPrice > 0) {
                   change24h = ((currentPrice - midnightPrice) / midnightPrice) * 100;
-                  console.log(`${asset}: midnight=$${midnightPrice.toFixed(2)}, current=$${currentPrice.toFixed(2)}, change=${change24h.toFixed(2)}%`);
+                  console.log(`📊 ${asset}: midnight=$${midnightPrice.toFixed(4)}, current=$${currentPrice.toFixed(4)}, change=${change24h.toFixed(2)}%`);
                 }
               } else if (includeChange24h) {
-                console.warn(`${asset}: No midnight price available for 24h change calculation`);
+                console.warn(`⚠️ ${asset}: No midnight price available`);
               }
               
               result[asset] = {
@@ -1665,9 +1676,10 @@
           }
         }
         
+        console.log(`📦 Returning ${Object.keys(result).length} assets with prices`);
         return result;
       } catch (err) {
-        console.warn('⚠ Pyth: Failed to fetch prices:', err.message);
+        console.error(`❌ fetchPythPrices error:`, err);
         return {};
       }
     });
@@ -1703,7 +1715,6 @@
       
       return allPythFeeds;
     } catch (err) {
-      console.warn('⚠ Pyth: Failed to fetch all feeds:', err.message);
       return [];
     }
   }
@@ -1791,7 +1802,6 @@
       
       return watchlistData;
     } catch (err) {
-      console.warn('⚠ Watchlist: Failed to fetch prices:', err.message);
       return [];
     }
   }
@@ -4065,14 +4075,14 @@
       // Weather (fast, non-critical)
       scheduleSecondaryLoad(() => {
         perfMonitor.measure('Stage2:Weather', () => fetchAndRenderWeather())
-          .catch(err => console.warn('⚠ Weather load failed:', err));
+          .catch(err => {});
       });
       
       // Comics (slow, lazy-load on scroll)
       if (settings.showComic && els.comicSection) {
         const comicLoader = () => {
           perfMonitor.measure('Stage2:Comic', () => renderCalvin())
-            .catch(err => console.warn('⚠ Comic load failed:', err));
+            .catch(err => {});
         };
         
         // Check if comic section is in viewport
@@ -4093,7 +4103,6 @@
     }
     
     perfMonitor.end('RefreshAll:Total');
-    console.log(`✓ Refresh completed in ${(performance.now() - startTime).toFixed(0)}ms`);
   }
   
   function updateLastUpdateTimestamp() {
@@ -5430,7 +5439,7 @@
               amount: position,
               value: positionValue,
               price: currentPrice,
-              change24h: 0, // Lighter API doesn't provide 24h change
+              change24h: null, // Will be enriched with Pyth data
               pnl: unrealizedPnl,
               pnlPercent: pnlPercent
             });
@@ -5555,28 +5564,33 @@
     // Process tokens from Alchemy (EVM) and Helius (Solana) APIs
     // Fetch prices AND 24h changes from Pyth (blazing fast, single API call per token)
     if (multiChainTokens.length > 0) {
-      // Step 1: Fetch Pyth prices + 24h changes for all tokens in parallel
-      const tokensNeedingPrice = multiChainTokens.filter(t => t.tokenPrice === 0);
-      if (tokensNeedingPrice.length > 0) {
-        const uniqueSymbols = [...new Set(tokensNeedingPrice.map(t => t.tokenSymbol))];
-        
-        // Pyth now returns { symbol: { price, change24h } }
-        const pythData = await fetchPythPrices(uniqueSymbols, [], true);
-        
-        let pythPricesFound = 0;
-        
-        for (const token of tokensNeedingPrice) {
-          if (pythData[token.tokenSymbol]) {
+      // Step 1: Fetch Pyth prices + 24h changes for ALL tokens
+      const uniqueSymbols = [...new Set(multiChainTokens.map(t => t.tokenSymbol))];
+      
+      // Pyth now returns { symbol: { price, change24h } }
+      const pythData = await fetchPythPrices(uniqueSymbols, [], true);
+      
+      console.log(`💎 Enriching ${multiChainTokens.length} tokens with Pyth data...`);
+      
+      // Enrich ALL tokens with Pyth data (prices + 24h changes)
+      let pricesEnriched = 0;
+      let changesEnriched = 0;
+      for (const token of multiChainTokens) {
+        if (pythData[token.tokenSymbol]) {
+          // Update price only if token doesn't have one yet
+          if (token.tokenPrice === 0 && pythData[token.tokenSymbol].price) {
             token.tokenPrice = pythData[token.tokenSymbol].price;
             token.balanceUsd = token.balance * token.tokenPrice;
+            pricesEnriched++;
+          }
+          // Always update 24h change from Pyth (most accurate)
+          if (pythData[token.tokenSymbol].change24h !== null) {
             token.change24h = pythData[token.tokenSymbol].change24h;
-            pythPricesFound++;
+            changesEnriched++;
           }
         }
-        
-        if (pythPricesFound > 0) {
-        }
       }
+      console.log(`✅ Enriched: ${pricesEnriched} prices, ${changesEnriched} 24h changes`);
       
       // Step 2: Use Hyperliquid price for HYPE (most accurate for HyperEVM chain)
       if (hlMarketData && hlMarketData['HYPE'] && hlMarketData['HYPE'].markPx) {
@@ -5884,7 +5898,10 @@
       const pythPrices = await fetchPythPrices(assets, manualPythFeedIds, true);
       Object.assign(pythPricesMap, pythPrices);
       
+      console.log(`🔄 Enriching ${allPositionsData.length} positions with Pyth data...`);
+      
       // Only use Pyth as fallback when exchange price is missing or zero
+      let posChangesEnriched = 0;
       for (const pos of allPositionsData) {
         if (pos.exchange !== 'OpenSea' && pythPricesMap[pos.asset]) {
           const pythData = pythPricesMap[pos.asset];
@@ -5894,9 +5911,12 @@
             pos.value = Math.abs(pos.amount) * pos.price;
           }
           
-          // Use Pyth's 24h change if we don't have one yet
-          if ((pos.change24h === null || pos.change24h === undefined) && pythData.change24h !== null) {
+          // Use Pyth's 24h change if we don't have one yet (or it's 0 from Lighter)
+          const before = pos.change24h;
+          if ((pos.change24h === null || pos.change24h === undefined || pos.change24h === 0) && pythData.change24h !== null) {
             pos.change24h = pythData.change24h;
+            posChangesEnriched++;
+            console.log(`  ✓ ${pos.asset} (${pos.exchange}): ${before} → ${pythData.change24h.toFixed(2)}%`);
           }
         }
         
@@ -5923,10 +5943,10 @@
             
             // Update balance with the difference (we already added initial value)
             accountBalances.multichain += (pos.value - oldValue);
-          } else {
           }
         }
       }
+      console.log(`✅ Position changes enriched: ${posChangesEnriched}`);
     }
     
     // === Calculate TRUE 24h changes from local midnight prices ===
