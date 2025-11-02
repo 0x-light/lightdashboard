@@ -4082,6 +4082,12 @@
           .catch(err => {});
       });
       
+      // Watchlist (fast, important for users with watchlist)
+      scheduleSecondaryLoad(() => {
+        perfMonitor.measure('Stage2:Watchlist', () => renderWatchlist())
+          .catch(err => {});
+      });
+      
       // Comics (slow, lazy-load on scroll)
       if (settings.showComic && els.comicSection) {
         const comicLoader = () => {
@@ -6214,6 +6220,9 @@
         renderPositionsTable();
         await updateHeroSection();
         updateLastUpdateTimestamp();
+        
+        // Update watchlist with latest prices
+        await renderWatchlist();
         
         // Add flash animation to updated cells
         requestAnimationFrame(() => {
