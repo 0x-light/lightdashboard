@@ -55,42 +55,42 @@
   const PERF_CONFIG = {
     // Cache durations (milliseconds)
     CACHE: {
-      PRICES: 60000,      // 1 minute - prices change frequently
+      PRICES: 45000,      // 45 seconds - balance between freshness and speed
       NFT: 300000,        // 5 minutes - NFTs change rarely
       POSITIONS: 30000,   // 30 seconds - positions need freshness
       PYTH_FEEDS: 86400000, // 24 hours - feed metadata is static
       SETTINGS: 10000     // 10 seconds - settings accessed frequently
     },
     
-    // API timeouts (milliseconds)
+    // API timeouts (milliseconds) - aggressive for speed
     TIMEOUTS: {
-      PYTH: 10000,
-      COINGECKO: 15000,
-      OPENSEA: 30000,
-      ZERION: 15000,
-      ALCHEMY: 15000,
-      HYPERLIQUID: 10000
+      PYTH: 8000,
+      COINGECKO: 12000,
+      OPENSEA: 20000,
+      ZERION: 12000,
+      ALCHEMY: 12000,
+      HYPERLIQUID: 8000
     },
     
     // Rate limiting
     RATE_LIMITS: {
-      COINGECKO_DELAY: 300,
-      MIN_REFRESH_INTERVAL: 10000,
-      OPENSEA_BATCH_DELAY: 100,
-      OPENSEA_STATS_DELAY: 150
+      COINGECKO_DELAY: 250,
+      MIN_REFRESH_INTERVAL: 8000,
+      OPENSEA_BATCH_DELAY: 80,
+      OPENSEA_STATS_DELAY: 120
     },
     
     // UI performance
     UI: {
-      DEBOUNCE_RENDER: 100,
-      ANIMATION_DURATION: 300,
-      FLASH_DURATION: 500,
+      DEBOUNCE_RENDER: 50,
+      ANIMATION_DURATION: 200,
+      FLASH_DURATION: 400,
       THROTTLE_SCROLL: 16 // 60fps
     },
     
     // Data limits
     LIMITS: {
-      MAX_CACHE_SIZE: 250,
+      MAX_CACHE_SIZE: 500,  // Doubled for better hit rate
       MAX_POSITIONS_PER_PAGE: 1000,
       DUST_THRESHOLD: 0.01 // USD
     }
@@ -237,20 +237,13 @@
     
     prune() {
       const now = Date.now();
-      const toDelete = [];
       
       for (const [key, timestamp] of this.timestamps) {
         if (now - timestamp > this.ttl) {
-          toDelete.push(key);
+          this.cache.delete(key);
+          this.timestamps.delete(key);
         }
       }
-      
-      for (const key of toDelete) {
-        this.cache.delete(key);
-        this.timestamps.delete(key);
-      }
-      
-      toDelete.forEach(key => this.delete(key));
     }
     
     pruneOldest() {
@@ -1514,13 +1507,8 @@
       const idsParam = normalizedIds.map(id => `ids[]=${id}`).join('&');
       const url = `${API_ENDPOINTS.PYTH}/updates/price/${timestamp}?${idsParam}&parsed=true`;
       
-      console.log(`🔍 Fetching Pyth historical: ${url.substring(0, 100)}... (${new Date(timestamp * 1000).toISOString()})`);
-      
       const response = await fetchWithTimeout(url, {}, PERF_CONFIG.TIMEOUTS.PYTH);
-      if (!response.ok) {
-        console.error(`❌ Pyth historical failed: ${response.status} ${response.statusText}`);
-        return {};
-      }
+      if (!response.ok) return {};
       
       const data = await response.json();
       const prices = {};
@@ -1532,17 +1520,12 @@
             : `0x${priceData.id.toLowerCase()}`;
           
           const price = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
-          const priceTime = new Date(priceData.price.publish_time * 1000).toISOString();
           prices[normalizedId] = price;
-          console.log(`  ✓ ${normalizedId.substring(0, 10)}...: $${price.toFixed(2)} @ ${priceTime}`);
         }
-      } else {
-        console.warn(`⚠️ Pyth returned no prices for timestamp ${timestamp}`);
       }
       
       return prices;
     } catch (err) {
-      console.error(`❌ Pyth historical error:`, err);
       return {};
     }
   }
@@ -1560,9 +1543,6 @@
       // Fetch multiple prices at once
       const priceFeeds = await getPythPriceFeeds();
       
-      console.log(`🔑 Pyth price feeds available: ${Object.keys(priceFeeds).length}`);
-      console.log(`🎯 Fetching prices for assets:`, assets);
-      
       // Build feedId to asset mapping
       const feedIdToAsset = {};
       const assetToFeedId = {};
@@ -1577,9 +1557,6 @@
             : `0x${feedId.toLowerCase()}`;
           feedIdToAsset[normalizedId] = asset;
           assetToFeedId[asset] = normalizedId;
-          console.log(`  ✓ ${asset} → ${normalizedId.substring(0, 12)}...`);
-        } else {
-          console.log(`  ✗ ${asset} - NOT FOUND in Pyth feeds`);
         }
       }
       
@@ -1594,10 +1571,7 @@
       
       const feedIds = Object.keys(feedIdToAsset);
       
-      console.log(`🎲 Found ${feedIds.length} feed IDs to fetch`);
-      
       if (feedIds.length === 0) {
-        console.warn(`⚠️ No feed IDs found for requested assets!`);
         return {};
       }
       
@@ -1614,58 +1588,41 @@
           )
         ];
         
-        // Add midnight price fetch if we need 24h changes
-        let midnightTimestamp = null;
+        // Add 24h ago price fetch if we need 24h changes
+        let timestamp24hAgo = null;
         if (includeChange24h) {
-          midnightTimestamp = getMidnightTimestamp();
-          console.log(`⏰ Fetching midnight prices for ${feedIds.length} feeds`);
+          timestamp24hAgo = get24HoursAgoTimestamp();
           fetchPromises.push(
-            fetchPythPricesAtTimestamp(feedIds, midnightTimestamp)
+            fetchPythPricesAtTimestamp(feedIds, timestamp24hAgo)
           );
         }
         
-        const [currentResponse, midnightPrices] = await Promise.all(fetchPromises);
+        const [currentResponse, prices24hAgo] = await Promise.all(fetchPromises);
         
-        if (includeChange24h) {
-          console.log(`🌙 Received ${Object.keys(midnightPrices || {}).length} midnight prices`);
-        }
-        
-        if (!currentResponse.ok) {
-          console.error(`❌ Current prices fetch failed: ${currentResponse.status}`);
-          return {};
-        }
+        if (!currentResponse.ok) return {};
         
         const currentData = await currentResponse.json();
-        console.log(`📥 Received ${currentData.parsed?.length || 0} current prices from Pyth`);
         
         // Map results back to asset symbols with both price and 24h change
         const result = {};
         if (currentData.parsed && currentData.parsed.length > 0) {
-          console.log(`🔎 Mapping ${currentData.parsed.length} prices back to asset symbols...`);
-          console.log(`🗺️ feedIdToAsset keys:`, Object.keys(feedIdToAsset).map(k => k.substring(0, 12)));
-          
           for (const priceData of currentData.parsed) {
             // Find asset symbol by feed ID
             const normalizedId = priceData.id.toLowerCase().startsWith('0x') 
               ? priceData.id.toLowerCase() 
               : `0x${priceData.id.toLowerCase()}`;
             
-            console.log(`  🔍 Trying to map ${normalizedId.substring(0, 12)}... to asset`);
             const asset = feedIdToAsset[normalizedId];
-            console.log(`    → Asset: ${asset || 'NOT FOUND'}`);
             
             if (asset) {
               const currentPrice = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
               
               let change24h = null;
-              if (includeChange24h && midnightPrices && midnightPrices[normalizedId]) {
-                const midnightPrice = midnightPrices[normalizedId];
-                if (midnightPrice > 0) {
-                  change24h = ((currentPrice - midnightPrice) / midnightPrice) * 100;
-                  console.log(`📊 ${asset}: midnight=$${midnightPrice.toFixed(4)}, current=$${currentPrice.toFixed(4)}, change=${change24h.toFixed(2)}%`);
+              if (includeChange24h && prices24hAgo && prices24hAgo[normalizedId]) {
+                const price24hAgo = prices24hAgo[normalizedId];
+                if (price24hAgo > 0) {
+                  change24h = ((currentPrice - price24hAgo) / price24hAgo) * 100;
                 }
-              } else if (includeChange24h) {
-                console.warn(`⚠️ ${asset}: No midnight price available`);
               }
               
               result[asset] = {
@@ -1676,10 +1633,8 @@
           }
         }
         
-        console.log(`📦 Returning ${Object.keys(result).length} assets with prices`);
         return result;
       } catch (err) {
-        console.error(`❌ fetchPythPrices error:`, err);
         return {};
       }
     });
@@ -1759,14 +1714,20 @@
     
     try {
       const idsParam = watchlist.map(id => `ids[]=${id}`).join('&');
-      const url = `https://hermes.pyth.network/v2/updates/price/latest?${idsParam}`;
       
-      const response = await fetch(url);
-      if (!response.ok) {
+      // Fetch current prices AND 24h ago prices in parallel
+      const timestamp24hAgo = get24HoursAgoTimestamp();
+      
+      const [currentResponse, prices24hAgo] = await Promise.all([
+        fetch(`https://hermes.pyth.network/v2/updates/price/latest?${idsParam}`),
+        fetchPythPricesAtTimestamp(watchlist, timestamp24hAgo)
+      ]);
+      
+      if (!currentResponse.ok) {
         return [];
       }
       
-      const data = await response.json();
+      const data = await currentResponse.json();
       
       const watchlistData = [];
       if (data.parsed && data.parsed.length > 0) {
@@ -1781,12 +1742,12 @@
           if (feedInfo) {
             const price = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
             
-            // Calculate 24h change (Pyth provides this in the EMA price)
+            // Calculate 24h change using actual historical price from 24 hours ago
             let change24h = null;
-            if (priceData.ema_price && priceData.ema_price.price) {
-              const emaPrice = parseFloat(priceData.ema_price.price) * Math.pow(10, priceData.ema_price.expo);
-              if (emaPrice > 0) {
-                change24h = ((price - emaPrice) / emaPrice) * 100;
+            if (prices24hAgo && prices24hAgo[normalizedId]) {
+              const price24hAgo = prices24hAgo[normalizedId];
+              if (price24hAgo > 0) {
+                change24h = ((price - price24hAgo) / price24hAgo) * 100;
               }
             }
             
@@ -3781,18 +3742,17 @@
     nfts: 0          // Total NFT floor value
   };
   
-  // === TRUE LOCAL MIDNIGHT PRICE TRACKING ===
-  // All 24h changes are calculated from YOUR local midnight (00:00:00), not exchange 24h periods
+  // === TRUE 24-HOUR PRICE TRACKING ===
+  // All 24h changes are calculated from exactly 24 hours ago (rolling 24h period)
   // 
   // How it works:
-  // 1. At midnight (or first page load after midnight), fetch historical prices from:
-  //    - Hyperliquid API (1-minute candles at midnight timestamp) - PRIMARY
-  //    - CoinGecko API (historical daily data) - FALLBACK
-  // 2. Store these midnight prices in localStorage
-  // 3. Throughout the day, calculate 24h changes as: (currentPrice - midnightPrice) / midnightPrice * 100
+  // 1. Calculate timestamp for exactly 24 hours ago from current time
+  // 2. Fetch historical prices from Pyth Network at that timestamp
+  // 3. Calculate 24h changes as: (currentPrice - price24hAgo) / price24hAgo * 100
   // 4. This applies to:
   //    - Individual position 24h changes
   //    - Asset highlights in hero section
+  //    - Watchlist items
   //    - Portfolio total daily change
   //    - Real-time price updates
   // 
@@ -3820,6 +3780,15 @@
     }
   }
   
+  function get24HoursAgoTimestamp() {
+    const now = Date.now();
+    // Subtract exactly 24 hours (24 * 60 * 60 * 1000 milliseconds)
+    const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
+    // Return Unix timestamp in SECONDS (Pyth API requirement)
+    return Math.floor(twentyFourHoursAgo / 1000);
+  }
+  
+  // Keep getMidnightTimestamp for backward compatibility with cache keys
   function getMidnightTimestamp() {
     const now = new Date();
     const midnight = new Date(now);
@@ -3831,6 +3800,14 @@
   function isNewDay(timestamp) {
     const midnightToday = getMidnightTimestamp();
     return timestamp < midnightToday;
+  }
+  
+  function isCacheStale(timestamp, maxAgeHours = 1) {
+    // Check if cached data is older than maxAgeHours
+    const now = Math.floor(Date.now() / 1000); // Current time in seconds
+    const age = now - timestamp;
+    const maxAge = maxAgeHours * 60 * 60; // Convert hours to seconds
+    return age > maxAge;
   }
   
   function getCurrentPricesMap(positionsData) {
@@ -3921,10 +3898,11 @@
     return null;
   }
 
-  // Get midnight prices for all current assets
+  // Get historical prices from 24 hours ago for all current assets
   async function fetchMidnightPrices() {
-    const midnightTs = getMidnightTimestamp();
-    const midnightDate = new Date(midnightTs);
+    // Updated to fetch prices from 24 hours ago for true rolling 24h change
+    const timestamp24hAgo = get24HoursAgoTimestamp();
+    const date24hAgo = new Date(timestamp24hAgo * 1000);
     const now = new Date();
     
     
@@ -3975,27 +3953,27 @@
           
           if (usePyth) {
             // Priority: Pyth → Hyperliquid (for HL/HYPE assets) → CoinGecko fallback
-            price = await fetchPythPrice(pos.asset, midnightTs);
+            price = await fetchPythPrice(pos.asset, timestamp24hAgo);
             
             // Use Hyperliquid historical API for:
             // 1. Assets on Hyperliquid exchange
             // 2. HYPE token (native to Hyperliquid, even on other chains)
             if (price === null && (pos.exchange === 'Hyperliquid' || pos.asset === 'HYPE')) {
-              price = await fetchHyperliquidHistoricalPrice(pos.asset, midnightTs);
+              price = await fetchHyperliquidHistoricalPrice(pos.asset, timestamp24hAgo);
             }
             
             // Final fallback to CoinGecko
             if (price === null && pos.coingeckoId) {
-              price = await fetchCoinGeckoHistoricalPrice(pos.coingeckoId, midnightTs);
+              price = await fetchCoinGeckoHistoricalPrice(pos.coingeckoId, timestamp24hAgo);
             }
           } else {
             // Without Pyth: Hyperliquid (for HL/HYPE) → CoinGecko fallback
             if (pos.exchange === 'Hyperliquid' || pos.asset === 'HYPE') {
-              price = await fetchHyperliquidHistoricalPrice(pos.asset, midnightTs);
+              price = await fetchHyperliquidHistoricalPrice(pos.asset, timestamp24hAgo);
             }
             
             if (price === null && pos.coingeckoId) {
-              price = await fetchCoinGeckoHistoricalPrice(pos.coingeckoId, midnightTs);
+              price = await fetchCoinGeckoHistoricalPrice(pos.coingeckoId, timestamp24hAgo);
             }
           }
           
@@ -5570,27 +5548,20 @@
       // Pyth now returns { symbol: { price, change24h } }
       const pythData = await fetchPythPrices(uniqueSymbols, [], true);
       
-      console.log(`💎 Enriching ${multiChainTokens.length} tokens with Pyth data...`);
-      
       // Enrich ALL tokens with Pyth data (prices + 24h changes)
-      let pricesEnriched = 0;
-      let changesEnriched = 0;
       for (const token of multiChainTokens) {
         if (pythData[token.tokenSymbol]) {
           // Update price only if token doesn't have one yet
           if (token.tokenPrice === 0 && pythData[token.tokenSymbol].price) {
             token.tokenPrice = pythData[token.tokenSymbol].price;
             token.balanceUsd = token.balance * token.tokenPrice;
-            pricesEnriched++;
           }
           // Always update 24h change from Pyth (most accurate)
           if (pythData[token.tokenSymbol].change24h !== null) {
             token.change24h = pythData[token.tokenSymbol].change24h;
-            changesEnriched++;
           }
         }
       }
-      console.log(`✅ Enriched: ${pricesEnriched} prices, ${changesEnriched} 24h changes`);
       
       // Step 2: Use Hyperliquid price for HYPE (most accurate for HyperEVM chain)
       if (hlMarketData && hlMarketData['HYPE'] && hlMarketData['HYPE'].markPx) {
@@ -5898,10 +5869,7 @@
       const pythPrices = await fetchPythPrices(assets, manualPythFeedIds, true);
       Object.assign(pythPricesMap, pythPrices);
       
-      console.log(`🔄 Enriching ${allPositionsData.length} positions with Pyth data...`);
-      
       // Only use Pyth as fallback when exchange price is missing or zero
-      let posChangesEnriched = 0;
       for (const pos of allPositionsData) {
         if (pos.exchange !== 'OpenSea' && pythPricesMap[pos.asset]) {
           const pythData = pythPricesMap[pos.asset];
@@ -5912,11 +5880,8 @@
           }
           
           // Use Pyth's 24h change if we don't have one yet (or it's 0 from Lighter)
-          const before = pos.change24h;
           if ((pos.change24h === null || pos.change24h === undefined || pos.change24h === 0) && pythData.change24h !== null) {
             pos.change24h = pythData.change24h;
-            posChangesEnriched++;
-            console.log(`  ✓ ${pos.asset} (${pos.exchange}): ${before} → ${pythData.change24h.toFixed(2)}%`);
           }
         }
         
@@ -5946,66 +5911,66 @@
           }
         }
       }
-      console.log(`✅ Position changes enriched: ${posChangesEnriched}`);
     }
     
-    // === Calculate TRUE 24h changes from local midnight prices ===
-    // Fetch midnight prices if needed (first load or new day)
+    // === Calculate TRUE 24h changes from prices 24 hours ago ===
+    // Fetch historical prices if needed (first load or cache is stale)
     
-    let midnightData = getDailyPrices();
+    let historicalData = getDailyPrices();
+    const currentTime = Math.floor(Date.now() / 1000);
     
-    // If no cached data or it's a new day, fetch fresh midnight prices
-    if (!midnightData || isNewDay(midnightData.timestamp)) {
+    // If no cached data or cache is stale (older than 1 hour), fetch fresh historical prices
+    if (!historicalData || isCacheStale(historicalData.timestamp, 1)) {
       try {
-        const midnightPrices = await fetchMidnightPrices();
-        saveDailyPrices(midnightPrices, getMidnightTimestamp());
-        midnightData = { prices: midnightPrices, timestamp: getMidnightTimestamp() };
+        const prices24hAgo = await fetchMidnightPrices(); // Function name kept for compatibility
+        saveDailyPrices(prices24hAgo, currentTime);
+        historicalData = { prices: prices24hAgo, timestamp: currentTime };
       } catch (err) {
-        console.error('✗ Failed to fetch midnight prices:', err);
-        midnightData = { prices: {}, timestamp: getMidnightTimestamp() };
+        console.error('✗ Failed to fetch 24h historical prices:', err);
+        historicalData = { prices: {}, timestamp: currentTime };
       }
     } else {
     }
     
-    // Calculate 24h change for each position based on midnight price
+    // Calculate 24h change for each position based on historical price (24h ago)
     let change24hCalculated = 0;
-    let missingMidnightPrices = [];
+    let missingHistoricalPrices = [];
     
     for (const pos of allPositionsData) {
       const currentPrice = pos.price || 0;
-      let midnightPrice = null;
+      let historicalPrice = null;
       let lookupKey = '';
       
       if (pos.exchange === 'OpenSea') {
-        // NFTs: Use stored midnight floor price by collection slug
+        // NFTs: Use stored historical floor price by collection slug
         if (pos.collectionSlug) {
           lookupKey = `${pos.collectionSlug}_NFT`;
-          midnightPrice = midnightData.prices[lookupKey]
-            ?? midnightData.prices[`${pos.asset}_NFT`];
+          historicalPrice = historicalData.prices[lookupKey]
+            ?? historicalData.prices[`${pos.asset}_NFT`];
         }
       } else {
-        // Crypto: Use stored midnight price for this asset on this exchange
+        // Crypto: Use stored historical price (24h ago) for this asset on this exchange
         lookupKey = `${pos.asset}_${pos.exchange}`;
-        midnightPrice = midnightData.prices[lookupKey];
+        historicalPrice = historicalData.prices[lookupKey];
       }
       
       // Calculate change if we have both prices (but don't overwrite Zerion data)
-      if (midnightPrice && midnightPrice > 0 && currentPrice > 0) {
+      if (historicalPrice && historicalPrice > 0 && currentPrice > 0) {
         // Only calculate if we don't already have 24h change data (from Zerion, etc.)
         if (pos.change24h === null || pos.change24h === undefined) {
-          const change24h = ((currentPrice - midnightPrice) / midnightPrice) * 100;
+          const change24h = ((currentPrice - historicalPrice) / historicalPrice) * 100;
           pos.change24h = change24h;
           change24hCalculated++;
         } else {
           change24hCalculated++; // Count Zerion-provided changes too
         }
       } else if (currentPrice > 0 && !pos.change24h) {
-        // Track positions missing midnight prices (and no Zerion data)
-        missingMidnightPrices.push(lookupKey);
+        // Track positions missing historical prices (and no Zerion data)
+        missingHistoricalPrices.push(lookupKey);
       }
     }
     
-    if (missingMidnightPrices.length > 0) {
+    if (missingHistoricalPrices.length > 0) {
     }
     
     // Debug: Log position breakdown by exchange
@@ -6172,8 +6137,8 @@
         }
       }
       
-      // Get midnight prices for 24h change calculations
-      const midnightData = getDailyPrices();
+      // Get historical prices (24h ago) for 24h change calculations
+      const historicalData = getDailyPrices();
       
       // Update positions with new prices and track which ones changed
       const updatedAssets = new Set();
@@ -6186,11 +6151,11 @@
             pos.price = newPrice;
             pos.value = Math.abs(pos.amount) * newPrice;
             
-            // Calculate 24h change from midnight price (true local midnight)
-            if (midnightData && midnightData.prices) {
-              const midnightPrice = midnightData.prices[`${pos.asset}_${pos.exchange}`];
-              if (midnightPrice && midnightPrice > 0) {
-                pos.change24h = ((newPrice - midnightPrice) / midnightPrice) * 100;
+            // Calculate 24h change from historical price (24 hours ago)
+            if (historicalData && historicalData.prices) {
+              const price24hAgo = historicalData.prices[`${pos.asset}_${pos.exchange}`];
+              if (price24hAgo && price24hAgo > 0) {
+                pos.change24h = ((newPrice - price24hAgo) / price24hAgo) * 100;
               }
             }
             
@@ -6206,11 +6171,11 @@
             pos.value = update.value;
             pos.pnl = update.pnl;
             
-            // Calculate 24h change from midnight price (true local midnight)
-            if (midnightData && midnightData.prices) {
-              const midnightPrice = midnightData.prices[`${pos.asset}_${pos.exchange}`];
-              if (midnightPrice && midnightPrice > 0) {
-                pos.change24h = ((update.price - midnightPrice) / midnightPrice) * 100;
+            // Calculate 24h change from historical price (24 hours ago)
+            if (historicalData && historicalData.prices) {
+              const price24hAgo = historicalData.prices[`${pos.asset}_${pos.exchange}`];
+              if (price24hAgo && price24hAgo > 0) {
+                pos.change24h = ((update.price - price24hAgo) / price24hAgo) * 100;
               }
             }
             
@@ -6811,26 +6776,27 @@
       }
     }
     
-    // === Daily Change Calculation from TRUE Midnight Local Time ===
-    // Fetch midnight prices if needed (first load or new day)
+    // === Daily Change Calculation from 24 Hours Ago ===
+    // Fetch historical prices if needed (first load or cache is stale)
     
-    let midnightData = getDailyPrices();
+    let historicalData = getDailyPrices();
+    const currentTime = Math.floor(Date.now() / 1000);
     
-    // If no cached data or it's a new day, fetch fresh midnight prices
-    if (!midnightData || isNewDay(midnightData.timestamp)) {
+    // If no cached data or cache is stale (older than 1 hour), fetch fresh historical prices
+    if (!historicalData || isCacheStale(historicalData.timestamp, 1)) {
       try {
-        const midnightPrices = await fetchMidnightPrices();
-        saveDailyPrices(midnightPrices, getMidnightTimestamp());
-        midnightData = { prices: midnightPrices, timestamp: getMidnightTimestamp() };
+        const prices24hAgo = await fetchMidnightPrices(); // Function name kept for compatibility
+        saveDailyPrices(prices24hAgo, currentTime);
+        historicalData = { prices: prices24hAgo, timestamp: currentTime };
       } catch (err) {
-        console.error('✗ Hero: Failed to fetch midnight prices:', err);
-        midnightData = { prices: {}, timestamp: getMidnightTimestamp() };
+        console.error('✗ Hero: Failed to fetch 24h historical prices:', err);
+        historicalData = { prices: {}, timestamp: currentTime };
       }
     } else {
     }
     
     // === Calculate Daily P&L from Price Movements ===
-    // For each VISIBLE position: amount × (current_price - midnight_price)
+    // For each VISIBLE position: amount × (current_price - price24hAgo)
     // Reflects price changes only, not trades/transfers
     
     // SPEED: Use existing position prices instead of fetching Pyth again
@@ -6838,7 +6804,7 @@
     const pythPricesForHero = {};
     
     let totalDailyChange = 0;
-    let portfolioValueAtMidnightPrices = 0;
+    let portfolioValue24hAgo = 0;
     
     for (const pos of visiblePositions) {
       // Use Pyth price for hero calculations if enabled, otherwise use exchange price
@@ -6850,40 +6816,40 @@
       const amount = Math.abs(pos.amount || 0); // Use absolute value for position size
       const originalAmount = pos.amount || 0; // Keep original for display
       const positionType = originalAmount >= 0 ? 'LONG' : 'SHORT';
-      let midnightPrice = null;
+      let price24hAgo = null;
       
       if (pos.exchange === 'OpenSea') {
-        // NFTs: Use stored midnight floor price by collection slug
+        // NFTs: Use stored historical floor price by collection slug
         if (pos.collectionSlug) {
-        midnightPrice = midnightData.prices[`${pos.collectionSlug}_NFT`]
-          ?? midnightData.prices[`${pos.asset}_NFT`];
+        price24hAgo = historicalData.prices[`${pos.collectionSlug}_NFT`]
+          ?? historicalData.prices[`${pos.asset}_NFT`];
         }
       } else {
-        // Crypto: Use stored midnight price for this asset/exchange
+        // Crypto: Use stored historical price (24h ago) for this asset/exchange
         const key = `${pos.asset}_${pos.exchange}`;
-        midnightPrice = midnightData.prices[key];
+        price24hAgo = historicalData.prices[key];
       }
       
-      if (midnightPrice && midnightPrice > 0 && currentPrice > 0) {
-        // Calculate P&L from price movement: amount * (current - midnight)
-        const positionPnL = amount * (currentPrice - midnightPrice);
+      if (price24hAgo && price24hAgo > 0 && currentPrice > 0) {
+        // Calculate P&L from price movement: amount * (current - price24hAgo)
+        const positionPnL = amount * (currentPrice - price24hAgo);
         totalDailyChange += positionPnL;
         
-        // Calculate what this position was worth at midnight
-        const midnightValue = amount * midnightPrice;
+        // Calculate what this position was worth 24h ago
+        const value24hAgo = amount * price24hAgo;
         const currentValue = amount * currentPrice;
-        portfolioValueAtMidnightPrices += midnightValue;
+        portfolioValue24hAgo += value24hAgo;
         
       } else {
-        // If no midnight price, use current value as midnight value
+        // If no historical price, use current value as baseline
         const currentValue = amount * currentPrice;
-        portfolioValueAtMidnightPrices += currentValue;
+        portfolioValue24hAgo += currentValue;
       }
     }
     
-    // Calculate percentage based on what portfolio was worth at midnight prices
-    const totalDailyChangePercent = portfolioValueAtMidnightPrices > 0 
-      ? (totalDailyChange / portfolioValueAtMidnightPrices) * 100 
+    // Calculate percentage based on what portfolio was worth 24 hours ago
+    const totalDailyChangePercent = portfolioValue24hAgo > 0 
+      ? (totalDailyChange / portfolioValue24hAgo) * 100 
       : 0;
     
     // === Calculate Total P&L from Entry Prices ===
