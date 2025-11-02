@@ -4,16 +4,34 @@ This guide will help you deploy the Light Dashboard for optimal performance and 
 
 ## 🚀 Quick Start
 
-### Option 1: Static Hosting (Recommended)
+### Option 1: Cloudflare Pages (Recommended for Comics Feature)
 
-Deploy to any static hosting service:
+The dashboard includes a Cloudflare Function for comics proxy that requires Cloudflare Pages:
 
-- **Vercel**: `vercel --prod`
-- **Netlify**: Drag & drop the directory
-- **GitHub Pages**: Push to `gh-pages` branch
-- **Cloudflare Pages**: Connect your repo
+1. **Deploy via CLI**:
+   ```bash
+   npx wrangler pages deploy . --project-name=lightdashboard
+   ```
 
-### Option 2: Self-Hosting
+2. **Deploy via Dashboard**:
+   - Go to Cloudflare Dashboard → Pages
+   - Connect your GitHub repository
+   - Build settings: None needed (static site)
+   - Deploy!
+
+The `/functions/api/proxy.js` will automatically be deployed as a Cloudflare Function.
+
+### Option 2: Other Static Hosting
+
+Deploy to other static hosting services:
+
+- **Vercel**: `vercel --prod` (comics may not work without proxy)
+- **Netlify**: Drag & drop (comics may not work without proxy)
+- **GitHub Pages**: Push to `gh-pages` branch (comics may not work without proxy)
+
+**Note**: Comics feature requires CORS proxy. On non-Cloudflare hosting, fallback proxies will be used.
+
+### Option 3: Self-Hosting
 
 1. **Apache**: Copy files to web root, use included `.htaccess`
 2. **Nginx**: Use the `nginx.conf` example below

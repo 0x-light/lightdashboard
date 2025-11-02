@@ -3121,20 +3121,46 @@
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
       
-      let comicUrl, proxyUrl;
+      let comicUrl;
       
       // The Far Side uses a different URL structure
       if (comicStrip === 'farside') {
         comicUrl = `https://www.thefarside.com/${year}/${month}/${day}`;
-        proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(comicUrl)}`;
       } else {
         // GoComics strips
         comicUrl = `${comic.baseUrl}/${year}/${month}/${day}`;
-        proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(comicUrl)}`;
       }
       
-      const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error('Failed to fetch comic');
+      // Try multiple CORS proxies with fallback
+      const proxies = [
+        // 1. Our own Cloudflare Function (most reliable, deployed with your site)
+        `/api/proxy?url=${encodeURIComponent(comicUrl)}`,
+        // 2. AllOrigins (backup)
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(comicUrl)}`,
+        // 3. CORSProxy.io (backup)
+        `https://corsproxy.io/?${encodeURIComponent(comicUrl)}`
+      ];
+      
+      let response = null;
+      let lastError = null;
+      
+      // Try each proxy until one works
+      for (const proxyUrl of proxies) {
+        try {
+          response = await fetch(proxyUrl, { 
+            signal: AbortSignal.timeout(10000) // 10 second timeout
+          });
+          if (response.ok) break; // Success! Stop trying proxies
+          lastError = `Proxy returned ${response.status}`;
+        } catch (err) {
+          lastError = err.message;
+          // Continue to next proxy
+        }
+      }
+      
+      if (!response || !response.ok) {
+        throw new Error(lastError || 'All proxies failed');
+      }
       
       const html = await response.text();
       const parser = new DOMParser();
