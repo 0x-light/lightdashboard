@@ -5,16 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>Bonfire | Portfolio Tracker</title>
     
-    <!-- Performance: Preconnect to critical external origins -->
+    <!-- Performance: CRITICAL - Preconnect to position/asset APIs only -->
     <link rel="preconnect" href="https://api.hyperliquid.xyz" crossorigin>
     <link rel="preconnect" href="https://hermes.pyth.network" crossorigin>
-    <link rel="preconnect" href="https://api.coingecko.com" crossorigin>
+    
+    <!-- Performance: NON-CRITICAL - DNS prefetch for secondary APIs -->
+    <link rel="dns-prefetch" href="https://api.coingecko.com">
     <link rel="dns-prefetch" href="https://blockchain.info">
     <link rel="dns-prefetch" href="https://api.zcha.in">
     <link rel="dns-prefetch" href="https://api.helius.xyz">
     <link rel="dns-prefetch" href="https://api.zerion.io">
     <link rel="dns-prefetch" href="https://api.opensea.io">
-    <link rel="dns-prefetch" href="https://hermes.pyth.network">
     
     <!-- Favicons with dark mode support -->
     <link rel="icon" href="/favicon-light.svg" type="image/svg+xml" media="(prefers-color-scheme: light)">
@@ -36,6 +37,9 @@
     <!-- Theme color -->
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    
+    <!-- Performance: Preload critical assets -->
+    <link rel="preload" href="script.js" as="script">
     
     <link rel="stylesheet" href="styles.css">
     

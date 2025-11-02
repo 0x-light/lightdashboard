@@ -4032,19 +4032,12 @@
     
     const settings = loadSettings() || getDefaultSettings();
     
-    // Show/hide comic section based on settings
-    if (els.comicSection) {
-      els.comicSection.style.display = settings.showComic ? 'block' : 'none';
-    }
+    // === ULTRA-AGGRESSIVE PROGRESSIVE LOADING ===
+    // PRIORITY 0: Critical Path Only - Positions/Assets Data
+    // Everything else deferred to idle time or viewport intersection
+    // Defer show/hide section logic to idle time (non-blocking)
     
-    // Show/hide watchlist section based on settings (default to visible)
-    const watchlistSection = document.getElementById('watchlistSection');
-    if (watchlistSection) {
-      watchlistSection.style.display = (settings.showWatchlist ?? true) ? 'block' : 'none';
-    }
-    
-    // === PROGRESSIVE LOADING APPROACH ===
-    // Stage 1: Critical data (positions and hero) - load immediately
+    // Stage 1: CRITICAL - Load positions and hero ONLY (fastest possible)
     await perfMonitor.measure('Stage1:CriticalData', async () => {
       await fetchAndRenderPositions();
       await updateHeroSection();
@@ -4065,37 +4058,77 @@
       }, 300);
     }
     
-    // Stage 2: Secondary data - load in background without blocking UI
+    // Stage 2: NON-CRITICAL - Everything else (defer as much as possible)
+    // Only load when user scrolls OR during idle time (never block critical path)
     if (!priorityOnly) {
-      // Use requestIdleCallback for truly non-blocking background tasks
-      const scheduleSecondaryLoad = (callback) => {
+      // Aggressive idle scheduling - prioritize browser responsiveness
+      const scheduleIdleLoad = (callback, priority = 'low') => {
         if ('requestIdleCallback' in window) {
-          requestIdleCallback(callback, { timeout: 2000 });
+          const timeout = priority === 'high' ? 1000 : 5000; // High = 1s, low = 5s
+          requestIdleCallback(callback, { timeout });
         } else {
-          setTimeout(callback, 50);
+          const delay = priority === 'high' ? 100 : 500;
+          setTimeout(callback, delay);
         }
       };
       
-      // Weather (fast, non-critical)
-      scheduleSecondaryLoad(() => {
+      // Defer section visibility toggling to idle time (non-blocking)
+      scheduleIdleLoad(() => {
+        if (els.comicSection) {
+          els.comicSection.style.display = settings.showComic ? 'block' : 'none';
+        }
+        const watchlistSection = document.getElementById('watchlistSection');
+        if (watchlistSection) {
+          watchlistSection.style.display = (settings.showWatchlist ?? true) ? 'block' : 'none';
+        }
+      }, 'high');
+      
+      // Watchlist - load on viewport intersection OR after delay
+      if (settings.showWatchlist ?? true) {
+        const watchlistSection = document.getElementById('watchlistSection');
+        if (watchlistSection) {
+          let watchlistLoaded = false;
+          
+          const watchlistLoader = () => {
+            if (watchlistLoaded) return;
+            watchlistLoaded = true;
+            perfMonitor.measure('Stage2:Watchlist', () => renderWatchlist())
+              .catch(err => {});
+          };
+          
+          // Load on scroll-to-view
+          const watchlistObserver = new IntersectionObserver(
+            (entries) => {
+              entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                  watchlistLoader();
+                  watchlistObserver.disconnect();
+                }
+              });
+            },
+            { rootMargin: '300px' } // Start 300px before viewport
+          );
+          
+          watchlistObserver.observe(watchlistSection);
+          
+          // Fallback: load after 3 seconds if not scrolled to
+          scheduleIdleLoad(watchlistLoader, 'high');
+        }
+      }
+      
+      // Weather - lowest priority, pure idle time
+      scheduleIdleLoad(() => {
         perfMonitor.measure('Stage2:Weather', () => fetchAndRenderWeather())
           .catch(err => {});
-      });
+      }, 'low');
       
-      // Watchlist (fast, important for users with watchlist)
-      scheduleSecondaryLoad(() => {
-        perfMonitor.measure('Stage2:Watchlist', () => renderWatchlist())
-          .catch(err => {});
-      });
-      
-      // Comics (slow, lazy-load on scroll)
+      // Comics - ONLY load when user scrolls to it (never pre-load)
       if (settings.showComic && els.comicSection) {
         const comicLoader = () => {
           perfMonitor.measure('Stage2:Comic', () => renderCalvin())
             .catch(err => {});
         };
         
-        // Check if comic section is in viewport
         const comicObserver = new IntersectionObserver(
           (entries) => {
             entries.forEach(entry => {
@@ -4105,7 +4138,7 @@
               }
             });
           },
-          { rootMargin: '200px' } // Start loading when 200px away
+          { rootMargin: '400px' } // Start 400px before entering viewport
         );
         
         comicObserver.observe(els.comicSection);
@@ -7166,37 +7199,42 @@
   }
 
   function init() {
-    // Initialize loading animations
-    initDotGrid();
-    initMiniLoader();
-    
+    // CRITICAL PATH: Only absolute essentials for first render
     const settings = loadSettings() || getDefaultSettings();
     if (!loadSettings()) saveSettings(settings);
+    
+    // Critical: Theme and layout (affects LCP)
     initTheme(settings);
     applyAlignment(settings.leftAligned ?? false);
     applyCompactList(settings.compactList ?? false);
     applyButtonBackgrounds(settings.buttonBackgrounds ?? false);
     
-    // Restore rain/snow preferences
-    if (settings.rainEnabled && !rainActive) {
-      toggleRain(true); // Use true to mark as auto-toggle (don't save again)
-      // Update button text
-      const rainBtn = document.getElementById('toggleRainBtn');
-      const rainMobileBtn = document.getElementById('toggleRainBtnMobile');
-      if (rainBtn) rainBtn.textContent = '[RAIN OFF]';
-      if (rainMobileBtn) rainMobileBtn.textContent = '[RAIN OFF]';
-    }
-    if (settings.snowEnabled && !snowActive) {
-      toggleSnow(true); // Use true to mark as auto-toggle (don't save again)
-      // Update button text
-      const snowBtn = document.getElementById('toggleSnowBtn');
-      const snowMobileBtn = document.getElementById('toggleSnowBtnMobile');
-      if (snowBtn) snowBtn.textContent = '[SNOW OFF]';
-      if (snowMobileBtn) snowMobileBtn.textContent = '[SNOW OFF]';
-    }
+    // Critical: Loading animations (user feedback)
+    initDotGrid();
+    initMiniLoader();
     
+    // Critical: Event handlers and data fetch
     addHandlers();
     refreshAll();
+    
+    // NON-CRITICAL: Defer visual effects to after critical data loads
+    setTimeout(() => {
+      // Restore rain/snow preferences (visual only, non-blocking)
+      if (settings.rainEnabled && !rainActive) {
+        toggleRain(true);
+        const rainBtn = document.getElementById('toggleRainBtn');
+        const rainMobileBtn = document.getElementById('toggleRainBtnMobile');
+        if (rainBtn) rainBtn.textContent = '[RAIN OFF]';
+        if (rainMobileBtn) rainMobileBtn.textContent = '[RAIN OFF]';
+      }
+      if (settings.snowEnabled && !snowActive) {
+        toggleSnow(true);
+        const snowBtn = document.getElementById('toggleSnowBtn');
+        const snowMobileBtn = document.getElementById('toggleSnowBtnMobile');
+        if (snowBtn) snowBtn.textContent = '[SNOW OFF]';
+        if (snowMobileBtn) snowMobileBtn.textContent = '[SNOW OFF]';
+      }
+    }, 1000); // Defer by 1 second to let critical data load first
     
     // Setup Page Visibility API to pause requests when tab is inactive
     document.addEventListener('visibilitychange', () => {
@@ -8556,15 +8594,11 @@
     }
     
     // === WATCHLIST SETUP ===
-    
-    // Preload all Pyth feeds for watchlist (blocking - wait for it)
-    try {
-      await fetchAllPythFeeds();
-      // Initial render after feeds are loaded
-      await renderWatchlist();
-    } catch (err) {
+    // Watchlist now loads via refreshAll() progressive loading (non-blocking)
+    // Preload Pyth feeds in background for watchlist search feature
+    fetchAllPythFeeds().catch(err => {
       console.warn('⚠ Failed to preload Pyth feeds for watchlist:', err);
-    }
+    });
     
     // Apply watchlist collapsed state
     const watchlistSection = document.getElementById('watchlistSection');
