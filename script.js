@@ -125,6 +125,18 @@
     ZKLIGHTER_TEST: 'https://testnet.zklighter.elliot.ai/api/v1'
   };
   
+  // === CORS PROXY HELPERS ===
+  
+  // Helper to proxy CoinGecko requests (avoids CORS)
+  function proxyCoinGecko(url) {
+    if (isProduction) {
+      // Use Cloudflare Function in production
+      return `/api/coingecko?url=${encodeURIComponent(url)}`;
+    }
+    // In development, try direct (will fail but allows testing other features)
+    return url;
+  }
+  
   // === UTILITY FUNCTIONS ===
   
   // Generic memoization utility
@@ -3344,7 +3356,7 @@
     
     if (!ids) return null;
 
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`;
+    const url = proxyCoinGecko(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
     return await rateLimitedFetch(url, `crypto-positions-${ids}`);
   }
 
@@ -3938,7 +3950,7 @@
       const dateStr = `${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()}`;
       
       const response = await rateLimitedFetch(
-        `https://api.coingecko.com/api/v3/coins/${coinId}/history?date=${dateStr}&localization=false`
+        proxyCoinGecko(`https://api.coingecko.com/api/v3/coins/${coinId}/history?date=${dateStr}&localization=false`)
       );
       
       if (response.ok) {
@@ -4432,7 +4444,7 @@
             if (missingChains.length > 0) {
               const uniqueCoinGeckoIds = [...new Set(missingChains.map(([, info]) => info.coingeckoId))];
               const pricesData = await rateLimitedFetch(
-                `https://api.coingecko.com/api/v3/simple/price?ids=${uniqueCoinGeckoIds.join(',')}&vs_currencies=usd`,
+                proxyCoinGecko(`https://api.coingecko.com/api/v3/simple/price?ids=${uniqueCoinGeckoIds.join(',')}&vs_currencies=usd`),
                 `nft-token-prices-${uniqueCoinGeckoIds.join(',')}`
               );
               
@@ -4677,7 +4689,7 @@
     if (!ids) return {};
     
     const data = await rateLimitedFetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
+      proxyCoinGecko(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`),
       `perp-prices-${ids}`
     );
     
@@ -4707,7 +4719,7 @@
     if (!ids) return {};
     
     const data = await rateLimitedFetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
+      proxyCoinGecko(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`),
       `24h-changes-${ids}`
     );
     
@@ -4956,7 +4968,7 @@
     // Fallback to CoinGecko if Pyth fails
     if (!btcPrice || btcPrice === 0) {
       try {
-        const priceResp = await fetchWithRetry('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true', {}, 2, 2000);
+        const priceResp = await fetchWithRetry(proxyCoinGecko('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true'), {}, 2, 2000);
         if (priceResp.ok) {
           const priceData = await priceResp.json();
           btcPrice = priceData.bitcoin?.usd || 0;
@@ -5048,7 +5060,7 @@
     // Fallback to CoinGecko if Pyth fails
     if (!zecPrice || zecPrice === 0) {
       try {
-        const priceResp = await fetchWithRetry('https://api.coingecko.com/api/v3/simple/price?ids=zcash&vs_currencies=usd&include_24hr_change=true', {}, 2, 2000);
+        const priceResp = await fetchWithRetry(proxyCoinGecko('https://api.coingecko.com/api/v3/simple/price?ids=zcash&vs_currencies=usd&include_24hr_change=true'), {}, 2, 2000);
         if (priceResp.ok) {
           const priceData = await priceResp.json();
           zecPrice = priceData.zcash?.usd || 0;
@@ -5743,7 +5755,7 @@
         try {
           const contracts = tokens.map(t => t.contractAddress).join(',');
           const priceResp = await rateLimitedFetch(
-            `https://api.coingecko.com/api/v3/simple/token_price/${chainId}?contract_addresses=${contracts}&vs_currencies=usd&include_24hr_change=true`,
+            proxyCoinGecko(`https://api.coingecko.com/api/v3/simple/token_price/${chainId}?contract_addresses=${contracts}&vs_currencies=usd&include_24hr_change=true`),
             { cache: `price-${blockchain}-tokens`, cacheTTL: 60000 }
           );
           
@@ -6134,7 +6146,7 @@
           
           const ids = assetSymbols.map(s => symbolMap[s] || s.toLowerCase()).join(',');
           const cgResp = await rateLimitedFetch(
-            `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
+            proxyCoinGecko(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`),
             { cache: 'coingecko-24h-fallback', cacheTTL: 60000 }
           );
           

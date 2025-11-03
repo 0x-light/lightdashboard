@@ -43,21 +43,15 @@
     
     <link rel="stylesheet" href="styles.css?v=2.0.0">
     
-    <!-- Service Worker Registration -->
+    <!-- Service Worker - DISABLED (was breaking all API requests) -->
     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(registration => {
-              console.log('SW registered:', registration.scope);
-              // Check for updates every 5 minutes
-              setInterval(() => {
-                registration.update();
-              }, 5 * 60 * 1000);
-            })
-            .catch(err => {
-              console.warn('SW registration failed:', err);
-            });
+        // Unregister all service workers immediately
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+          registrations.forEach(registration => {
+            registration.unregister();
+            console.log('🗑️ Unregistered broken service worker');
+          });
         });
       }
     </script>

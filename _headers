@@ -6,8 +6,8 @@
   Referrer-Policy: no-referrer
   Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=()
   
-  # Content Security Policy - Allow only necessary external APIs
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.hyperliquid.xyz https://mainnet.zklighter.elliot.ai https://api.opensea.io https://api.coingecko.com https://api.open-meteo.com https://api.bigdatacloud.net https://www.gocomics.com https://assets.coingecko.com https://api.allorigins.win https://hermes.pyth.network https://*.g.alchemy.com https://mainnet.helius-rpc.com; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;
+  # Content Security Policy - Allow all necessary APIs
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.hyperliquid.xyz https://mainnet.zklighter.elliot.ai https://testnet.zklighter.elliot.ai https://api.opensea.io https://api.coingecko.com https://api.open-meteo.com https://api.bigdatacloud.net https://www.gocomics.com https://featureassets.gocomics.com https://assets.gocomics.com https://assets.amuniversal.com https://assets.coingecko.com https://api.allorigins.win https://corsproxy.io https://hermes.pyth.network https://*.g.alchemy.com https://mainnet.helius-rpc.com https://api.zerion.io https://api.zcha.in https://blockchain.info; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;
   
   # Cache control for static assets
   Cache-Control: public, max-age=3600, must-revalidate
