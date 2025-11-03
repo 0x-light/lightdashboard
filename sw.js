@@ -1,7 +1,7 @@
 // Service Worker for Light Dashboard
 // Provides offline support, aggressive caching, and performance optimization
 
-const CACHE_VERSION = 'v1.0.0';
+const CACHE_VERSION = 'v2.0.0-production-fixes';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
 // Assets to cache immediately on install
