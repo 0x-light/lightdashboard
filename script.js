@@ -52,6 +52,22 @@
   const wallpapers = [];
   
   // === PERFORMANCE CONFIGURATION ===
+  // Detect production environment (different network conditions)
+  const isProduction = window.location.hostname !== 'localhost' && 
+                       window.location.hostname !== '127.0.0.1' &&
+                       !window.location.hostname.includes('local');
+  
+  // Production needs longer timeouts due to network latency
+  const timeoutMultiplier = isProduction ? 2 : 1;
+  
+  // Log environment info for debugging
+  if (isProduction) {
+    console.log('🌐 Production mode detected:', window.location.hostname);
+    console.log('⏱️ Using extended timeouts for reliability');
+  } else {
+    console.log('💻 Development mode:', window.location.hostname);
+  }
+  
   const PERF_CONFIG = {
     // Cache durations (milliseconds)
     CACHE: {
@@ -62,14 +78,14 @@
       SETTINGS: 10000     // 10 seconds - settings accessed frequently
     },
     
-    // API timeouts (milliseconds) - aggressive for speed
+    // API timeouts (milliseconds) - longer in production for reliability
     TIMEOUTS: {
-      PYTH: 8000,
-      COINGECKO: 12000,
-      OPENSEA: 20000,
-      ZERION: 12000,
-      ALCHEMY: 12000,
-      HYPERLIQUID: 8000
+      PYTH: 8000 * timeoutMultiplier,           // 8s local, 16s prod
+      COINGECKO: 12000 * timeoutMultiplier,     // 12s local, 24s prod
+      OPENSEA: 20000 * timeoutMultiplier,       // 20s local, 40s prod
+      ZERION: 12000 * timeoutMultiplier,        // 12s local, 24s prod
+      ALCHEMY: 12000 * timeoutMultiplier,       // 12s local, 24s prod
+      HYPERLIQUID: 8000 * timeoutMultiplier     // 8s local, 16s prod
     },
     
     // Rate limiting
@@ -3145,20 +3161,33 @@
       let lastError = null;
       
       // Try each proxy until one works
-      for (const proxyUrl of proxies) {
+      for (let i = 0; i < proxies.length; i++) {
+        const proxyUrl = proxies[i];
+        const proxyName = i === 0 ? 'Cloudflare Function' : i === 1 ? 'AllOrigins' : 'CORSProxy';
+        
         try {
+          if (isProduction) console.log(`📡 Trying ${proxyName}...`);
+          
           response = await fetch(proxyUrl, { 
-            signal: AbortSignal.timeout(10000) // 10 second timeout
+            signal: AbortSignal.timeout(15000) // 15 second timeout
           });
-          if (response.ok) break; // Success! Stop trying proxies
-          lastError = `Proxy returned ${response.status}`;
+          
+          if (response.ok) {
+            if (isProduction) console.log(`✅ ${proxyName} succeeded`);
+            break; // Success! Stop trying proxies
+          }
+          
+          lastError = `${proxyName} returned ${response.status}`;
+          if (isProduction) console.warn(`⚠ ${lastError}`);
         } catch (err) {
-          lastError = err.message;
+          lastError = `${proxyName}: ${err.message}`;
+          if (isProduction) console.warn(`⚠ ${lastError}`);
           // Continue to next proxy
         }
       }
       
       if (!response || !response.ok) {
+        console.error('❌ All comic proxies failed:', lastError);
         throw new Error(lastError || 'All proxies failed');
       }
       
@@ -5331,12 +5360,14 @@
       (async () => {
         if (!(settings.usePythPrices ?? true)) return {};
         try {
+          if (isProduction) console.log('📡 Fetching Pyth prices...');
           // Fetch prices for common assets (will be enriched with actual assets later)
           const commonAssets = ['BTC', 'ETH', 'SOL', 'HYPE', 'USDC', 'USDT'];
           const result = await fetchPythPrices(commonAssets, [], true);
+          if (isProduction) console.log('✅ Pyth preload succeeded:', Object.keys(result).length, 'assets');
           return result;
         } catch (err) {
-          console.warn('⚠ Pyth preload failed:', err.message);
+          console.error('❌ Pyth preload failed:', err.message);
           return {};
         }
       })(),
@@ -5348,14 +5379,17 @@
           const cached = getDailyPrices();
           const currentTime = Math.floor(Date.now() / 1000);
           if (cached && !isCacheStale(cached.timestamp, 1)) {
+            if (isProduction) console.log('✅ Using cached historical prices');
             return cached.prices;
           }
           // Fetch fresh historical prices
+          if (isProduction) console.log('📡 Fetching historical prices (24h ago)...');
           const prices = await fetchMidnightPrices();
           saveDailyPrices(prices, currentTime);
+          if (isProduction) console.log('✅ Historical prices fetched:', Object.keys(prices).length, 'assets');
           return prices;
         } catch (err) {
-          console.warn('⚠ Historical prices preload failed:', err.message);
+          console.error('❌ Historical prices preload failed:', err.message);
           return {};
         }
       })()
