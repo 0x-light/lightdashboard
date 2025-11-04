@@ -888,8 +888,21 @@ function setupControls() {
     }
   };
   
+  // Import/Export state
+  let importMode = false;
+  const exportBtn = document.getElementById('newExportSettingsBtn');
+  const exportArea = document.getElementById('newSettingsExportArea');
+  const importBtn = document.getElementById('newImportSettingsBtn');
+  
   const closeSettings = () => {
     if (settingsDialog && settingsBackdrop) {
+      // Reset import mode if active
+      if (importMode && exportArea && importBtn) {
+        exportArea.style.display = 'none';
+        exportArea.setAttribute('readonly', 'readonly');
+        importBtn.textContent = '[IMPORT]';
+        importMode = false;
+      }
       settingsDialog.style.display = 'none';
       settingsBackdrop.style.display = 'none';
     }
@@ -901,8 +914,6 @@ function setupControls() {
   if (settingsBackdrop) settingsBackdrop.addEventListener('click', closeSettings);
   
   // Export settings
-  const exportBtn = document.getElementById('newExportSettingsBtn');
-  const exportArea = document.getElementById('newSettingsExportArea');
   if (exportBtn && exportArea) {
     exportBtn.addEventListener('click', async () => {
       const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
@@ -926,9 +937,7 @@ function setupControls() {
   }
   
   // Import settings
-  const importBtn = document.getElementById('newImportSettingsBtn');
   if (importBtn && exportArea) {
-    let importMode = false;
     importBtn.addEventListener('click', () => {
       if (!importMode) {
         // First click: show textarea for pasting
@@ -968,18 +977,6 @@ function setupControls() {
         }
       }
     });
-    
-    // Reset import mode when settings closes
-    const originalCloseSettings = closeSettings;
-    closeSettings = () => {
-      if (importMode) {
-        exportArea.style.display = 'none';
-        exportArea.setAttribute('readonly', 'readonly');
-        importBtn.textContent = '[IMPORT]';
-        importMode = false;
-      }
-      originalCloseSettings();
-    };
   }
   
   // Use My Location button
@@ -1636,9 +1633,21 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupControls();
   
   // CRITICAL PATH: Positions + Hero only (everything else lazy)
-  await renderDemoSummary();
+  try {
+    console.log('[/new] Starting renderDemoSummary...');
+    await renderDemoSummary();
+    console.log('[/new] renderDemoSummary completed');
+  } catch (error) {
+    console.error('[/new] renderDemoSummary failed:', error);
+    // Show error in hero
+    const summaryEl = document.getElementById('newSummary');
+    if (summaryEl) {
+      summaryEl.innerHTML = `<span style="color: var(--red);">Error loading portfolio: ${error.message || error}</span>`;
+    }
+  }
   
-  // Hide loading screen after critical data loads
+  // Hide loading screen after critical data loads (even if there was an error)
+  console.log('[/new] Hiding loading screen...');
   hideLoadingScreen();
   
   // NON-CRITICAL: Health checks in background
