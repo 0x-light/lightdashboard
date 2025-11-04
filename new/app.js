@@ -137,8 +137,8 @@ async function renderDemoSummary() {
         if (wallets.length > 0) {
           const allRows = [];
           
-          // CRITICAL: Only HL + Zerion for speed (fastest 2 providers)
-          const [hlResults, zerionData] = await Promise.all([
+          // CRITICAL: Only HL + Multi-chain for speed (fastest 2 providers)
+          const [hlResults, multichainData] = await Promise.all([
             // Hyperliquid
             Promise.all(wallets.map(async (wallet) => {
               try {
@@ -184,102 +184,170 @@ async function renderDemoSummary() {
               } catch (_) { return []; }
             })),
             
-            // Zerion (fungible + NFTs)
+            // Multi-chain balances (Zerion PRIMARY, Alchemy/Helius as fallback)
             (async () => {
-              if (!zerionKey) {
-                console.warn('[/new] Zerion: No API key configured');
+              const alchemyKey = settings.alchemyApiKey;
+              const heliusKey = settings.heliusApiKey;
+              const solanaAddrs = (settings.solanaAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+              const allWallets = [...wallets, ...solanaAddrs];
+              
+              if (allWallets.length === 0) {
+                console.warn('[/new] Multi-chain: No wallet addresses configured');
                 return [];
               }
-              if (wallets.length === 0) {
-                console.warn('[/new] Zerion: No wallet addresses configured');
-                return [];
-              }
-              try {
-                const z = providers.zerion;
-                console.log('[/new] Zerion: Fetching positions and NFTs for', wallets[0]);
-                
-                // Fetch both fungible positions and NFTs in parallel
-                const [positionsData, nftsData] = await Promise.all([
-                  z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 10000 }),
-                  z.getWalletNfts(wallets[0], zerionKey, { timeoutMs: 10000 })
-                ]);
-                
-                const rows = [];
-                const chainMap = {
-                  'ethereum': 'Ethereum', 'arbitrum': 'Arbitrum', 'optimism': 'Optimism',
-                  'polygon': 'Polygon', 'base': 'Base', 'avalanche': 'Avalanche',
-                  'bsc': 'BSC', 'solana': 'Solana', 'zksync-era': 'zkSync', 'blast': 'Blast'
-                };
-                
-                // Process fungible positions
-                let fungibleCount = 0;
-                if (positionsData && Array.isArray(positionsData.data)) {
-                  console.log('[/new] Zerion positions:', positionsData.data.length, 'fungible tokens');
-                  for (const item of positionsData.data) {
-                    const attr = item?.attributes || {};
-                    const fungible = attr.fungible_info;
-                    const flags = attr.flags || {};
-                    
-                    if (fungible && !flags.is_trash) {
-                      fungibleCount++;
-                      const chainId = item?.relationships?.chain?.data?.id || 'unknown';
-                      const chain = chainMap[chainId] || chainId.charAt(0).toUpperCase() + chainId.slice(1);
+              
+              // Try Zerion first (if API key available)
+              let zerionRows = [];
+              let zerionSucceeded = false;
+              
+              if (zerionKey && wallets.length > 0) {
+                try {
+                  const z = providers.zerion;
+                  console.log('[/new] Zerion: Fetching positions and NFTs for', wallets[0]);
+                  
+                  // Fetch both fungible positions and NFTs in parallel
+                  const [positionsData, nftsData] = await Promise.all([
+                    z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 10000 }),
+                    z.getWalletNfts(wallets[0], zerionKey, { timeoutMs: 10000 })
+                  ]);
+                  
+                  const chainMap = {
+                    'ethereum': 'Ethereum', 'arbitrum': 'Arbitrum', 'optimism': 'Optimism',
+                    'polygon': 'Polygon', 'base': 'Base', 'avalanche': 'Avalanche',
+                    'bsc': 'BSC', 'solana': 'Solana', 'zksync-era': 'zkSync', 'blast': 'Blast'
+                  };
+                  
+                  // Process fungible positions
+                  let fungibleCount = 0;
+                  if (positionsData && Array.isArray(positionsData.data)) {
+                    console.log('[/new] Zerion positions:', positionsData.data.length, 'fungible tokens');
+                    for (const item of positionsData.data) {
+                      const attr = item?.attributes || {};
+                      const fungible = attr.fungible_info;
+                      const flags = attr.flags || {};
                       
-                      rows.push({
-                        asset: fungible.symbol || 'Unknown',
-                        exchange: chain,
-                        amount: attr.quantity?.float || 0,
-                        price: attr.price || 0,
-                        value: attr.value || 0,
-                        change24h: attr.changes?.percent_24h ?? null,
-                        pnl: null
-                      });
-                    }
-                  }
-                }
-                
-                // Process NFTs
-                let nftCount = 0;
-                if (nftsData && Array.isArray(nftsData.data)) {
-                  console.log('[/new] Zerion NFTs:', nftsData.data.length, 'items');
-                  for (const item of nftsData.data) {
-                    const attr = item?.attributes || {};
-                    const nft = attr.nft_info;
-                    const flags = attr.flags || {};
-                    
-                    if (nft) {
-                      nftCount++;
-                      const chainId = item?.relationships?.chain?.data?.id || 'unknown';
-                      const chain = chainMap[chainId] || chainId.charAt(0).toUpperCase() + chainId.slice(1);
-                      
-                      console.log('[/new] Found NFT:', nft.name || nft.contract?.name, 'value:', attr.value, 'chain:', chain);
-                      
-                      // Add NFT (filter trash unless it has value)
-                      if (!flags.is_trash || (attr.value && attr.value > 0)) {
-                        rows.push({
-                          asset: nft.name || nft.contract?.name || 'NFT',
+                      if (fungible && !flags.is_trash) {
+                        fungibleCount++;
+                        const chainId = item?.relationships?.chain?.data?.id || 'unknown';
+                        const chain = chainMap[chainId] || chainId.charAt(0).toUpperCase() + chainId.slice(1);
+                        
+                        zerionRows.push({
+                          asset: fungible.symbol || 'Unknown',
                           exchange: chain,
-                          amount: attr.quantity?.float || 1,
+                          amount: attr.quantity?.float || 0,
                           price: attr.price || 0,
                           value: attr.value || 0,
-                          change24h: null,
+                          change24h: attr.changes?.percent_24h ?? null,
                           pnl: null
                         });
                       }
                     }
                   }
+                  
+                  // Process NFTs
+                  let nftCount = 0;
+                  if (nftsData && Array.isArray(nftsData.data)) {
+                    console.log('[/new] Zerion NFTs:', nftsData.data.length, 'items');
+                    for (const item of nftsData.data) {
+                      const attr = item?.attributes || {};
+                      const nft = attr.nft_info;
+                      const flags = attr.flags || {};
+                      
+                      if (nft) {
+                        nftCount++;
+                        const chainId = item?.relationships?.chain?.data?.id || 'unknown';
+                        const chain = chainMap[chainId] || chainId.charAt(0).toUpperCase() + chainId.slice(1);
+                        
+                        console.log('[/new] Found NFT:', nft.name || nft.contract?.name, 'value:', attr.value, 'chain:', chain);
+                        
+                        // Add NFT (filter trash unless it has value)
+                        if (!flags.is_trash || (attr.value && attr.value > 0)) {
+                          zerionRows.push({
+                            asset: nft.name || nft.contract?.name || 'NFT',
+                            exchange: chain,
+                            amount: attr.quantity?.float || 1,
+                            price: attr.price || 0,
+                            value: attr.value || 0,
+                            change24h: null,
+                            pnl: null
+                          });
+                        }
+                      }
+                    }
+                  }
+                  
+                  console.log('[/new] Zerion breakdown:', fungibleCount, 'fungible tokens,', nftCount, 'NFTs');
+                  
+                  // If we got data from Zerion, use it
+                  if (zerionRows.length > 0) {
+                    zerionSucceeded = true;
+                    console.log('[/new] ✅ Using Zerion as primary data source');
+                    return zerionRows;
+                  }
+                } catch (e) { 
+                  console.error('[/new] Zerion error:', e.message || e);
+                }
+              }
+              
+              // Fallback to Alchemy + Helius
+              if (!zerionSucceeded && (alchemyKey || heliusKey)) {
+                console.log('[/new] ⚠️ Zerion unavailable, falling back to Alchemy + Helius');
+                const rows = [];
+                
+                // Fetch Alchemy (EVM chains)
+                if (alchemyKey && wallets.length > 0) {
+                  try {
+                    const alchemyTokens = await providers.alchemy.getTokenBalances(wallets, alchemyKey, { timeoutMs: 20000 });
+                    console.log('[/new] Alchemy returned', alchemyTokens.length, 'tokens');
+                    
+                    for (const token of alchemyTokens) {
+                      rows.push({
+                        asset: token.tokenSymbol,
+                        exchange: token.blockchain,
+                        amount: token.balance,
+                        price: token.tokenPrice || 0,
+                        value: token.balanceUsd || 0,
+                        change24h: token.change24h ?? null,
+                        pnl: null
+                      });
+                    }
+                  } catch (e) {
+                    console.error('[/new] Alchemy error:', e.message || e);
+                  }
                 }
                 
-                console.log('[/new] Zerion breakdown:', fungibleCount, 'fungible tokens,', nftCount, 'NFTs');
+                // Fetch Helius (Solana)
+                if (heliusKey && solanaAddrs.length > 0) {
+                  try {
+                    const heliusTokens = await providers.helius.getTokenBalances(solanaAddrs, heliusKey, { timeoutMs: 15000 });
+                    console.log('[/new] Helius returned', heliusTokens.length, 'tokens');
+                    
+                    for (const token of heliusTokens) {
+                      rows.push({
+                        asset: token.tokenSymbol,
+                        exchange: token.blockchain,
+                        amount: token.balance,
+                        price: token.tokenPrice || 0,
+                        value: token.balanceUsd || 0,
+                        change24h: token.change24h ?? null,
+                        pnl: null
+                      });
+                    }
+                  } catch (e) {
+                    console.error('[/new] Helius error:', e.message || e);
+                  }
+                }
+                
+                console.log('[/new] ✅ Fallback providers returned', rows.length, 'total tokens');
                 return rows;
-              } catch (e) { 
-                console.error('[/new] Zerion error:', e.message || e);
-                return []; 
               }
+              
+              console.warn('[/new] ⚠️ No multi-chain data available (no API keys or all providers failed)');
+              return [];
             })()
           ]);
           
-          allRows.push(...hlResults.flat(), ...zerionData);
+          allRows.push(...hlResults.flat(), ...multichainData);
           
           if (allRows.length > 0) {
             // Enrich with prices for HL/Lighter (Zerion already has prices)
@@ -875,9 +943,12 @@ function setupControls() {
       const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
       const userNameInput = document.getElementById('newUserName');
       const walletInput = document.getElementById('newWalletAddresses');
+      const solanaInput = document.getElementById('newSolanaAddresses');
       const bitcoinInput = document.getElementById('newBitcoinAddresses');
       const zcashInput = document.getElementById('newZcashAddresses');
       const zerionInput = document.getElementById('newZerionApiKey');
+      const alchemyInput = document.getElementById('newAlchemyApiKey');
+      const heliusInput = document.getElementById('newHeliusApiKey');
       const openseaInput = document.getElementById('newOpenSeaApiKey');
       const cityInput = document.getElementById('newWeatherCity');
       const latInput = document.getElementById('newWeatherLat');
@@ -890,9 +961,12 @@ function setupControls() {
       
       if (userNameInput) userNameInput.value = s.userName || '';
       if (walletInput) walletInput.value = s.walletAddresses || '';
+      if (solanaInput) solanaInput.value = s.solanaAddresses || '';
       if (bitcoinInput) bitcoinInput.value = s.bitcoinAddresses || '';
       if (zcashInput) zcashInput.value = s.zcashAddresses || '';
       if (zerionInput) zerionInput.value = s.zerionApiKey || '';
+      if (alchemyInput) alchemyInput.value = s.alchemyApiKey || '';
+      if (heliusInput) heliusInput.value = s.heliusApiKey || '';
       if (openseaInput) openseaInput.value = s.openSeaApiKey || '';
       if (cityInput) cityInput.value = s.weather?.label || '';
       if (latInput) latInput.value = s.weather?.lat || '';
@@ -1178,9 +1252,12 @@ function setupControls() {
       const newSettings = settings || {};
       const userNameInput = document.getElementById('newUserName');
       const walletInput = document.getElementById('newWalletAddresses');
+      const solanaInput = document.getElementById('newSolanaAddresses');
       const bitcoinInput = document.getElementById('newBitcoinAddresses');
       const zcashInput = document.getElementById('newZcashAddresses');
       const zerionInput = document.getElementById('newZerionApiKey');
+      const alchemyInput = document.getElementById('newAlchemyApiKey');
+      const heliusInput = document.getElementById('newHeliusApiKey');
       const openseaInput = document.getElementById('newOpenSeaApiKey');
       const cityInput = document.getElementById('newWeatherCity');
       const latInput = document.getElementById('newWeatherLat');
@@ -1193,9 +1270,12 @@ function setupControls() {
       
       if (userNameInput) newSettings.userName = userNameInput.value;
       if (walletInput) newSettings.walletAddresses = walletInput.value;
+      if (solanaInput) newSettings.solanaAddresses = solanaInput.value;
       if (bitcoinInput) newSettings.bitcoinAddresses = bitcoinInput.value;
       if (zcashInput) newSettings.zcashAddresses = zcashInput.value;
       if (zerionInput) newSettings.zerionApiKey = zerionInput.value;
+      if (alchemyInput) newSettings.alchemyApiKey = alchemyInput.value;
+      if (heliusInput) newSettings.heliusApiKey = heliusInput.value;
       if (openseaInput) newSettings.openSeaApiKey = openseaInput.value;
       if (coloredPnLInput) newSettings.useColoredPnL = coloredPnLInput.checked;
       if (showWatchlistInput) newSettings.showWatchlist = showWatchlistInput.checked;
