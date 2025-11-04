@@ -188,6 +188,16 @@
               <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100" style="width: 100px;" class="settings-input">
             </label>
           </fieldset>
+          
+          <fieldset>
+            <legend>Backup & Restore</legend>
+            <div class="help" style="margin-bottom: 8px;">Export your settings as text to backup or transfer between devices</div>
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+              <button type="button" id="newExportSettingsBtn" class="btn-text">[EXPORT]</button>
+              <button type="button" id="newImportSettingsBtn" class="btn-text">[IMPORT]</button>
+            </div>
+            <textarea id="newSettingsExportArea" class="settings-input" style="display: none; font-family: monospace; font-size: 12px; min-height: 100px;" placeholder="Paste exported settings here and click [APPLY IMPORT]" readonly></textarea>
+          </fieldset>
         </section>
         <footer class="settings-actions">
           <button id="newCancelSettingsBtn" class="btn-text">[CANCEL]</button>
@@ -251,7 +261,7 @@
             </tbody>
           </table>
         </div>
-        <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+        <div style="margin-top: 16px; display: flex; gap: 8px;">
           <button id="newEditWatchlistBtn" class="btn-text">[EDIT]</button>
         </div>
       </section>

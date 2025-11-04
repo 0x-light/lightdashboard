@@ -1,7 +1,7 @@
 // Service Worker for Light Dashboard
 // Provides offline support, aggressive caching, and performance optimization
 
-const CACHE_VERSION = 'v2.0.0-production-fixes';
+const CACHE_VERSION = 'v2.1.0-nft-fix';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
 // Assets to cache immediately on install
@@ -59,16 +59,17 @@ function isFresh(response, maxAge) {
 }
 
 // Helper: Clone response with custom headers
-function cloneWithCacheTime(response) {
-  const headers = new Headers(response.headers);
+async function cloneWithCacheTime(response) {
+  // IMPORTANT: Clone the response BEFORE reading the body
+  const clone = response.clone();
+  const headers = new Headers(clone.headers);
   headers.set('sw-cached-time', Date.now().toString());
   
-  return response.blob().then((body) => {
-    return new Response(body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: headers
-    });
+  const body = await clone.blob();
+  return new Response(body, {
+    status: clone.status,
+    statusText: clone.statusText,
+    headers: headers
   });
 }
 
@@ -127,30 +128,28 @@ self.addEventListener('fetch', (event) => {
           // Check if cached response is still fresh
           if (cached && isFresh(cached, cacheDuration)) {
             // Return cached but update in background
-            fetch(request).then((response) => {
+            fetch(request).then(async (response) => {
               if (response.ok) {
-                cloneWithCacheTime(response).then((clonedResponse) => {
-                  cache.put(request, clonedResponse);
-                });
+                const clonedResponse = await cloneWithCacheTime(response);
+                cache.put(request, clonedResponse);
               }
             }).catch(() => {
               // Ignore background fetch errors
             });
-            return cached;
+            return cached.clone(); // Clone before returning
           }
           
           // Fetch from network
-          return fetch(request).then((response) => {
+          return fetch(request).then(async (response) => {
             if (response.ok) {
-              cloneWithCacheTime(response).then((clonedResponse) => {
-                cache.put(request, clonedResponse);
-              });
+              const clonedResponse = await cloneWithCacheTime(response);
+              cache.put(request, clonedResponse);
             }
             return response;
           }).catch((error) => {
             // Return stale cache if available
             if (cached) {
-              return cached;
+              return cached.clone(); // Clone before returning
             }
             throw error;
           });

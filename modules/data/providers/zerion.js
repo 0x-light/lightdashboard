@@ -11,8 +11,11 @@ function authHeaders(apiKey) {
   };
 }
 
-export async function getWalletPositions(wallet, apiKey, { timeoutMs = 15000 } = {}) {
-  const url = `${BASE}/wallets/${wallet}/positions/?filter[positions]=only_simple&currency=usd&filter[trash]=only_non_trash&sort=value`;
+export async function getWalletPositions(wallet, apiKey, { timeoutMs = 15000, includeTrash = false } = {}) {
+  // Removed filter[positions]=only_simple to include NFTs
+  // includeTrash option to see if NFTs are being filtered as "trash"
+  const trashFilter = includeTrash ? '' : '&filter[trash]=only_non_trash';
+  const url = `${BASE}/wallets/${wallet}/positions/?currency=usd${trashFilter}&sort=value`;
   return await HttpClient.getJson(url, { headers: authHeaders(apiKey), timeoutMs }).catch(() => null);
 }
 

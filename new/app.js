@@ -52,13 +52,19 @@ async function runHealthChecks() {
     try {
       const wallets = (settings.walletAddresses || '').split(',').map(w => w.trim()).filter(Boolean);
       if (wallets.length > 0) {
-        const data = await providers.zerion.getWalletPositions(wallets[0], settings.zerionApiKey, { timeoutMs: 8000 });
+        const data = await providers.zerion.getWalletPositions(wallets[0], settings.zerionApiKey, { timeoutMs: 8000, includeTrash: true });
         const ok = !!(data && data.data);
         parts.push(`<span style="color: ${ok ? 'var(--green)' : 'var(--red)'};">●</span> Zerion`);
+      } else {
+        console.warn('[Health] Zerion: No wallet addresses configured');
+        parts.push('<span style="color: var(--red);">●</span> Zerion (no wallets)');
       }
     } catch (e) {
+      console.error('[Health] Zerion error:', e);
       parts.push('<span style="color: var(--red);">●</span> Zerion');
     }
+  } else {
+    console.warn('[Health] Zerion: No API key configured');
   }
 
   setHealth(parts.join('<br>'));
@@ -180,12 +186,26 @@ async function renderDemoSummary() {
             
             // Zerion
             (async () => {
-              if (!zerionKey) return [];
+              if (!zerionKey) {
+                console.warn('[/new] Zerion: No API key configured');
+                return [];
+              }
+              if (wallets.length === 0) {
+                console.warn('[/new] Zerion: No wallet addresses configured');
+                return [];
+              }
               try {
                 const z = providers.zerion;
-                const data = await z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 10000 });
+                console.log('[/new] Zerion: Fetching positions for', wallets[0]);
+                // Try without trash filter to see if NFTs are there
+                const data = await z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 10000, includeTrash: true });
                 const rows = [];
                 if (data && Array.isArray(data.data)) {
+                  console.log('[/new] Zerion returned', data.data.length, 'items (including trash)');
+                  let nftCount = 0;
+                  let fungibleCount = 0;
+                  let trashCount = 0;
+                  
                   for (const item of data.data) {
                     const attr = item?.attributes || {};
                     const fungible = attr.fungible_info;
@@ -198,33 +218,57 @@ async function renderDemoSummary() {
                     };
                     const chain = chainMap[chainId] || chainId.charAt(0).toUpperCase() + chainId.slice(1);
                     
+                    // Check if marked as trash
+                    const flags = attr.flags || {};
+                    if (flags.is_trash) {
+                      trashCount++;
+                    }
+                    
                     if (fungible) {
                       // Fungible token
-                      rows.push({
-                        asset: fungible.symbol || 'Unknown',
-                        exchange: chain,
-                        amount: attr.quantity?.float || 0,
-                        price: attr.price || 0,
-                        value: attr.value || 0,
-                        change24h: attr.changes?.percent_24h ?? null,
-                        pnl: null
-                      });
+                      fungibleCount++;
+                      // Only add non-trash items
+                      if (!flags.is_trash) {
+                        rows.push({
+                          asset: fungible.symbol || 'Unknown',
+                          exchange: chain,
+                          amount: attr.quantity?.float || 0,
+                          price: attr.price || 0,
+                          value: attr.value || 0,
+                          change24h: attr.changes?.percent_24h ?? null,
+                          pnl: null
+                        });
+                      }
                     } else if (nft) {
                       // NFT
-                      rows.push({
-                        asset: nft.name || nft.contract?.name || 'NFT',
-                        exchange: 'OpenSea',
-                        amount: attr.quantity?.float || 1,
-                        price: attr.price || 0,
-                        value: attr.value || 0,
-                        change24h: attr.changes?.percent_24h ?? null,
-                        pnl: null
-                      });
+                      nftCount++;
+                      console.log('[/new] Found NFT:', nft.name || nft.contract?.name, 'value:', attr.value, 'trash:', flags.is_trash);
+                      // Only add non-trash NFTs (unless they have value)
+                      if (!flags.is_trash || (attr.value && attr.value > 0)) {
+                        rows.push({
+                          asset: nft.name || nft.contract?.name || 'NFT',
+                          exchange: 'OpenSea',
+                          amount: attr.quantity?.float || 1,
+                          price: attr.price || 0,
+                          value: attr.value || 0,
+                          change24h: attr.changes?.percent_24h ?? null,
+                          pnl: null
+                        });
+                      }
+                    } else {
+                      // Unknown type
+                      console.log('[/new] Unknown item type:', item.type, 'fungible:', !!fungible, 'nft:', !!nft);
                     }
                   }
+                  console.log('[/new] Zerion breakdown:', fungibleCount, 'fungible,', nftCount, 'NFTs,', trashCount, 'trash items');
+                } else {
+                  console.warn('[/new] Zerion: No data returned or data.data is not an array', data);
                 }
                 return rows;
-              } catch (_) { return []; }
+              } catch (e) { 
+                console.error('[/new] Zerion error:', e.message || e);
+                return []; 
+              }
             })()
           ]);
           
@@ -855,6 +899,88 @@ function setupControls() {
   if (closeBtn) closeBtn.addEventListener('click', closeSettings);
   if (cancelBtn) cancelBtn.addEventListener('click', closeSettings);
   if (settingsBackdrop) settingsBackdrop.addEventListener('click', closeSettings);
+  
+  // Export settings
+  const exportBtn = document.getElementById('newExportSettingsBtn');
+  const exportArea = document.getElementById('newSettingsExportArea');
+  if (exportBtn && exportArea) {
+    exportBtn.addEventListener('click', async () => {
+      const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+      const exportData = btoa(JSON.stringify(s));
+      exportArea.value = exportData;
+      exportArea.style.display = 'block';
+      exportArea.removeAttribute('readonly');
+      exportArea.select();
+      
+      try {
+        await navigator.clipboard.writeText(exportData);
+        const originalText = exportBtn.textContent;
+        exportBtn.textContent = '[COPIED!]';
+        setTimeout(() => {
+          exportBtn.textContent = originalText;
+        }, 1500);
+      } catch (err) {
+        // Clipboard failed, but text is still selected
+      }
+    });
+  }
+  
+  // Import settings
+  const importBtn = document.getElementById('newImportSettingsBtn');
+  if (importBtn && exportArea) {
+    let importMode = false;
+    importBtn.addEventListener('click', () => {
+      if (!importMode) {
+        // First click: show textarea for pasting
+        exportArea.value = '';
+        exportArea.placeholder = 'Paste exported settings here and click [APPLY IMPORT]';
+        exportArea.style.display = 'block';
+        exportArea.removeAttribute('readonly');
+        exportArea.focus();
+        importBtn.textContent = '[APPLY IMPORT]';
+        importMode = true;
+      } else {
+        // Second click: import the settings
+        try {
+          const importData = exportArea.value.trim();
+          if (!importData) {
+            alert('Please paste settings data first');
+            return;
+          }
+          const decoded = atob(importData);
+          const settings = JSON.parse(decoded);
+          
+          // Save to localStorage
+          localStorage.setItem('myDashboardSettings.v1', JSON.stringify(settings));
+          
+          // Hide textarea and reset
+          exportArea.style.display = 'none';
+          exportArea.setAttribute('readonly', 'readonly');
+          importBtn.textContent = '[IMPORT]';
+          importMode = false;
+          
+          // Close settings and reload
+          closeSettings();
+          location.reload();
+        } catch (err) {
+          alert('Invalid settings data. Please check the pasted text and try again.');
+          console.error('[Import] Failed to import settings:', err);
+        }
+      }
+    });
+    
+    // Reset import mode when settings closes
+    const originalCloseSettings = closeSettings;
+    closeSettings = () => {
+      if (importMode) {
+        exportArea.style.display = 'none';
+        exportArea.setAttribute('readonly', 'readonly');
+        importBtn.textContent = '[IMPORT]';
+        importMode = false;
+      }
+      originalCloseSettings();
+    };
+  }
   
   // Use My Location button
   const useMyLocationBtn = document.getElementById('newUseMyLocationBtn');
