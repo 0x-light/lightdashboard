@@ -921,11 +921,8 @@ function setupControls() {
   if (settingsBackdrop) settingsBackdrop.addEventListener('click', closeSettings);
   
   // Export settings
-  console.log('[Settings] Export button:', exportBtn, 'Export area:', exportArea);
   if (exportBtn && exportArea) {
-    console.log('[Settings] Attaching export listener');
     exportBtn.addEventListener('click', async () => {
-      console.log('[Settings] Export clicked');
       const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
       const exportData = btoa(JSON.stringify(s));
       exportArea.value = exportData;
@@ -941,19 +938,14 @@ function setupControls() {
           exportBtn.textContent = originalText;
         }, 1500);
       } catch (err) {
-        console.error('[Settings] Clipboard failed:', err);
+        // Clipboard failed, but text is still selected
       }
     });
-  } else {
-    console.warn('[Settings] Export button or area not found');
   }
   
   // Import settings
-  console.log('[Settings] Import button:', importBtn);
   if (importBtn && exportArea) {
-    console.log('[Settings] Attaching import listener');
     importBtn.addEventListener('click', () => {
-      console.log('[Settings] Import clicked, mode:', importMode);
       if (!importMode) {
         // First click: show textarea for pasting
         exportArea.value = '';
@@ -992,8 +984,6 @@ function setupControls() {
         }
       }
     });
-  } else {
-    console.warn('[Settings] Import button or area not found');
   }
   
   // Use My Location button
