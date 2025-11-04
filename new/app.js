@@ -184,7 +184,7 @@ async function renderDemoSummary() {
               } catch (_) { return []; }
             })),
             
-            // Zerion
+            // Zerion (fungible + NFTs)
             (async () => {
               if (!zerionKey) {
                 console.warn('[/new] Zerion: No API key configured');
@@ -196,74 +196,81 @@ async function renderDemoSummary() {
               }
               try {
                 const z = providers.zerion;
-                console.log('[/new] Zerion: Fetching positions for', wallets[0]);
-                // Try without trash filter to see if NFTs are there
-                const data = await z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 10000, includeTrash: true });
+                console.log('[/new] Zerion: Fetching positions and NFTs for', wallets[0]);
+                
+                // Fetch both fungible positions and NFTs in parallel
+                const [positionsData, nftsData] = await Promise.all([
+                  z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 10000 }),
+                  z.getWalletNfts(wallets[0], zerionKey, { timeoutMs: 10000 })
+                ]);
+                
                 const rows = [];
-                if (data && Array.isArray(data.data)) {
-                  console.log('[/new] Zerion returned', data.data.length, 'items (including trash)');
-                  let nftCount = 0;
-                  let fungibleCount = 0;
-                  let trashCount = 0;
-                  
-                  for (const item of data.data) {
+                const chainMap = {
+                  'ethereum': 'Ethereum', 'arbitrum': 'Arbitrum', 'optimism': 'Optimism',
+                  'polygon': 'Polygon', 'base': 'Base', 'avalanche': 'Avalanche',
+                  'bsc': 'BSC', 'solana': 'Solana', 'zksync-era': 'zkSync', 'blast': 'Blast'
+                };
+                
+                // Process fungible positions
+                let fungibleCount = 0;
+                if (positionsData && Array.isArray(positionsData.data)) {
+                  console.log('[/new] Zerion positions:', positionsData.data.length, 'fungible tokens');
+                  for (const item of positionsData.data) {
                     const attr = item?.attributes || {};
                     const fungible = attr.fungible_info;
-                    const nft = attr.nft_info;
-                    const chainId = item?.relationships?.chain?.data?.id || 'unknown';
-                    const chainMap = {
-                      'ethereum': 'Ethereum', 'arbitrum': 'Arbitrum', 'optimism': 'Optimism',
-                      'polygon': 'Polygon', 'base': 'Base', 'avalanche': 'Avalanche',
-                      'bsc': 'BSC', 'solana': 'Solana', 'zksync-era': 'zkSync', 'blast': 'Blast'
-                    };
-                    const chain = chainMap[chainId] || chainId.charAt(0).toUpperCase() + chainId.slice(1);
-                    
-                    // Check if marked as trash
                     const flags = attr.flags || {};
-                    if (flags.is_trash) {
-                      trashCount++;
-                    }
                     
-                    if (fungible) {
-                      // Fungible token
+                    if (fungible && !flags.is_trash) {
                       fungibleCount++;
-                      // Only add non-trash items
-                      if (!flags.is_trash) {
-                        rows.push({
-                          asset: fungible.symbol || 'Unknown',
-                          exchange: chain,
-                          amount: attr.quantity?.float || 0,
-                          price: attr.price || 0,
-                          value: attr.value || 0,
-                          change24h: attr.changes?.percent_24h ?? null,
-                          pnl: null
-                        });
-                      }
-                    } else if (nft) {
-                      // NFT
+                      const chainId = item?.relationships?.chain?.data?.id || 'unknown';
+                      const chain = chainMap[chainId] || chainId.charAt(0).toUpperCase() + chainId.slice(1);
+                      
+                      rows.push({
+                        asset: fungible.symbol || 'Unknown',
+                        exchange: chain,
+                        amount: attr.quantity?.float || 0,
+                        price: attr.price || 0,
+                        value: attr.value || 0,
+                        change24h: attr.changes?.percent_24h ?? null,
+                        pnl: null
+                      });
+                    }
+                  }
+                }
+                
+                // Process NFTs
+                let nftCount = 0;
+                if (nftsData && Array.isArray(nftsData.data)) {
+                  console.log('[/new] Zerion NFTs:', nftsData.data.length, 'items');
+                  for (const item of nftsData.data) {
+                    const attr = item?.attributes || {};
+                    const nft = attr.nft_info;
+                    const flags = attr.flags || {};
+                    
+                    if (nft) {
                       nftCount++;
-                      console.log('[/new] Found NFT:', nft.name || nft.contract?.name, 'value:', attr.value, 'trash:', flags.is_trash);
-                      // Only add non-trash NFTs (unless they have value)
+                      const chainId = item?.relationships?.chain?.data?.id || 'unknown';
+                      const chain = chainMap[chainId] || chainId.charAt(0).toUpperCase() + chainId.slice(1);
+                      
+                      console.log('[/new] Found NFT:', nft.name || nft.contract?.name, 'value:', attr.value, 'chain:', chain);
+                      
+                      // Add NFT (filter trash unless it has value)
                       if (!flags.is_trash || (attr.value && attr.value > 0)) {
                         rows.push({
                           asset: nft.name || nft.contract?.name || 'NFT',
-                          exchange: 'OpenSea',
+                          exchange: chain,
                           amount: attr.quantity?.float || 1,
                           price: attr.price || 0,
                           value: attr.value || 0,
-                          change24h: attr.changes?.percent_24h ?? null,
+                          change24h: null,
                           pnl: null
                         });
                       }
-                    } else {
-                      // Unknown type
-                      console.log('[/new] Unknown item type:', item.type, 'fungible:', !!fungible, 'nft:', !!nft);
                     }
                   }
-                  console.log('[/new] Zerion breakdown:', fungibleCount, 'fungible,', nftCount, 'NFTs,', trashCount, 'trash items');
-                } else {
-                  console.warn('[/new] Zerion: No data returned or data.data is not an array', data);
                 }
+                
+                console.log('[/new] Zerion breakdown:', fungibleCount, 'fungible tokens,', nftCount, 'NFTs');
                 return rows;
               } catch (e) { 
                 console.error('[/new] Zerion error:', e.message || e);
@@ -914,8 +921,11 @@ function setupControls() {
   if (settingsBackdrop) settingsBackdrop.addEventListener('click', closeSettings);
   
   // Export settings
+  console.log('[Settings] Export button:', exportBtn, 'Export area:', exportArea);
   if (exportBtn && exportArea) {
+    console.log('[Settings] Attaching export listener');
     exportBtn.addEventListener('click', async () => {
+      console.log('[Settings] Export clicked');
       const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
       const exportData = btoa(JSON.stringify(s));
       exportArea.value = exportData;
@@ -931,14 +941,19 @@ function setupControls() {
           exportBtn.textContent = originalText;
         }, 1500);
       } catch (err) {
-        // Clipboard failed, but text is still selected
+        console.error('[Settings] Clipboard failed:', err);
       }
     });
+  } else {
+    console.warn('[Settings] Export button or area not found');
   }
   
   // Import settings
+  console.log('[Settings] Import button:', importBtn);
   if (importBtn && exportArea) {
+    console.log('[Settings] Attaching import listener');
     importBtn.addEventListener('click', () => {
+      console.log('[Settings] Import clicked, mode:', importMode);
       if (!importMode) {
         // First click: show textarea for pasting
         exportArea.value = '';
@@ -977,6 +992,8 @@ function setupControls() {
         }
       }
     });
+  } else {
+    console.warn('[Settings] Import button or area not found');
   }
   
   // Use My Location button
@@ -1587,6 +1604,15 @@ function setupControls() {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+  // Force service worker update if outdated
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+      for (const registration of registrations) {
+        registration.update();
+      }
+    });
+  }
+  
   // Init loading screen
   initLoadingScreen();
   
