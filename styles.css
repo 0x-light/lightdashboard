@@ -140,10 +140,10 @@
 
 @keyframes cell-flash {
   0% { 
-    background-color: var(--flash-start); 
+    background-color: rgba(255, 255, 0, 0.3);
   }
   50% { 
-    background-color: var(--flash-mid); 
+    background-color: rgba(255, 255, 0, 0.15);
   }
   100% { 
     background-color: transparent; 

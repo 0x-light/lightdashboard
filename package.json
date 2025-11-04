@@ -2,9 +2,12 @@
   "name": "personal-dashboard",
   "version": "1.0.0",
   "description": "Ultra-minimal terminal-style personal dashboard",
+  "type": "module",
   "scripts": {
     "dev": "python -m http.server 8000",
-    "build": "echo 'No build required - static site'"
+    "dev:pages": "wrangler pages dev . --local",
+    "build": "echo 'No build required - static site'",
+    "test": "node tests/run-portfolio-tests.mjs"
   },
   "keywords": ["dashboard", "crypto", "portfolio", "weather"],
   "author": "",

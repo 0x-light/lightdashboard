@@ -1852,7 +1852,7 @@
     watchlistEditMode = !watchlistEditMode;
     const editBtn = document.getElementById('editWatchlistBtn');
     
-    editBtn.textContent = watchlistEditMode ? '[SAVE CHANGES]' : '[EDIT LIST]';
+    editBtn.textContent = watchlistEditMode ? '[SAVE CHANGES]' : '[EDIT]';
     renderWatchlist();
   }
   
@@ -7419,7 +7419,7 @@
     if (els.editListBtn) {
       els.editListBtn.addEventListener('click', () => {
         editMode = !editMode;
-        els.editListBtn.textContent = editMode ? '[SAVE CHANGES]' : '[EDIT LIST]';
+        els.editListBtn.textContent = editMode ? '[SAVE CHANGES]' : '[EDIT]';
         renderPositionsTable();
       });
     }
@@ -9132,4 +9132,3 @@
   };
   
 })();
-
