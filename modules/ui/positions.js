@@ -43,7 +43,8 @@ function formatUsd(num, visible) {
     const formatted = (abs / 1000).toFixed(1);
     return `${sign}$${formatted.replace(/\.0$/, '')}k`;
   } else if (abs >= 1) {
-    return `${sign}$${Math.round(abs)}`;
+    // Show cents, but remove unnecessary trailing zeros
+    return `${sign}$${abs.toFixed(2).replace(/\.00$/, '')}`;
   } else if (abs === 0) {
     return '$0';
   } else {

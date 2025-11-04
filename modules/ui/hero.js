@@ -12,7 +12,8 @@ function formatCurrency(value, amountsVisible) {
     const formatted = (abs / 1000).toFixed(1);
     return `$${formatted.replace(/\.0$/, '')}k`;
   } else if (abs >= 1) {
-    return `$${Math.round(abs)}`;
+    // Show cents, but remove unnecessary trailing zeros
+    return `$${abs.toFixed(2).replace(/\.00$/, '')}`;
   } else if (abs === 0) {
     return '$0';
   } else {
