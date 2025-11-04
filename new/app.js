@@ -999,6 +999,69 @@ function setupControls() {
     });
   }
   
+  // Rain/Snow controls
+  const Rain = window.AppModules?.features?.rain;
+  const toggleRainBtn = document.getElementById('newToggleRainBtn');
+  const toggleSnowBtn = document.getElementById('newToggleSnowBtn');
+  const toggleRainBtnMobile = document.getElementById('newToggleRainBtnMobile');
+  const toggleSnowBtnMobile = document.getElementById('newToggleSnowBtnMobile');
+  
+  if (Rain && toggleRainBtn) {
+    toggleRainBtn.addEventListener('click', () => {
+      const active = Rain.toggleRain();
+      toggleRainBtn.textContent = active ? '[RAIN OFF]' : '[RAIN ON]';
+      if (toggleRainBtnMobile) {
+        toggleRainBtnMobile.textContent = active ? '[RAIN OFF]' : '[RAIN ON]';
+      }
+      if (active) {
+        toggleSnowBtn.textContent = '[SNOW ON]';
+        if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW ON]';
+      }
+    });
+  }
+  
+  if (Rain && toggleSnowBtn) {
+    toggleSnowBtn.addEventListener('click', () => {
+      const active = Rain.toggleSnow();
+      toggleSnowBtn.textContent = active ? '[SNOW OFF]' : '[SNOW ON]';
+      if (toggleSnowBtnMobile) {
+        toggleSnowBtnMobile.textContent = active ? '[SNOW OFF]' : '[SNOW ON]';
+      }
+      if (active) {
+        toggleRainBtn.textContent = '[RAIN ON]';
+        if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = '[RAIN ON]';
+      }
+    });
+  }
+  
+  if (Rain && toggleRainBtnMobile) {
+    toggleRainBtnMobile.addEventListener('click', () => {
+      const active = Rain.toggleRain();
+      toggleRainBtnMobile.textContent = active ? '[RAIN OFF]' : '[RAIN ON]';
+      if (toggleRainBtn) {
+        toggleRainBtn.textContent = active ? '[RAIN OFF]' : '[RAIN ON]';
+      }
+      if (active) {
+        toggleSnowBtn.textContent = '[SNOW ON]';
+        if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW ON]';
+      }
+    });
+  }
+  
+  if (Rain && toggleSnowBtnMobile) {
+    toggleSnowBtnMobile.addEventListener('click', () => {
+      const active = Rain.toggleSnow();
+      toggleSnowBtnMobile.textContent = active ? '[SNOW OFF]' : '[SNOW ON]';
+      if (toggleSnowBtn) {
+        toggleSnowBtn.textContent = active ? '[SNOW OFF]' : '[SNOW ON]';
+      }
+      if (active) {
+        toggleRainBtn.textContent = '[RAIN ON]';
+        if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = '[RAIN ON]';
+      }
+    });
+  }
+  
   // Font size controls
   const decreaseFontBtn = document.getElementById('newDecreaseFontBtn');
   const increaseFontBtn = document.getElementById('newIncreaseFontBtn');
@@ -1742,6 +1805,30 @@ window.addEventListener('DOMContentLoaded', async () => {
   
   // NON-CRITICAL: Health checks in background
   runHealthChecks().catch(() => {});
+  
+  // NON-CRITICAL: Rain/Snow effects (lazy loaded after everything else)
+  setTimeout(async () => {
+    const Rain = window.AppModules?.features?.rain;
+    if (!Rain) return;
+    
+    // Check weather and auto-enable
+    const weather = await Rain.checkWeatherAndAutoEnable();
+    if (weather) {
+      if (weather.isSnowing) {
+        Rain.toggleSnow();
+        const btn = document.getElementById('newToggleSnowBtn');
+        const mobileBtn = document.getElementById('newToggleSnowBtnMobile');
+        if (btn) btn.textContent = '[SNOW OFF]';
+        if (mobileBtn) mobileBtn.textContent = '[SNOW OFF]';
+      } else if (weather.isRaining) {
+        Rain.toggleRain();
+        const btn = document.getElementById('newToggleRainBtn');
+        const mobileBtn = document.getElementById('newToggleRainBtnMobile');
+        if (btn) btn.textContent = '[RAIN OFF]';
+        if (mobileBtn) mobileBtn.textContent = '[RAIN OFF]';
+      }
+    }
+  }, 2000); // Wait 2 seconds after page load
   
   // Lazy-load comic on intersection or idle (if enabled in settings)
   const comicSection = document.getElementById('comicSection');

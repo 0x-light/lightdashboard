@@ -1964,7 +1964,7 @@ html[data-theme="as400"] {
 }
 
 /* Pixel art rain overlay */
-#rainCanvas {
+#rainCanvas, #newRainCanvas, .rain-canvas {
   position: fixed;
   top: 0;
   left: 0;
@@ -1981,7 +1981,7 @@ html[data-theme="as400"] {
   will-change: auto;
 }
 
-#rainCanvas.active {
+#rainCanvas.active, #newRainCanvas.active, .rain-canvas.active {
   display: block;
 }
 

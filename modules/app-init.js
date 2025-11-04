@@ -13,6 +13,7 @@ import * as HeroUI from './ui/hero.js';
 import * as PositionsUI from './ui/positions.js';
 import * as Settings from './core/settings.js';
 import * as Themes from './core/themes.js';
+import * as Rain from './features/rain.js';
 
 if (!window.AppModules) {
   window.AppModules = {};
@@ -36,6 +37,8 @@ window.AppModules.ui.positions = PositionsUI;
 window.AppModules.core = window.AppModules.core || {};
 window.AppModules.core.settings = Settings;
 window.AppModules.core.themes = Themes;
+window.AppModules.features = window.AppModules.features || {};
+window.AppModules.features.rain = Rain;
 
 // Non-blocking log to confirm availability during development
 try {

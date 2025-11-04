@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="../styles.css?v=2.0.0">
   </head>
   <body>
+    <!-- Rain/Snow Canvas -->
+    <canvas id="newRainCanvas" class="rain-canvas"></canvas>
+    
     <!-- Loading Screen -->
     <div id="newLoadingScreen" class="loading-screen">
       <div class="dot-grid" id="newDotGrid"></div>
@@ -18,6 +21,8 @@
       </div>
       <button id="newMobileMenuBtn" class="btn-text mobile-menu-btn">[MENU]</button>
       <div class="header-actions">
+        <button id="newToggleSnowBtn" class="btn-text">[SNOW ON]</button>
+        <button id="newToggleRainBtn" class="btn-text">[RAIN ON]</button>
         <div class="font-size-controls">
           <button id="newDecreaseFontBtn" class="btn-text">[-</button>
           <span id="newFontSizeDisplay" class="btn-text">15px</span>
@@ -61,6 +66,8 @@
         <button id="newCloseMobileMenuBtn" class="btn-text">[CLOSE]</button>
       </div>
       <div class="mobile-menu-content">
+        <button id="newToggleSnowBtnMobile" class="btn-text">[SNOW ON]</button>
+        <button id="newToggleRainBtnMobile" class="btn-text">[RAIN ON]</button>
         <div class="font-size-controls">
           <button id="newDecreaseFontBtnMobile" class="btn-text">[-</button>
           <span id="newFontSizeDisplayMobile" class="btn-text">15px</span>

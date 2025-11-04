@@ -1,7 +1,7 @@
 // Service Worker for Light Dashboard
 // Provides offline support, aggressive caching, and performance optimization
 
-const CACHE_VERSION = 'v2.1.0-nft-fix';
+const CACHE_VERSION = 'v2.2.0-force-clear';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
 // Assets to cache immediately on install
@@ -19,6 +19,7 @@ const API_CACHE_CONFIG = {
   'api.hyperliquid.xyz': 10 * 1000, // 10 seconds
   'blockchain.info': 60 * 1000, // 1 minute
   'api.zcha.in': 60 * 1000 // 1 minute
+  // NOTE: api.zerion.io is NOT cached - always fetch fresh
 };
 
 // Install event - cache static assets
