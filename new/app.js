@@ -544,6 +544,7 @@ let cachedSummaryData = {};
 let cachedWatchlistData = null; // Cache watchlist data globally
 let watchlistEditMode = false;
 let rerenderPositions = null; // Global reference to rerender function
+let currentFontSize = 15; // Default font size in px
 
 function initLoadingScreen() {
   const dotGrid = document.getElementById('newDotGrid');
@@ -572,6 +573,18 @@ function hideLoadingScreen() {
     loadingScreen.classList.add('hidden');
     setTimeout(() => { loadingScreen.style.display = 'none'; }, 300);
   }
+}
+
+function applyFontSize(size) {
+  document.documentElement.style.fontSize = size + 'px';
+  currentFontSize = size;
+  const displays = [
+    document.getElementById('newFontSizeDisplay'),
+    document.getElementById('newFontSizeDisplayMobile')
+  ];
+  displays.forEach(display => {
+    if (display) display.textContent = size + 'px';
+  });
 }
 
 function setupControls() {
@@ -982,6 +995,60 @@ function setupControls() {
           alert('Invalid settings data. Please check the pasted text and try again.');
           console.error('[Import] Failed to import settings:', err);
         }
+      }
+    });
+  }
+  
+  // Font size controls
+  const decreaseFontBtn = document.getElementById('newDecreaseFontBtn');
+  const increaseFontBtn = document.getElementById('newIncreaseFontBtn');
+  const decreaseFontBtnMobile = document.getElementById('newDecreaseFontBtnMobile');
+  const increaseFontBtnMobile = document.getElementById('newIncreaseFontBtnMobile');
+  
+  if (decreaseFontBtn) {
+    decreaseFontBtn.addEventListener('click', () => {
+      if (currentFontSize > 10) { // minimum 10px
+        const newSize = currentFontSize - 1;
+        applyFontSize(newSize);
+        const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+        s.fontSize = newSize;
+        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+      }
+    });
+  }
+  
+  if (increaseFontBtn) {
+    increaseFontBtn.addEventListener('click', () => {
+      if (currentFontSize < 24) { // maximum 24px
+        const newSize = currentFontSize + 1;
+        applyFontSize(newSize);
+        const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+        s.fontSize = newSize;
+        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+      }
+    });
+  }
+  
+  if (decreaseFontBtnMobile) {
+    decreaseFontBtnMobile.addEventListener('click', () => {
+      if (currentFontSize > 10) {
+        const newSize = currentFontSize - 1;
+        applyFontSize(newSize);
+        const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+        s.fontSize = newSize;
+        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+      }
+    });
+  }
+  
+  if (increaseFontBtnMobile) {
+    increaseFontBtnMobile.addEventListener('click', () => {
+      if (currentFontSize < 24) {
+        const newSize = currentFontSize + 1;
+        applyFontSize(newSize);
+        const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+        s.fontSize = newSize;
+        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
       }
     });
   }
@@ -1622,6 +1689,13 @@ window.addEventListener('DOMContentLoaded', async () => {
       });
     }
   }
+  
+  // Init font size
+  let fontSize = settings?.fontSize;
+  if (typeof fontSize === 'string' || !fontSize) {
+    fontSize = 15; // Default if it's a string or not set
+  }
+  applyFontSize(fontSize);
   
   // Apply initial compact mode styling
   if (compactMode) {
