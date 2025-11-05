@@ -30,7 +30,7 @@ function createDrop() {
   return {
     x: Math.random() * canvas.width,
     y: Math.random() * canvas.height - canvas.height,
-    speed: baseSpeed * (0.3 + Math.random() * 0.3),
+    speed: baseSpeed * (0.4 + Math.random() * 0.5),
     size: baseSize,
     length: baseLength,
     wobble: Math.random() * Math.PI * 2,

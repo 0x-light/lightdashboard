@@ -212,17 +212,11 @@ async function renderDemoSummary() {
                 try {
                   const z = providers.zerion;
                   
-                  // Fetch both fungible positions and NFTs in parallel
-                  const [positionsData, nftsData] = await Promise.all([
-                    z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 10000 }).catch(e => {
-                      console.error('[/new] Zerion positions error:', e);
-                      return null;
-                    }),
-                    z.getWalletNfts(wallets[0], zerionKey, { timeoutMs: 10000 }).catch(e => {
-                      console.error('[/new] Zerion NFTs error:', e);
-                      return null;
-                    })
-                  ]);
+                  // Fetch positions only
+                  const positionsData = await z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 10000 }).catch(e => {
+                    console.error('[/new] Zerion positions error:', e);
+                    return null;
+                  });
                   
                   const chainMap = {
                     'ethereum': 'Ethereum', 
@@ -249,7 +243,6 @@ async function renderDemoSummary() {
                   };
                   
                   // Process fungible positions
-                  let fungibleCount = 0;
                   if (positionsData && Array.isArray(positionsData.data)) {
                     for (const item of positionsData.data) {
                       const attr = item?.attributes || {};
@@ -257,7 +250,6 @@ async function renderDemoSummary() {
                       const flags = attr.flags || {};
                       
                       if (fungible && !flags.is_trash) {
-                        fungibleCount++;
                         const chainId = item?.relationships?.chain?.data?.id || 'unknown';
                         const chain = chainMap[chainId] || chainId.charAt(0).toUpperCase() + chainId.slice(1);
                         
@@ -269,54 +261,6 @@ async function renderDemoSummary() {
                           value: attr.value || 0,
                           change24h: attr.changes?.percent_24h ?? null,
                           pnl: null
-                        });
-                      }
-                    }
-                  }
-                  
-                  // Process NFTs
-                  let nftCount = 0;
-                  if (nftsData && Array.isArray(nftsData.data)) {
-                    
-                    for (const item of nftsData.data) {
-                      const attr = item?.attributes || {};
-                      const nft = attr.nft_info;
-                      const flags = attr.flags || {};
-                      
-                      if (nft) {
-                        const chainId = item?.relationships?.chain?.data?.id || 'unknown';
-                        const chain = chainMap[chainId] || chainId.charAt(0).toUpperCase() + chainId.slice(1);
-                        
-                      // Skip trash NFTs entirely
-                      if (flags.is_trash) {
-                        continue;
-                      }
-                      
-                      // Skip NFTs with no value (likely spam)
-                      const value = attr.value || 0;
-                      if (value === 0 || value === undefined) {
-                        continue;
-                      }
-                        
-                        nftCount++;
-                        
-                        // Extract collection name - it's in attributes.collection_info.name!
-                        const collectionName = attr.collection_info?.name || 
-                                              nft.collection?.name ||
-                                              nft.contract?.name;
-                        
-                        const nftName = nft.name || nft.content?.detail?.name;
-                        const displayName = collectionName || nftName || 'NFT';
-                        
-                        zerionRows.push({
-                          asset: displayName,
-                          exchange: chain,
-                          amount: attr.quantity?.float || 1,
-                          price: attr.price || 0,
-                          value: value,
-                          change24h: null,
-                          pnl: null,
-                          isNft: true  // Mark as NFT for filtering
                         });
                       }
                     }
@@ -510,7 +454,70 @@ async function renderDemoSummary() {
               }
             }
             
-            const sorted = allRows.sort((a, b) => (b.value || 0) - (a.value || 0));
+            // Aggregate duplicate assets (except leveraged positions)
+            const aggregatedRows = [];
+            const assetGroups = new Map();
+            
+            for (const row of allRows) {
+              // Keep leveraged positions separate - don't aggregate them
+              if (row.isLeveraged) {
+                aggregatedRows.push(row);
+                continue;
+              }
+              
+              // Group spot positions by asset
+              const assetKey = row.asset;
+              if (!assetGroups.has(assetKey)) {
+                assetGroups.set(assetKey, []);
+              }
+              assetGroups.get(assetKey).push(row);
+            }
+            
+            // Combine grouped positions
+            for (const [asset, positions] of assetGroups) {
+              if (positions.length === 1) {
+                // Single position, add as-is
+                aggregatedRows.push(positions[0]);
+              } else {
+                // Multiple positions for same asset - aggregate them
+                const totalAmount = positions.reduce((sum, p) => sum + (p.amount || 0), 0);
+                const totalValue = positions.reduce((sum, p) => sum + (p.value || 0), 0);
+                const totalPnL = positions.reduce((sum, p) => sum + (p.pnl || 0), 0);
+                
+                // Calculate weighted average price
+                const weightedPrice = totalAmount !== 0 ? totalValue / Math.abs(totalAmount) : 0;
+                
+                // Collect unique exchanges
+                const exchanges = [...new Set(positions.map(p => p.exchange))];
+                const exchangeLabel = exchanges.length > 1 ? 'Multiple' : exchanges[0];
+                
+                // Calculate weighted average entry price for PnL
+                let totalEntryValue = 0;
+                let hasEntryData = false;
+                for (const pos of positions) {
+                  if (pos.entryPrice && pos.amount) {
+                    totalEntryValue += Math.abs(pos.amount) * pos.entryPrice;
+                    hasEntryData = true;
+                  }
+                }
+                const avgEntryPrice = hasEntryData && totalAmount !== 0 ? totalEntryValue / Math.abs(totalAmount) : null;
+                
+                aggregatedRows.push({
+                  asset,
+                  exchange: exchangeLabel,
+                  amount: totalAmount,
+                  value: totalValue,
+                  price: weightedPrice,
+                  change24h: positions[0].change24h, // Use first position's 24h change
+                  pnl: totalPnL,
+                  entryPrice: avgEntryPrice,
+                  isAggregated: true,
+                  aggregatedFrom: exchanges
+                });
+              }
+            }
+            
+            const sorted = aggregatedRows.sort((a, b) => (b.value || 0) - (a.value || 0));
             
             // Cache for re-rendering
             cachedPositions = sorted;
@@ -1001,6 +1008,18 @@ function setupControls() {
       const showComicInput = document.getElementById('newShowComic');
       const comicStripInput = document.getElementById('newComicStrip');
       const minBalanceInput = document.getElementById('newMinBalanceThreshold');
+      const leftAlignedInput = document.getElementById('newLeftAligned');
+      
+      // Menu visibility controls
+      const showSnowBtnInput = document.getElementById('newShowSnowBtn');
+      const showRainBtnInput = document.getElementById('newShowRainBtn');
+      const showFontSizeInput = document.getElementById('newShowFontSize');
+      const showThemeBtnInput = document.getElementById('newShowThemeBtn');
+      const showAmountsBtnInput = document.getElementById('newShowAmountsBtn');
+      const showCompactBtnInput = document.getElementById('newShowCompactBtn');
+      const showRefreshBtnInput = document.getElementById('newShowRefreshBtn');
+      const showDonateBtnInput = document.getElementById('newShowDonateBtn');
+      const showSettingsBtnInput = document.getElementById('newShowSettingsBtn');
       
       if (userNameInput) userNameInput.value = s.userName || '';
       if (walletInput) walletInput.value = s.walletAddresses || '';
@@ -1019,6 +1038,18 @@ function setupControls() {
       if (showComicInput) showComicInput.checked = s.showComic ?? false;
       if (comicStripInput) comicStripInput.value = s.comicStrip || 'calvinandhobbes';
       if (minBalanceInput) minBalanceInput.value = s.minBalanceThreshold || 100;
+      if (leftAlignedInput) leftAlignedInput.checked = s.leftAligned ?? false;
+      
+      // Menu visibility checkboxes
+      if (showSnowBtnInput) showSnowBtnInput.checked = s.showSnowBtn ?? true;
+      if (showRainBtnInput) showRainBtnInput.checked = s.showRainBtn ?? true;
+      if (showFontSizeInput) showFontSizeInput.checked = s.showFontSize ?? true;
+      if (showThemeBtnInput) showThemeBtnInput.checked = s.showThemeBtn ?? true;
+      if (showAmountsBtnInput) showAmountsBtnInput.checked = s.showAmountsBtn ?? true;
+      if (showCompactBtnInput) showCompactBtnInput.checked = s.showCompactBtn ?? true;
+      if (showRefreshBtnInput) showRefreshBtnInput.checked = s.showRefreshBtn ?? true;
+      if (showDonateBtnInput) showDonateBtnInput.checked = s.showDonateBtn ?? true;
+      if (showSettingsBtnInput) showSettingsBtnInput.checked = s.showSettingsBtn ?? true;
       
       settingsDialog.style.display = 'block';
       settingsBackdrop.style.display = 'block';
@@ -1334,6 +1365,18 @@ function setupControls() {
       const showComicInput = document.getElementById('newShowComic');
       const comicStripInput = document.getElementById('newComicStrip');
       const minBalanceInput = document.getElementById('newMinBalanceThreshold');
+      const leftAlignedInput = document.getElementById('newLeftAligned');
+      
+      // Menu visibility controls
+      const showSnowBtnInput = document.getElementById('newShowSnowBtn');
+      const showRainBtnInput = document.getElementById('newShowRainBtn');
+      const showFontSizeInput = document.getElementById('newShowFontSize');
+      const showThemeBtnInput = document.getElementById('newShowThemeBtn');
+      const showAmountsBtnInput = document.getElementById('newShowAmountsBtn');
+      const showCompactBtnInput = document.getElementById('newShowCompactBtn');
+      const showRefreshBtnInput = document.getElementById('newShowRefreshBtn');
+      const showDonateBtnInput = document.getElementById('newShowDonateBtn');
+      const showSettingsBtnInput = document.getElementById('newShowSettingsBtn');
       
       if (userNameInput) newSettings.userName = userNameInput.value;
       if (walletInput) newSettings.walletAddresses = walletInput.value;
@@ -1349,6 +1392,18 @@ function setupControls() {
       if (showComicInput) newSettings.showComic = showComicInput.checked;
       if (comicStripInput) newSettings.comicStrip = comicStripInput.value;
       if (minBalanceInput) newSettings.minBalanceThreshold = parseFloat(minBalanceInput.value) || 100;
+      if (leftAlignedInput) newSettings.leftAligned = leftAlignedInput.checked;
+      
+      // Save menu visibility settings
+      if (showSnowBtnInput) newSettings.showSnowBtn = showSnowBtnInput.checked;
+      if (showRainBtnInput) newSettings.showRainBtn = showRainBtnInput.checked;
+      if (showFontSizeInput) newSettings.showFontSize = showFontSizeInput.checked;
+      if (showThemeBtnInput) newSettings.showThemeBtn = showThemeBtnInput.checked;
+      if (showAmountsBtnInput) newSettings.showAmountsBtn = showAmountsBtnInput.checked;
+      if (showCompactBtnInput) newSettings.showCompactBtn = showCompactBtnInput.checked;
+      if (showRefreshBtnInput) newSettings.showRefreshBtn = showRefreshBtnInput.checked;
+      if (showDonateBtnInput) newSettings.showDonateBtn = showDonateBtnInput.checked;
+      if (showSettingsBtnInput) newSettings.showSettingsBtn = showSettingsBtnInput.checked;
       
       newSettings.weather = {
         label: cityInput?.value || '',
@@ -1361,7 +1416,17 @@ function setupControls() {
         localStorage.setItem('myDashboardSettings.v1', JSON.stringify(newSettings));
         closeSettings();
         
-        // Soft reload: re-fetch positions without full page refresh
+        // Apply alignment immediately
+        const container = document.querySelector('.main-container');
+        if (container) {
+          if (newSettings.leftAligned) {
+            container.style.margin = '';
+          } else {
+            container.style.margin = '0 auto';
+          }
+        }
+        
+        // Soft reload: re-fetch positions without full page refresh (this will reload settings)
         await renderDemoSummary();
         rerenderPositions();
       } catch (e) {
@@ -1893,6 +1958,19 @@ window.addEventListener('DOMContentLoaded', async () => {
   const Settings = window.AppModules?.core?.settings;
   const settings = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
   
+  // Apply alignment
+  const applyAlignment = () => {
+    const container = document.querySelector('.main-container');
+    if (container) {
+      if (settings.leftAligned) {
+        container.style.margin = '';
+      } else {
+        container.style.margin = '0 auto';
+      }
+    }
+  };
+  applyAlignment();
+  
   if (Themes) {
     const theme = settings.theme || Themes.getPreferredTheme();
     Themes.applyTheme(theme);
@@ -1980,6 +2058,70 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }
   updateGreeting();
+  
+  // Hero click to refresh with ASCII spinner
+  const heroSection = document.querySelector('.hero');
+  const greetingEl = document.getElementById('newGreeting');
+  
+  if (heroSection && greetingEl) {
+    heroSection.style.cursor = 'pointer';
+    heroSection.style.userSelect = 'none';
+    
+    let spinnerInterval = null;
+    let spinnerEl = null;
+    
+    const startSpinner = () => {
+      // ASCII spinner frames: ◐ ◓ ◑ ◒ or ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
+      const frames = ['◐', '◓', '◑', '◒'];
+      let frameIndex = 0;
+      
+      // Create spinner element
+      spinnerEl = document.createElement('span');
+      spinnerEl.style.marginLeft = '8px';
+      spinnerEl.style.opacity = '0.6';
+      spinnerEl.textContent = frames[0];
+      greetingEl.appendChild(spinnerEl);
+      
+      // Animate spinner
+      spinnerInterval = setInterval(() => {
+        frameIndex = (frameIndex + 1) % frames.length;
+        if (spinnerEl) {
+          spinnerEl.textContent = frames[frameIndex];
+        }
+      }, 150);
+    };
+    
+    const stopSpinner = () => {
+      if (spinnerInterval) {
+        clearInterval(spinnerInterval);
+        spinnerInterval = null;
+      }
+      if (spinnerEl) {
+        spinnerEl.remove();
+        spinnerEl = null;
+      }
+    };
+    
+    heroSection.addEventListener('click', async () => {
+      if (spinnerInterval) return; // Already refreshing
+      
+      try {
+        startSpinner();
+        await renderDemoSummary();
+        rerenderPositions();
+        
+        // Also refresh watchlist if present
+        const watchlistModule = await import('../modules/features/watchlist.js').catch(() => null);
+        if (watchlistModule && watchlistModule.refreshWatchlist) {
+          await watchlistModule.refreshWatchlist().catch(() => {});
+        }
+      } catch (error) {
+        console.error('[Hero] Refresh failed:', error);
+      } finally {
+        stopSpinner();
+      }
+    });
+  }
   
   // Setup header controls (non-blocking)
   setupControls();
@@ -2070,14 +2212,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     const loadComic = async (comicKey = currentComicStrip, date = currentComicDate) => {
       try {
-        console.log(`[Comics] Loading ${comicKey} for ${date.toDateString()}`);
         const mod = await import('../modules/features/comics.js');
         await mod.renderComic(comicEl, comicKey, date);
         currentComicDate = date;
         
         // Update button states
         updateComicButtons(comicKey, date);
-        console.log(`[Comics] Successfully loaded ${comicKey}`);
       } catch (e) {
         console.error(`[Comics] Failed to load ${comicKey}:`, e);
         comicEl.textContent = 'Comic failed to load';
@@ -2097,6 +2237,23 @@ window.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('newComicNextBtn'),
         document.getElementById('newComicNextBtnMobile')
       ];
+      const randomButtons = [
+        document.getElementById('newComicRandomBtn'),
+        document.getElementById('newComicRandomBtnMobile')
+      ];
+      
+      // Hide all buttons for Far Side (doesn't work due to caching)
+      if (comicKey === 'farside') {
+        [...prevButtons, ...nextButtons, ...randomButtons].forEach(btn => {
+          if (btn) btn.style.display = 'none';
+        });
+        return;
+      }
+      
+      // Show buttons for other comics
+      [...prevButtons, ...nextButtons, ...randomButtons].forEach(btn => {
+        if (btn) btn.style.display = '';
+      });
       
       // Disable prev if at start date
       const atStart = date <= comic.startDate;
@@ -2130,7 +2287,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         btn.addEventListener('click', async () => {
           const newDate = new Date(currentComicDate);
           newDate.setDate(newDate.getDate() - 1);
-          console.log(`[Comics] Prev clicked for ${currentComicStrip}, new date: ${newDate.toDateString()}`);
           await loadComic(currentComicStrip, newDate);
         });
       }
@@ -2141,7 +2297,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         btn.addEventListener('click', async () => {
           const newDate = new Date(currentComicDate);
           newDate.setDate(newDate.getDate() + 1);
-          console.log(`[Comics] Next clicked for ${currentComicStrip}, new date: ${newDate.toDateString()}`);
           await loadComic(currentComicStrip, newDate);
         });
       }
@@ -2159,7 +2314,6 @@ window.addEventListener('DOMContentLoaded', async () => {
           const randomTime = start + Math.random() * (end - start);
           const randomDate = new Date(randomTime);
           
-          console.log(`[Comics] Random clicked for ${currentComicStrip}, date: ${randomDate.toDateString()}`);
           await loadComic(currentComicStrip, randomDate);
         });
       }
@@ -2177,7 +2331,6 @@ window.addEventListener('DOMContentLoaded', async () => {
           const comicKey = tab.getAttribute('data-comic');
           if (comicKey === currentComicStrip) return; // Already showing this comic
           
-          console.log(`[Comics] Switching from ${currentComicStrip} to ${comicKey}`);
           currentComicStrip = comicKey;
           currentComicDate = getValidComicDate(comicKey); // Get a valid date for the new comic
           
@@ -2206,6 +2359,18 @@ window.addEventListener('DOMContentLoaded', async () => {
         tab?.classList.remove('active');
       }
     });
+    
+    // Hide buttons initially if Far Side is saved as preference
+    if (savedComic === 'farside') {
+      const allButtons = [
+        ...prevButtons,
+        ...nextButtons,
+        ...randomButtons
+      ];
+      allButtons.forEach(btn => {
+        if (btn) btn.style.display = 'none';
+      });
+    }
     
     if ('IntersectionObserver' in window) {
       const io = new IntersectionObserver((entries) => {

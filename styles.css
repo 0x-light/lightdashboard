@@ -301,10 +301,15 @@ h1, h2, h3, h4, h5, h6 {
 .hero {
   padding: 20px 0 0;
   text-align: left;
+  transition: opacity 0.2s ease;
 }
 
 .hero:hover {
   opacity: 0.8;
+}
+
+.hero:active {
+  opacity: 0.6;
 }
 
 .hero-summary {
@@ -384,8 +389,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 @keyframes pulse-fade {
-  0%, 100% { opacity: 0.3 !important; }
-  50% { opacity: 0.6 !important; }
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
 }
 
 /* Performance: CSS containment for better rendering */
@@ -875,8 +880,6 @@ textarea:focus {
 
 .calvin-container {
   display: flex;
-  justify-content: center;
-  align-items: center;
 }
 
 .comic-header {
@@ -986,11 +989,10 @@ textarea:focus {
   max-height: 500px;
   height: auto;
   border: 1px solid var(--border);
-  opacity: 1;
 }
 
-.calvin-container.fading img,
-#newComic.fading img {
+.calvin-container.fading,
+#newComic.fading {
   animation: pulse-fade 2s ease-in-out infinite !important;
 }
 
@@ -1259,6 +1261,11 @@ textarea:focus {
   .mobile-position-card {
     display: block;
   }
+
+  .card-row {
+    display: flex;
+    justify-content: space-between;
+  }
   
   /* Comic controls on mobile */
   .calvin-controls {
@@ -1283,6 +1290,13 @@ textarea:focus {
   
   .tab-mobile {
     display: inline;
+  }
+  
+  #newComic {
+    margin-left: -20px;
+    padding-left: 20px;
+    margin-right: -20px;
+    padding-right: 20px;
   }
   
   /* Full bleed settings dialog on mobile */
@@ -2111,7 +2125,7 @@ input[type="range"]:focus::-moz-range-thumb {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  width: 350px;
+  width: 380px;
   max-width: calc(100vw - 40px);
   max-height: calc(100vh - 100px);
   background: var(--bg);
@@ -2152,10 +2166,11 @@ input[type="range"]:focus::-moz-range-thumb {
     bottom: 0;
     right: 0;
     left: 0;
+    top: 0;
+    max-height: 100vh;
     width: auto;
     max-width: none;
     border: none;
-    border-top: 1px solid var(--border);
   }
 }
 

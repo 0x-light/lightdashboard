@@ -6,10 +6,15 @@
     <title>Viewport | Portfolio Tracker</title>
     
     <!-- Favicon -->
-    <link rel="icon" href="/favicon-light.svg" type="image/svg+xml" media="(prefers-color-scheme: light)">
-    <link rel="icon" href="/favicon-dark.svg" type="image/svg+xml" media="(prefers-color-scheme: dark)">
-    <link rel="icon" href="/favicon-dark.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="/favicon-dark.svg">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192">
+    <link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512">
+    
+    <!-- iOS/Apple -->
+    <link rel="apple-touch-icon" href="/icon-180.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Viewport">
     
     <link rel="stylesheet" href="../styles.css?v=2.0.0">
   </head>
@@ -218,6 +223,10 @@
               <input id="newShowExactAmounts" type="checkbox" class="settings-input">
               Show exact amounts (no rounding)
             </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input id="newLeftAligned" type="checkbox" class="settings-input">
+              Left-align content (unchecked = centered)
+            </label>
             <label style="margin-top: 8px;">
               Comics
               <select id="newComicStrip" class="settings-input">
@@ -229,6 +238,47 @@
             <label style="margin-top: 12px;">
               Hide balances below (USD)
               <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100" style="width: 100px;" class="settings-input">
+            </label>
+          </fieldset>
+          
+          <fieldset>
+            <legend>Menu Buttons</legend>
+            <div class="help" style="margin-bottom: 12px;">Show or hide menu bar buttons</div>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input id="newShowSnowBtn" type="checkbox" class="settings-input" checked>
+              Show Snow button
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input id="newShowRainBtn" type="checkbox" class="settings-input" checked>
+              Show Rain button
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input id="newShowFontSize" type="checkbox" class="settings-input" checked>
+              Show Font Size controls
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input id="newShowThemeBtn" type="checkbox" class="settings-input" checked>
+              Show Theme selector
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input id="newShowAmountsBtn" type="checkbox" class="settings-input" checked>
+              Show Amounts toggle
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input id="newShowCompactBtn" type="checkbox" class="settings-input" checked>
+              Show Compact mode button
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input id="newShowRefreshBtn" type="checkbox" class="settings-input" checked>
+              Show Refresh button
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input id="newShowDonateBtn" type="checkbox" class="settings-input" checked>
+              Show Donate button
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input id="newShowSettingsBtn" type="checkbox" class="settings-input" checked>
+              Show Settings button
             </label>
           </fieldset>
           
@@ -347,7 +397,7 @@
       <div class="sticker-window-content">
         <div class="help" style="margin-bottom: 12px;">Search for tokens from Pyth Network oracle</div>
         <input type="text" id="newWatchlistSearchInput" class="settings-input" placeholder="Search tokens..." style="width: 100%; margin-bottom: 12px;">
-        <div id="newWatchlistSearchResults" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border);">
+        <div id="newWatchlistSearchResults" style="max-height: calc(100vh - 170px); overflow-y: auto; border: 1px solid var(--border);">
         </div>
       </div>
     </div>

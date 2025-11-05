@@ -54,7 +54,7 @@ export function getDefaultSettings() {
     showWatchlist: true,
     showRainForecast: true,
     useColoredPnL: true,
-    leftAligned: false,
+    leftAligned: false, // false = centered, true = left-aligned
     usePythPrices: true,
     minBalanceThreshold: 100,
     enableRealTimeUpdates: true,
@@ -65,8 +65,11 @@ export function getDefaultSettings() {
     showThemeBtn: true,
     showAmountsBtn: true,
     showFontSize: true,
+    showCompactBtn: true,
+    showRefreshBtn: true,
     showStickersBtn: true,
     showDonateBtn: true,
+    showSettingsBtn: true,
     hiddenAssets: [], // Array of hidden asset keys: "ASSET_EXCHANGE"
     rainEnabled: false,
     snowEnabled: false,

@@ -40,17 +40,24 @@ export async function fetchComicImage(comicKey, date = new Date()) {
   
   console.log(`[Comics] Fetching ${comic.name} for ${dateStr}`);
   
+  // Add cache-busting timestamp to prevent proxy caching
+  const cacheBuster = Date.now();
+  const urlWithCacheBuster = `${url}?_=${cacheBuster}`;
+  
   // Try multiple CORS proxies in order
   const proxies = [
-    `/api/proxy?url=${encodeURIComponent(url)}`, // Cloudflare Functions (production)
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, // Public CORS proxy
-    `https://corsproxy.io/?${encodeURIComponent(url)}` // Alternative public CORS proxy
+    `/api/proxy?url=${encodeURIComponent(urlWithCacheBuster)}`, // Cloudflare Functions (production)
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(urlWithCacheBuster)}`, // Public CORS proxy
+    `https://corsproxy.io/?${encodeURIComponent(urlWithCacheBuster)}` // Alternative public CORS proxy
   ];
   
   for (const proxyUrl of proxies) {
     try {
       console.log(`[Comics] Trying proxy: ${proxyUrl.split('?')[0]}`);
-      const response = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
+      const response = await fetch(proxyUrl, { 
+        signal: AbortSignal.timeout(10000),
+        cache: 'no-store'
+      });
       if (response.ok) {
         const html = await response.text();
         if (html && html.length > 100) {
@@ -72,7 +79,6 @@ export async function fetchComicImage(comicKey, date = new Date()) {
                 if (value && value.includes('featureassets.amuniversal.com')) {
                   // Handle srcset format (multiple URLs separated by commas)
                   imgSrc = value.split(',')[0].split(' ')[0];
-                  console.log(`[Comics] Found Far Side image via ${attr}: ${imgSrc?.substring(0, 60)}...`);
                   break;
                 }
               }
@@ -84,7 +90,6 @@ export async function fetchComicImage(comicKey, date = new Date()) {
               const match = html.match(/https?:\/\/featureassets\.amuniversal\.com\/[^\s"'<>]+/);
               if (match) {
                 imgSrc = match[0];
-                console.log(`[Comics] Found Far Side image via regex: ${imgSrc?.substring(0, 60)}...`);
               }
             }
             
@@ -92,7 +97,6 @@ export async function fetchComicImage(comicKey, date = new Date()) {
             const farsideCaption = doc.querySelector('.figure-caption, figcaption');
             if (farsideCaption) {
               caption = farsideCaption.textContent.trim();
-              console.log(`[Comics] Found Far Side caption: ${caption?.substring(0, 60)}...`);
             }
             
             if (!imgSrc) {
@@ -140,7 +144,6 @@ export async function fetchComicImage(comicKey, date = new Date()) {
                 imgSrc = 'https://www.gocomics.com' + imgSrc;
               }
             }
-            console.log(`[Comics] ✅ Final image URL: ${imgSrc.substring(0, 60)}...`);
             return { src: imgSrc, caption };
           }
           
@@ -171,8 +174,6 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
   
   const result = await fetchComicImage(comicKey, date);
   
-  // Remove fading animation
-  container.classList.remove('fading');
   if (result && result.src) {
     const isFarSide = comicKey === 'farside';
     const isMobile = window.innerWidth <= 768;
@@ -209,6 +210,11 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
     }
     
     container.innerHTML = html;
+    
+    // Remove fading animation after new image is inserted
+    setTimeout(() => {
+      container.classList.remove('fading');
+    }, 100);
   } else {
     // Fallback: link to view online with retry option
     container.innerHTML = `
@@ -219,6 +225,9 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
         </p>
       </div>
     `;
+    
+    // Remove fading animation
+    container.classList.remove('fading');
     
     // Add retry click event listener
     const retryText = document.getElementById('retryComicText');
