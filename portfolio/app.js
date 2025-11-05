@@ -1038,7 +1038,7 @@ function setupControls() {
       if (showComicInput) showComicInput.checked = s.showComic ?? false;
       if (comicStripInput) comicStripInput.value = s.comicStrip || 'calvinandhobbes';
       if (minBalanceInput) minBalanceInput.value = s.minBalanceThreshold || 100;
-      if (leftAlignedInput) leftAlignedInput.checked = s.leftAligned ?? false;
+      if (leftAlignedInput) leftAlignedInput.checked = s.leftAligned ?? true;
       
       // Menu visibility checkboxes
       if (showSnowBtnInput) showSnowBtnInput.checked = s.showSnowBtn ?? true;

@@ -54,7 +54,7 @@ export function getDefaultSettings() {
     showWatchlist: true,
     showRainForecast: true,
     useColoredPnL: true,
-    leftAligned: false, // false = left-aligned, true = centered
+    leftAligned: true, // true = centered, false = left-aligned
     usePythPrices: true,
     minBalanceThreshold: 100,
     enableRealTimeUpdates: true,
