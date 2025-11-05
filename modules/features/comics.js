@@ -20,7 +20,7 @@ const METADATA = {
     name: 'The Far Side',
     baseUrl: 'https://www.thefarside.com',
     startDate: new Date('1980-01-01'),
-    endDate: new Date('1995-01-01'),
+    endDate: new Date('1994-12-31'),
     imageSelector: '.card__image img, .figure-image img'
   }
 };
@@ -166,10 +166,13 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
   const dateStr = formatDate(date);
   const url = `${comic.baseUrl}/${dateStr}`;
   
-  // Show loading state
-  container.innerHTML = '<div class="help">Loading comic...</div>';
+  // Add fading animation to current comic while loading
+  container.classList.add('fading');
   
   const result = await fetchComicImage(comicKey, date);
+  
+  // Remove fading animation
+  container.classList.remove('fading');
   if (result && result.src) {
     const isFarSide = comicKey === 'farside';
     const isMobile = window.innerWidth <= 768;
@@ -188,10 +191,10 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
     const linkStyle = (!isFarSide && isMobile) ? 'display: inline-block;' : 'display: block;';
     
     const imgStyle = isFarSide
-      ? 'max-width: 100%; height: auto; opacity: 1 !important; border: 1px solid var(--border);'
+      ? 'max-width: 100%; height: auto; border: 1px solid var(--border);'
       : (isMobile 
-          ? 'height: 200px; width: auto; max-width: none !important; max-height: none !important; opacity: 1 !important; border: 1px solid var(--border);'
-          : 'width: 100%; height: auto; opacity: 1 !important; border: 1px solid var(--border);');
+          ? 'min-height: 200px; max-height: 400px; width: auto; border: 1px solid var(--border);'
+          : 'width: 100%; height: auto; border: 1px solid var(--border);');
     
     // Successfully fetched comic image
     let html = `

@@ -384,8 +384,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 @keyframes pulse-fade {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.6; }
+  0%, 100% { opacity: 0.3 !important; }
+  50% { opacity: 0.6 !important; }
 }
 
 /* Performance: CSS containment for better rendering */
@@ -981,16 +981,17 @@ textarea:focus {
   flex-wrap: wrap;
 }
 
-.calvin-container img {
-  max-width: 100%;
+.calvin-container img,
+#newComic img {
   max-height: 500px;
   height: auto;
   border: 1px solid var(--border);
+  opacity: 1;
 }
 
-.calvin-container.fading img {
-  opacity: 0.3;
-  animation: pulse-fade 2s ease-in-out infinite;
+.calvin-container.fading img,
+#newComic.fading img {
+  animation: pulse-fade 2s ease-in-out infinite !important;
 }
 
 #calvinImage {
@@ -2193,7 +2194,8 @@ input[type="range"]:focus::-moz-range-thumb {
   opacity: 0.3;
 }
 
-.position-edit-btn {
+.position-edit-btn,
+.position-delete-btn {
   padding: 0;
   border: none;
   margin-left: 8px;
@@ -2204,7 +2206,8 @@ input[type="range"]:focus::-moz-range-thumb {
   transition: all 0.2s ease;
 }
 
-.position-edit-btn:hover {
+.position-edit-btn:hover,
+.position-delete-btn:hover {
   color: var(--text);
 }
 

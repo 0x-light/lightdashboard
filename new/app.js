@@ -2033,20 +2033,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     comicSection.style.display = 'none';
   } else if (comicEl) {
     let currentComicStrip = settings.comicStrip || 'calvinandhobbes';
-    let currentComicDate = new Date();
-    
-    const loadComic = async (comicKey = currentComicStrip, date = currentComicDate) => {
-      try {
-        const mod = await import('../modules/features/comics.js');
-        await mod.renderComic(comicEl, comicKey, date);
-        currentComicDate = date;
-        
-        // Update button states
-        updateComicButtons(comicKey, date);
-      } catch (e) {
-        comicEl.textContent = 'Comic failed to load';
-      }
-    };
     
     const getComicMetadata = () => {
       return {
@@ -2060,9 +2046,42 @@ window.addEventListener('DOMContentLoaded', async () => {
         },
         farside: {
           startDate: new Date('1980-01-01'),
-          endDate: new Date('1995-01-01')
+          endDate: new Date('1994-12-31')
         }
       };
+    };
+    
+    // Get a valid date for the comic (use end date if today is past it)
+    const getValidComicDate = (comicKey) => {
+      const metadata = getComicMetadata();
+      const comic = metadata[comicKey];
+      if (!comic) return new Date();
+      
+      const today = new Date();
+      // If today is past the comic's end date, use the end date
+      if (today > comic.endDate) {
+        return comic.endDate;
+      }
+      // Otherwise use today
+      return today;
+    };
+    
+    let currentComicDate = getValidComicDate(currentComicStrip);
+    
+    const loadComic = async (comicKey = currentComicStrip, date = currentComicDate) => {
+      try {
+        console.log(`[Comics] Loading ${comicKey} for ${date.toDateString()}`);
+        const mod = await import('../modules/features/comics.js');
+        await mod.renderComic(comicEl, comicKey, date);
+        currentComicDate = date;
+        
+        // Update button states
+        updateComicButtons(comicKey, date);
+        console.log(`[Comics] Successfully loaded ${comicKey}`);
+      } catch (e) {
+        console.error(`[Comics] Failed to load ${comicKey}:`, e);
+        comicEl.textContent = 'Comic failed to load';
+      }
     };
     
     const updateComicButtons = (comicKey, date) => {
@@ -2111,7 +2130,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         btn.addEventListener('click', async () => {
           const newDate = new Date(currentComicDate);
           newDate.setDate(newDate.getDate() - 1);
-          comicEl.innerHTML = '<div class="help">Loading comic...</div>';
+          console.log(`[Comics] Prev clicked for ${currentComicStrip}, new date: ${newDate.toDateString()}`);
           await loadComic(currentComicStrip, newDate);
         });
       }
@@ -2122,7 +2141,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         btn.addEventListener('click', async () => {
           const newDate = new Date(currentComicDate);
           newDate.setDate(newDate.getDate() + 1);
-          comicEl.innerHTML = '<div class="help">Loading comic...</div>';
+          console.log(`[Comics] Next clicked for ${currentComicStrip}, new date: ${newDate.toDateString()}`);
           await loadComic(currentComicStrip, newDate);
         });
       }
@@ -2140,7 +2159,7 @@ window.addEventListener('DOMContentLoaded', async () => {
           const randomTime = start + Math.random() * (end - start);
           const randomDate = new Date(randomTime);
           
-          comicEl.innerHTML = '<div class="help">Loading comic...</div>';
+          console.log(`[Comics] Random clicked for ${currentComicStrip}, date: ${randomDate.toDateString()}`);
           await loadComic(currentComicStrip, randomDate);
         });
       }
@@ -2158,15 +2177,15 @@ window.addEventListener('DOMContentLoaded', async () => {
           const comicKey = tab.getAttribute('data-comic');
           if (comicKey === currentComicStrip) return; // Already showing this comic
           
+          console.log(`[Comics] Switching from ${currentComicStrip} to ${comicKey}`);
           currentComicStrip = comicKey;
-          currentComicDate = new Date(); // Reset to today when switching comics
+          currentComicDate = getValidComicDate(comicKey); // Get a valid date for the new comic
           
           // Update active tab
           tabs.forEach(t => t?.classList.remove('active'));
           tab.classList.add('active');
           
           // Load new comic
-          comicEl.innerHTML = '<div class="help">Loading comic...</div>';
           await loadComic(comicKey, currentComicDate);
           
           // Save preference
