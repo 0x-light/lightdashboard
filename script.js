@@ -2275,7 +2275,7 @@
       showWatchlist: true,
       showRainForecast: true,
       useColoredPnL: true,
-      leftAligned: false,
+      leftAligned: false, // false = left-aligned, true = centered
       usePythPrices: true,
       minBalanceThreshold: 100,
       enableRealTimeUpdates: true,
@@ -2432,9 +2432,9 @@
     const container = document.querySelector('.container');
     if (container) {
       if (leftAligned) {
-        container.style.margin = '';
-      } else {
         container.style.margin = '0 auto';
+      } else {
+        container.style.margin = '';
       }
     }
   }

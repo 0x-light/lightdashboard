@@ -1417,12 +1417,12 @@ function setupControls() {
         closeSettings();
         
         // Apply alignment immediately
-        const container = document.querySelector('.main-container');
+        const container = document.querySelector('.container');
         if (container) {
           if (newSettings.leftAligned) {
-            container.style.margin = '';
-          } else {
             container.style.margin = '0 auto';
+          } else {
+            container.style.margin = '';
           }
         }
         
@@ -1960,12 +1960,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   
   // Apply alignment
   const applyAlignment = () => {
-    const container = document.querySelector('.main-container');
+    const container = document.querySelector('.container');
     if (container) {
       if (settings.leftAligned) {
-        container.style.margin = '';
-      } else {
         container.style.margin = '0 auto';
+      } else {
+        container.style.margin = '';
       }
     }
   };
