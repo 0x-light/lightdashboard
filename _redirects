@@ -1,9 +1,9 @@
-# Redirect root to /new (new version)
-/    /new/index.html    200
+# Redirect root to /portfolio (new version)
+/    /portfolio/index.html    200
 
 # Serve old version at /old
 /old    /index.html    200
 
-# New page assets
-/new/*    /new/:splat    200
+# Portfolio page assets
+/portfolio/*    /portfolio/:splat    200
 

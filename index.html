@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>Viewport | Portfolio Tracker</title>
     
-    <!-- Redirect root to /new (works in local dev and production) -->
+    <!-- Redirect root to /portfolio (works in local dev and production) -->
     <script>
       const path = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
-      // Redirect to /new unless explicitly accessing old version via ?old param
+      // Redirect to /portfolio unless explicitly accessing old version via ?old param
       if ((path === '/' || path === '/index.html') && !params.has('old')) {
-        window.location.href = '/new/';
+        window.location.href = '/portfolio/';
       }
     </script>
     

@@ -200,7 +200,7 @@ async function renderDemoSummary() {
               const allWallets = [...wallets, ...solanaAddrs];
               
               if (allWallets.length === 0) {
-                console.warn('[/new] Multi-chain: No wallet addresses configured');
+                console.warn('[/portfolio] Multi-chain: No wallet addresses configured');
                 return [];
               }
               
@@ -214,7 +214,7 @@ async function renderDemoSummary() {
                   
                   // Fetch positions only
                   const positionsData = await z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 10000 }).catch(e => {
-                    console.error('[/new] Zerion positions error:', e);
+                    console.error('[/portfolio] Zerion positions error:', e);
                     return null;
                   });
                   
@@ -272,7 +272,7 @@ async function renderDemoSummary() {
                     return zerionRows;
                   }
                 } catch (e) { 
-                  console.error('[/new] Zerion error:', e.message || e);
+                  console.error('[/portfolio] Zerion error:', e.message || e);
                 }
               }
               
@@ -297,7 +297,7 @@ async function renderDemoSummary() {
                       });
                     }
                   } catch (e) {
-                    console.error('[/new] Alchemy error:', e.message || e);
+                    console.error('[/portfolio] Alchemy error:', e.message || e);
                   }
                 }
                 
@@ -318,14 +318,14 @@ async function renderDemoSummary() {
                       });
                     }
                   } catch (e) {
-                    console.error('[/new] Helius error:', e.message || e);
+                    console.error('[/portfolio] Helius error:', e.message || e);
                   }
                 }
                 
                 return rows;
               }
               
-              console.warn('[/new] ⚠️ No multi-chain data available (no API keys or all providers failed)');
+              console.warn('[/portfolio] ⚠️ No multi-chain data available (no API keys or all providers failed)');
               return [];
             })()
           ]);
@@ -388,7 +388,7 @@ async function renderDemoSummary() {
                   }
                 }
               } catch (e) {
-                console.error('[/new] Price enrichment failed:', e);
+                console.error('[/portfolio] Price enrichment failed:', e);
               }
             }
             
@@ -634,14 +634,14 @@ async function renderDemoSummary() {
                   }
                 }
               } catch (e) {
-                console.warn('[/new] Weather load failed:', e);
+                console.warn('[/portfolio] Weather load failed:', e);
                 // Don't show error to user, just skip weather
               }
             })();
           }
         }
       } catch (e) {
-        console.error('[/new] Positions error:', e);
+        console.error('[/portfolio] Positions error:', e);
         summaryEl.innerHTML = `<span class="loading-terminal">Error loading positions: ${e?.message || e}</span>`;
       }
 
@@ -2130,7 +2130,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     await renderDemoSummary();
   } catch (error) {
-    console.error('[/new] renderDemoSummary failed:', error);
+    console.error('[/portfolio] renderDemoSummary failed:', error);
     // Show error in hero
     const summaryEl = document.getElementById('newSummary');
     if (summaryEl) {
