@@ -150,15 +150,23 @@ async function renderDemoSummary() {
                     const position = pos.position;
                     const szi = parseFloat(position?.szi || 0);
                     if (Math.abs(szi) > 0) {
+                      const entryPrice = parseFloat(position?.entryPx || 0);
+                      const leverage = parseFloat(position?.leverage?.value || 10); // Default to 10x if not available
+                      const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
+                      const pnl = parseFloat(position?.unrealizedPnl || 0);
+                      const marginUsed = notionalValue / leverage;
+                      
                       rows.push({
                         asset: position.coin,
                         exchange: 'Hyperliquid',
                         amount: szi,
-                        price: parseFloat(position?.entryPx || 0),
-                        value: Math.abs(parseFloat(position?.positionValue || 0)),
+                        price: entryPrice,
+                        value: notionalValue, // Show leveraged value in position display
                         change24h: null,
-                        pnl: parseFloat(position?.unrealizedPnl || 0),
-                        entryPrice: parseFloat(position?.entryPx || 0)
+                        pnl: pnl,
+                        entryPrice: entryPrice,
+                        marginUsed: marginUsed, // Track margin for portfolio total calculation
+                        isLeveraged: true
                       });
                     }
                   }
@@ -207,14 +215,38 @@ async function renderDemoSummary() {
                   
                   // Fetch both fungible positions and NFTs in parallel
                   const [positionsData, nftsData] = await Promise.all([
-                    z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 10000 }),
-                    z.getWalletNfts(wallets[0], zerionKey, { timeoutMs: 10000 })
+                    z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 10000 }).catch(e => {
+                      console.error('[/new] Zerion positions error:', e);
+                      return null;
+                    }),
+                    z.getWalletNfts(wallets[0], zerionKey, { timeoutMs: 10000 }).catch(e => {
+                      console.error('[/new] Zerion NFTs error:', e);
+                      return null;
+                    })
                   ]);
                   
                   const chainMap = {
-                    'ethereum': 'Ethereum', 'arbitrum': 'Arbitrum', 'optimism': 'Optimism',
-                    'polygon': 'Polygon', 'base': 'Base', 'avalanche': 'Avalanche',
-                    'bsc': 'BSC', 'solana': 'Solana', 'zksync-era': 'zkSync', 'blast': 'Blast'
+                    'ethereum': 'Ethereum', 
+                    'arbitrum': 'Arbitrum', 
+                    'optimism': 'Optimism',
+                    'polygon': 'Polygon', 
+                    'base': 'Base', 
+                    'avalanche': 'Avalanche',
+                    'bsc': 'BSC', 
+                    'solana': 'Solana', 
+                    'zksync-era': 'zkSync', 
+                    'blast': 'Blast',
+                    'hyperevm': 'HyperEVM',
+                    'linea': 'Linea',
+                    'scroll': 'Scroll',
+                    'mantle': 'Mantle',
+                    'fantom': 'Fantom',
+                    'celo': 'Celo',
+                    'gnosis': 'Gnosis',
+                    'moonbeam': 'Moonbeam',
+                    'moonriver': 'Moonriver',
+                    'aurora': 'Aurora',
+                    'cronos': 'Cronos'
                   };
                   
                   // Process fungible positions
@@ -248,32 +280,56 @@ async function renderDemoSummary() {
                   let nftCount = 0;
                   if (nftsData && Array.isArray(nftsData.data)) {
                     console.log('[/new] Zerion NFTs:', nftsData.data.length, 'items');
+                    
                     for (const item of nftsData.data) {
                       const attr = item?.attributes || {};
                       const nft = attr.nft_info;
                       const flags = attr.flags || {};
                       
                       if (nft) {
-                        nftCount++;
                         const chainId = item?.relationships?.chain?.data?.id || 'unknown';
                         const chain = chainMap[chainId] || chainId.charAt(0).toUpperCase() + chainId.slice(1);
                         
-                        console.log('[/new] Found NFT:', nft.name || nft.contract?.name, 'value:', attr.value, 'chain:', chain);
-                        
-                        // Add NFT (filter trash unless it has value)
-                        if (!flags.is_trash || (attr.value && attr.value > 0)) {
-                          zerionRows.push({
-                            asset: nft.name || nft.contract?.name || 'NFT',
-                            exchange: chain,
-                            amount: attr.quantity?.float || 1,
-                            price: attr.price || 0,
-                            value: attr.value || 0,
-                            change24h: null,
-                            pnl: null
-                          });
+                        // Skip trash NFTs entirely
+                        if (flags.is_trash) {
+                          console.log('[/new] Skipping trash NFT on', chain);
+                          continue;
                         }
+                        
+                        // Skip NFTs with no value (likely spam)
+                        const value = attr.value || 0;
+                        if (value === 0 || value === undefined) {
+                          console.log('[/new] Skipping NFT with no value on', chain);
+                          continue;
+                        }
+                        
+                        nftCount++;
+                        
+                        // Extract collection name - it's in attributes.collection_info.name!
+                        const collectionName = attr.collection_info?.name || 
+                                              nft.collection?.name ||
+                                              nft.contract?.name;
+                        
+                        const nftName = nft.name || nft.content?.detail?.name;
+                        
+                        // Always prefer collection name if available, fallback to NFT name
+                        const displayName = collectionName || nftName || 'NFT';
+                        
+                        console.log('[/new] Adding NFT:', displayName, 'on', chain, '- value:', value);
+                        
+                        zerionRows.push({
+                          asset: displayName,
+                          exchange: chain,
+                          amount: attr.quantity?.float || 1,
+                          price: attr.price || 0,
+                          value: value,
+                          change24h: null,
+                          pnl: null
+                        });
                       }
                     }
+                  } else {
+                    console.log('[/new] No NFT data or invalid format:', nftsData ? 'data is not array' : 'nftsData is null');
                   }
                   
                   console.log('[/new] Zerion breakdown:', fungibleCount, 'fungible tokens,', nftCount, 'NFTs');
@@ -476,7 +532,16 @@ async function renderDemoSummary() {
             cachedPositions = sorted;
             
             // Calculate total value and PnL from ALL positions (including hidden ones)
-            const totalValue = sorted.reduce((sum, p) => sum + (p.value || 0), 0);
+            // For leveraged positions: use margin + PnL (actual equity)
+            // For spot/regular positions: use full value
+            const totalValue = sorted.reduce((sum, p) => {
+              if (p.isLeveraged && p.marginUsed !== undefined) {
+                // Leveraged position: equity = margin + PnL
+                return sum + p.marginUsed + (p.pnl || 0);
+              }
+              // Regular position: use full value
+              return sum + (p.value || 0);
+            }, 0);
             const totalPnL = sorted.reduce((sum, p) => sum + (p.pnl || 0), 0);
             
             // Calculate PnL percentage: (PnL / cost basis) * 100
@@ -748,7 +813,13 @@ function setupControls() {
       });
       
       // Update hero with filtered totals
-      const totalValue = filtered.reduce((sum, p) => sum + (p.value || 0), 0);
+      // For leveraged positions: use margin + PnL (actual equity)
+      const totalValue = filtered.reduce((sum, p) => {
+        if (p.isLeveraged && p.marginUsed !== undefined) {
+          return sum + p.marginUsed + (p.pnl || 0);
+        }
+        return sum + (p.value || 0);
+      }, 0);
       const totalPnL = filtered.reduce((sum, p) => sum + (p.pnl || 0), 0);
       const summaryEl = document.getElementById('newSummary');
       const HeroUI = window.AppModules?.ui?.hero;
@@ -2047,7 +2118,13 @@ window.addEventListener('DOMContentLoaded', async () => {
         rerenderPositions();
         
         // Update hero
-        const totalValue = cachedPositions.reduce((sum, p) => sum + (p.value || 0), 0);
+        // For leveraged positions: use margin + PnL (actual equity)
+        const totalValue = cachedPositions.reduce((sum, p) => {
+          if (p.isLeveraged && p.marginUsed !== undefined) {
+            return sum + p.marginUsed + (p.pnl || 0);
+          }
+          return sum + (p.value || 0);
+        }, 0);
         const totalPnL = cachedPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
         const costBasis = totalValue - totalPnL;
         const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;

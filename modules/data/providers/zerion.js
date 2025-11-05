@@ -42,14 +42,14 @@ export async function getWalletPositions(wallet, apiKey, { timeoutMs = 15000, in
 }
 
 export async function getWalletNfts(wallet, apiKey, { timeoutMs = 15000 } = {}) {
-  // NFT positions - using positions endpoint with filter
+  // NFT positions - using dedicated nft-positions endpoint
   const params = {
     currency: 'usd',
-    'filter[position_types]': 'nft',
-    sort: 'value'
+    sort: 'floor_price',
+    'filter[trash]': 'only_non_trash'
   };
   
-  const url = buildUrl(`wallets/${wallet}/positions/`, params, apiKey);
+  const url = buildUrl(`wallets/${wallet}/nft-positions/`, params, apiKey);
   const headers = USE_PROXY ? {} : authHeaders(apiKey);
   
   return await HttpClient.getJson(url, { headers, timeoutMs }).catch(() => null);
