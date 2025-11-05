@@ -1,6 +1,6 @@
 {
-  "name": "Bonfire Portfolio Tracker",
-  "short_name": "Bonfire",
+  "name": "Viewport",
+  "short_name": "Viewport",
   "description": "Privacy-first crypto portfolio tracker with real-time positions",
   "start_url": "/new/",
   "display": "standalone",
