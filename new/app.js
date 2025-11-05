@@ -211,7 +211,6 @@ async function renderDemoSummary() {
               if (zerionKey && wallets.length > 0) {
                 try {
                   const z = providers.zerion;
-                  console.log('[/new] Zerion: Fetching positions and NFTs for', wallets[0]);
                   
                   // Fetch both fungible positions and NFTs in parallel
                   const [positionsData, nftsData] = await Promise.all([
@@ -252,7 +251,6 @@ async function renderDemoSummary() {
                   // Process fungible positions
                   let fungibleCount = 0;
                   if (positionsData && Array.isArray(positionsData.data)) {
-                    console.log('[/new] Zerion positions:', positionsData.data.length, 'fungible tokens');
                     for (const item of positionsData.data) {
                       const attr = item?.attributes || {};
                       const fungible = attr.fungible_info;
@@ -279,7 +277,6 @@ async function renderDemoSummary() {
                   // Process NFTs
                   let nftCount = 0;
                   if (nftsData && Array.isArray(nftsData.data)) {
-                    console.log('[/new] Zerion NFTs:', nftsData.data.length, 'items');
                     
                     for (const item of nftsData.data) {
                       const attr = item?.attributes || {};
@@ -290,18 +287,16 @@ async function renderDemoSummary() {
                         const chainId = item?.relationships?.chain?.data?.id || 'unknown';
                         const chain = chainMap[chainId] || chainId.charAt(0).toUpperCase() + chainId.slice(1);
                         
-                        // Skip trash NFTs entirely
-                        if (flags.is_trash) {
-                          console.log('[/new] Skipping trash NFT on', chain);
-                          continue;
-                        }
-                        
-                        // Skip NFTs with no value (likely spam)
-                        const value = attr.value || 0;
-                        if (value === 0 || value === undefined) {
-                          console.log('[/new] Skipping NFT with no value on', chain);
-                          continue;
-                        }
+                      // Skip trash NFTs entirely
+                      if (flags.is_trash) {
+                        continue;
+                      }
+                      
+                      // Skip NFTs with no value (likely spam)
+                      const value = attr.value || 0;
+                      if (value === 0 || value === undefined) {
+                        continue;
+                      }
                         
                         nftCount++;
                         
@@ -311,11 +306,7 @@ async function renderDemoSummary() {
                                               nft.contract?.name;
                         
                         const nftName = nft.name || nft.content?.detail?.name;
-                        
-                        // Always prefer collection name if available, fallback to NFT name
                         const displayName = collectionName || nftName || 'NFT';
-                        
-                        console.log('[/new] Adding NFT:', displayName, 'on', chain, '- value:', value);
                         
                         zerionRows.push({
                           asset: displayName,
@@ -324,20 +315,16 @@ async function renderDemoSummary() {
                           price: attr.price || 0,
                           value: value,
                           change24h: null,
-                          pnl: null
+                          pnl: null,
+                          isNft: true  // Mark as NFT for filtering
                         });
                       }
                     }
-                  } else {
-                    console.log('[/new] No NFT data or invalid format:', nftsData ? 'data is not array' : 'nftsData is null');
                   }
-                  
-                  console.log('[/new] Zerion breakdown:', fungibleCount, 'fungible tokens,', nftCount, 'NFTs');
                   
                   // If we got data from Zerion, use it
                   if (zerionRows.length > 0) {
                     zerionSucceeded = true;
-                    console.log('[/new] ✅ Using Zerion as primary data source');
                     return zerionRows;
                   }
                 } catch (e) { 
@@ -347,14 +334,12 @@ async function renderDemoSummary() {
               
               // Fallback to Alchemy + Helius
               if (!zerionSucceeded && (alchemyKey || heliusKey)) {
-                console.log('[/new] ⚠️ Zerion unavailable, falling back to Alchemy + Helius');
                 const rows = [];
                 
                 // Fetch Alchemy (EVM chains)
                 if (alchemyKey && wallets.length > 0) {
                   try {
                     const alchemyTokens = await providers.alchemy.getTokenBalances(wallets, alchemyKey, { timeoutMs: 20000 });
-                    console.log('[/new] Alchemy returned', alchemyTokens.length, 'tokens');
                     
                     for (const token of alchemyTokens) {
                       rows.push({
@@ -376,7 +361,6 @@ async function renderDemoSummary() {
                 if (heliusKey && solanaAddrs.length > 0) {
                   try {
                     const heliusTokens = await providers.helius.getTokenBalances(solanaAddrs, heliusKey, { timeoutMs: 15000 });
-                    console.log('[/new] Helius returned', heliusTokens.length, 'tokens');
                     
                     for (const token of heliusTokens) {
                       rows.push({
@@ -394,7 +378,6 @@ async function renderDemoSummary() {
                   }
                 }
                 
-                console.log('[/new] ✅ Fallback providers returned', rows.length, 'total tokens');
                 return rows;
               }
               
@@ -423,6 +406,7 @@ async function renderDemoSummary() {
                       const markPx = parseFloat(ctx.markPx);
                       const prevDayPx = parseFloat(ctx.prevDayPx || 0);
                       priceMap[assetName] = markPx;
+                      
                       if (prevDayPx > 0) {
                         change24hMap[assetName] = ((markPx - prevDayPx) / prevDayPx) * 100;
                       }
@@ -560,7 +544,7 @@ async function renderDemoSummary() {
             PositionsUI.renderPositions({
               positions: visible,
               containers: { positionsBody, mobilePositionsContainer: mobileContainer },
-              options: { amountsVisible, hideSmallPositions, hideNfts, editMode, settings: { minBalanceThreshold: s.minBalanceThreshold || 100, showExactAmounts: s.showExactAmounts || false, useColoredPnL: s.useColoredPnL ?? true } }
+              options: { amountsVisible, hideSmallPositions, editMode, settings: { minBalanceThreshold: s.minBalanceThreshold || 100, showExactAmounts: s.showExactAmounts || false, useColoredPnL: s.useColoredPnL ?? true } }
             });
             
             rendered = true; // Mark as successfully rendered
@@ -670,7 +654,6 @@ let amountsVisible = true; // Default: show values
 let compactMode = true; // Default: compact mode
 let editMode = false;
 let hideSmallPositions = true; // Default: hide positions under $100
-let hideNfts = false;
 let hiddenAssets = new Set();
 let cachedPositions = [];
 let cachedSummaryData = {};
@@ -762,16 +745,6 @@ function setupControls() {
   syncMobileButtons('newRefreshBtn', 'newRefreshBtnMobile');
   syncMobileButtons('newSettingsBtn', 'newSettingsBtnMobile');
   
-  // Toggle NFTs
-  const toggleNftsBtn = document.getElementById('newToggleNftsBtn');
-  if (toggleNftsBtn) {
-    toggleNftsBtn.addEventListener('click', () => {
-      hideNfts = !hideNfts;
-      toggleNftsBtn.textContent = hideNfts ? '[SHOW NFTS]' : '[HIDE NFTS]';
-      rerenderPositions();
-    });
-  }
-  
   // Toggle small positions
   const hideSmallBtn = document.getElementById('newHideSmallBtn');
   if (hideSmallBtn) {
@@ -797,7 +770,6 @@ function setupControls() {
       let filtered = cachedPositions.filter(p => {
         const key = `${p.asset}_${p.exchange}`;
         if (hiddenAssets.has(key)) return false;
-        if (hideNfts && p.exchange === 'OpenSea') return false;
         if (hideSmallPositions) {
           const threshold = settings.minBalanceThreshold || 100;
           const value = p.value || (Math.abs(p.amount || 0) * (p.price || 0));
@@ -809,7 +781,7 @@ function setupControls() {
       PositionsUI.renderPositions({
         positions: filtered,
         containers: { positionsBody, mobilePositionsContainer: mobileContainer },
-        options: { amountsVisible, hideSmallPositions: false, hideNfts: false, editMode, settings: { ...settings, showExactAmounts: settings.showExactAmounts || false, useColoredPnL: settings.useColoredPnL ?? true } }
+        options: { amountsVisible, hideSmallPositions: false, editMode, settings: { ...settings, showExactAmounts: settings.showExactAmounts || false, useColoredPnL: settings.useColoredPnL ?? true } }
       });
       
       // Update hero with filtered totals
@@ -985,7 +957,7 @@ function setupControls() {
           PositionsUI.renderPositions({
             positions: cachedPositions,
             containers: { positionsBody, mobilePositionsContainer: mobileContainer },
-            options: { amountsVisible, hideSmallPositions: false, hideNfts: false, settings: { minBalanceThreshold: 0, showExactAmounts: false, useColoredPnL: true } }
+            options: { amountsVisible, hideSmallPositions: false, settings: { minBalanceThreshold: 0, showExactAmounts: false, useColoredPnL: true } }
           });
         }
       }
@@ -1162,6 +1134,12 @@ function setupControls() {
         toggleSnowBtn.textContent = '[SNOW ON]';
         if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW ON]';
       }
+      
+      // Save to localStorage
+      const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+      s.rainEnabled = active;
+      s.snowEnabled = false;
+      localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
     });
   }
   
@@ -1176,6 +1154,12 @@ function setupControls() {
         toggleRainBtn.textContent = '[RAIN ON]';
         if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = '[RAIN ON]';
       }
+      
+      // Save to localStorage
+      const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+      s.snowEnabled = active;
+      s.rainEnabled = false;
+      localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
     });
   }
   
@@ -1190,6 +1174,12 @@ function setupControls() {
         toggleSnowBtn.textContent = '[SNOW ON]';
         if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW ON]';
       }
+      
+      // Save to localStorage
+      const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+      s.rainEnabled = active;
+      s.snowEnabled = false;
+      localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
     });
   }
   
@@ -1204,6 +1194,12 @@ function setupControls() {
         toggleRainBtn.textContent = '[RAIN ON]';
         if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = '[RAIN ON]';
       }
+      
+      // Save to localStorage
+      const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+      s.snowEnabled = active;
+      s.rainEnabled = false;
+      localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
     });
   }
   
@@ -1318,7 +1314,7 @@ function setupControls() {
   }
   
   if (saveBtn) {
-    saveBtn.addEventListener('click', () => {
+    saveBtn.addEventListener('click', async () => {
       // Collect form values and save to legacy storage (compatibility)
       const newSettings = settings || {};
       const userNameInput = document.getElementById('newUserName');
@@ -1363,8 +1359,11 @@ function setupControls() {
       // Save via legacy saveSettings (handles encryption)
       try {
         localStorage.setItem('myDashboardSettings.v1', JSON.stringify(newSettings));
-        alert('Settings saved! Reloading...');
-        location.reload();
+        closeSettings();
+        
+        // Soft reload: re-fetch positions without full page refresh
+        await renderDemoSummary();
+        rerenderPositions();
       } catch (e) {
         alert('Failed to save settings: ' + e.message);
       }
@@ -1803,7 +1802,7 @@ function setupControls() {
   }
   
   if (savePositionBtn) {
-    savePositionBtn.addEventListener('click', () => {
+    savePositionBtn.addEventListener('click', async () => {
       const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
       
       // Ensure cryptoPositions array exists
@@ -1865,8 +1864,10 @@ function setupControls() {
       try {
         localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
         closeAddPosition();
-        alert('Position saved! Reloading...');
-        location.reload();
+        
+        // Soft reload: re-fetch positions without full page refresh
+        await renderDemoSummary();
+        rerenderPositions();
       } catch (e) {
         alert('Failed to save position: ' + e.message);
       }
@@ -1896,10 +1897,37 @@ window.addEventListener('DOMContentLoaded', async () => {
     const theme = settings.theme || Themes.getPreferredTheme();
     Themes.applyTheme(theme);
     const themeSelect = document.getElementById('newThemeSelect');
+    const themeSelectMobile = document.getElementById('newThemeSelectMobile');
+    
     if (themeSelect) {
       themeSelect.value = theme;
       themeSelect.addEventListener('change', (e) => {
-        Themes.applyTheme(e.target.value);
+        const newTheme = e.target.value;
+        Themes.applyTheme(newTheme);
+        
+        // Save to localStorage
+        const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+        s.theme = newTheme;
+        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        
+        // Sync mobile dropdown
+        if (themeSelectMobile) themeSelectMobile.value = newTheme;
+      });
+    }
+    
+    if (themeSelectMobile) {
+      themeSelectMobile.value = theme;
+      themeSelectMobile.addEventListener('change', (e) => {
+        const newTheme = e.target.value;
+        Themes.applyTheme(newTheme);
+        
+        // Save to localStorage
+        const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+        s.theme = newTheme;
+        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        
+        // Sync desktop dropdown
+        if (themeSelect) themeSelect.value = newTheme;
       });
     }
   }
@@ -1910,6 +1938,26 @@ window.addEventListener('DOMContentLoaded', async () => {
     fontSize = 15; // Default if it's a string or not set
   }
   applyFontSize(fontSize);
+  
+  // Init rain/snow from saved preferences (only one can be active)
+  const Rain = window.AppModules?.features?.rain;
+  if (Rain) {
+    const toggleRainBtn = document.getElementById('newToggleRainBtn');
+    const toggleSnowBtn = document.getElementById('newToggleSnowBtn');
+    const toggleRainBtnMobile = document.getElementById('newToggleRainBtnMobile');
+    const toggleSnowBtnMobile = document.getElementById('newToggleSnowBtnMobile');
+    
+    // Only enable one - prioritize rain if both are somehow enabled
+    if (settings.rainEnabled && !settings.snowEnabled) {
+      Rain.toggleRain();
+      if (toggleRainBtn) toggleRainBtn.textContent = '[RAIN OFF]';
+      if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = '[RAIN OFF]';
+    } else if (settings.snowEnabled && !settings.rainEnabled) {
+      Rain.toggleSnow();
+      if (toggleSnowBtn) toggleSnowBtn.textContent = '[SNOW OFF]';
+      if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW OFF]';
+    }
+  }
   
   // Apply initial compact mode styling
   if (compactMode) {
@@ -1938,9 +1986,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   
   // CRITICAL PATH: Positions + Hero only (everything else lazy)
   try {
-    console.log('[/new] Starting renderDemoSummary...');
     await renderDemoSummary();
-    console.log('[/new] renderDemoSummary completed');
   } catch (error) {
     console.error('[/new] renderDemoSummary failed:', error);
     // Show error in hero
@@ -1951,7 +1997,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
   
   // Hide loading screen after critical data loads (even if there was an error)
-  console.log('[/new] Hiding loading screen...');
   hideLoadingScreen();
   
   // NON-CRITICAL: Health checks in background
@@ -1987,15 +2032,162 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (settings.showComic === false && comicSection) {
     comicSection.style.display = 'none';
   } else if (comicEl) {
-    const comicStrip = settings.comicStrip || 'calvinandhobbes';
-    const loadComic = async () => {
+    let currentComicStrip = settings.comicStrip || 'calvinandhobbes';
+    let currentComicDate = new Date();
+    
+    const loadComic = async (comicKey = currentComicStrip, date = currentComicDate) => {
       try {
         const mod = await import('../modules/features/comics.js');
-        await mod.renderComic(comicEl, comicStrip, new Date());
+        await mod.renderComic(comicEl, comicKey, date);
+        currentComicDate = date;
+        
+        // Update button states
+        updateComicButtons(comicKey, date);
       } catch (e) {
         comicEl.textContent = 'Comic failed to load';
       }
     };
+    
+    const getComicMetadata = () => {
+      return {
+        calvinandhobbes: {
+          startDate: new Date('1985-11-18'),
+          endDate: new Date('1995-12-31')
+        },
+        peanuts: {
+          startDate: new Date('1950-10-02'),
+          endDate: new Date('2000-02-13')
+        },
+        farside: {
+          startDate: new Date('1980-01-01'),
+          endDate: new Date('1995-01-01')
+        }
+      };
+    };
+    
+    const updateComicButtons = (comicKey, date) => {
+      const metadata = getComicMetadata();
+      const comic = metadata[comicKey];
+      if (!comic) return;
+      
+      const prevButtons = [
+        document.getElementById('newComicPrevBtn'),
+        document.getElementById('newComicPrevBtnMobile')
+      ];
+      const nextButtons = [
+        document.getElementById('newComicNextBtn'),
+        document.getElementById('newComicNextBtnMobile')
+      ];
+      
+      // Disable prev if at start date
+      const atStart = date <= comic.startDate;
+      prevButtons.forEach(btn => {
+        if (btn) btn.disabled = atStart;
+      });
+      
+      // Disable next if at end date
+      const atEnd = date >= comic.endDate;
+      nextButtons.forEach(btn => {
+        if (btn) btn.disabled = atEnd;
+      });
+    };
+    
+    // Setup prev/next/random buttons
+    const prevButtons = [
+      document.getElementById('newComicPrevBtn'),
+      document.getElementById('newComicPrevBtnMobile')
+    ];
+    const nextButtons = [
+      document.getElementById('newComicNextBtn'),
+      document.getElementById('newComicNextBtnMobile')
+    ];
+    const randomButtons = [
+      document.getElementById('newComicRandomBtn'),
+      document.getElementById('newComicRandomBtnMobile')
+    ];
+    
+    prevButtons.forEach(btn => {
+      if (btn) {
+        btn.addEventListener('click', async () => {
+          const newDate = new Date(currentComicDate);
+          newDate.setDate(newDate.getDate() - 1);
+          comicEl.innerHTML = '<div class="help">Loading comic...</div>';
+          await loadComic(currentComicStrip, newDate);
+        });
+      }
+    });
+    
+    nextButtons.forEach(btn => {
+      if (btn) {
+        btn.addEventListener('click', async () => {
+          const newDate = new Date(currentComicDate);
+          newDate.setDate(newDate.getDate() + 1);
+          comicEl.innerHTML = '<div class="help">Loading comic...</div>';
+          await loadComic(currentComicStrip, newDate);
+        });
+      }
+    });
+    
+    randomButtons.forEach(btn => {
+      if (btn) {
+        btn.addEventListener('click', async () => {
+          const metadata = getComicMetadata();
+          const comic = metadata[currentComicStrip];
+          if (!comic) return;
+          
+          const start = comic.startDate.getTime();
+          const end = comic.endDate.getTime();
+          const randomTime = start + Math.random() * (end - start);
+          const randomDate = new Date(randomTime);
+          
+          comicEl.innerHTML = '<div class="help">Loading comic...</div>';
+          await loadComic(currentComicStrip, randomDate);
+        });
+      }
+    });
+    
+    // Setup tab switching
+    const tabCalvin = document.getElementById('newTabCalvin');
+    const tabPeanuts = document.getElementById('newTabPeanuts');
+    const tabFarside = document.getElementById('newTabFarside');
+    const tabs = [tabCalvin, tabPeanuts, tabFarside];
+    
+    tabs.forEach(tab => {
+      if (tab) {
+        tab.addEventListener('click', async () => {
+          const comicKey = tab.getAttribute('data-comic');
+          if (comicKey === currentComicStrip) return; // Already showing this comic
+          
+          currentComicStrip = comicKey;
+          currentComicDate = new Date(); // Reset to today when switching comics
+          
+          // Update active tab
+          tabs.forEach(t => t?.classList.remove('active'));
+          tab.classList.add('active');
+          
+          // Load new comic
+          comicEl.innerHTML = '<div class="help">Loading comic...</div>';
+          await loadComic(comicKey, currentComicDate);
+          
+          // Save preference
+          const Settings = window.AppModules?.core?.settings;
+          const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+          s.comicStrip = comicKey;
+          localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        });
+      }
+    });
+    
+    // Set initial active tab based on saved preference
+    const savedComic = settings.comicStrip || 'calvinandhobbes';
+    tabs.forEach(tab => {
+      if (tab && tab.getAttribute('data-comic') === savedComic) {
+        tab.classList.add('active');
+      } else {
+        tab?.classList.remove('active');
+      }
+    });
+    
     if ('IntersectionObserver' in window) {
       const io = new IntersectionObserver((entries) => {
         for (const entry of entries) {

@@ -1,3 +1,9 @@
-# Redirect all routes to index.html for SPA behavior
-/* /index.html 200
+# Redirect root to /new (new version)
+/    /new/index.html    200
+
+# Serve old version at /old
+/old    /index.html    200
+
+# New page assets
+/new/*    /new/:splat    200
 

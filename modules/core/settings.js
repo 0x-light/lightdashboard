@@ -34,11 +34,46 @@ export function loadSettings() {
 
 export function getDefaultSettings() {
   return {
-    userName: 'there',
+    theme: 'light',
+    refreshMinutes: 30,
+    userName: '',
+    cryptoPositions: [], // { type: 'pyth', symbol, feedId, amount, entryPrice } or { type: 'custom', name, value }
+    weather: { label: '', lat: null, lon: null },
+    walletAddresses: '',
+    solanaAddresses: '',
+    bitcoinAddresses: '',
+    zcashAddresses: '',
+    alchemyApiKey: '',
+    heliusApiKey: '',
+    openSeaApiKey: '',
+    zerionApiKey: '',
+    fontSize: 15,
+    comicStrip: 'calvinandhobbes',
+    showComic: true,
+    comicCollapsed: false, // Whether comic section is collapsed
+    showWatchlist: true,
+    showRainForecast: true,
+    useColoredPnL: true,
+    leftAligned: false,
     usePythPrices: true,
-    enableRealTimeUpdates: false,
-    realTimeUpdateInterval: 10,
-    minBalanceThreshold: 100
+    minBalanceThreshold: 100,
+    enableRealTimeUpdates: true,
+    realTimeUpdateInterval: 10, // seconds
+    heroPnLMode: 'total', // 'total' or '24h'
+    showSnowBtn: true,
+    showRainBtn: true,
+    showThemeBtn: true,
+    showAmountsBtn: true,
+    showFontSize: true,
+    showStickersBtn: true,
+    showDonateBtn: true,
+    hiddenAssets: [], // Array of hidden asset keys: "ASSET_EXCHANGE"
+    rainEnabled: false,
+    snowEnabled: false,
+    watchlist: [], // Array of Pyth price feed IDs
+    watchlistCollapsed: false, // Whether watchlist section is collapsed
+    compactList: false, // Whether to use compact list mode
+    buttonBackgrounds: false // Whether to add backgrounds to buttons
   };
 }
 

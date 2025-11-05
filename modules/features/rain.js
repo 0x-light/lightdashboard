@@ -10,10 +10,10 @@ let snowActive = false;
 let animationFrame = null;
 
 const config = {
-  density: 161,
-  speed: 5,
+  density: 180,
+  speed: 8,
   size: 1,
-  length: 8
+  length: 6
 };
 
 function resizeCanvas() {
@@ -25,12 +25,12 @@ function resizeCanvas() {
 function createDrop() {
   const baseSpeed = snowActive ? 0.6 : config.speed;
   const baseSize = snowActive ? 1 : config.size;
-  const baseLength = snowActive ? 2 : config.length;
+  const baseLength = snowActive ? 1 : config.length;
   
   return {
     x: Math.random() * canvas.width,
     y: Math.random() * canvas.height - canvas.height,
-    speed: baseSpeed * (0.7 + Math.random() * 0.6),
+    speed: baseSpeed * (0.3 + Math.random() * 0.3),
     size: baseSize,
     length: baseLength,
     wobble: Math.random() * Math.PI * 2,
@@ -95,7 +95,12 @@ export function toggleRain() {
   rainActive = !rainActive;
   
   if (rainActive) {
+    // Turn off snow and stop its animation
     snowActive = false;
+    if (animationFrame) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
     canvas.classList.add('active');
     resizeCanvas();
     initDrops();
@@ -115,7 +120,12 @@ export function toggleSnow() {
   snowActive = !snowActive;
   
   if (snowActive) {
+    // Turn off rain and stop its animation
     rainActive = false;
+    if (animationFrame) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
     canvas.classList.add('active');
     resizeCanvas();
     initDrops();

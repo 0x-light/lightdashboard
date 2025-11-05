@@ -33,6 +33,7 @@
             <option value="light">Light</option>
             <option value="dark">Dark</option>
             <option value="amber">Amber</option>
+            <option value="ember">Ember</option>
             <option value="matrix">Matrix</option>
             <option value="halloween">Halloween</option>
             <option value="christmas">Christmas</option>
@@ -78,6 +79,7 @@
             <option value="light">Light</option>
             <option value="dark">Dark</option>
             <option value="amber">Amber</option>
+            <option value="ember">Ember</option>
             <option value="matrix">Matrix</option>
             <option value="halloween">Halloween</option>
             <option value="christmas">Christmas</option>
@@ -269,7 +271,6 @@
         </div>
         <div id="newMobilePositionsContainer" class="mobile-positions-container"></div>
         <div style="margin-top: 16px; display: flex; gap: 8px;">
-          <button id="newToggleNftsBtn" class="btn-text">[HIDE NFTS]</button>
           <button id="newHideSmallBtn" class="btn-text">[SHOW &lt;$100]</button>
           <button id="newEditListBtn" class="btn-text">[EDIT]</button>
         </div>
@@ -301,10 +302,31 @@
       </section>
 
       <section class="data-section" id="comicSection" style="margin-top: 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h2 class="section-title" style="margin: 0;">Comics</h2>
+        <div class="comic-header">
+          <div class="comic-tabs">
+            <button id="newTabCalvin" class="comic-tab active" data-comic="calvinandhobbes">
+              <span class="tab-desktop">CALVIN & HOBBES</span>
+              <span class="tab-mobile">C&H</span>
+            </button>
+            <button id="newTabPeanuts" class="comic-tab" data-comic="peanuts">PEANUTS</button>
+            <button id="newTabFarside" class="comic-tab" data-comic="farside">THE FAR SIDE</button>
+          </div>
         </div>
-        <div id="newComic" class="help" style="margin-top: 8px;">Scroll here (or wait) to load comic…</div>
+        <div class="comic-content">
+          <div class="calvin-container">
+            <div id="newComic">Scroll here (or wait) to load comic…</div>
+          </div>
+          <div class="calvin-controls-mobile">
+            <button id="newComicPrevBtnMobile" class="btn-text">[PREV]</button>
+            <button id="newComicRandomBtnMobile" class="btn-text">[RANDOM]</button>
+            <button id="newComicNextBtnMobile" class="btn-text">[NEXT]</button>
+          </div>
+          <div class="calvin-controls">
+            <button id="newComicPrevBtn" class="btn-text">[PREV]</button>
+            <button id="newComicRandomBtn" class="btn-text">[RANDOM]</button>
+            <button id="newComicNextBtn" class="btn-text">[NEXT]</button>
+          </div>
+        </div>
       </section>
     </main>
 

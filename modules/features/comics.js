@@ -21,7 +21,7 @@ const METADATA = {
     baseUrl: 'https://www.thefarside.com',
     startDate: new Date('1980-01-01'),
     endDate: new Date('1995-01-01'),
-    imageSelector: '.card__image img'
+    imageSelector: '.card__image img, .figure-image img'
   }
 };
 
@@ -38,34 +38,201 @@ export async function fetchComicImage(comicKey, date = new Date()) {
   const dateStr = formatDate(date);
   const url = `${comic.baseUrl}/${dateStr}`;
   
-  // Use proxy for CORS - fetch as text not JSON
-  const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`;
-  try {
-    const response = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) });
-    if (!response.ok) return null;
-    const html = await response.text();
-    if (!html) return null;
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const img = doc.querySelector(comic.imageSelector);
-    if (img && img.src) return img.src;
-    return null;
-  } catch (_) {
-    return null;
+  console.log(`[Comics] Fetching ${comic.name} for ${dateStr}`);
+  
+  // Try multiple CORS proxies in order
+  const proxies = [
+    `/api/proxy?url=${encodeURIComponent(url)}`, // Cloudflare Functions (production)
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, // Public CORS proxy
+    `https://corsproxy.io/?${encodeURIComponent(url)}` // Alternative public CORS proxy
+  ];
+  
+  for (const proxyUrl of proxies) {
+    try {
+      console.log(`[Comics] Trying proxy: ${proxyUrl.split('?')[0]}`);
+      const response = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
+      if (response.ok) {
+        const html = await response.text();
+        if (html && html.length > 100) {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          
+          let imgSrc = null;
+          let caption = null;
+          
+          // Special handling for The Far Side
+          if (comicKey === 'farside') {
+            // Method 1: Look for images from amuniversal CDN in all img tag attributes
+            const allImages = doc.querySelectorAll('img');
+            const attributes = ['src', 'data-src', 'data-lazy-src', 'srcset', 'data-srcset'];
+            
+            for (const img of allImages) {
+              for (const attr of attributes) {
+                const value = img.getAttribute(attr);
+                if (value && value.includes('featureassets.amuniversal.com')) {
+                  // Handle srcset format (multiple URLs separated by commas)
+                  imgSrc = value.split(',')[0].split(' ')[0];
+                  console.log(`[Comics] Found Far Side image via ${attr}: ${imgSrc?.substring(0, 60)}...`);
+                  break;
+                }
+              }
+              if (imgSrc) break;
+            }
+            
+            // Method 2: Search raw HTML for amuniversal URLs (fallback)
+            if (!imgSrc) {
+              const match = html.match(/https?:\/\/featureassets\.amuniversal\.com\/[^\s"'<>]+/);
+              if (match) {
+                imgSrc = match[0];
+                console.log(`[Comics] Found Far Side image via regex: ${imgSrc?.substring(0, 60)}...`);
+              }
+            }
+            
+            // Try to get caption
+            const farsideCaption = doc.querySelector('.figure-caption, figcaption');
+            if (farsideCaption) {
+              caption = farsideCaption.textContent.trim();
+              console.log(`[Comics] Found Far Side caption: ${caption?.substring(0, 60)}...`);
+            }
+            
+            if (!imgSrc) {
+              console.log(`[Comics] Far Side: Could not find amuniversal CDN URL in HTML`);
+            }
+          } else {
+            // Method 1: Try og:image meta tag first (most reliable for GoComics)
+            const ogImage = doc.querySelector('meta[property="og:image"]');
+            if (ogImage) {
+              imgSrc = ogImage.getAttribute('content');
+              console.log(`[Comics] Found og:image: ${imgSrc?.substring(0, 60)}...`);
+            }
+            
+            // Method 2: Try multiple image selectors
+            if (!imgSrc) {
+              const selectors = [
+                '.comic.img-fluid',
+                'picture img',
+                '.item-comic-image img',
+                comic.imageSelector,
+                'img[alt*="comic" i]'
+              ];
+              
+              for (const selector of selectors) {
+                const img = doc.querySelector(selector);
+                if (img) {
+                  imgSrc = img.getAttribute('src') || img.getAttribute('data-src') || img.src;
+                  if (imgSrc) {
+                    console.log(`[Comics] Found via selector ${selector}: ${imgSrc?.substring(0, 60)}...`);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          
+          if (imgSrc) {
+            // Handle relative URLs
+            if (imgSrc.startsWith('//')) {
+              imgSrc = 'https:' + imgSrc;
+            } else if (imgSrc.startsWith('/')) {
+              if (comicKey === 'farside') {
+                imgSrc = 'https://www.thefarside.com' + imgSrc;
+              } else {
+                imgSrc = 'https://www.gocomics.com' + imgSrc;
+              }
+            }
+            console.log(`[Comics] ✅ Final image URL: ${imgSrc.substring(0, 60)}...`);
+            return { src: imgSrc, caption };
+          }
+          
+          console.log(`[Comics] ❌ No image found in HTML (length: ${html.length})`);
+        }
+      } else {
+        console.log(`[Comics] ❌ Proxy responded with status: ${response.status}`);
+      }
+    } catch (e) {
+      console.log(`[Comics] ❌ Proxy error: ${e.message}`);
+      continue;
+    }
   }
+  
+  console.log('[Comics] All proxies failed');
+  return null;
 }
 
 export async function renderComic(container, comicKey = 'calvinandhobbes', date = new Date()) {
   if (!container) return;
-  const src = await fetchComicImage(comicKey, date);
-  if (src) {
-    container.innerHTML = `<img src="${src}" alt="${METADATA[comicKey]?.name || 'Comic'}" style="max-width: 100%; height: auto;">`;
+  
+  const comic = METADATA[comicKey];
+  const dateStr = formatDate(date);
+  const url = `${comic.baseUrl}/${dateStr}`;
+  
+  // Show loading state
+  container.innerHTML = '<div class="help">Loading comic...</div>';
+  
+  const result = await fetchComicImage(comicKey, date);
+  if (result && result.src) {
+    const isFarSide = comicKey === 'farside';
+    const isMobile = window.innerWidth <= 768;
+    
+    // Mobile only: set height to 200px and enable horizontal scroll on container
+    if (!isFarSide && isMobile) {
+      container.style.overflowX = 'auto';
+      container.style.overflowY = 'hidden';
+      container.style.webkitOverflowScrolling = 'touch';
+    } else {
+      container.style.overflowX = '';
+      container.style.overflowY = '';
+    }
+    
+    // Determine link display style
+    const linkStyle = (!isFarSide && isMobile) ? 'display: inline-block;' : 'display: block;';
+    
+    const imgStyle = isFarSide
+      ? 'max-width: 100%; height: auto; opacity: 1 !important; border: 1px solid var(--border);'
+      : (isMobile 
+          ? 'height: 200px; width: auto; max-width: none !important; max-height: none !important; opacity: 1 !important; border: 1px solid var(--border);'
+          : 'width: 100%; height: auto; opacity: 1 !important; border: 1px solid var(--border);');
+    
+    // Successfully fetched comic image
+    let html = `
+      <a href="${url}" target="_blank" rel="noopener noreferrer" style="${linkStyle}">
+        <img src="${result.src}" alt="${comic.name}" style="${imgStyle}">
+      </a>
+    `;
+    
+    // Add caption if available (for The Far Side)
+    if (result.caption) {
+      html += `<div style="font-style: italic; text-align: center; opacity: 0.8; margin-top: 8px;">${result.caption}</div>`;
+    }
+    
+    container.innerHTML = html;
   } else {
-    const comic = METADATA[comicKey];
-    const dateStr = formatDate(date);
-    const url = `${comic.baseUrl}/${dateStr}`;
-    container.innerHTML = `<div class="help">Comic unavailable. Requires <code>npm run dev:pages</code> for /api/proxy. <a href="${url}" target="_blank" class="external-link">View online ↗</a></div>`;
+    // Fallback: link to view online with retry option
+    container.innerHTML = `
+      <div class="help" style="text-align: center; padding: 20px;">
+        <p id="retryComicText" style="cursor: pointer; color: var(--accent);">Unable to load comic. Click to retry.</p>
+        <p style="font-size: 13px; margin-top: 12px;">
+          <a href="${url}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">View ${comic.name} online ↗</a>
+        </p>
+      </div>
+    `;
+    
+    // Add retry click event listener
+    const retryText = document.getElementById('retryComicText');
+    if (retryText) {
+      retryText.addEventListener('click', () => renderComic(container, comicKey, date));
+    }
   }
+}
+
+export function getRandomDate(comicKey) {
+  const comic = METADATA[comicKey];
+  if (!comic) return new Date();
+  
+  const start = comic.startDate.getTime();
+  const end = comic.endDate.getTime();
+  const randomTime = start + Math.random() * (end - start);
+  return new Date(randomTime);
 }
 
 export default { fetchComicImage, renderComic };

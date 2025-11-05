@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>Viewport | Portfolio Tracker</title>
     
+    <!-- Redirect root to /new (works in local dev and production) -->
+    <script>
+      const path = window.location.pathname;
+      const params = new URLSearchParams(window.location.search);
+      // Redirect to /new unless explicitly accessing old version via ?old param
+      if ((path === '/' || path === '/index.html') && !params.has('old')) {
+        window.location.href = '/new/';
+      }
+    </script>
+    
     <!-- Performance: CRITICAL - Preconnect to position/asset APIs only -->
     <link rel="preconnect" href="https://api.hyperliquid.xyz" crossorigin>
     <link rel="preconnect" href="https://hermes.pyth.network" crossorigin>
@@ -76,6 +86,7 @@
             <option value="light">Light</option>
             <option value="dark">Dark</option>
             <option value="amber">Amber</option>
+            <option value="ember">Ember</option>
             <option value="matrix">Matrix</option>
             <option value="halloween">Halloween</option>
             <option value="christmas">Christmas</option>
@@ -121,6 +132,7 @@
             <option value="light">Light</option>
             <option value="dark">Dark</option>
             <option value="amber">Amber</option>
+            <option value="ember">Ember</option>
             <option value="matrix">Matrix</option>
             <option value="halloween">Halloween</option>
             <option value="christmas">Christmas</option>
@@ -389,6 +401,7 @@
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
                   <option value="amber">Amber</option>
+                  <option value="ember">Ember</option>
                   <option value="matrix">Matrix</option>
                   <option value="halloween">Halloween</option>
                   <option value="christmas">Christmas</option>
