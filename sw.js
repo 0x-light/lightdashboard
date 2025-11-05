@@ -1,7 +1,7 @@
 // Service Worker for Light Dashboard
 // Provides offline support, aggressive caching, and performance optimization
 
-const CACHE_VERSION = 'v2.2.1-icon-update';
+const CACHE_VERSION = 'v2.2.2-opaque-icons';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
 // Assets to cache immediately on install
