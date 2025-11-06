@@ -38,13 +38,21 @@ export async function fetchPrices(feedIds, pythProvider) {
   }
 }
 
-export async function render(container, { feedIds, pythProvider, useColoredPnL = true, editMode = false, cachedData = null }) {
+export async function render(container, { feedIds, pythProvider, useColoredPnL = true, editMode = false, cachedData = null, previousData = null }) {
   if (!container) return;
   // Use cached data if available, otherwise fetch fresh
   const prices = cachedData || await fetchPrices(feedIds, pythProvider);
   if (prices.length === 0) {
     container.innerHTML = '<tr><td colspan="3" class="loading">No assets in watchlist</td></tr>';
     return prices; // Return empty array for caching
+  }
+  
+  // Create a map of previous prices for comparison
+  const prevPriceMap = {};
+  if (previousData && Array.isArray(previousData)) {
+    for (const item of previousData) {
+      prevPriceMap[item.feedId] = item.price;
+    }
   }
   
   const frag = container.ownerDocument.createDocumentFragment();
@@ -57,24 +65,54 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
     const sign = hasChange ? (item.change24h >= 0 ? '+' : '') : '';
     const changeDisplay = hasChange ? `${sign}${item.change24h.toFixed(2)}%` : '—';
     
+    // Check if price changed since last update
+    const prevPrice = prevPriceMap[item.feedId];
+    const priceChanged = prevPrice && Math.abs(item.price - prevPrice) > 0.0001;
+    
+    // Create cells
+    const td1 = container.ownerDocument.createElement('td');
+    const td2 = container.ownerDocument.createElement('td');
+    const td3 = container.ownerDocument.createElement('td');
+    
+    // Set cell contents
     if (editMode) {
-      // In edit mode, add a remove button
-      tr.innerHTML = `
-        <td>${item.symbol || '—'} <button class="watchlist-edit-btn btn-text" data-feed-id="${item.feedId}">[REMOVE]</button></td>
-        <td>$${item.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-        <td class="${cls}">${changeDisplay}</td>
-      `;
+      td1.innerHTML = `${item.symbol || '—'} <button class="watchlist-edit-btn btn-text" data-feed-id="${item.feedId}">[REMOVE]</button>`;
     } else {
-      tr.innerHTML = `
-        <td>${item.symbol || '—'}</td>
-        <td>$${item.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-        <td class="${cls}">${changeDisplay}</td>
-      `;
+      td1.textContent = item.symbol || '—';
     }
+    
+    td2.textContent = `$${item.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+    td3.textContent = changeDisplay;
+    td3.className = cls;
+    
+    // Mark cells for flash animation when price changes
+    if (priceChanged) {
+      td2.setAttribute('data-flash', 'true');
+      td3.setAttribute('data-flash', 'true');
+    }
+    
+    tr.appendChild(td1);
+    tr.appendChild(td2);
+    tr.appendChild(td3);
     frag.appendChild(tr);
   }
+  
+  // Insert into DOM first
   container.innerHTML = '';
   container.appendChild(frag);
+  
+  // Trigger flash animations on changed cells
+  requestAnimationFrame(() => {
+    const flashCells = container.querySelectorAll('td[data-flash="true"]');
+    flashCells.forEach(cell => {
+      cell.classList.add('cell-flash');
+      cell.addEventListener('animationend', () => {
+        cell.classList.remove('cell-flash');
+        cell.removeAttribute('data-flash');
+      }, { once: true });
+    });
+  });
+  
   return prices; // Return prices for caching
 }
 

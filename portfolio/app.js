@@ -2474,155 +2474,177 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
-  // Periodic price updates (every 10 seconds)
+  // Periodic price updates (every 5 seconds)
   let updateInterval = null;
   
   async function updatePrices() {
-    if (!cachedPositions || cachedPositions.length === 0) return;
-    
     try {
       const providers = window.AppModules?.data?.providers;
       if (!providers) return;
       
-      // Get current prices from Hyperliquid (perps + spot)
-      const [marketData, allMids, spotMeta] = await Promise.all([
-        providers.hyperliquid.fetchMetaAndAssetCtxs(8000),
-        providers.hyperliquid.fetchAllMids(8000),
-        providers.hyperliquid.fetchSpotMeta(8000)
-      ]);
-      
-      const priceMap = {};
-      
-      // Get perp prices
-      if (marketData && marketData[0] && marketData[1]) {
-        for (let i = 0; i < marketData[1].length; i++) {
-          const ctx = marketData[1][i];
-          const assetName = marketData[0].universe[i]?.name;
-          if (assetName && ctx?.markPx) {
-            priceMap[assetName] = parseFloat(ctx.markPx);
-          }
-        }
-      }
-      
-      // Get spot prices using proper @index mapping
-      if (allMids && spotMeta && spotMeta.universe) {
-        for (const spotPair of spotMeta.universe) {
-          if (spotPair.tokens && spotPair.tokens[1] === 0) { // USDC quote
-            const spotKey = `@${spotPair.index}`;
-            const tokenName = spotPair.name;
-            if (allMids[spotKey]) {
-              priceMap[tokenName] = parseFloat(allMids[spotKey]);
+      // Update positions if they exist
+      if (cachedPositions && cachedPositions.length > 0) {
+        // Get current prices from Hyperliquid (perps + spot)
+        const [marketData, allMids, spotMeta] = await Promise.all([
+          providers.hyperliquid.fetchMetaAndAssetCtxs(8000),
+          providers.hyperliquid.fetchAllMids(8000),
+          providers.hyperliquid.fetchSpotMeta(8000)
+        ]);
+        
+        const priceMap = {};
+        
+        // Get perp prices
+        if (marketData && marketData[0] && marketData[1]) {
+          for (let i = 0; i < marketData[1].length; i++) {
+            const ctx = marketData[1][i];
+            const assetName = marketData[0].universe[i]?.name;
+            if (assetName && ctx?.markPx) {
+              priceMap[assetName] = parseFloat(ctx.markPx);
             }
           }
         }
-        // Also check tokens array
-        if (spotMeta.tokens) {
-          for (const token of spotMeta.tokens) {
-            if (token.name && token.index !== undefined) {
-              const spotPair = spotMeta.universe.find(pair => 
-                pair.tokens && pair.tokens[0] === token.index && pair.tokens[1] === 0
-              );
-              if (spotPair) {
-                const spotKey = `@${spotPair.index}`;
-                if (allMids[spotKey]) {
-                  priceMap[token.name] = parseFloat(allMids[spotKey]);
+        
+        // Get spot prices using proper @index mapping
+        if (allMids && spotMeta && spotMeta.universe) {
+          for (const spotPair of spotMeta.universe) {
+            if (spotPair.tokens && spotPair.tokens[1] === 0) { // USDC quote
+              const spotKey = `@${spotPair.index}`;
+              const tokenName = spotPair.name;
+              if (allMids[spotKey]) {
+                priceMap[tokenName] = parseFloat(allMids[spotKey]);
+              }
+            }
+          }
+          // Also check tokens array
+          if (spotMeta.tokens) {
+            for (const token of spotMeta.tokens) {
+              if (token.name && token.index !== undefined) {
+                const spotPair = spotMeta.universe.find(pair => 
+                  pair.tokens && pair.tokens[0] === token.index && pair.tokens[1] === 0
+                );
+                if (spotPair) {
+                  const spotKey = `@${spotPair.index}`;
+                  if (allMids[spotKey]) {
+                    priceMap[token.name] = parseFloat(allMids[spotKey]);
+                  }
                 }
               }
             }
           }
         }
+        
+        // Update positions with new prices
+        let hasChanges = false;
+        const updatedPositions = cachedPositions.map(pos => {
+          const newPrice = priceMap[pos.asset];
+          if (newPrice && newPrice !== pos.price && Math.abs(newPrice - pos.price) > 0.0001) {
+            hasChanges = true;
+            const newValue = Math.abs(pos.amount) * newPrice;
+            let newPnl = pos.pnl;
+            
+            // Recalculate PnL if we have entry data
+            if (pos.entryNtl && pos.entryNtl > 0) {
+              newPnl = newValue - pos.entryNtl;
+            } else if (pos.entryPrice && pos.entryPrice > 0) {
+              const costBasis = Math.abs(pos.amount) * pos.entryPrice;
+              newPnl = pos.amount >= 0 ? (newValue - costBasis) : (costBasis - newValue);
+            }
+            
+            return {
+              ...pos,
+              price: newPrice,
+              value: newValue,
+              pnl: newPnl,
+              priceChanged: true // Flag for flash animation
+            };
+          }
+          return { ...pos, priceChanged: false };
+        });
+        
+        if (hasChanges) {
+          cachedPositions = updatedPositions;
+          
+          // Re-render positions
+          rerenderPositions();
+          
+          // Update hero
+          // For leveraged positions: use margin + PnL (actual equity)
+          const totalValue = cachedPositions.reduce((sum, p) => {
+            if (p.isLeveraged && p.marginUsed !== undefined) {
+              return sum + p.marginUsed + (p.pnl || 0);
+            }
+            return sum + (p.value || 0);
+          }, 0);
+          const totalPnL = cachedPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
+          const costBasis = totalValue - totalPnL;
+          const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
+          cachedSummaryData = { totalValue, totalPnL, totalPnLPercent };
+          
+          const summaryEl = document.getElementById('newSummary');
+          const HeroUI = window.AppModules?.ui?.hero;
+          const Settings = window.AppModules?.core?.settings;
+          const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+          
+          if (summaryEl && HeroUI) {
+            const heroHtml = HeroUI.composeSummary({
+              portfolioValue: totalValue,
+              amountsVisible,
+              heroPnLMode: 'total',
+              totalPnL,
+              totalPnLPercent,
+              totalDailyChange: 0,
+              totalDailyChangePercent: 0,
+              useColoredPnL: s.useColoredPnL ?? true,
+              highlightsHtml: [],
+              weather: null // Keep existing weather
+            });
+            summaryEl.innerHTML = heroHtml;
+          }
+          
+          // Flash updated cells with background color animation
+          setTimeout(() => {
+            const cells = document.querySelectorAll('td[data-flash="true"]');
+            cells.forEach(cell => {
+              cell.classList.add('cell-flash');
+              // Remove the class after animation completes
+              cell.addEventListener('animationend', () => {
+                cell.classList.remove('cell-flash');
+                cell.removeAttribute('data-flash');
+              }, { once: true });
+            });
+          }, 50);
+        }
       }
       
-      // Update positions with new prices
-      let hasChanges = false;
-      const updatedPositions = cachedPositions.map(pos => {
-        const newPrice = priceMap[pos.asset];
-        if (newPrice && newPrice !== pos.price && Math.abs(newPrice - pos.price) > 0.0001) {
-          hasChanges = true;
-          const newValue = Math.abs(pos.amount) * newPrice;
-          let newPnl = pos.pnl;
-          
-          // Recalculate PnL if we have entry data
-          if (pos.entryNtl && pos.entryNtl > 0) {
-            newPnl = newValue - pos.entryNtl;
-          } else if (pos.entryPrice && pos.entryPrice > 0) {
-            const costBasis = Math.abs(pos.amount) * pos.entryPrice;
-            newPnl = pos.amount >= 0 ? (newValue - costBasis) : (costBasis - newValue);
-          }
-          
-          return {
-            ...pos,
-            price: newPrice,
-            value: newValue,
-            pnl: newPnl,
-            priceChanged: true // Flag for flash animation
-          };
-        }
-        return { ...pos, priceChanged: false };
-      });
+      // Update watchlist prices
+      const Settings = window.AppModules?.core?.settings;
+      const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+      const watchlistBody = document.getElementById('newWatchlistBody');
       
-      if (hasChanges) {
-        cachedPositions = updatedPositions;
-        
-        // Re-render positions
-        rerenderPositions();
-        
-        // Update hero
-        // For leveraged positions: use margin + PnL (actual equity)
-        const totalValue = cachedPositions.reduce((sum, p) => {
-          if (p.isLeveraged && p.marginUsed !== undefined) {
-            return sum + p.marginUsed + (p.pnl || 0);
-          }
-          return sum + (p.value || 0);
-        }, 0);
-        const totalPnL = cachedPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
-        const costBasis = totalValue - totalPnL;
-        const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
-        cachedSummaryData = { totalValue, totalPnL, totalPnLPercent };
-        
-        const summaryEl = document.getElementById('newSummary');
-        const HeroUI = window.AppModules?.ui?.hero;
-        const Settings = window.AppModules?.core?.settings;
-        const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
-        
-        if (summaryEl && HeroUI) {
-          const heroHtml = HeroUI.composeSummary({
-            portfolioValue: totalValue,
-            amountsVisible,
-            heroPnLMode: 'total',
-            totalPnL,
-            totalPnLPercent,
-            totalDailyChange: 0,
-            totalDailyChangePercent: 0,
+      if (watchlistBody && s.watchlist && s.watchlist.length > 0 && !watchlistEditMode) {
+        try {
+          const mod = await import('../modules/features/watchlist.js');
+          const prices = await mod.render(watchlistBody, {
+            feedIds: s.watchlist,
+            pythProvider: providers.pyth,
             useColoredPnL: s.useColoredPnL ?? true,
-            highlightsHtml: [],
-            weather: null // Keep existing weather
+            editMode: false,
+            previousData: cachedWatchlistData
           });
-          summaryEl.innerHTML = heroHtml;
+          cachedWatchlistData = prices;
+        } catch (e) {
+          // Silently fail watchlist updates to avoid disrupting position updates
         }
-        
-        // Flash updated cells with background color animation
-        setTimeout(() => {
-          const cells = document.querySelectorAll('td[data-flash="true"]');
-          cells.forEach(cell => {
-            cell.classList.add('cell-flash');
-            // Remove the class after animation completes
-            cell.addEventListener('animationend', () => {
-              cell.classList.remove('cell-flash');
-              cell.removeAttribute('data-flash');
-            }, { once: true });
-          });
-        }, 50);
       }
     } catch (e) {
       console.warn('Price update failed:', e);
     }
   }
   
-  // Start updates after 5 seconds, then every 10 seconds
+  // Start updates after 5 seconds, then every 5 seconds
   setTimeout(() => {
     updatePrices();
-    updateInterval = setInterval(updatePrices, 10000);
+    updateInterval = setInterval(updatePrices, 5000);
   }, 5000);
 });
 

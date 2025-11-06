@@ -2476,6 +2476,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   
   // Periodic price updates (every 10 seconds)
   let updateInterval = null;
+  let previousWatchlistPrices = {};
   
   async function updatePrices() {
     if (!cachedPositions || cachedPositions.length === 0) return;
@@ -2619,10 +2620,98 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
+  // Update watchlist prices
+  async function updateWatchlistPrices() {
+    const watchlistBody = document.getElementById('newWatchlistBody');
+    if (!watchlistBody || watchlistEditMode) return;
+    
+    try {
+      const Settings = window.AppModules?.core?.settings;
+      const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+      const watchlistIds = s.watchlist || [];
+      
+      if (watchlistIds.length === 0) return;
+      
+      const pythProvider = window.AppModules?.data?.providers?.pyth;
+      if (!pythProvider) return;
+      
+      // Fetch fresh prices
+      const mod = await import('../modules/features/watchlist.js');
+      const prices = await mod.fetchPrices(watchlistIds, pythProvider);
+      
+      if (prices && prices.length > 0) {
+        // Update cache
+        cachedWatchlistData = prices;
+        
+        // Track which cells changed for flash animation
+        const changedCells = [];
+        
+        // Update each row
+        for (const item of prices) {
+          const rows = watchlistBody.querySelectorAll('tr');
+          for (const row of rows) {
+            const symbolCell = row.querySelector('td:first-child');
+            if (symbolCell && symbolCell.textContent.trim().startsWith(item.symbol)) {
+              // Update price cell
+              const priceCell = row.querySelector('td:nth-child(2)');
+              if (priceCell) {
+                const oldPrice = previousWatchlistPrices[item.feedId];
+                const newPriceText = `$${item.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+                
+                if (oldPrice !== undefined && Math.abs(oldPrice - item.price) > 0.0001) {
+                  priceCell.textContent = newPriceText;
+                  changedCells.push(priceCell);
+                } else {
+                  priceCell.textContent = newPriceText;
+                }
+                
+                previousWatchlistPrices[item.feedId] = item.price;
+              }
+              
+              // Update 24h change cell
+              const changeCell = row.querySelector('td:nth-child(3)');
+              if (changeCell && item.change24h !== null && item.change24h !== undefined) {
+                const sign = item.change24h >= 0 ? '+' : '';
+                changeCell.textContent = `${sign}${item.change24h.toFixed(2)}%`;
+                
+                // Update color class
+                const useColoredPnL = s.useColoredPnL ?? true;
+                changeCell.className = '';
+                if (useColoredPnL) {
+                  changeCell.className = item.change24h >= 0 ? 'positive-pnl' : 'negative-pnl';
+                }
+              }
+              
+              break;
+            }
+          }
+        }
+        
+        // Flash changed cells
+        if (changedCells.length > 0) {
+          setTimeout(() => {
+            changedCells.forEach(cell => {
+              cell.classList.add('cell-flash');
+              cell.addEventListener('animationend', () => {
+                cell.classList.remove('cell-flash');
+              }, { once: true });
+            });
+          }, 50);
+        }
+      }
+    } catch (e) {
+      console.warn('Watchlist update failed:', e);
+    }
+  }
+  
   // Start updates after 5 seconds, then every 10 seconds
   setTimeout(() => {
     updatePrices();
-    updateInterval = setInterval(updatePrices, 10000);
+    updateWatchlistPrices();
+    updateInterval = setInterval(() => {
+      updatePrices();
+      updateWatchlistPrices();
+    }, 10000);
   }, 5000);
 });
 
