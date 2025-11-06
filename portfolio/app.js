@@ -340,10 +340,17 @@ async function renderDemoSummary() {
             
             if (uniqueAssets.length > 0) {
               try {
-                // Fetch market data from Hyperliquid for all assets
-                const marketData = await providers.hyperliquid.fetchMetaAndAssetCtxs(10000);
+                // Fetch market data from Hyperliquid for all assets (perps + spot)
+                const [marketData, allMids, spotMeta] = await Promise.all([
+                  providers.hyperliquid.fetchMetaAndAssetCtxs(10000),
+                  providers.hyperliquid.fetchAllMids(10000),
+                  providers.hyperliquid.fetchSpotMeta(10000)
+                ]);
+                
                 const priceMap = {};
                 const change24hMap = {};
+                
+                // Get perp prices
                 if (marketData && marketData[0] && marketData[1]) {
                   for (let i = 0; i < marketData[1].length; i++) {
                     const ctx = marketData[1][i];
@@ -355,6 +362,35 @@ async function renderDemoSummary() {
                       
                       if (prevDayPx > 0) {
                         change24hMap[assetName] = ((markPx - prevDayPx) / prevDayPx) * 100;
+                      }
+                    }
+                  }
+                }
+                
+                // Get spot prices using proper @index mapping
+                if (allMids && spotMeta && spotMeta.universe) {
+                  for (const spotPair of spotMeta.universe) {
+                    if (spotPair.tokens && spotPair.tokens[1] === 0) { // USDC quote
+                      const spotKey = `@${spotPair.index}`;
+                      const tokenName = spotPair.name;
+                      if (allMids[spotKey]) {
+                        priceMap[tokenName] = parseFloat(allMids[spotKey]);
+                      }
+                    }
+                  }
+                  // Also check tokens array
+                  if (spotMeta.tokens) {
+                    for (const token of spotMeta.tokens) {
+                      if (token.name && token.index !== undefined) {
+                        const spotPair = spotMeta.universe.find(pair => 
+                          pair.tokens && pair.tokens[0] === token.index && pair.tokens[1] === 0
+                        );
+                        if (spotPair) {
+                          const spotKey = `@${spotPair.index}`;
+                          if (allMids[spotKey]) {
+                            priceMap[token.name] = parseFloat(allMids[spotKey]);
+                          }
+                        }
                       }
                     }
                   }
@@ -2448,16 +2484,52 @@ window.addEventListener('DOMContentLoaded', async () => {
       const providers = window.AppModules?.data?.providers;
       if (!providers) return;
       
-      // Get current prices from Hyperliquid
-      const marketData = await providers.hyperliquid.fetchMetaAndAssetCtxs(8000);
-      if (!marketData || !marketData[0] || !marketData[1]) return;
+      // Get current prices from Hyperliquid (perps + spot)
+      const [marketData, allMids, spotMeta] = await Promise.all([
+        providers.hyperliquid.fetchMetaAndAssetCtxs(8000),
+        providers.hyperliquid.fetchAllMids(8000),
+        providers.hyperliquid.fetchSpotMeta(8000)
+      ]);
       
       const priceMap = {};
-      for (let i = 0; i < marketData[1].length; i++) {
-        const ctx = marketData[1][i];
-        const assetName = marketData[0].universe[i]?.name;
-        if (assetName && ctx?.markPx) {
-          priceMap[assetName] = parseFloat(ctx.markPx);
+      
+      // Get perp prices
+      if (marketData && marketData[0] && marketData[1]) {
+        for (let i = 0; i < marketData[1].length; i++) {
+          const ctx = marketData[1][i];
+          const assetName = marketData[0].universe[i]?.name;
+          if (assetName && ctx?.markPx) {
+            priceMap[assetName] = parseFloat(ctx.markPx);
+          }
+        }
+      }
+      
+      // Get spot prices using proper @index mapping
+      if (allMids && spotMeta && spotMeta.universe) {
+        for (const spotPair of spotMeta.universe) {
+          if (spotPair.tokens && spotPair.tokens[1] === 0) { // USDC quote
+            const spotKey = `@${spotPair.index}`;
+            const tokenName = spotPair.name;
+            if (allMids[spotKey]) {
+              priceMap[tokenName] = parseFloat(allMids[spotKey]);
+            }
+          }
+        }
+        // Also check tokens array
+        if (spotMeta.tokens) {
+          for (const token of spotMeta.tokens) {
+            if (token.name && token.index !== undefined) {
+              const spotPair = spotMeta.universe.find(pair => 
+                pair.tokens && pair.tokens[0] === token.index && pair.tokens[1] === 0
+              );
+              if (spotPair) {
+                const spotKey = `@${spotPair.index}`;
+                if (allMids[spotKey]) {
+                  priceMap[token.name] = parseFloat(allMids[spotKey]);
+                }
+              }
+            }
+          }
         }
       }
       

@@ -29,6 +29,10 @@ export async function fetchMetaAndAssetCtxs(timeoutMs = 10000) {
   return await post({ type: 'metaAndAssetCtxs' }, timeoutMs).catch(() => null);
 }
 
+export async function fetchSpotMeta(timeoutMs = 10000) {
+  return await post({ type: 'spotMeta' }, timeoutMs).catch(() => null);
+}
+
 export async function fetchHistoricalPrice(asset, timestamp, timeoutMs = 10000) {
   try {
     const data = await post({
@@ -51,11 +55,65 @@ export async function fetchHistoricalPrice(asset, timestamp, timeoutMs = 10000) 
   }
 }
 
+/**
+ * Build a price map that properly handles spot tokens.
+ * Spot tokens are indexed as @{spotIndex} in allMids, but balances use token names.
+ * This function creates a mapping from token name to price.
+ * 
+ * @param {Object} allMids - Result from fetchAllMids()
+ * @param {Object} spotMeta - Result from fetchSpotMeta()
+ * @returns {Object} Map from token name to price
+ */
+export function buildSpotPriceMap(allMids, spotMeta) {
+  if (!allMids || !spotMeta || !spotMeta.universe) {
+    return allMids || {};
+  }
+  
+  const priceMap = { ...allMids };
+  
+  // Build mapping from token name to spot index
+  // spotMeta.universe is an array where each entry is { name, tokens, index, isCanonical }
+  // tokens is [baseTokenIndex, quoteTokenIndex] and we want pairs with USDC (token 0) as quote
+  for (const spotPair of spotMeta.universe) {
+    if (spotPair.tokens && spotPair.tokens[1] === 0) { // Quote token is USDC (index 0)
+      const spotIndex = spotPair.index;
+      const spotKey = `@${spotIndex}`;
+      const tokenName = spotPair.name; // This is like "HYPE", "BZEC", etc.
+      
+      if (allMids[spotKey]) {
+        priceMap[tokenName] = allMids[spotKey];
+      }
+    }
+  }
+  
+  // Also check for tokens field which contains the name mapping
+  if (spotMeta.tokens) {
+    for (const token of spotMeta.tokens) {
+      if (token.name && token.index !== undefined) {
+        // Find the spot pair for this token paired with USDC
+        const spotPair = spotMeta.universe.find(pair => 
+          pair.tokens && pair.tokens[0] === token.index && pair.tokens[1] === 0
+        );
+        if (spotPair) {
+          const spotKey = `@${spotPair.index}`;
+          if (allMids[spotKey]) {
+            priceMap[token.name] = allMids[spotKey];
+          }
+        }
+      }
+    }
+  }
+  
+  return priceMap;
+}
+
 export default {
   fetchPositions,
   fetchAllMids,
   fetchMetaAndAssetCtxs,
-  fetchHistoricalPrice
+  fetchSpotMeta,
+  fetchHistoricalPrice,
+  buildSpotPriceMap
 };
 
 

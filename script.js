@@ -3564,13 +3564,55 @@
     let prices = null;
     if (data.spot && data.spot.balances && data.spot.balances.length > 0) {
       try {
-        const pricesResp = await fetch('https://api.hyperliquid.xyz/info', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'allMids' })
-        });
+        const [pricesResp, spotMetaResp] = await Promise.all([
+          fetch('https://api.hyperliquid.xyz/info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'allMids' })
+          }),
+          fetch('https://api.hyperliquid.xyz/info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'spotMeta' })
+          })
+        ]);
+        
         if (pricesResp.ok) {
-          prices = await pricesResp.json();
+          const allMids = await pricesResp.json();
+          const spotMeta = spotMetaResp.ok ? await spotMetaResp.json() : null;
+          
+          // Build proper price map for spot tokens
+          if (spotMeta && spotMeta.universe) {
+            prices = { ...allMids };
+            // Map token names to their spot indices
+            for (const spotPair of spotMeta.universe) {
+              if (spotPair.tokens && spotPair.tokens[1] === 0) { // USDC quote
+                const spotKey = `@${spotPair.index}`;
+                const tokenName = spotPair.name;
+                if (allMids[spotKey]) {
+                  prices[tokenName] = allMids[spotKey];
+                }
+              }
+            }
+            // Also check tokens array
+            if (spotMeta.tokens) {
+              for (const token of spotMeta.tokens) {
+                if (token.name && token.index !== undefined) {
+                  const spotPair = spotMeta.universe.find(pair => 
+                    pair.tokens && pair.tokens[0] === token.index && pair.tokens[1] === 0
+                  );
+                  if (spotPair) {
+                    const spotKey = `@${spotPair.index}`;
+                    if (allMids[spotKey]) {
+                      prices[token.name] = allMids[spotKey];
+                    }
+                  }
+                }
+              }
+            }
+          } else {
+            prices = allMids;
+          }
         }
       } catch (err) {
         // Price fetch failed
@@ -5429,12 +5471,56 @@
     const hasSpotBalances = allWalletData.some(({ hlData }) => hlData && hlData.spot && hlData.spot.balances);
     if (hasSpotBalances) {
       try {
-        const pricesResp = await fetch('https://api.hyperliquid.xyz/info', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'allMids' })
-        });
-        hlSpotPrices = pricesResp.ok ? await pricesResp.json() : null;
+        const [pricesResp, spotMetaResp] = await Promise.all([
+          fetch('https://api.hyperliquid.xyz/info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'allMids' })
+          }),
+          fetch('https://api.hyperliquid.xyz/info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'spotMeta' })
+          })
+        ]);
+        
+        if (pricesResp.ok) {
+          const allMids = await pricesResp.json();
+          const spotMeta = spotMetaResp.ok ? await spotMetaResp.json() : null;
+          
+          // Build proper price map for spot tokens
+          if (spotMeta && spotMeta.universe) {
+            hlSpotPrices = { ...allMids };
+            // Map token names to their spot indices
+            for (const spotPair of spotMeta.universe) {
+              if (spotPair.tokens && spotPair.tokens[1] === 0) { // USDC quote
+                const spotKey = `@${spotPair.index}`;
+                const tokenName = spotPair.name;
+                if (allMids[spotKey]) {
+                  hlSpotPrices[tokenName] = allMids[spotKey];
+                }
+              }
+            }
+            // Also check tokens array
+            if (spotMeta.tokens) {
+              for (const token of spotMeta.tokens) {
+                if (token.name && token.index !== undefined) {
+                  const spotPair = spotMeta.universe.find(pair => 
+                    pair.tokens && pair.tokens[0] === token.index && pair.tokens[1] === 0
+                  );
+                  if (spotPair) {
+                    const spotKey = `@${spotPair.index}`;
+                    if (allMids[spotKey]) {
+                      hlSpotPrices[token.name] = allMids[spotKey];
+                    }
+                  }
+                }
+              }
+            }
+          } else {
+            hlSpotPrices = allMids;
+          }
+        }
     } catch (err) {
         // Spot price fetch failed
       }
