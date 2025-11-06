@@ -2279,7 +2279,7 @@
       usePythPrices: true,
       minBalanceThreshold: 100,
       enableRealTimeUpdates: true,
-      realTimeUpdateInterval: 10, // seconds
+      realTimeUpdateInterval: 5, // seconds
       heroPnLMode: 'total', // 'total' or '24h'
       showSnowBtn: true,
       showRainBtn: true,
@@ -2719,7 +2719,7 @@
     els.buttonBackgrounds.checked = settings.buttonBackgrounds ?? false;
     els.minBalanceThreshold.value = settings.minBalanceThreshold ?? 100;
     els.enableRealTimeUpdates.checked = settings.enableRealTimeUpdates ?? true;
-    els.realTimeUpdateInterval.value = settings.realTimeUpdateInterval ?? 10;
+    els.realTimeUpdateInterval.value = settings.realTimeUpdateInterval ?? 5;
     els.showComic.checked = settings.showComic ?? true;
     els.showWatchlist.checked = settings.showWatchlist ?? true;
     els.refreshMins.value = settings.refreshMinutes ?? 30;
@@ -2801,7 +2801,7 @@
     newSettings.theme = els.themeSelect.value || 'light';
     newSettings.wallpaper = els.wallpaperSelect ? els.wallpaperSelect.value : 'none';
     newSettings.enableRealTimeUpdates = els.enableRealTimeUpdates.checked;
-    newSettings.realTimeUpdateInterval = Math.max(5, Math.min(60, Number(els.realTimeUpdateInterval.value || 10)));
+    newSettings.realTimeUpdateInterval = Math.max(5, Math.min(60, Number(els.realTimeUpdateInterval.value || 5)));
     
     // Header bar visibility settings
     newSettings.showSnowBtn = els.showSnowBtn.checked;
@@ -6448,7 +6448,7 @@
     
     stopRealTimeUpdates(); // Clear any existing timer
     
-    const interval = (settings.realTimeUpdateInterval || 10) * 1000;
+    const interval = (settings.realTimeUpdateInterval || 5) * 1000;
     
     realTimeUpdateTimer = setInterval(updatePricesRealTime, interval);
   }

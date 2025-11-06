@@ -58,7 +58,7 @@ export function getDefaultSettings() {
     usePythPrices: true,
     minBalanceThreshold: 100,
     enableRealTimeUpdates: true,
-    realTimeUpdateInterval: 10, // seconds
+    realTimeUpdateInterval: 5, // seconds
     heroPnLMode: 'total', // 'total' or '24h'
     showSnowBtn: true,
     showRainBtn: true,
