@@ -1148,39 +1148,19 @@ function setupControls() {
       if (!importMode) {
         // First click: show textarea for pasting
         exportArea.value = '';
-        exportArea.placeholder = 'Paste exported settings here and click [APPLY IMPORT]';
+        exportArea.placeholder = 'Paste exported settings here, then click [SAVE & RELOAD] at the bottom';
         exportArea.style.display = 'block';
         exportArea.removeAttribute('readonly');
         exportArea.focus();
-        importBtn.textContent = '[APPLY IMPORT]';
+        importBtn.textContent = '[CANCEL IMPORT]';
         importMode = true;
       } else {
-        // Second click: import the settings
-        try {
-          const importData = exportArea.value.trim();
-          if (!importData) {
-            alert('Please paste settings data first');
-            return;
-          }
-          const decoded = atob(importData);
-          const settings = JSON.parse(decoded);
-          
-          // Save to localStorage
-          localStorage.setItem('myDashboardSettings.v1', JSON.stringify(settings));
-          
-          // Hide textarea and reset
-          exportArea.style.display = 'none';
-          exportArea.setAttribute('readonly', 'readonly');
-          importBtn.textContent = '[IMPORT]';
-          importMode = false;
-          
-          // Close settings and reload
-          closeSettings();
-          location.reload();
-        } catch (err) {
-          alert('Invalid settings data. Please check the pasted text and try again.');
-          console.error('[Import] Failed to import settings:', err);
-        }
+        // Second click: cancel import
+        exportArea.style.display = 'none';
+        exportArea.setAttribute('readonly', 'readonly');
+        exportArea.value = '';
+        importBtn.textContent = '[IMPORT]';
+        importMode = false;
       }
     });
   }
@@ -1384,7 +1364,34 @@ function setupControls() {
   
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
-      // Collect form values and save to legacy storage (compatibility)
+      // Check if import mode is active and there's data to import
+      if (importMode && exportArea && exportArea.value.trim()) {
+        try {
+          const importData = exportArea.value.trim();
+          const decoded = atob(importData);
+          const importedSettings = JSON.parse(decoded);
+          
+          // Save imported settings to localStorage
+          localStorage.setItem('myDashboardSettings.v1', JSON.stringify(importedSettings));
+          
+          // Reset import mode UI
+          exportArea.style.display = 'none';
+          exportArea.setAttribute('readonly', 'readonly');
+          importBtn.textContent = '[IMPORT]';
+          importMode = false;
+          
+          // Close settings and reload
+          closeSettings();
+          location.reload();
+          return;
+        } catch (err) {
+          alert('Invalid settings data. Please check the pasted text and try again.');
+          console.error('[Import] Failed to import settings:', err);
+          return;
+        }
+      }
+      
+      // Normal save flow: Collect form values and save to legacy storage (compatibility)
       const newSettings = settings || {};
       const userNameInput = document.getElementById('newUserName');
       const walletInput = document.getElementById('newWalletAddresses');
