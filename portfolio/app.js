@@ -154,7 +154,9 @@ async function renderDemoSummary() {
                       const leverage = parseFloat(position?.leverage?.value || 10); // Default to 10x if not available
                       const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
                       const pnl = parseFloat(position?.unrealizedPnl || 0);
-                      const marginUsed = notionalValue / leverage;
+                      // Calculate margin based on ENTRY value to avoid double-counting PnL
+                      const entryNotional = Math.abs(szi) * entryPrice;
+                      const marginUsed = entryNotional / leverage;
                       
                       rows.push({
                         asset: position.coin,
