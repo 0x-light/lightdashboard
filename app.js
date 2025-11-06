@@ -202,7 +202,7 @@ async function renderDemoSummary() {
               const allWallets = [...wallets, ...solanaAddrs];
               
               if (allWallets.length === 0) {
-                console.warn('[/new] Multi-chain: No wallet addresses configured');
+                console.warn('[/portfolio] Multi-chain: No wallet addresses configured');
                 return [];
               }
               
@@ -216,7 +216,7 @@ async function renderDemoSummary() {
                   
                   // Fetch positions only
                   const positionsData = await z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 10000 }).catch(e => {
-                    console.error('[/new] Zerion positions error:', e);
+                    console.error('[/portfolio] Zerion positions error:', e);
                     return null;
                   });
                   
@@ -274,7 +274,7 @@ async function renderDemoSummary() {
                     return zerionRows;
                   }
                 } catch (e) { 
-                  console.error('[/new] Zerion error:', e.message || e);
+                  console.error('[/portfolio] Zerion error:', e.message || e);
                 }
               }
               
@@ -299,7 +299,7 @@ async function renderDemoSummary() {
                       });
                     }
                   } catch (e) {
-                    console.error('[/new] Alchemy error:', e.message || e);
+                    console.error('[/portfolio] Alchemy error:', e.message || e);
                   }
                 }
                 
@@ -320,14 +320,14 @@ async function renderDemoSummary() {
                       });
                     }
                   } catch (e) {
-                    console.error('[/new] Helius error:', e.message || e);
+                    console.error('[/portfolio] Helius error:', e.message || e);
                   }
                 }
                 
                 return rows;
               }
               
-              console.warn('[/new] ⚠️ No multi-chain data available (no API keys or all providers failed)');
+              console.warn('[/portfolio] ⚠️ No multi-chain data available (no API keys or all providers failed)');
               return [];
             })()
           ]);
@@ -426,7 +426,7 @@ async function renderDemoSummary() {
                   }
                 }
               } catch (e) {
-                console.error('[/new] Price enrichment failed:', e);
+                console.error('[/portfolio] Price enrichment failed:', e);
               }
             }
             
@@ -672,14 +672,14 @@ async function renderDemoSummary() {
                   }
                 }
               } catch (e) {
-                console.warn('[/new] Weather load failed:', e);
+                console.warn('[/portfolio] Weather load failed:', e);
                 // Don't show error to user, just skip weather
               }
             })();
           }
         }
       } catch (e) {
-        console.error('[/new] Positions error:', e);
+        console.error('[/portfolio] Positions error:', e);
         summaryEl.innerHTML = `<span class="loading-terminal">Error loading positions: ${e?.message || e}</span>`;
       }
 
@@ -1076,7 +1076,7 @@ function setupControls() {
       if (showComicInput) showComicInput.checked = s.showComic ?? false;
       if (comicStripInput) comicStripInput.value = s.comicStrip || 'calvinandhobbes';
       if (minBalanceInput) minBalanceInput.value = s.minBalanceThreshold || 100;
-      if (leftAlignedInput) leftAlignedInput.checked = s.leftAligned ?? false;
+      if (leftAlignedInput) leftAlignedInput.checked = s.leftAligned ?? true;
       
       // Menu visibility checkboxes
       if (showSnowBtnInput) showSnowBtnInput.checked = s.showSnowBtn ?? true;
@@ -1455,12 +1455,12 @@ function setupControls() {
         closeSettings();
         
         // Apply alignment immediately
-        const container = document.querySelector('.main-container');
+        const container = document.querySelector('.container');
         if (container) {
           if (newSettings.leftAligned) {
-            container.style.margin = '';
-          } else {
             container.style.margin = '0 auto';
+          } else {
+            container.style.margin = '';
           }
         }
         
@@ -1567,7 +1567,7 @@ function setupControls() {
         if (watchlistBody) {
           watchlistBody.innerHTML = '<tr><td colspan="3" class="loading"><span class="loading-terminal">[LOADING...]</span></td></tr>';
           try {
-            const mod = await import('../modules/features/watchlist.js');
+            const mod = await import('./modules/features/watchlist.js');
             const pythProvider = window.AppModules?.data?.providers?.pyth;
             await mod.render(watchlistBody, {
               feedIds: s.watchlist,
@@ -1703,7 +1703,7 @@ function setupControls() {
         watchlistBody.innerHTML = '<tr><td colspan="3" class="loading"><span class="loading-terminal">[LOADING...]</span></td></tr>';
         (async () => {
           try {
-            const mod = await import('../modules/features/watchlist.js');
+            const mod = await import('./modules/features/watchlist.js');
             const pythProvider = window.AppModules?.data?.providers?.pyth;
             const prices = await mod.render(watchlistBody, {
               feedIds: s.watchlist,
@@ -1757,7 +1757,7 @@ function setupControls() {
     if (watchlistBody && cachedWatchlistData) {
       // Use cached data for instant toggle
       try {
-        const mod = await import('../modules/features/watchlist.js');
+        const mod = await import('./modules/features/watchlist.js');
         const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
         await mod.render(watchlistBody, {
           feedIds: s.watchlist || [],
@@ -1998,12 +1998,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   
   // Apply alignment
   const applyAlignment = () => {
-    const container = document.querySelector('.main-container');
+    const container = document.querySelector('.container');
     if (container) {
       if (settings.leftAligned) {
-        container.style.margin = '';
-      } else {
         container.style.margin = '0 auto';
+      } else {
+        container.style.margin = '';
       }
     }
   };
@@ -2149,7 +2149,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         rerenderPositions();
         
         // Also refresh watchlist if present
-        const watchlistModule = await import('../modules/features/watchlist.js').catch(() => null);
+        const watchlistModule = await import('./modules/features/watchlist.js').catch(() => null);
         if (watchlistModule && watchlistModule.refreshWatchlist) {
           await watchlistModule.refreshWatchlist().catch(() => {});
         }
@@ -2168,7 +2168,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     await renderDemoSummary();
   } catch (error) {
-    console.error('[/new] renderDemoSummary failed:', error);
+    console.error('[/portfolio] renderDemoSummary failed:', error);
     // Show error in hero
     const summaryEl = document.getElementById('newSummary');
     if (summaryEl) {
@@ -2250,7 +2250,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     const loadComic = async (comicKey = currentComicStrip, date = currentComicDate) => {
       try {
-        const mod = await import('../modules/features/comics.js');
+        const mod = await import('./modules/features/comics.js');
         await mod.renderComic(comicEl, comicKey, date);
         currentComicDate = date;
         
@@ -2439,7 +2439,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   } else if (watchlistBody) {
     const loadWatchlist = async () => {
       try {
-        const mod = await import('../modules/features/watchlist.js');
+        const mod = await import('./modules/features/watchlist.js');
         const pythProvider = window.AppModules?.data?.providers?.pyth;
         const watchlistIds = settings.watchlist || [];
         const prices = await mod.render(watchlistBody, {
@@ -2474,244 +2474,177 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
-  // Periodic price updates (every 10 seconds)
+  // Periodic price updates (every 5 seconds)
   let updateInterval = null;
-  let previousWatchlistPrices = {};
   
   async function updatePrices() {
-    if (!cachedPositions || cachedPositions.length === 0) return;
-    
     try {
       const providers = window.AppModules?.data?.providers;
       if (!providers) return;
       
-      // Get current prices from Hyperliquid (perps + spot)
-      const [marketData, allMids, spotMeta] = await Promise.all([
-        providers.hyperliquid.fetchMetaAndAssetCtxs(8000),
-        providers.hyperliquid.fetchAllMids(8000),
-        providers.hyperliquid.fetchSpotMeta(8000)
-      ]);
-      
-      const priceMap = {};
-      
-      // Get perp prices
-      if (marketData && marketData[0] && marketData[1]) {
-        for (let i = 0; i < marketData[1].length; i++) {
-          const ctx = marketData[1][i];
-          const assetName = marketData[0].universe[i]?.name;
-          if (assetName && ctx?.markPx) {
-            priceMap[assetName] = parseFloat(ctx.markPx);
-          }
-        }
-      }
-      
-      // Get spot prices using proper @index mapping
-      if (allMids && spotMeta && spotMeta.universe) {
-        for (const spotPair of spotMeta.universe) {
-          if (spotPair.tokens && spotPair.tokens[1] === 0) { // USDC quote
-            const spotKey = `@${spotPair.index}`;
-            const tokenName = spotPair.name;
-            if (allMids[spotKey]) {
-              priceMap[tokenName] = parseFloat(allMids[spotKey]);
+      // Update positions if they exist
+      if (cachedPositions && cachedPositions.length > 0) {
+        // Get current prices from Hyperliquid (perps + spot)
+        const [marketData, allMids, spotMeta] = await Promise.all([
+          providers.hyperliquid.fetchMetaAndAssetCtxs(8000),
+          providers.hyperliquid.fetchAllMids(8000),
+          providers.hyperliquid.fetchSpotMeta(8000)
+        ]);
+        
+        const priceMap = {};
+        
+        // Get perp prices
+        if (marketData && marketData[0] && marketData[1]) {
+          for (let i = 0; i < marketData[1].length; i++) {
+            const ctx = marketData[1][i];
+            const assetName = marketData[0].universe[i]?.name;
+            if (assetName && ctx?.markPx) {
+              priceMap[assetName] = parseFloat(ctx.markPx);
             }
           }
         }
-        // Also check tokens array
-        if (spotMeta.tokens) {
-          for (const token of spotMeta.tokens) {
-            if (token.name && token.index !== undefined) {
-              const spotPair = spotMeta.universe.find(pair => 
-                pair.tokens && pair.tokens[0] === token.index && pair.tokens[1] === 0
-              );
-              if (spotPair) {
-                const spotKey = `@${spotPair.index}`;
-                if (allMids[spotKey]) {
-                  priceMap[token.name] = parseFloat(allMids[spotKey]);
+        
+        // Get spot prices using proper @index mapping
+        if (allMids && spotMeta && spotMeta.universe) {
+          for (const spotPair of spotMeta.universe) {
+            if (spotPair.tokens && spotPair.tokens[1] === 0) { // USDC quote
+              const spotKey = `@${spotPair.index}`;
+              const tokenName = spotPair.name;
+              if (allMids[spotKey]) {
+                priceMap[tokenName] = parseFloat(allMids[spotKey]);
+              }
+            }
+          }
+          // Also check tokens array
+          if (spotMeta.tokens) {
+            for (const token of spotMeta.tokens) {
+              if (token.name && token.index !== undefined) {
+                const spotPair = spotMeta.universe.find(pair => 
+                  pair.tokens && pair.tokens[0] === token.index && pair.tokens[1] === 0
+                );
+                if (spotPair) {
+                  const spotKey = `@${spotPair.index}`;
+                  if (allMids[spotKey]) {
+                    priceMap[token.name] = parseFloat(allMids[spotKey]);
+                  }
                 }
               }
             }
           }
         }
+        
+        // Update positions with new prices
+        let hasChanges = false;
+        const updatedPositions = cachedPositions.map(pos => {
+          const newPrice = priceMap[pos.asset];
+          if (newPrice && newPrice !== pos.price && Math.abs(newPrice - pos.price) > 0.0001) {
+            hasChanges = true;
+            const newValue = Math.abs(pos.amount) * newPrice;
+            let newPnl = pos.pnl;
+            
+            // Recalculate PnL if we have entry data
+            if (pos.entryNtl && pos.entryNtl > 0) {
+              newPnl = newValue - pos.entryNtl;
+            } else if (pos.entryPrice && pos.entryPrice > 0) {
+              const costBasis = Math.abs(pos.amount) * pos.entryPrice;
+              newPnl = pos.amount >= 0 ? (newValue - costBasis) : (costBasis - newValue);
+            }
+            
+            return {
+              ...pos,
+              price: newPrice,
+              value: newValue,
+              pnl: newPnl,
+              priceChanged: true // Flag for flash animation
+            };
+          }
+          return { ...pos, priceChanged: false };
+        });
+        
+        if (hasChanges) {
+          cachedPositions = updatedPositions;
+          
+          // Re-render positions
+          rerenderPositions();
+          
+          // Update hero
+          // For leveraged positions: use margin + PnL (actual equity)
+          const totalValue = cachedPositions.reduce((sum, p) => {
+            if (p.isLeveraged && p.marginUsed !== undefined) {
+              return sum + p.marginUsed + (p.pnl || 0);
+            }
+            return sum + (p.value || 0);
+          }, 0);
+          const totalPnL = cachedPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
+          const costBasis = totalValue - totalPnL;
+          const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
+          cachedSummaryData = { totalValue, totalPnL, totalPnLPercent };
+          
+          const summaryEl = document.getElementById('newSummary');
+          const HeroUI = window.AppModules?.ui?.hero;
+          const Settings = window.AppModules?.core?.settings;
+          const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+          
+          if (summaryEl && HeroUI) {
+            const heroHtml = HeroUI.composeSummary({
+              portfolioValue: totalValue,
+              amountsVisible,
+              heroPnLMode: 'total',
+              totalPnL,
+              totalPnLPercent,
+              totalDailyChange: 0,
+              totalDailyChangePercent: 0,
+              useColoredPnL: s.useColoredPnL ?? true,
+              highlightsHtml: [],
+              weather: null // Keep existing weather
+            });
+            summaryEl.innerHTML = heroHtml;
+          }
+          
+          // Flash updated cells with background color animation
+          setTimeout(() => {
+            const cells = document.querySelectorAll('td[data-flash="true"]');
+            cells.forEach(cell => {
+              cell.classList.add('cell-flash');
+              // Remove the class after animation completes
+              cell.addEventListener('animationend', () => {
+                cell.classList.remove('cell-flash');
+                cell.removeAttribute('data-flash');
+              }, { once: true });
+            });
+          }, 50);
+        }
       }
       
-      // Update positions with new prices
-      let hasChanges = false;
-      const updatedPositions = cachedPositions.map(pos => {
-        const newPrice = priceMap[pos.asset];
-        if (newPrice && newPrice !== pos.price && Math.abs(newPrice - pos.price) > 0.0001) {
-          hasChanges = true;
-          const newValue = Math.abs(pos.amount) * newPrice;
-          let newPnl = pos.pnl;
-          
-          // Recalculate PnL if we have entry data
-          if (pos.entryNtl && pos.entryNtl > 0) {
-            newPnl = newValue - pos.entryNtl;
-          } else if (pos.entryPrice && pos.entryPrice > 0) {
-            const costBasis = Math.abs(pos.amount) * pos.entryPrice;
-            newPnl = pos.amount >= 0 ? (newValue - costBasis) : (costBasis - newValue);
-          }
-          
-          return {
-            ...pos,
-            price: newPrice,
-            value: newValue,
-            pnl: newPnl,
-            priceChanged: true // Flag for flash animation
-          };
-        }
-        return { ...pos, priceChanged: false };
-      });
+      // Update watchlist prices
+      const Settings = window.AppModules?.core?.settings;
+      const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+      const watchlistBody = document.getElementById('newWatchlistBody');
       
-      if (hasChanges) {
-        cachedPositions = updatedPositions;
-        
-        // Re-render positions
-        rerenderPositions();
-        
-        // Update hero
-        // For leveraged positions: use margin + PnL (actual equity)
-        const totalValue = cachedPositions.reduce((sum, p) => {
-          if (p.isLeveraged && p.marginUsed !== undefined) {
-            return sum + p.marginUsed + (p.pnl || 0);
-          }
-          return sum + (p.value || 0);
-        }, 0);
-        const totalPnL = cachedPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
-        const costBasis = totalValue - totalPnL;
-        const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
-        cachedSummaryData = { totalValue, totalPnL, totalPnLPercent };
-        
-        const summaryEl = document.getElementById('newSummary');
-        const HeroUI = window.AppModules?.ui?.hero;
-        const Settings = window.AppModules?.core?.settings;
-        const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
-        
-        if (summaryEl && HeroUI) {
-          const heroHtml = HeroUI.composeSummary({
-            portfolioValue: totalValue,
-            amountsVisible,
-            heroPnLMode: 'total',
-            totalPnL,
-            totalPnLPercent,
-            totalDailyChange: 0,
-            totalDailyChangePercent: 0,
+      if (watchlistBody && s.watchlist && s.watchlist.length > 0 && !watchlistEditMode) {
+        try {
+          const mod = await import('./modules/features/watchlist.js');
+          const prices = await mod.render(watchlistBody, {
+            feedIds: s.watchlist,
+            pythProvider: providers.pyth,
             useColoredPnL: s.useColoredPnL ?? true,
-            highlightsHtml: [],
-            weather: null // Keep existing weather
+            editMode: false,
+            previousData: cachedWatchlistData
           });
-          summaryEl.innerHTML = heroHtml;
+          cachedWatchlistData = prices;
+        } catch (e) {
+          // Silently fail watchlist updates to avoid disrupting position updates
         }
-        
-        // Flash updated cells with background color animation
-        setTimeout(() => {
-          const cells = document.querySelectorAll('td[data-flash="true"]');
-          cells.forEach(cell => {
-            cell.classList.add('cell-flash');
-            // Remove the class after animation completes
-            cell.addEventListener('animationend', () => {
-              cell.classList.remove('cell-flash');
-              cell.removeAttribute('data-flash');
-            }, { once: true });
-          });
-        }, 50);
       }
     } catch (e) {
       console.warn('Price update failed:', e);
     }
   }
   
-  // Update watchlist prices
-  async function updateWatchlistPrices() {
-    const watchlistBody = document.getElementById('newWatchlistBody');
-    if (!watchlistBody || watchlistEditMode) return;
-    
-    try {
-      const Settings = window.AppModules?.core?.settings;
-      const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
-      const watchlistIds = s.watchlist || [];
-      
-      if (watchlistIds.length === 0) return;
-      
-      const pythProvider = window.AppModules?.data?.providers?.pyth;
-      if (!pythProvider) return;
-      
-      // Fetch fresh prices
-      const mod = await import('../modules/features/watchlist.js');
-      const prices = await mod.fetchPrices(watchlistIds, pythProvider);
-      
-      if (prices && prices.length > 0) {
-        // Update cache
-        cachedWatchlistData = prices;
-        
-        // Track which cells changed for flash animation
-        const changedCells = [];
-        
-        // Update each row
-        for (const item of prices) {
-          const rows = watchlistBody.querySelectorAll('tr');
-          for (const row of rows) {
-            const symbolCell = row.querySelector('td:first-child');
-            if (symbolCell && symbolCell.textContent.trim().startsWith(item.symbol)) {
-              // Update price cell
-              const priceCell = row.querySelector('td:nth-child(2)');
-              if (priceCell) {
-                const oldPrice = previousWatchlistPrices[item.feedId];
-                const newPriceText = `$${item.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-                
-                if (oldPrice !== undefined && Math.abs(oldPrice - item.price) > 0.0001) {
-                  priceCell.textContent = newPriceText;
-                  changedCells.push(priceCell);
-                } else {
-                  priceCell.textContent = newPriceText;
-                }
-                
-                previousWatchlistPrices[item.feedId] = item.price;
-              }
-              
-              // Update 24h change cell
-              const changeCell = row.querySelector('td:nth-child(3)');
-              if (changeCell && item.change24h !== null && item.change24h !== undefined) {
-                const sign = item.change24h >= 0 ? '+' : '';
-                changeCell.textContent = `${sign}${item.change24h.toFixed(2)}%`;
-                
-                // Update color class
-                const useColoredPnL = s.useColoredPnL ?? true;
-                changeCell.className = '';
-                if (useColoredPnL) {
-                  changeCell.className = item.change24h >= 0 ? 'positive-pnl' : 'negative-pnl';
-                }
-              }
-              
-              break;
-            }
-          }
-        }
-        
-        // Flash changed cells
-        if (changedCells.length > 0) {
-          setTimeout(() => {
-            changedCells.forEach(cell => {
-              cell.classList.add('cell-flash');
-              cell.addEventListener('animationend', () => {
-                cell.classList.remove('cell-flash');
-              }, { once: true });
-            });
-          }, 50);
-        }
-      }
-    } catch (e) {
-      console.warn('Watchlist update failed:', e);
-    }
-  }
-  
-  // Start updates after 5 seconds, then every 10 seconds
+  // Start updates after 5 seconds, then every 5 seconds
   setTimeout(() => {
     updatePrices();
-    updateWatchlistPrices();
-    updateInterval = setInterval(() => {
-      updatePrices();
-      updateWatchlistPrices();
-    }, 10000);
+    updateInterval = setInterval(updatePrices, 5000);
   }, 5000);
 });
 
