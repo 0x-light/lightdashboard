@@ -19,7 +19,8 @@
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json">
     
-    <link rel="stylesheet" href="./styles.css?v=2.0.0">
+    <!-- Cache busting: update version number on each deployment -->
+    <link rel="stylesheet" href="./styles.css?v=2.2.3">
   </head>
   <body>
     <!-- Rain/Snow Canvas -->
@@ -485,8 +486,60 @@
       </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js"></script>
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./modules/app-init.js?v=2.2.3"></script>
+    <script type="module" src="./app.js?v=2.2.3"></script>
+    
+    <!-- Service Worker Registration - ensures users always get latest version -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .then((registration) => {
+              console.log('[SW] Registered:', registration.scope);
+              
+              // Check for updates every 5 minutes
+              setInterval(() => {
+                registration.update().catch(err => {
+                  console.warn('[SW] Update check failed:', err);
+                });
+              }, 5 * 60 * 1000);
+              
+              // Handle updates
+              registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                console.log('[SW] Update found, installing new version...');
+                
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    // New service worker is installed and ready
+                    console.log('[SW] New version available! Reloading page...');
+                    // Show notification to user
+                    const banner = document.createElement('div');
+                    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:var(--accent,#4CAF50);color:var(--bg,#000);padding:12px;text-align:center;z-index:99999;font-size:14px;';
+                    banner.textContent = 'New version available! Refreshing in 2 seconds...';
+                    document.body.appendChild(banner);
+                    
+                    // Auto-reload after 2 seconds
+                    setTimeout(() => {
+                      newWorker.postMessage({ type: 'SKIP_WAITING' });
+                      window.location.reload();
+                    }, 2000);
+                  }
+                });
+              });
+            })
+            .catch((error) => {
+              console.warn('[SW] Registration failed:', error);
+            });
+          
+          // Handle controller change (new SW activated)
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            console.log('[SW] Controller changed, reloading...');
+            window.location.reload();
+          });
+        });
+      }
+    </script>
   </body>
   </html>
 

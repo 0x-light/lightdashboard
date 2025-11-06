@@ -1,7 +1,8 @@
 // Service Worker for Light Dashboard
-// Provides offline support, aggressive caching, and performance optimization
-
-const CACHE_VERSION = 'v2.2.2-opaque-icons';
+// Provides offline support, intelligent caching, and automatic updates
+// UPDATE THIS VERSION NUMBER WHENEVER YOU DEPLOY CHANGES
+const CACHE_VERSION = 'v2.2.3';
+const BUILD_TIMESTAMP = '2025-11-06T00:00:00Z'; // Update on each deployment
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
 // Assets to cache immediately on install
@@ -9,10 +10,12 @@ const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/styles.css',
-  '/script.js',
+  '/app.js',
+  '/modules/app-init.js',
   '/icon-180.png',
   '/icon-192.png',
-  '/icon-512.png'
+  '/icon-512.png',
+  '/favicon_correct.png'
 ];
 
 // API cache duration by endpoint pattern
@@ -87,7 +90,7 @@ function getCacheDuration(url) {
   return 0; // Don't cache by default
 }
 
-// Fetch event - network first with cache fallback for APIs, cache first for static assets
+// Fetch event - network first for HTML, cache first for other static assets
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -97,8 +100,55 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
-  // Handle static assets - cache first
+  // Handle same-origin requests
   if (url.origin === self.location.origin) {
+    // For HTML files - always network first to get updates immediately
+    if (request.destination === 'document' || url.pathname.endsWith('.html') || url.pathname === '/') {
+      event.respondWith(
+        fetch(request)
+          .then((response) => {
+            if (response.ok) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(request, clone);
+              });
+            }
+            return response;
+          })
+          .catch(() => {
+            // Fallback to cache only if network fails
+            return caches.match(request).then((cached) => {
+              return cached || new Response('Offline - please check your connection', {
+                status: 503,
+                statusText: 'Service Unavailable',
+                headers: { 'Content-Type': 'text/html' }
+              });
+            });
+          })
+      );
+      return;
+    }
+    
+    // For JS/CSS files - use stale-while-revalidate
+    if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+      event.respondWith(
+        caches.open(CACHE_NAME).then((cache) => {
+          return cache.match(request).then((cached) => {
+            const fetchPromise = fetch(request).then((response) => {
+              if (response.ok) {
+                cache.put(request, response.clone());
+              }
+              return response;
+            });
+            // Return cached version immediately, but update in background
+            return cached || fetchPromise;
+          });
+        })
+      );
+      return;
+    }
+    
+    // For other static assets (images, fonts, etc.) - cache first
     event.respondWith(
       caches.match(request).then((cached) => {
         return cached || fetch(request).then((response) => {
@@ -111,7 +161,6 @@ self.addEventListener('fetch', (event) => {
           return response;
         });
       }).catch(() => {
-        // Return offline page or placeholder
         return new Response('Offline - please check your connection', {
           status: 503,
           statusText: 'Service Unavailable',

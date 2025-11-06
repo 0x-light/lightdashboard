@@ -9,14 +9,42 @@
   # Content Security Policy - Allow all necessary APIs
   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.hyperliquid.xyz https://mainnet.zklighter.elliot.ai https://testnet.zklighter.elliot.ai https://api.opensea.io https://api.coingecko.com https://api.open-meteo.com https://api.bigdatacloud.net https://www.gocomics.com https://featureassets.gocomics.com https://assets.gocomics.com https://assets.amuniversal.com https://assets.coingecko.com https://api.allorigins.win https://corsproxy.io https://hermes.pyth.network https://*.g.alchemy.com https://mainnet.helius-rpc.com https://api.zerion.io https://api.zcha.in https://blockchain.info; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;
   
-  # Cache control for static assets
+  # Cache control for static assets (1 hour with revalidation)
   Cache-Control: public, max-age=3600, must-revalidate
 
+# HTML files - always revalidate to get latest version
+/*.html
+  Cache-Control: no-cache, must-revalidate
+  
+# Service Worker - never cache to ensure updates
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+  Pragma: no-cache
+  Expires: 0
+
+# App files with version params - cache for 7 days
+/app.js
+  Cache-Control: public, max-age=604800, immutable
+  
+/modules/*
+  Cache-Control: public, max-age=604800, immutable
+
+/styles.css
+  Cache-Control: public, max-age=604800, immutable
+
+# Manifest
 /manifest.json
   Content-Type: application/manifest+json
-  Cache-Control: public, max-age=86400
+  Cache-Control: public, max-age=86400, must-revalidate
 
-/favicon-*.svg
+# Images and icons - cache for 7 days
+/favicon*.svg
   Content-Type: image/svg+xml
-  Cache-Control: public, max-age=604800
+  Cache-Control: public, max-age=604800, immutable
+  
+/favicon*.png
+  Cache-Control: public, max-age=604800, immutable
+
+/icon-*.png
+  Cache-Control: public, max-age=604800, immutable
 
