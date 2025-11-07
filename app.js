@@ -2238,19 +2238,34 @@ window.addEventListener('DOMContentLoaded', async () => {
       };
     };
     
-    // Get a valid date for the comic (use end date if today is past it)
+    // Get a deterministic random date for the comic based on today's date
+    // This ensures the same comic shows all day, but changes daily
     const getValidComicDate = (comicKey) => {
       const metadata = getComicMetadata();
       const comic = metadata[comicKey];
       if (!comic) return new Date();
       
+      // Create a seed based on the current date (YYYY-MM-DD format)
       const today = new Date();
-      // If today is past the comic's end date, use the end date
-      if (today > comic.endDate) {
-        return comic.endDate;
+      const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      
+      // Simple hash function to create a deterministic seed from the date string
+      let hash = 0;
+      for (let i = 0; i < dateString.length; i++) {
+        const char = dateString.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
       }
-      // Otherwise use today
-      return today;
+      
+      // Make the hash positive and normalize to 0-1
+      const seed = Math.abs(hash) / 2147483647;
+      
+      // Calculate random date within the comic's range using the seed
+      const start = comic.startDate.getTime();
+      const end = comic.endDate.getTime();
+      const randomTime = start + seed * (end - start);
+      
+      return new Date(randomTime);
     };
     
     let currentComicDate = getValidComicDate(currentComicStrip);
