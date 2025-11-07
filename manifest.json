@@ -2,7 +2,7 @@
   "name": "Viewport",
   "short_name": "Viewport",
   "description": "Privacy-first crypto portfolio tracker with real-time positions",
-  "start_url": "/portfolio/",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",

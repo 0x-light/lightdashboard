@@ -28,6 +28,8 @@ if [ -f "index.html" ]; then
     sed -i.bak "s/styles\.css?v=[0-9.]*/styles.css?v=${NEW_VERSION}/" index.html
     sed -i.bak "s/app\.js?v=[0-9.]*/app.js?v=${NEW_VERSION}/g" index.html
     sed -i.bak "s/app-init\.js?v=[0-9.]*/app-init.js?v=${NEW_VERSION}/" index.html
+    sed -i.bak "s/manifest\.json?v=[0-9.]*/manifest.json?v=${NEW_VERSION}/" index.html
+    sed -i.bak "s/const APP_VERSION = '[0-9.]*';/const APP_VERSION = '${NEW_VERSION}';/" index.html
     rm index.html.bak 2>/dev/null
 fi
 

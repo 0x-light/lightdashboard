@@ -17,10 +17,13 @@
     <meta name="apple-mobile-web-app-title" content="Viewport">
     
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="/manifest.json?v=2.2.4">
     
     <!-- Cache busting: update version number on each deployment -->
-    <link rel="stylesheet" href="./styles.css?v=2.2.3">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <link rel="stylesheet" href="./styles.css?v=2.2.4">
   </head>
   <body>
     <!-- Rain/Snow Canvas -->
@@ -486,23 +489,52 @@
       </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.2.3"></script>
-    <script type="module" src="./app.js?v=2.2.3"></script>
+    <script type="module" src="./modules/app-init.js?v=2.2.4"></script>
+    <script type="module" src="./app.js?v=2.2.4"></script>
     
     <!-- Service Worker Registration - ensures users always get latest version -->
     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        window.addEventListener('load', async () => {
+          // iOS PWA fix: Force check version and unregister old SW if needed
+          const APP_VERSION = '2.2.4';
+          const storedVersion = localStorage.getItem('app_version');
+          
+          if (storedVersion && storedVersion !== APP_VERSION) {
+            console.log('[SW] Version change detected:', storedVersion, '->', APP_VERSION);
+            console.log('[SW] Forcing service worker update...');
+            
+            // Unregister all existing service workers
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const registration of registrations) {
+              await registration.unregister();
+              console.log('[SW] Unregistered old service worker');
+            }
+            
+            // Clear all caches
+            const cacheNames = await caches.keys();
+            for (const cacheName of cacheNames) {
+              await caches.delete(cacheName);
+              console.log('[SW] Cleared cache:', cacheName);
+            }
+          }
+          
+          // Store current version
+          localStorage.setItem('app_version', APP_VERSION);
+          
+          navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
             .then((registration) => {
               console.log('[SW] Registered:', registration.scope);
               
-              // Check for updates every 5 minutes
+              // Force immediate update check
+              registration.update();
+              
+              // Check for updates every 2 minutes (more aggressive for iOS)
               setInterval(() => {
                 registration.update().catch(err => {
                   console.warn('[SW] Update check failed:', err);
                 });
-              }, 5 * 60 * 1000);
+              }, 2 * 60 * 1000);
               
               // Handle updates
               registration.addEventListener('updatefound', () => {
