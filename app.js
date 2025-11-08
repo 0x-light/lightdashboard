@@ -764,12 +764,14 @@ function setupControls() {
   if (mobileMenuBtn && mobileMenu) {
     mobileMenuBtn.addEventListener('click', () => {
       mobileMenu.classList.add('active');
+      document.body.classList.add('mobile-menu-open');
     });
   }
   
   if (closeMobileMenuBtn && mobileMenu) {
     closeMobileMenuBtn.addEventListener('click', () => {
       mobileMenu.classList.remove('active');
+      document.body.classList.remove('mobile-menu-open');
     });
   }
   
@@ -779,7 +781,10 @@ function setupControls() {
     const mobile = document.getElementById(mobileId);
     if (mobile && desktop) {
       mobile.addEventListener('click', () => {
-        if (mobileMenu) mobileMenu.classList.remove('active');
+        if (mobileMenu) {
+          mobileMenu.classList.remove('active');
+          document.body.classList.remove('mobile-menu-open');
+        }
         desktop.click();
       });
     }
@@ -1224,6 +1229,13 @@ function setupControls() {
         if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW ON]';
       }
       
+      // Close mobile menu if open
+      const mobileMenu = document.getElementById('newMobileMenu');
+      if (mobileMenu) {
+        mobileMenu.classList.remove('active');
+        document.body.classList.remove('mobile-menu-open');
+      }
+      
       // Save to localStorage
       const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
       s.rainEnabled = active;
@@ -1242,6 +1254,13 @@ function setupControls() {
       if (active) {
         toggleRainBtn.textContent = '[RAIN ON]';
         if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = '[RAIN ON]';
+      }
+      
+      // Close mobile menu if open
+      const mobileMenu = document.getElementById('newMobileMenu');
+      if (mobileMenu) {
+        mobileMenu.classList.remove('active');
+        document.body.classList.remove('mobile-menu-open');
       }
       
       // Save to localStorage
@@ -1495,7 +1514,10 @@ function setupControls() {
     }
     // Close mobile menu if open
     const mobileMenu = document.getElementById('newMobileMenu');
-    if (mobileMenu) mobileMenu.classList.remove('active');
+    if (mobileMenu) {
+      mobileMenu.classList.remove('active');
+      document.body.classList.remove('mobile-menu-open');
+    }
   };
   
   const closeDonateWindow = () => {

@@ -1069,6 +1069,8 @@ textarea:focus {
   bottom: 0;
   background: var(--bg);
   z-index: 1000;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Theme select wrapper and label */
@@ -1147,6 +1149,14 @@ textarea:focus {
 
 .mobile-menu.active {
   display: block;
+}
+
+/* Prevent body scrolling when mobile menu is open */
+body.mobile-menu-open {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  height: 100%;
 }
 
 .mobile-menu-header {
@@ -1491,19 +1501,19 @@ html[data-theme="dark"] {
 
 html[data-theme="amber"] {
   /* Classic amber monitor */
-  --bg: #1a0f00;
-  --bg-elev: #2a1a00;
-  --text: #ffb000;
-  --text-bright: #ffe080;
-  --muted: #c08000;
-  --accent: #ffd700;
-  --border: rgba(255, 176, 0, 0.2);
-  --card-bg: #1a0f00;
-  --green: #ffe574;
-  --red: #ff5a3c;
-  --orange: #ffb000;
-  --yellow: #ffd700;
-  --cyan: #ffb000;
+  --bg: #0a0500;
+  --bg-elev: #1a0f00;
+  --text: #ff8c00;
+  --text-bright: #ffaa00;
+  --muted: #cc6600;
+  --accent: #ffaa00;
+  --border: rgba(255, 140, 0, 0.2);
+  --card-bg: #0a0500;
+  --green: #ffaa00;
+  --red: #ff4400;
+  --orange: #ff8c00;
+  --yellow: #ffaa00;
+  --cyan: #ff8c00;
   --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
@@ -1727,8 +1737,8 @@ html[data-theme="bioluminescence"] {
   --accent: #00cfcf;
   --border: rgba(0, 125, 121, 0.7);
   --card-bg: #081a1c;
-  --green: #08bdb9;
-  --red: #da1e28;
+  --green: #cefaff;
+  --red: #007785;
   --orange: #ff6c04;
   --yellow: #f1c21b;
   --cyan: #00ffff;
@@ -1808,6 +1818,196 @@ html[data-theme="ember"] {
   --orange: #ff6f00;
   --yellow: #ffc107;
   --cyan: #ffab40;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="ntsc-bw"] {
+  /* B&W NTSC TV (CGA) w/overscan, blurry */
+  --bg: #0a0a0f;
+  --bg-elev: #151520;
+  --text: #c0c0d0;
+  --text-bright: #e8e8f0;
+  --muted: #7070a0;
+  --accent: #b0b0d0;
+  --border: rgba(192, 192, 208, 0.2);
+  --card-bg: #0a0a0f;
+  --green: #b0b0d0;
+  --red: #d0d0e0;
+  --orange: #c0c0d0;
+  --yellow: #d0d0e0;
+  --cyan: #b0b0d0;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="cga-composite"] {
+  /* Green composite (Apple ][), sharp */
+  --bg: #000000;
+  --bg-elev: #001a00;
+  --text: #33ff33;
+  --text-bright: #66ff66;
+  --muted: #00cc00;
+  --accent: #33ff33;
+  --border: rgba(51, 255, 51, 0.2);
+  --card-bg: #000000;
+  --green: #33ff33;
+  --red: #33ff33;
+  --orange: #33ff33;
+  --yellow: #66ff66;
+  --cyan: #33ff33;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="amber-low"] {
+  /* Low-res amber TTL (CGA, custom palette w/overscan) */
+  --bg: #1a0800;
+  --bg-elev: #2a1200;
+  --text: #ffaa00;
+  --text-bright: #ffc040;
+  --muted: #cc8800;
+  --accent: #ffaa00;
+  --border: rgba(255, 170, 0, 0.2);
+  --card-bg: #1a0800;
+  --green: #ffaa00;
+  --red: #ff8800;
+  --orange: #ffaa00;
+  --yellow: #ffc040;
+  --cyan: #ffaa00;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="ttl-green"] {
+  /* Low-res green TTL (CGA), bright + halation/glow */
+  --bg: #000500;
+  --bg-elev: #001000;
+  --text: #00ff00;
+  --text-bright: #66ff66;
+  --muted: #00cc00;
+  --accent: #00ff00;
+  --border: rgba(0, 255, 0, 0.3);
+  --card-bg: #000500;
+  --green: #00ff00;
+  --red: #00ff00;
+  --orange: #00ff00;
+  --yellow: #66ff66;
+  --cyan: #00ff00;
+  --flash-start: color-mix(in srgb, var(--accent) 40%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+html[data-theme="mda-amber"] {
+  /* Hi-res amber TTL (MDA text) w/overscan, bright */
+  --bg: #1a0a00;
+  --bg-elev: #2a1400;
+  --text: #ffaa00;
+  --text-bright: #ffc844;
+  --muted: #cc8800;
+  --accent: #ffaa00;
+  --border: rgba(255, 170, 0, 0.25);
+  --card-bg: #1a0a00;
+  --green: #ffaa00;
+  --red: #ff8800;
+  --orange: #ffaa00;
+  --yellow: #ffc844;
+  --cyan: #ffaa00;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="ibm-green"] {
+  /* Hi-res green TTL (IBM 5150, HGC), phosphor trail visible */
+  --bg: #000000;
+  --bg-elev: #001800;
+  --text: #00dd00;
+  --text-bright: #33ff33;
+  --muted: #009900;
+  --accent: #00dd00;
+  --border: rgba(0, 221, 0, 0.2);
+  --card-bg: #000000;
+  --green: #00dd00;
+  --red: #00dd00;
+  --orange: #00dd00;
+  --yellow: #33ff33;
+  --cyan: #00dd00;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="vga-white"] {
+  /* White mono VGA (custom resolution), sharp */
+  --bg: #000000;
+  --bg-elev: #0a0a0a;
+  --text: #e0e0e0;
+  --text-bright: #ffffff;
+  --muted: #909090;
+  --accent: #e0e0e0;
+  --border: rgba(224, 224, 224, 0.2);
+  --card-bg: #000000;
+  --green: #e0e0e0;
+  --red: #e0e0e0;
+  --orange: #e0e0e0;
+  --yellow: #ffffff;
+  --cyan: #e0e0e0;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="paper-white"] {
+  /* "Paper White" VGA (640x480 monochrome mode) */
+  --bg: #d8d0c0;
+  --bg-elev: #c8c0b0;
+  --text: #202020;
+  --text-bright: #000000;
+  --muted: #606060;
+  --accent: #404040;
+  --border: rgba(32, 32, 32, 0.2);
+  --card-bg: #d8d0c0;
+  --green: #004000;
+  --red: #600000;
+  --orange: #604000;
+  --yellow: #606000;
+  --cyan: #004040;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="vga-amber"] {
+  /* Amber VGA (320x200 double-scanned), very sharp */
+  --bg: #0f0500;
+  --bg-elev: #1a0a00;
+  --text: #ff9944;
+  --text-bright: #ffbb66;
+  --muted: #cc6622;
+  --accent: #ff9944;
+  --border: rgba(255, 153, 68, 0.2);
+  --card-bg: #0f0500;
+  --green: #ff9944;
+  --red: #ff6622;
+  --orange: #ff9944;
+  --yellow: #ffbb66;
+  --cyan: #ff9944;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="p7-phosphor"] {
+  /* P7 phosphor, latency & persistence visible */
+  --bg: #0a0a10;
+  --bg-elev: #151520;
+  --text: #9090c0;
+  --text-bright: #b8b8e0;
+  --muted: #6060a0;
+  --accent: #9090c0;
+  --border: rgba(144, 144, 192, 0.2);
+  --card-bg: #0a0a10;
+  --green: #9090c0;
+  --red: #c09090;
+  --orange: #c0a090;
+  --yellow: #b8b8e0;
+  --cyan: #90a0c0;
   --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
