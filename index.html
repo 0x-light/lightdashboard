@@ -17,13 +17,13 @@
     <meta name="apple-mobile-web-app-title" content="Viewport">
     
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json?v=2.2.4">
+    <link rel="manifest" href="/manifest.json?v=2.2.5">
     
     <!-- Cache busting: update version number on each deployment -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="./styles.css?v=2.2.4">
+    <link rel="stylesheet" href="./styles.css?v=2.2.5">
   </head>
   <body>
     <!-- Rain/Snow Canvas -->
@@ -503,15 +503,15 @@
       </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.2.4"></script>
-    <script type="module" src="./app.js?v=2.2.4"></script>
+    <script type="module" src="./modules/app-init.js?v=2.2.5"></script>
+    <script type="module" src="./app.js?v=2.2.5"></script>
     
     <!-- Service Worker Registration - ensures users always get latest version -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', async () => {
           // iOS PWA fix: Force check version and unregister old SW if needed
-          const APP_VERSION = '2.2.4';
+          const APP_VERSION = '2.2.5';
           const storedVersion = localStorage.getItem('app_version');
           
           if (storedVersion && storedVersion !== APP_VERSION) {
