@@ -27,13 +27,13 @@ function formatAmount(num, visible, showExact = false) {
   }
 }
 
-function formatUsd(num, visible) {
+function formatUsd(num, visible, showPlusSign = false) {
   if (!visible) return '$••••';
   const n = Number(num || 0);
   if (!Number.isFinite(n)) return '—';
   
   const abs = Math.abs(n);
-  const sign = n < 0 ? '−' : '';
+  const sign = n < 0 ? '−' : (showPlusSign && n > 0 ? '+' : '');
   
   // Format large numbers compactly
   if (abs >= 1000000) {
@@ -95,7 +95,7 @@ function createTableRow(doc, pos, opts) {
       pos.asset || '—',
       formatUsd(pos.price, true), // Always show price
       formatUsd(value, amountVisible), // Hide value
-      formatUsd(pos.pnl, amountVisible), // Hide PnL
+      formatUsd(pos.pnl, amountVisible, true), // Hide PnL, show + for positive
       formatPct(pos.change24h), // Always show 24H%
       formatAmount(pos.amount, amountVisible, showExactAmounts), // Hide amount
       pos.exchange || '—'
@@ -110,7 +110,7 @@ function createTableRow(doc, pos, opts) {
       formatUsd(pos.price, true), // Always show price
       formatUsd(value, amountVisible), // Hide value
       formatPct(pos.change24h), // Always show 24H%
-      formatUsd(pos.pnl, amountVisible) // Hide PnL
+      formatUsd(pos.pnl, amountVisible, true) // Hide PnL, show + for positive
     ];
   }
   
@@ -187,7 +187,7 @@ function createMobileCard(doc, pos, opts) {
     <div class="card-row"><span class="card-label">Price</span><span class="card-value">${formatUsd(pos.price, true)}</span></div>
     <div class="card-row"><span class="card-label">Value</span><span class="card-value">${formatUsd(value, amountVisible)}</span></div>
     <div class="card-row"><span class="card-label">24H%</span><span class="card-value ${changeClass}">${formatPct(pos.change24h)}</span></div>
-    <div class="card-row"><span class="card-label">P&L</span><span class="card-value ${pnlClass}">${formatUsd(pos.pnl, amountVisible)}</span></div>
+    <div class="card-row"><span class="card-label">P&L</span><span class="card-value ${pnlClass}">${formatUsd(pos.pnl, amountVisible, true)}</span></div>
   `;
   return card;
 }

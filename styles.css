@@ -76,14 +76,37 @@ html[data-theme="astronomy"] {
 html[data-theme="yellow-terminal"] {
   /* Yellow Terminal */
   --bg: #000;
+  --bg-elev: #1a1000;
   --text: #ffbf00;
   --text-bright: #ffbf00;
-  --muted: #ffbf00;
+  --muted: #cc9900;
   --accent: #ffbf00;
   --border: #211900;
-  --card-bg: #ffbf00;
+  --card-bg: #0a0800;
   --green: #ffbf00;
   --red: #ffbf00;
+  --orange: #ffbf00;
+  --yellow: #ffbf00;
+  --cyan: #ffbf00;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="eva01"] {
+  /* EVA01 - Evangelion Unit-01 */
+  --bg: #000000;
+  --bg-elev: #1a0f1a;
+  --text: #a78bfa;
+  --text-bright: #c4b5fd;
+  --muted: #7c3aed;
+  --accent: #8b5cf6;
+  --border: #2d1b3d;
+  --card-bg: #0d0a0d;
+  --green: #22c55e;
+  --red: #FE8600;
+  --orange: #FE8600;
+  --yellow: #eab308;
+  --cyan: #22c55e;
   --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
@@ -1877,9 +1900,6 @@ html[data-theme="amber-low"] {
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
-
-
-
 html[data-theme="vga-white"] {
   /* White mono VGA (custom resolution), sharp */
   --bg: #000000;
@@ -1952,6 +1972,25 @@ html[data-theme="p7-phosphor"] {
   --orange: #c0a090;
   --yellow: #b8b8e0;
   --cyan: #90a0c0;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="bloomberg"] {
+  /* Bloomberg Terminal */
+  --bg: #000000;
+  --bg-elev: #000000;
+  --text: #F09000;
+  --text-bright: #F09000;
+  --muted: #F09000;
+  --accent: #F09000;
+  --border: rgba(255, 136, 0, 0.2);
+  --card-bg: #000000;
+  --green: #01C605;
+  --red: #DB3333;
+  --orange: #F09000;
+  --yellow: #F09000;
+  --cyan: #0053A6;
   --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
