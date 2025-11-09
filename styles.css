@@ -1862,7 +1862,7 @@ html[data-theme="ember"] {
 }
 
 html[data-theme="ntsc-bw"] {
-  /* B&W NTSC TV (CGA) w/overscan, blurry */
+  /* BW NTSC TV (CGA) w/overscan, blurry */
   --bg: #0a0a0f;
   --bg-elev: #151520;
   --text: #c0c0d0;
@@ -1958,7 +1958,7 @@ html[data-theme="vga-amber"] {
 }
 
 html[data-theme="p7-phosphor"] {
-  /* P7 phosphor, latency & persistence visible */
+  /* P7 phosphor, latency and persistence visible */
   --bg: #0a0a10;
   --bg-elev: #151520;
   --text: #9090c0;
@@ -2306,8 +2306,9 @@ input[type="range"]:focus::-moz-range-thumb {
 /* Sticker Window */
 .sticker-window {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: 380px;
   max-width: calc(100vw - 40px);
   max-height: calc(100vh - 100px);
@@ -2350,6 +2351,7 @@ input[type="range"]:focus::-moz-range-thumb {
     right: 0;
     left: 0;
     top: 0;
+    transform: none;
     max-height: 100vh;
     width: auto;
     max-width: none;
