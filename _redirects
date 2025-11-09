@@ -1,9 +1,6 @@
-# Redirect root to /portfolio (new version)
-/    /portfolio/index.html    200
+# Serve index.html at root
+/    /index.html    200
 
-# Serve old version at /old
-/old    /index.html    200
-
-# Portfolio page assets
-/portfolio/*    /portfolio/:splat    200
+# SPA fallback - serve index.html for all routes
+/*    /index.html    200
 
