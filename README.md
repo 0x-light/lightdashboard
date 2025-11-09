@@ -6,6 +6,11 @@ A beautiful, ultra-minimal terminal-style dashboard for tracking crypto position
 
 - **Portfolio Tracking**: Track positions across Hyperliquid, Lighter, and OpenSea NFTs
 - **Multi-Wallet Support**: Add multiple wallets (comma-separated)
+- **Automatic PnL Tracking**: Smart profit/loss calculation for all wallet assets
+  - Automatically tracks entry prices when assets are first detected
+  - Calculate gains/losses based on your actual cost basis
+  - Manual cost basis entry for existing holdings
+  - Import/export entry price data for backup
 - **Live Price Data**: Real-time prices and 24h changes from CoinGecko
 - **Weather Integration**: Local weather with moon phases
 - **Comic Strips**: Daily Calvin & Hobbes, Peanuts, or The Far Side
@@ -128,6 +133,43 @@ None currently implemented, but the UI is designed for quick access:
 - Settings: Click `[SETTINGS]`
 - Mobile menu: Click `[MENU]` on mobile devices
 
+## Advanced Features
+
+### Wallet Asset PnL Management
+
+The dashboard automatically tracks profit/loss for all wallet assets by recording the price when each asset is first detected. You can manage this data using the browser console utilities:
+
+```javascript
+// View all tracked entry prices
+walletPnLUtils.viewEntryPrices()
+
+// Manually set entry price for an asset (e.g., if you bought before tracking started)
+walletPnLUtils.setEntryPrice('BTC_Ethereum', 50000)
+
+// Reset entry price for a specific asset (will re-track on next detection)
+walletPnLUtils.resetEntryPrice('ETH_Arbitrum')
+
+// Export your entry prices as JSON (for backup)
+const backup = walletPnLUtils.export()
+
+// Import entry prices from JSON (restore from backup)
+walletPnLUtils.import(backup)
+
+// Reset all entry prices (fresh start)
+walletPnLUtils.resetAll()
+```
+
+**How it works:**
+1. When a wallet asset is first detected, the current price is recorded as the entry price
+2. On subsequent loads, PnL is calculated as: `(current value) - (amount × entry price)`
+3. Entry prices are stored in localStorage and persist across sessions
+4. For existing holdings, manually set your actual purchase price using `setEntryPrice()`
+
+**Important Notes:**
+- Entry prices are tracked per asset per chain (e.g., `BTC_Ethereum` vs `BTC_Arbitrum`)
+- For assets you already owned before enabling this feature, manually set the entry price for accurate PnL
+- Hyperliquid and Lighter positions use their native entry price data (not localStorage)
+
 ## Troubleshooting
 
 ### NFTs not showing
@@ -139,6 +181,11 @@ None currently implemented, but the UI is designed for quick access:
 1. Check refresh interval setting
 2. Force refresh by clicking `[SAVE]` in settings
 3. Check browser console for API errors
+
+### PnL showing incorrect values
+1. Check entry prices: `walletPnLUtils.viewEntryPrices()`
+2. For existing holdings, manually set your purchase price
+3. If you transferred assets between chains, reset and re-track the entry price
 
 ### Comic not loading
 1. Try a different comic strip

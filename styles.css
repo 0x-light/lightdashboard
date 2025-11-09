@@ -357,19 +357,19 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--muted);
   padding: 8px 12px 8px 0;
   text-transform: uppercase;
-  border-bottom: 1px solid rgba(147, 161, 161, 0.2);
+  border-bottom: 1px solid var(--border);
   opacity: 0.6;
   white-space: nowrap;
 }
 
 .data-table td {
   padding: 14px 12px 14px 0;
-  border-bottom: 1px solid rgba(147, 161, 161, 0.15);
+  border-bottom: 1px solid var(--border);
   color: var(--text);
 }
 
 .data-table tbody tr:last-child td {
-  border-bottom: 1px solid rgba(147, 161, 161, 0.15);
+  border-bottom: 1px solid var(--border);
 }
 
 .data-table .loading {
@@ -1008,7 +1008,7 @@ textarea:focus {
 }
 
 .mobile-position-card {
-  border-bottom: 1px solid rgba(147, 161, 161, 0.15);
+  border-bottom: 1px solid var(--border);
   padding: 12px 0;
 }
 
@@ -1527,7 +1527,7 @@ html[data-theme="christmas"] {
   --text-bright: #ffffff;
   --muted: #a8c5a8;
   --accent: #ff3333;
-  --border: rgba(255, 215, 0, 0.2);
+  --border: rgb(21, 46, 21);
   --card-bg: #0d1f0d;
   --green: #00c853;
   --red: #ff1744;
@@ -1899,6 +1899,40 @@ html[data-theme="p7-phosphor"] {
   --orange: #c0a090;
   --yellow: #b8b8e0;
   --cyan: #90a0c0;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="astronomy"] {
+  /* Astronomy Mode */
+  --bg: #000000;
+  --bg-elev: #1a0000;
+  --text: #f00;
+  --text-bright: #f00;
+  --muted: #f00;
+  --accent: #f00;
+  --border: rgba(255, 68, 68, 0.2);
+  --card-bg: #0d0000;
+  --green: #f00;
+  --red: #f00;
+  --orange: #f00;
+  --yellow: #f00;
+  --cyan: #f00;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="yellow-terminal"] {
+  /* Yellow Terminal */
+  --bg: #000;
+  --text: #ffbf00;
+  --text-bright: #ffbf00;
+  --muted: #ffbf00;
+  --accent: #ffbf00;
+  --border: #211900;
+  --card-bg: #ffbf00;
+  --green: #ffbf00;
+  --red: #ffbf00;
   --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
