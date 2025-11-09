@@ -67,6 +67,19 @@ async function runHealthChecks() {
     console.warn('[Health] Zerion: No API key configured');
   }
 
+  // Bitcoin
+  const bitcoinAddrs = (settings.bitcoinAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+  if (bitcoinAddrs.length > 0) {
+    try {
+      const data = await providers.bitcoin.getTokenBalances([bitcoinAddrs[0]], { timeoutMs: 8000 });
+      const ok = Array.isArray(data);
+      parts.push(`<span style="color: ${ok ? 'var(--green)' : 'var(--red)'};">●</span> Bitcoin`);
+    } catch (e) {
+      console.error('[Health] Bitcoin error:', e);
+      parts.push('<span style="color: var(--red);">●</span> Bitcoin');
+    }
+  }
+
   setHealth(parts.join('<br>'));
 }
 
@@ -268,63 +281,142 @@ async function renderDemoSummary() {
                     }
                   }
                   
-                  // If we got data from Zerion, use it
+                  // If we got data from Zerion, use it (but still fetch Bitcoin/Zcash separately)
                   if (zerionRows.length > 0) {
                     zerionSucceeded = true;
-                    return zerionRows;
                   }
                 } catch (e) { 
                   console.error('[/portfolio] Zerion error:', e.message || e);
                 }
               }
               
-              // Fallback to Alchemy + Helius
-              if (!zerionSucceeded && (alchemyKey || heliusKey)) {
+              // Get Bitcoin and Zcash addresses from settings (always check, regardless of Zerion)
+              const bitcoinAddrs = (settings.bitcoinAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+              const zcashAddrs = (settings.zcashAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+              
+              // Fetch Bitcoin/Zcash separately since Zerion doesn't support them
+              const btcZecRows = [];
+              if (bitcoinAddrs.length > 0 || zcashAddrs.length > 0) {
+                try {
+                  const [btcTokens, zcashTokens, cryptoPrices] = await Promise.all([
+                    // Bitcoin
+                    bitcoinAddrs.length > 0
+                      ? providers.bitcoin.getTokenBalances(bitcoinAddrs, { timeoutMs: 15000 }).catch(e => {
+                          console.error('[/portfolio] Bitcoin error:', e.message || e);
+                          return [];
+                        })
+                      : Promise.resolve([]),
+                    
+                    // Zcash
+                    zcashAddrs.length > 0
+                      ? providers.zcash.getTokenBalances(zcashAddrs, { timeoutMs: 15000 }).catch(e => {
+                          console.error('[/portfolio] Zcash error:', e.message || e);
+                          return [];
+                        })
+                      : Promise.resolve([]),
+                    
+                    // Get BTC and ZEC prices from CoinGecko
+                    providers.coingecko.getSimplePrice('bitcoin,zcash', { timeoutMs: 8000, ttlMs: 60000 }).catch(e => {
+                      console.error('[/portfolio] CoinGecko price error:', e.message || e);
+                      return {};
+                    })
+                  ]);
+                  
+                  // Process Bitcoin - enrich with price
+                  const btcPrice = cryptoPrices?.bitcoin?.usd || 0;
+                  const btcChange24h = cryptoPrices?.bitcoin?.usd_24h_change || null;
+                  for (const btc of btcTokens) {
+                    btcZecRows.push({
+                      asset: 'BTC',
+                      exchange: 'Bitcoin',
+                      amount: btc.balance,
+                      price: btcPrice,
+                      value: btc.balance * btcPrice,
+                      change24h: btcChange24h,
+                      pnl: null
+                    });
+                  }
+                  
+                  // Process Zcash - enrich with price
+                  const zecPrice = cryptoPrices?.zcash?.usd || 0;
+                  const zecChange24h = cryptoPrices?.zcash?.usd_24h_change || null;
+                  for (const zec of zcashTokens) {
+                    btcZecRows.push({
+                      asset: 'ZEC',
+                      exchange: 'Zcash',
+                      amount: zec.balance,
+                      price: zecPrice,
+                      value: zec.balance * zecPrice,
+                      change24h: zecChange24h,
+                      pnl: null
+                    });
+                  }
+                } catch (e) {
+                  console.error('[/portfolio] Bitcoin/Zcash fetch error:', e.message || e);
+                }
+              }
+              
+              // Return Zerion data plus Bitcoin/Zcash
+              if (zerionSucceeded) {
+                return [...zerionRows, ...btcZecRows];
+              }
+              
+              // Fallback to Alchemy + Helius (if no Zerion)
+              if (alchemyKey || heliusKey) {
                 const rows = [];
                 
-                // Fetch Alchemy (EVM chains)
-                if (alchemyKey && wallets.length > 0) {
-                  try {
-                    const alchemyTokens = await providers.alchemy.getTokenBalances(wallets, alchemyKey, { timeoutMs: 20000 });
-                    
-                    for (const token of alchemyTokens) {
-                      rows.push({
-                        asset: token.tokenSymbol,
-                        exchange: token.blockchain,
-                        amount: token.balance,
-                        price: token.tokenPrice || 0,
-                        value: token.balanceUsd || 0,
-                        change24h: token.change24h ?? null,
-                        pnl: null
-                      });
-                    }
-                  } catch (e) {
-                    console.error('[/portfolio] Alchemy error:', e.message || e);
-                  }
+                // Fetch Alchemy and Helius in parallel
+                const [alchemyTokens, heliusTokens] = await Promise.all([
+                  // Alchemy (EVM chains)
+                  alchemyKey && wallets.length > 0 
+                    ? providers.alchemy.getTokenBalances(wallets, alchemyKey, { timeoutMs: 20000 }).catch(e => {
+                        console.error('[/portfolio] Alchemy error:', e.message || e);
+                        return [];
+                      })
+                    : Promise.resolve([]),
+                  
+                  // Helius (Solana)
+                  heliusKey && solanaAddrs.length > 0
+                    ? providers.helius.getTokenBalances(solanaAddrs, heliusKey, { timeoutMs: 15000 }).catch(e => {
+                        console.error('[/portfolio] Helius error:', e.message || e);
+                        return [];
+                      })
+                    : Promise.resolve([])
+                ]);
+                
+                // Process Alchemy tokens
+                for (const token of alchemyTokens) {
+                  rows.push({
+                    asset: token.tokenSymbol,
+                    exchange: token.blockchain,
+                    amount: token.balance,
+                    price: token.tokenPrice || 0,
+                    value: token.balanceUsd || 0,
+                    change24h: token.change24h ?? null,
+                    pnl: null
+                  });
                 }
                 
-                // Fetch Helius (Solana)
-                if (heliusKey && solanaAddrs.length > 0) {
-                  try {
-                    const heliusTokens = await providers.helius.getTokenBalances(solanaAddrs, heliusKey, { timeoutMs: 15000 });
-                    
-                    for (const token of heliusTokens) {
-                      rows.push({
-                        asset: token.tokenSymbol,
-                        exchange: token.blockchain,
-                        amount: token.balance,
-                        price: token.tokenPrice || 0,
-                        value: token.balanceUsd || 0,
-                        change24h: token.change24h ?? null,
-                        pnl: null
-                      });
-                    }
-                  } catch (e) {
-                    console.error('[/portfolio] Helius error:', e.message || e);
-                  }
+                // Process Helius tokens
+                for (const token of heliusTokens) {
+                  rows.push({
+                    asset: token.tokenSymbol,
+                    exchange: token.blockchain,
+                    amount: token.balance,
+                    price: token.tokenPrice || 0,
+                    value: token.balanceUsd || 0,
+                    change24h: token.change24h ?? null,
+                    pnl: null
+                  });
                 }
                 
-                return rows;
+                // Combine with Bitcoin/Zcash data (fetched separately above)
+                return [...rows, ...btcZecRows];
+              }
+              
+              // If we only have Bitcoin/Zcash addresses (no other providers)
+              if (btcZecRows.length > 0) {
+                return btcZecRows;
               }
               
               console.warn('[/portfolio] ⚠️ No multi-chain data available (no API keys or all providers failed)');
