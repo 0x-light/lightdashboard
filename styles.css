@@ -415,7 +415,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .exchange-link {
-  color: var(--muted);
+  color: var(--accent);
   text-decoration: underline;
   text-decoration-style: dotted;
   text-underline-offset: 3px;
@@ -1614,7 +1614,7 @@ html[data-theme="retro"] {
 }
 
 html[data-theme="cozy-wooden"] {
-  /* Cozy Wooden - rich wood tones */
+  /* Wood - rich wood tones */
   --bg: #2d2416;
   --bg-elev: #3d3220;
   --text: #d4c5a0;
@@ -1841,24 +1841,6 @@ html[data-theme="ntsc-bw"] {
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
-html[data-theme="cga-composite"] {
-  /* Green composite (Apple ][), sharp */
-  --bg: #000000;
-  --bg-elev: #001a00;
-  --text: #33ff33;
-  --text-bright: #66ff66;
-  --muted: #00cc00;
-  --accent: #33ff33;
-  --border: rgba(51, 255, 51, 0.2);
-  --card-bg: #000000;
-  --green: #33ff33;
-  --red: #33ff33;
-  --orange: #33ff33;
-  --yellow: #66ff66;
-  --cyan: #33ff33;
-  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
-}
 
 html[data-theme="amber-low"] {
   /* Low-res amber TTL (CGA, custom palette w/overscan) */
@@ -1879,62 +1861,8 @@ html[data-theme="amber-low"] {
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
-html[data-theme="ttl-green"] {
-  /* Low-res green TTL (CGA), bright + halation/glow */
-  --bg: #000500;
-  --bg-elev: #001000;
-  --text: #00ff00;
-  --text-bright: #66ff66;
-  --muted: #00cc00;
-  --accent: #00ff00;
-  --border: rgba(0, 255, 0, 0.3);
-  --card-bg: #000500;
-  --green: #00ff00;
-  --red: #00ff00;
-  --orange: #00ff00;
-  --yellow: #66ff66;
-  --cyan: #00ff00;
-  --flash-start: color-mix(in srgb, var(--accent) 40%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 20%, transparent);
-}
 
-html[data-theme="mda-amber"] {
-  /* Hi-res amber TTL (MDA text) w/overscan, bright */
-  --bg: #1a0a00;
-  --bg-elev: #2a1400;
-  --text: #ffaa00;
-  --text-bright: #ffc844;
-  --muted: #cc8800;
-  --accent: #ffaa00;
-  --border: rgba(255, 170, 0, 0.25);
-  --card-bg: #1a0a00;
-  --green: #ffaa00;
-  --red: #ff8800;
-  --orange: #ffaa00;
-  --yellow: #ffc844;
-  --cyan: #ffaa00;
-  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
-}
 
-html[data-theme="ibm-green"] {
-  /* Hi-res green TTL (IBM 5150, HGC), phosphor trail visible */
-  --bg: #000000;
-  --bg-elev: #001800;
-  --text: #00dd00;
-  --text-bright: #33ff33;
-  --muted: #009900;
-  --accent: #00dd00;
-  --border: rgba(0, 221, 0, 0.2);
-  --card-bg: #000000;
-  --green: #00dd00;
-  --red: #00dd00;
-  --orange: #00dd00;
-  --yellow: #33ff33;
-  --cyan: #00dd00;
-  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
-}
 
 html[data-theme="vga-white"] {
   /* White mono VGA (custom resolution), sharp */
@@ -1965,8 +1893,8 @@ html[data-theme="paper-white"] {
   --accent: #404040;
   --border: rgba(32, 32, 32, 0.2);
   --card-bg: #d8d0c0;
-  --green: #004000;
-  --red: #600000;
+  --green: #005e00;
+  --red: #7f0000;
   --orange: #604000;
   --yellow: #606000;
   --cyan: #004040;

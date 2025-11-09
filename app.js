@@ -2176,6 +2176,56 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
   applyFontSize(fontSize);
   
+  // Apply button visibility settings
+  const applyButtonVisibility = () => {
+    // Desktop buttons
+    const toggleSnowBtn = document.getElementById('newToggleSnowBtn');
+    const toggleRainBtn = document.getElementById('newToggleRainBtn');
+    const fontSizeControlsWrapper = document.querySelector('.header-actions .font-size-controls');
+    const themeSelectWrapper = document.querySelector('.header-actions .theme-select-wrapper');
+    const toggleAmountsBtn = document.getElementById('newToggleAmountsBtn');
+    const refreshBtn = document.getElementById('newRefreshBtn');
+    const donateBtn = document.getElementById('newDonateBtn');
+    const settingsBtn = document.getElementById('newSettingsBtn');
+    
+    // Mobile buttons
+    const toggleSnowBtnMobile = document.getElementById('newToggleSnowBtnMobile');
+    const toggleRainBtnMobile = document.getElementById('newToggleRainBtnMobile');
+    const fontSizeControlsWrapperMobile = document.querySelector('.mobile-menu-content .font-size-controls');
+    const themeSelectWrapperMobile = document.querySelector('.mobile-menu-content .theme-select-wrapper');
+    const toggleAmountsBtnMobile = document.getElementById('newToggleAmountsBtnMobile');
+    const refreshBtnMobile = document.getElementById('newRefreshBtnMobile');
+    const donateBtnMobile = document.getElementById('newDonateBtnMobile');
+    const settingsBtnMobile = document.getElementById('newSettingsBtnMobile');
+    
+    // Apply visibility
+    if (toggleSnowBtn) toggleSnowBtn.style.display = (settings.showSnowBtn ?? true) ? '' : 'none';
+    if (toggleSnowBtnMobile) toggleSnowBtnMobile.style.display = (settings.showSnowBtn ?? true) ? '' : 'none';
+    
+    if (toggleRainBtn) toggleRainBtn.style.display = (settings.showRainBtn ?? true) ? '' : 'none';
+    if (toggleRainBtnMobile) toggleRainBtnMobile.style.display = (settings.showRainBtn ?? true) ? '' : 'none';
+    
+    // Font size controls (hide entire wrapper)
+    if (fontSizeControlsWrapper) fontSizeControlsWrapper.style.display = (settings.showFontSize ?? true) ? '' : 'none';
+    if (fontSizeControlsWrapperMobile) fontSizeControlsWrapperMobile.style.display = (settings.showFontSize ?? true) ? '' : 'none';
+    
+    if (themeSelectWrapper) themeSelectWrapper.style.display = (settings.showThemeBtn ?? true) ? '' : 'none';
+    if (themeSelectWrapperMobile) themeSelectWrapperMobile.style.display = (settings.showThemeBtn ?? true) ? '' : 'none';
+    
+    if (toggleAmountsBtn) toggleAmountsBtn.style.display = (settings.showAmountsBtn ?? true) ? '' : 'none';
+    if (toggleAmountsBtnMobile) toggleAmountsBtnMobile.style.display = (settings.showAmountsBtn ?? true) ? '' : 'none';
+    
+    if (refreshBtn) refreshBtn.style.display = (settings.showRefreshBtn ?? true) ? '' : 'none';
+    if (refreshBtnMobile) refreshBtnMobile.style.display = (settings.showRefreshBtn ?? true) ? '' : 'none';
+    
+    if (donateBtn) donateBtn.style.display = (settings.showDonateBtn ?? true) ? '' : 'none';
+    if (donateBtnMobile) donateBtnMobile.style.display = (settings.showDonateBtn ?? true) ? '' : 'none';
+    
+    if (settingsBtn) settingsBtn.style.display = (settings.showSettingsBtn ?? true) ? '' : 'none';
+    if (settingsBtnMobile) settingsBtnMobile.style.display = (settings.showSettingsBtn ?? true) ? '' : 'none';
+  };
+  applyButtonVisibility();
+  
   // Init rain/snow from saved preferences (only one can be active)
   const Rain = window.AppModules?.features?.rain;
   if (Rain) {

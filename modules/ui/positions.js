@@ -90,25 +90,27 @@ function createTableRow(doc, pos, opts) {
   let cells;
   if (isCompactMode) {
     // Compact: Asset, Price, Value, P&L, 24H%, Amount, Exchange
+    // Price and 24H% always visible, hide Value/PnL/Amount
     cells = [
       pos.asset || '—',
-      formatUsd(pos.price, amountVisible),
-      formatUsd(value, amountVisible),
-      formatUsd(pos.pnl, amountVisible),
-      formatPct(pos.change24h),
-      formatAmount(pos.amount, amountVisible, showExactAmounts),
+      formatUsd(pos.price, true), // Always show price
+      formatUsd(value, amountVisible), // Hide value
+      formatUsd(pos.pnl, amountVisible), // Hide PnL
+      formatPct(pos.change24h), // Always show 24H%
+      formatAmount(pos.amount, amountVisible, showExactAmounts), // Hide amount
       pos.exchange || '—'
     ];
   } else {
     // Normal: Asset, Exchange, Amount, Price, Value, 24H%, P&L
+    // Price and 24H% always visible, hide Value/PnL/Amount
     cells = [
       pos.asset || '—',
       pos.exchange || '—',
-      formatAmount(pos.amount, amountVisible, showExactAmounts),
-      formatUsd(pos.price, amountVisible),
-      formatUsd(value, amountVisible),
-      formatPct(pos.change24h),
-      formatUsd(pos.pnl, amountVisible)
+      formatAmount(pos.amount, amountVisible, showExactAmounts), // Hide amount
+      formatUsd(pos.price, true), // Always show price
+      formatUsd(value, amountVisible), // Hide value
+      formatPct(pos.change24h), // Always show 24H%
+      formatUsd(pos.pnl, amountVisible) // Hide PnL
     ];
   }
   
@@ -182,7 +184,7 @@ function createMobileCard(doc, pos, opts) {
     <div class="card-row"><span class="card-label">Asset</span><span class="card-asset">${pos.asset || '—'}</span></div>
     <div class="card-row"><span class="card-label">Exchange</span><span class="card-value">${pos.exchange || '—'}</span></div>
     <div class="card-row"><span class="card-label">Amount</span><span class="card-value">${formatAmount(pos.amount, amountVisible, showExactAmounts)}</span></div>
-    <div class="card-row"><span class="card-label">Price</span><span class="card-value">${formatUsd(pos.price, amountVisible)}</span></div>
+    <div class="card-row"><span class="card-label">Price</span><span class="card-value">${formatUsd(pos.price, true)}</span></div>
     <div class="card-row"><span class="card-label">Value</span><span class="card-value">${formatUsd(value, amountVisible)}</span></div>
     <div class="card-row"><span class="card-label">24H%</span><span class="card-value ${changeClass}">${formatPct(pos.change24h)}</span></div>
     <div class="card-row"><span class="card-label">P&L</span><span class="card-value ${pnlClass}">${formatUsd(pos.pnl, amountVisible)}</span></div>

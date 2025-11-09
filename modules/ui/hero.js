@@ -45,7 +45,12 @@ export function composeSummary({
     if (totalPnL !== 0 && Math.abs(totalPnL) > 0.01) {
       const cls = classForChange(totalPnL, useColoredPnL);
       const sign = totalPnLPercent >= 0 ? '+' : '';
-      summaryParts.push(`Your portfolio is worth ${valueText}, <strong class="${cls}">${totalPnL >= 0 ? 'up' : 'down'} ${formatCurrency(totalPnL, amountsVisible)} (${sign}${totalPnLPercent.toFixed(2)}%)</strong>`);
+      // Always show percentage, but hide dollar amount when amountsVisible is false
+      if (amountsVisible) {
+        summaryParts.push(`Your portfolio is worth ${valueText}, <strong class="${cls}">${totalPnL >= 0 ? 'up' : 'down'} ${formatCurrency(totalPnL, amountsVisible)} (${sign}${totalPnLPercent.toFixed(2)}%)</strong>`);
+      } else {
+        summaryParts.push(`Your portfolio is worth ${valueText}, <strong class="${cls}">${totalPnL >= 0 ? 'up' : 'down'} ${sign}${totalPnLPercent.toFixed(2)}%</strong>`);
+      }
     } else {
       summaryParts.push(`Your portfolio is worth ${valueText}`);
     }
@@ -53,7 +58,12 @@ export function composeSummary({
     if (totalDailyChange !== 0 && Math.abs(totalDailyChange) > 0.01) {
       const cls = classForChange(totalDailyChange, useColoredPnL);
       const sign = totalDailyChangePercent >= 0 ? '+' : '-';
-      summaryParts.push(`Your portfolio is worth ${valueText}, <strong class="${cls}">${totalDailyChange >= 0 ? 'up' : 'down'} ${formatCurrency(totalDailyChange, amountsVisible)} (${sign}${Math.abs(totalDailyChangePercent).toFixed(2)}%)</strong> today`);
+      // Always show percentage, but hide dollar amount when amountsVisible is false
+      if (amountsVisible) {
+        summaryParts.push(`Your portfolio is worth ${valueText}, <strong class="${cls}">${totalDailyChange >= 0 ? 'up' : 'down'} ${formatCurrency(totalDailyChange, amountsVisible)} (${sign}${Math.abs(totalDailyChangePercent).toFixed(2)}%)</strong> today`);
+      } else {
+        summaryParts.push(`Your portfolio is worth ${valueText}, <strong class="${cls}">${totalDailyChange >= 0 ? 'up' : 'down'} ${sign}${Math.abs(totalDailyChangePercent).toFixed(2)}%</strong> today`);
+      }
     } else {
       summaryParts.push(`Your portfolio is worth ${valueText}`);
     }
