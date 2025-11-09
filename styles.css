@@ -35,6 +35,59 @@
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
+html[data-theme="light"] {
+  /* Solarized Light - Zen palette */
+  --bg: #fdf6e3;
+  --bg-elev: #eee8d5;
+  --text: #657b83;
+  --text-bright: #000000;
+  --muted: #93a1a1;
+  --accent: #000000;
+  --border: #d9d2c2;
+  --card-bg: #fffdf7;
+  --green: #00a25d;
+  --red: #fe3a3a;
+  --orange: #cb4b16;
+  --yellow: #b58900;
+  --cyan: #2aa198;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="astronomy"] {
+  /* Astronomy Mode */
+  --bg: #000000;
+  --bg-elev: #1a0000;
+  --text: #f00;
+  --text-bright: #f00;
+  --muted: #f00;
+  --accent: #f00;
+  --border: rgba(255, 68, 68, 0.2);
+  --card-bg: #0d0000;
+  --green: #f00;
+  --red: #f00;
+  --orange: #f00;
+  --yellow: #f00;
+  --cyan: #f00;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="yellow-terminal"] {
+  /* Yellow Terminal */
+  --bg: #000;
+  --text: #ffbf00;
+  --text-bright: #ffbf00;
+  --muted: #ffbf00;
+  --accent: #ffbf00;
+  --border: #211900;
+  --card-bg: #ffbf00;
+  --green: #ffbf00;
+  --red: #ffbf00;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
 * {
   box-sizing: border-box;
   font-family: 'Berkeley Mono', 'Courier New', monospace !important;
@@ -1899,40 +1952,6 @@ html[data-theme="p7-phosphor"] {
   --orange: #c0a090;
   --yellow: #b8b8e0;
   --cyan: #90a0c0;
-  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
-}
-
-html[data-theme="astronomy"] {
-  /* Astronomy Mode */
-  --bg: #000000;
-  --bg-elev: #1a0000;
-  --text: #f00;
-  --text-bright: #f00;
-  --muted: #f00;
-  --accent: #f00;
-  --border: rgba(255, 68, 68, 0.2);
-  --card-bg: #0d0000;
-  --green: #f00;
-  --red: #f00;
-  --orange: #f00;
-  --yellow: #f00;
-  --cyan: #f00;
-  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
-}
-
-html[data-theme="yellow-terminal"] {
-  /* Yellow Terminal */
-  --bg: #000;
-  --text: #ffbf00;
-  --text-bright: #ffbf00;
-  --muted: #ffbf00;
-  --accent: #ffbf00;
-  --border: #211900;
-  --card-bg: #ffbf00;
-  --green: #ffbf00;
-  --red: #ffbf00;
   --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
