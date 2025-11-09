@@ -495,15 +495,15 @@
       </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.2.6"></script>
-    <script type="module" src="./app.js?v=2.2.6">
+    <script type="module" src="./modules/app-init.js?v=2.2.7"></script>
+    <script type="module" src="./app.js?v=2.2.7">
     
     <!-- Service Worker Registration - ensures users always get latest version -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', async () => {
           // iOS PWA fix: Force check version and unregister old SW if needed
-          const APP_VERSION = '2.2.6';
+          const APP_VERSION = '2.2.7';
           const storedVersion = localStorage.getItem('app_version');
           
           if (storedVersion && storedVersion !== APP_VERSION) {
