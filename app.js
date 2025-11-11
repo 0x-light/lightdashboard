@@ -886,7 +886,7 @@ async function renderDemoSummary() {
             PositionsUI.renderPositions({
               positions: visible,
               containers: { positionsBody, mobilePositionsContainer: mobileContainer },
-              options: { amountsVisible, hideSmallPositions, editMode, settings: { minBalanceThreshold: s.minBalanceThreshold || 100, showExactAmounts: s.showExactAmounts || false, useColoredPnL: s.useColoredPnL ?? true } }
+              options: { amountsVisible, hideSmallPositions, editMode, settings: { minBalanceThreshold: s.minBalanceThreshold || 100, showExactAmounts: s.showExactAmounts || false, useColoredPnL: s.useColoredPnL ?? true, showPriceChart: s.showPriceChart ?? true } }
             });
             
             rendered = true; // Mark as successfully rendered
@@ -1128,7 +1128,7 @@ function setupControls() {
       PositionsUI.renderPositions({
         positions: filtered,
         containers: { positionsBody, mobilePositionsContainer: mobileContainer },
-        options: { amountsVisible, hideSmallPositions: false, editMode, settings: { ...settings, showExactAmounts: settings.showExactAmounts || false, useColoredPnL: settings.useColoredPnL ?? true } }
+        options: { amountsVisible, hideSmallPositions: false, editMode, settings: { ...settings, showExactAmounts: settings.showExactAmounts || false, useColoredPnL: settings.useColoredPnL ?? true, showPriceChart: settings.showPriceChart ?? true } }
       });
       
       // Update hero with filtered totals
@@ -1271,30 +1271,61 @@ function setupControls() {
       if (posTable) {
         const headerRow = posTable.querySelector('thead tr');
         if (headerRow) {
-          if (compactMode) {
-            // Compact: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
-            headerRow.innerHTML = `
-              <th class="th-asset">Asset</th>
-              <th class="th-price">Price</th>
-              <th class="th-chart">Chart</th>
-              <th class="th-value">Value</th>
-              <th class="th-pnl">P&L</th>
-              <th class="th-change">24H%</th>
-              <th class="th-amount">Amount</th>
-              <th class="th-exchange">Exchange</th>
-            `;
+          const Settings = window.AppModules?.core?.settings;
+          const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+          const showPriceChart = s.showPriceChart ?? true;
+          
+          if (showPriceChart) {
+            if (compactMode) {
+              // Compact: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
+              headerRow.innerHTML = `
+                <th class="th-asset">Asset</th>
+                <th class="th-price">Price</th>
+                <th class="th-chart">Chart</th>
+                <th class="th-value">Value</th>
+                <th class="th-pnl">P&L</th>
+                <th class="th-change">24H%</th>
+                <th class="th-amount">Amount</th>
+                <th class="th-exchange">Exchange</th>
+              `;
+            } else {
+              // Normal: Asset, Exchange, Amount, Price, Chart, Value, 24H%, P&L
+              headerRow.innerHTML = `
+                <th class="th-asset">Asset</th>
+                <th class="th-exchange">Exchange</th>
+                <th class="th-amount">Amount</th>
+                <th class="th-price">Price</th>
+                <th class="th-chart">Chart</th>
+                <th class="th-value">Value</th>
+                <th class="th-change">24H%</th>
+                <th class="th-pnl">P&L</th>
+              `;
+            }
           } else {
-            // Normal: Asset, Exchange, Amount, Price, Chart, Value, 24H%, P&L
-            headerRow.innerHTML = `
-              <th class="th-asset">Asset</th>
-              <th class="th-exchange">Exchange</th>
-              <th class="th-amount">Amount</th>
-              <th class="th-price">Price</th>
-              <th class="th-chart">Chart</th>
-              <th class="th-value">Value</th>
-              <th class="th-change">24H%</th>
-              <th class="th-pnl">P&L</th>
-            `;
+            // No chart column
+            if (compactMode) {
+              // Compact: Asset, Price, Value, P&L, 24H%, Amount, Exchange
+              headerRow.innerHTML = `
+                <th class="th-asset">Asset</th>
+                <th class="th-price">Price</th>
+                <th class="th-value">Value</th>
+                <th class="th-pnl">P&L</th>
+                <th class="th-change">24H%</th>
+                <th class="th-amount">Amount</th>
+                <th class="th-exchange">Exchange</th>
+              `;
+            } else {
+              // Normal: Asset, Exchange, Amount, Price, Value, 24H%, P&L
+              headerRow.innerHTML = `
+                <th class="th-asset">Asset</th>
+                <th class="th-exchange">Exchange</th>
+                <th class="th-amount">Amount</th>
+                <th class="th-price">Price</th>
+                <th class="th-value">Value</th>
+                <th class="th-change">24H%</th>
+                <th class="th-pnl">P&L</th>
+              `;
+            }
           }
         }
         
@@ -1302,11 +1333,13 @@ function setupControls() {
         const positionsBody = document.getElementById('newPositionsBody');
         const mobileContainer = document.getElementById('newMobilePositionsContainer');
         const PositionsUI = window.AppModules?.ui?.positions;
+        const Settings = window.AppModules?.core?.settings;
+        const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
         if (PositionsUI && cachedPositions.length > 0) {
           PositionsUI.renderPositions({
             positions: cachedPositions,
             containers: { positionsBody, mobilePositionsContainer: mobileContainer },
-            options: { amountsVisible, hideSmallPositions: false, settings: { minBalanceThreshold: 0, showExactAmounts: false, useColoredPnL: true } }
+            options: { amountsVisible, hideSmallPositions: false, settings: { minBalanceThreshold: 0, showExactAmounts: false, useColoredPnL: true, showPriceChart: s.showPriceChart ?? true } }
           });
         }
       }
@@ -1348,6 +1381,8 @@ function setupControls() {
       const coloredPnLInput = document.getElementById('newUseColoredPnL');
       const showWatchlistInput = document.getElementById('newShowWatchlist');
       const showComicInput = document.getElementById('newShowComic');
+      const showExactAmountsInput = document.getElementById('newShowExactAmounts');
+      const showPriceChartInput = document.getElementById('newShowPriceChart');
       const comicStripInput = document.getElementById('newComicStrip');
       const minBalanceInput = document.getElementById('newMinBalanceThreshold');
       const leftAlignedInput = document.getElementById('newLeftAligned');
@@ -1378,6 +1413,8 @@ function setupControls() {
       if (coloredPnLInput) coloredPnLInput.checked = s.useColoredPnL ?? true;
       if (showWatchlistInput) showWatchlistInput.checked = s.showWatchlist ?? true;
       if (showComicInput) showComicInput.checked = s.showComic ?? false;
+      if (showExactAmountsInput) showExactAmountsInput.checked = s.showExactAmounts ?? false;
+      if (showPriceChartInput) showPriceChartInput.checked = s.showPriceChart ?? true;
       if (comicStripInput) comicStripInput.value = s.comicStrip || 'calvinandhobbes';
       if (minBalanceInput) minBalanceInput.value = s.minBalanceThreshold || 100;
       if (leftAlignedInput) leftAlignedInput.checked = s.leftAligned ?? true;
@@ -1726,6 +1763,8 @@ function setupControls() {
       const coloredPnLInput = document.getElementById('newUseColoredPnL');
       const showWatchlistInput = document.getElementById('newShowWatchlist');
       const showComicInput = document.getElementById('newShowComic');
+      const showExactAmountsInput = document.getElementById('newShowExactAmounts');
+      const showPriceChartInput = document.getElementById('newShowPriceChart');
       const comicStripInput = document.getElementById('newComicStrip');
       const minBalanceInput = document.getElementById('newMinBalanceThreshold');
       const leftAlignedInput = document.getElementById('newLeftAligned');
@@ -1753,6 +1792,8 @@ function setupControls() {
       if (coloredPnLInput) newSettings.useColoredPnL = coloredPnLInput.checked;
       if (showWatchlistInput) newSettings.showWatchlist = showWatchlistInput.checked;
       if (showComicInput) newSettings.showComic = showComicInput.checked;
+      if (showExactAmountsInput) newSettings.showExactAmounts = showExactAmountsInput.checked;
+      if (showPriceChartInput) newSettings.showPriceChart = showPriceChartInput.checked;
       if (comicStripInput) newSettings.comicStrip = comicStripInput.value;
       if (minBalanceInput) newSettings.minBalanceThreshold = parseFloat(minBalanceInput.value) || 100;
       if (leftAlignedInput) newSettings.leftAligned = leftAlignedInput.checked;
@@ -1786,6 +1827,32 @@ function setupControls() {
             container.style.margin = '0 auto';
           } else {
             container.style.margin = '';
+          }
+        }
+        
+        // Update watchlist header based on showPriceChart setting
+        const watchlistSection = document.getElementById('watchlistSection');
+        if (watchlistSection) {
+          const watchlistTable = watchlistSection.querySelector('.data-table');
+          if (watchlistTable) {
+            const headerRow = watchlistTable.querySelector('thead tr');
+            if (headerRow) {
+              const showPriceChart = newSettings.showPriceChart ?? true;
+              if (showPriceChart) {
+                headerRow.innerHTML = `
+                  <th>Asset</th>
+                  <th>Price</th>
+                  <th>Chart</th>
+                  <th>24H %</th>
+                `;
+              } else {
+                headerRow.innerHTML = `
+                  <th>Asset</th>
+                  <th>Price</th>
+                  <th>24H %</th>
+                `;
+              }
+            }
           }
         }
         
@@ -1893,17 +1960,19 @@ function setupControls() {
         // Reload watchlist immediately
         const watchlistBody = document.getElementById('newWatchlistBody');
         if (watchlistBody) {
-          watchlistBody.innerHTML = '<tr><td colspan="3" class="loading"><span class="loading-terminal">[LOADING...]</span></td></tr>';
+          const colspan = (s.showPriceChart ?? true) ? 4 : 3;
+          watchlistBody.innerHTML = `<tr><td colspan="${colspan}" class="loading"><span class="loading-terminal">[LOADING...]</span></td></tr>`;
           try {
             const mod = await import('./modules/features/watchlist.js');
             const pythProvider = window.AppModules?.data?.providers?.pyth;
             await mod.render(watchlistBody, {
               feedIds: s.watchlist,
               pythProvider,
-              useColoredPnL: s.useColoredPnL ?? true
+              useColoredPnL: s.useColoredPnL ?? true,
+              showPriceChart: s.showPriceChart ?? true
             });
           } catch (e) {
-            watchlistBody.innerHTML = '<tr><td colspan="3" class="loading">Watchlist unavailable</td></tr>';
+            watchlistBody.innerHTML = `<tr><td colspan="${colspan}" class="loading">Watchlist unavailable</td></tr>`;
           }
         }
       } catch (e) {
@@ -2034,7 +2103,8 @@ function setupControls() {
       // Reload watchlist immediately
       const watchlistBody = document.getElementById('newWatchlistBody');
       if (watchlistBody) {
-        watchlistBody.innerHTML = '<tr><td colspan="3" class="loading"><span class="loading-terminal">[LOADING...]</span></td></tr>';
+        const colspan = (s.showPriceChart ?? true) ? 4 : 3;
+        watchlistBody.innerHTML = `<tr><td colspan="${colspan}" class="loading"><span class="loading-terminal">[LOADING...]</span></td></tr>`;
         (async () => {
           try {
             const mod = await import('./modules/features/watchlist.js');
@@ -2043,7 +2113,8 @@ function setupControls() {
               feedIds: s.watchlist,
               pythProvider,
               useColoredPnL: s.useColoredPnL ?? true,
-              editMode: watchlistEditMode
+              editMode: watchlistEditMode,
+              showPriceChart: s.showPriceChart ?? true
             });
             
             // Update cache with new data
@@ -2098,7 +2169,8 @@ function setupControls() {
           pythProvider: window.AppModules?.data?.providers?.pyth,
           useColoredPnL: s.useColoredPnL ?? true,
           editMode: watchlistEditMode,
-          cachedData: cachedWatchlistData // Pass cached data to avoid refetch
+          cachedData: cachedWatchlistData, // Pass cached data to avoid refetch
+          showPriceChart: s.showPriceChart ?? true
         });
         
         // Attach edit button listeners
@@ -2840,6 +2912,32 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Lazy-load watchlist on intersection or idle (if enabled in settings)
   const watchlistSection = document.getElementById('watchlistSection');
   const watchlistBody = document.getElementById('newWatchlistBody');
+  
+  // Update watchlist header based on showPriceChart setting
+  if (watchlistSection) {
+    const watchlistTable = watchlistSection.querySelector('.data-table');
+    if (watchlistTable) {
+      const headerRow = watchlistTable.querySelector('thead tr');
+      if (headerRow) {
+        const showPriceChart = settings.showPriceChart ?? true;
+        if (showPriceChart) {
+          headerRow.innerHTML = `
+            <th>Asset</th>
+            <th>Price</th>
+            <th>Chart</th>
+            <th>24H %</th>
+          `;
+        } else {
+          headerRow.innerHTML = `
+            <th>Asset</th>
+            <th>Price</th>
+            <th>24H %</th>
+          `;
+        }
+      }
+    }
+  }
+  
   if (settings.showWatchlist === false && watchlistSection) {
     watchlistSection.style.display = 'none';
   } else if (watchlistBody) {
@@ -2851,12 +2949,14 @@ window.addEventListener('DOMContentLoaded', async () => {
         const prices = await mod.render(watchlistBody, {
           feedIds: watchlistIds,
           pythProvider,
-          useColoredPnL: settings.useColoredPnL ?? true
+          useColoredPnL: settings.useColoredPnL ?? true,
+          showPriceChart: settings.showPriceChart ?? true
         });
         // Cache the data for instant edit toggle
         cachedWatchlistData = prices;
       } catch (e) {
-        watchlistBody.innerHTML = '<tr><td colspan="3" class="loading">Watchlist unavailable</td></tr>';
+        const colspan = (settings.showPriceChart ?? true) ? 4 : 3;
+        watchlistBody.innerHTML = `<tr><td colspan="${colspan}" class="loading">Watchlist unavailable</td></tr>`;
       }
     };
     if ('IntersectionObserver' in window) {
@@ -3067,7 +3167,8 @@ window.addEventListener('DOMContentLoaded', async () => {
             pythProvider: providers.pyth,
             useColoredPnL: s.useColoredPnL ?? true,
             editMode: false,
-            previousData: cachedWatchlistData
+            previousData: cachedWatchlistData,
+            showPriceChart: s.showPriceChart ?? true
           });
           cachedWatchlistData = prices;
         } catch (e) {

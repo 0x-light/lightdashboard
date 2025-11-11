@@ -1,6 +1,44 @@
 // Watchlist feature (lazy-loaded)
 
-export async function fetchPrices(feedIds, pythProvider) {
+const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
+
+function isStablecoin(asset) {
+  return STABLECOINS.has(asset?.toUpperCase());
+}
+
+function createSparkline(priceData, width = 60, height = 24) {
+  if (!Array.isArray(priceData) || priceData.length < 2) {
+    return null;
+  }
+  
+  const prices = priceData.map(d => d.price);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min;
+  
+  if (range === 0) {
+    // Flat line
+    const y = height / 2;
+    const points = priceData.map((_, i) => `${(i / (priceData.length - 1)) * width},${y}`).join(' ');
+    return `<svg width="${width}" height="${height}" class="sparkline"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
+  }
+  
+  // Normalize prices to chart height
+  const points = priceData.map((d, i) => {
+    const x = (i / (priceData.length - 1)) * width;
+    const y = height - ((d.price - min) / range) * height;
+    return `${x},${y}`;
+  }).join(' ');
+  
+  // Determine color based on first vs last price
+  const firstPrice = prices[0];
+  const lastPrice = prices[prices.length - 1];
+  const color = lastPrice >= firstPrice ? 'var(--green)' : 'var(--red)';
+  
+  return `<svg width="${width}" height="${height}" class="sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
+}
+
+export async function fetchPrices(feedIds, pythProvider, includePriceHistory = false) {
   if (!Array.isArray(feedIds) || feedIds.length === 0 || !pythProvider) return [];
   
   const get24hAgoTsSec = () => {
@@ -29,21 +67,38 @@ export async function fetchPrices(feedIds, pythProvider) {
       const symbol = idToSymbol[normalizedId] || normalizedId.slice(0, 10);
       if (curr && curr > 0) {
         const change24h = (hist && hist > 0) ? ((curr - hist) / hist) * 100 : null;
-        results.push({ feedId: normalizedId, symbol, price: curr, change24h });
+        results.push({ feedId: normalizedId, symbol, price: curr, change24h, priceHistory: null });
       }
     }
+    
+    // Fetch price history if requested (skip stablecoins)
+    if (includePriceHistory && pythProvider.get24hPriceHistory) {
+      const historyPromises = results.map(async (item) => {
+        if (!isStablecoin(item.symbol)) {
+          try {
+            const history = await pythProvider.get24hPriceHistory(item.feedId, 3000);
+            item.priceHistory = history.length > 0 ? history : null;
+          } catch (e) {
+            item.priceHistory = null;
+          }
+        }
+      });
+      await Promise.all(historyPromises);
+    }
+    
     return results;
   } catch (_) {
     return [];
   }
 }
 
-export async function render(container, { feedIds, pythProvider, useColoredPnL = true, editMode = false, cachedData = null, previousData = null }) {
+export async function render(container, { feedIds, pythProvider, useColoredPnL = true, editMode = false, cachedData = null, previousData = null, showPriceChart = true }) {
   if (!container) return;
-  // Use cached data if available, otherwise fetch fresh
-  const prices = cachedData || await fetchPrices(feedIds, pythProvider);
+  // Use cached data if available, otherwise fetch fresh (with price history if chart enabled)
+  const prices = cachedData || await fetchPrices(feedIds, pythProvider, showPriceChart);
   if (prices.length === 0) {
-    container.innerHTML = '<tr><td colspan="3" class="loading">No assets in watchlist</td></tr>';
+    const colspan = showPriceChart ? 4 : 3;
+    container.innerHTML = `<tr><td colspan="${colspan}" class="loading">No assets in watchlist</td></tr>`;
     return prices; // Return empty array for caching
   }
   
@@ -73,6 +128,7 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
     const td1 = container.ownerDocument.createElement('td');
     const td2 = container.ownerDocument.createElement('td');
     const td3 = container.ownerDocument.createElement('td');
+    const td4 = container.ownerDocument.createElement('td');
     
     // Set cell contents
     if (editMode) {
@@ -82,18 +138,33 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
     }
     
     td2.textContent = `$${item.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-    td3.textContent = changeDisplay;
-    td3.className = cls;
+    
+    // Chart cell (conditionally rendered)
+    if (showPriceChart) {
+      let chartCell = '<span class="chart-loading">—</span>';
+      if (!isStablecoin(item.symbol)) {
+        const chartSvg = item.priceHistory ? createSparkline(item.priceHistory) : null;
+        chartCell = chartSvg || '<span class="chart-loading">—</span>';
+      }
+      td3.innerHTML = chartCell;
+      td3.className = 'chart-cell';
+    }
+    
+    td4.textContent = changeDisplay;
+    td4.className = cls;
     
     // Mark cells for flash animation when price changes
     if (priceChanged) {
       td2.setAttribute('data-flash', 'true');
-      td3.setAttribute('data-flash', 'true');
+      td4.setAttribute('data-flash', 'true');
     }
     
     tr.appendChild(td1);
     tr.appendChild(td2);
-    tr.appendChild(td3);
+    if (showPriceChart) {
+      tr.appendChild(td3);
+    }
+    tr.appendChild(td4);
     frag.appendChild(tr);
   }
   
@@ -117,4 +188,5 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
 }
 
 export default { fetchPrices, render };
+
 

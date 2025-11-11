@@ -237,6 +237,10 @@
               Show exact amounts (no rounding)
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <input id="newShowPriceChart" type="checkbox" class="settings-input" checked>
+              Show 24h price chart
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
               <input id="newLeftAligned" type="checkbox" class="settings-input" checked>
               Center content
             </label>
@@ -355,11 +359,12 @@
               <tr>
                 <th>Asset</th>
                 <th>Price</th>
+                <th>Chart</th>
                 <th>24H %</th>
               </tr>
             </thead>
             <tbody id="newWatchlistBody">
-              <tr><td colspan="3" class="loading">Scroll here to load watchlist…</td></tr>
+              <tr><td colspan="4" class="loading">Scroll here to load watchlist…</td></tr>
             </tbody>
           </table>
         </div>

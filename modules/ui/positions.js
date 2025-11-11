@@ -121,6 +121,7 @@ function createTableRow(doc, pos, opts) {
   const value = computeValue(pos);
   const assetKey = `${pos.asset}_${pos.exchange}`;
   const showExactAmounts = opts.settings?.showExactAmounts ?? false;
+  const showPriceChart = opts.settings?.showPriceChart ?? true;
   
   // Check if compact mode is active by checking body class
   const isCompactMode = doc.body?.classList?.contains('compact-mode');
@@ -133,32 +134,59 @@ function createTableRow(doc, pos, opts) {
   }
   
   let cells;
-  if (isCompactMode) {
-    // Compact: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
-    // Price and 24H% always visible, hide Value/PnL/Amount
-    cells = [
-      pos.asset || '—',
-      formatUsd(pos.price, true), // Always show price
-      chartCell, // Chart
-      formatUsd(value, amountVisible), // Hide value
-      formatUsd(pos.pnl, amountVisible, true), // Hide PnL, show + for positive
-      formatPct(pos.change24h), // Always show 24H%
-      formatAmount(pos.amount, amountVisible, showExactAmounts), // Hide amount
-      pos.exchange || '—'
-    ];
+  if (showPriceChart) {
+    if (isCompactMode) {
+      // Compact: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
+      // Price and 24H% always visible, hide Value/PnL/Amount
+      cells = [
+        pos.asset || '—',
+        formatUsd(pos.price, true), // Always show price
+        chartCell, // Chart
+        formatUsd(value, amountVisible), // Hide value
+        formatUsd(pos.pnl, amountVisible, true), // Hide PnL, show + for positive
+        formatPct(pos.change24h), // Always show 24H%
+        formatAmount(pos.amount, amountVisible, showExactAmounts), // Hide amount
+        pos.exchange || '—'
+      ];
+    } else {
+      // Normal: Asset, Exchange, Amount, Price, Chart, Value, 24H%, P&L
+      // Price and 24H% always visible, hide Value/PnL/Amount
+      cells = [
+        pos.asset || '—',
+        pos.exchange || '—',
+        formatAmount(pos.amount, amountVisible, showExactAmounts), // Hide amount
+        formatUsd(pos.price, true), // Always show price
+        chartCell, // Chart
+        formatUsd(value, amountVisible), // Hide value
+        formatPct(pos.change24h), // Always show 24H%
+        formatUsd(pos.pnl, amountVisible, true) // Hide PnL, show + for positive
+      ];
+    }
   } else {
-    // Normal: Asset, Exchange, Amount, Price, Chart, Value, 24H%, P&L
-    // Price and 24H% always visible, hide Value/PnL/Amount
-    cells = [
-      pos.asset || '—',
-      pos.exchange || '—',
-      formatAmount(pos.amount, amountVisible, showExactAmounts), // Hide amount
-      formatUsd(pos.price, true), // Always show price
-      chartCell, // Chart
-      formatUsd(value, amountVisible), // Hide value
-      formatPct(pos.change24h), // Always show 24H%
-      formatUsd(pos.pnl, amountVisible, true) // Hide PnL, show + for positive
-    ];
+    // Chart column hidden
+    if (isCompactMode) {
+      // Compact: Asset, Price, Value, P&L, 24H%, Amount, Exchange
+      cells = [
+        pos.asset || '—',
+        formatUsd(pos.price, true),
+        formatUsd(value, amountVisible),
+        formatUsd(pos.pnl, amountVisible, true),
+        formatPct(pos.change24h),
+        formatAmount(pos.amount, amountVisible, showExactAmounts),
+        pos.exchange || '—'
+      ];
+    } else {
+      // Normal: Asset, Exchange, Amount, Price, Value, 24H%, P&L
+      cells = [
+        pos.asset || '—',
+        pos.exchange || '—',
+        formatAmount(pos.amount, amountVisible, showExactAmounts),
+        formatUsd(pos.price, true),
+        formatUsd(value, amountVisible),
+        formatPct(pos.change24h),
+        formatUsd(pos.pnl, amountVisible, true)
+      ];
+    }
   }
   
   const useColoredPnL = opts.settings?.useColoredPnL ?? true;
@@ -172,20 +200,38 @@ function createTableRow(doc, pos, opts) {
     let isPrice = false;
     let isValue = false;
     let isChart = false;
-    if (isCompactMode) {
-      // Compact: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
-      isPrice = (i === 1);
-      isChart = (i === 2);
-      isValue = (i === 3);
-      isPnL = (i === 4);
-      isChange24h = (i === 5);
+    
+    if (showPriceChart) {
+      if (isCompactMode) {
+        // Compact: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
+        isPrice = (i === 1);
+        isChart = (i === 2);
+        isValue = (i === 3);
+        isPnL = (i === 4);
+        isChange24h = (i === 5);
+      } else {
+        // Normal: Asset, Exchange, Amount, Price, Chart, Value, 24H%, P&L
+        isPrice = (i === 3);
+        isChart = (i === 4);
+        isValue = (i === 5);
+        isChange24h = (i === 6);
+        isPnL = (i === 7);
+      }
     } else {
-      // Normal: Asset, Exchange, Amount, Price, Chart, Value, 24H%, P&L
-      isPrice = (i === 3);
-      isChart = (i === 4);
-      isValue = (i === 5);
-      isChange24h = (i === 6);
-      isPnL = (i === 7);
+      // No chart column
+      if (isCompactMode) {
+        // Compact: Asset, Price, Value, P&L, 24H%, Amount, Exchange
+        isPrice = (i === 1);
+        isValue = (i === 2);
+        isPnL = (i === 3);
+        isChange24h = (i === 4);
+      } else {
+        // Normal: Asset, Exchange, Amount, Price, Value, 24H%, P&L
+        isPrice = (i === 3);
+        isValue = (i === 4);
+        isChange24h = (i === 5);
+        isPnL = (i === 6);
+      }
     }
     
     // Add color classes for PnL and 24H%
@@ -258,7 +304,9 @@ export function renderPositions({ positions, containers, options }) {
     const filtered = list.filter(p => !shouldHidePosition(p, opts));
 
     if (filtered.length === 0) {
-      containers.positionsBody.innerHTML = '<tr><td colspan="8" class="loading">No positions found</td></tr>';
+      const showPriceChart = opts.settings?.showPriceChart ?? true;
+      const colspan = showPriceChart ? 8 : 7;
+      containers.positionsBody.innerHTML = `<tr><td colspan="${colspan}" class="loading">No positions found</td></tr>`;
       if (containers.mobilePositionsContainer) containers.mobilePositionsContainer.innerHTML = '';
       return true;
     }
