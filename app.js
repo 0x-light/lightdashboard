@@ -2585,9 +2585,10 @@ window.addEventListener('DOMContentLoaded', async () => {
       const comic = metadata[comicKey];
       if (!comic) return new Date();
       
-      // Create a seed based on the current date (YYYY-MM-DD format)
+      // Create a seed based on the current date (YYYY-MM-DD format) AND the comic key
+      // This ensures each comic gets a different strip on the same day
       const today = new Date();
-      const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}-${comicKey}`;
       
       // Simple hash function to create a deterministic seed from the date string
       let hash = 0;
