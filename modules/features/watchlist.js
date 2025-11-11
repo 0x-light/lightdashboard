@@ -6,7 +6,7 @@ function isStablecoin(asset) {
   return STABLECOINS.has(asset?.toUpperCase());
 }
 
-function createSparkline(priceData, width = 60, height = 24) {
+function createSparkline(priceData, width = 60, height = 24, currentChange24h = null) {
   if (!Array.isArray(priceData) || priceData.length < 2) {
     return null;
   }
@@ -30,10 +30,16 @@ function createSparkline(priceData, width = 60, height = 24) {
     return `${x},${y}`;
   }).join(' ');
   
-  // Determine color based on first vs last price
-  const firstPrice = prices[0];
-  const lastPrice = prices[prices.length - 1];
-  const color = lastPrice >= firstPrice ? 'var(--green)' : 'var(--red)';
+  // Determine color: use 24h change if provided (for consistency with 24h% column),
+  // otherwise fall back to first vs last price comparison
+  let color;
+  if (currentChange24h !== null && currentChange24h !== undefined) {
+    color = currentChange24h >= 0 ? 'var(--green)' : 'var(--red)';
+  } else {
+    const firstPrice = prices[0];
+    const lastPrice = prices[prices.length - 1];
+    color = lastPrice >= firstPrice ? 'var(--green)' : 'var(--red)';
+  }
   
   return `<svg width="${width}" height="${height}" class="sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
 }
@@ -143,7 +149,7 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
     if (showPriceChart) {
       let chartCell = '<span class="chart-loading">—</span>';
       if (!isStablecoin(item.symbol)) {
-        const chartSvg = item.priceHistory ? createSparkline(item.priceHistory) : null;
+        const chartSvg = item.priceHistory ? createSparkline(item.priceHistory, 60, 24, item.change24h) : null;
         chartCell = chartSvg || '<span class="chart-loading">—</span>';
       }
       td3.innerHTML = chartCell;
@@ -156,6 +162,9 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
     // Mark cells for flash animation when price changes
     if (priceChanged) {
       td2.setAttribute('data-flash', 'true');
+      if (showPriceChart) {
+        td3.setAttribute('data-flash', 'true');
+      }
       td4.setAttribute('data-flash', 'true');
     }
     

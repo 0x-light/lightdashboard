@@ -7,7 +7,7 @@ function isStablecoin(asset) {
   return STABLECOINS.has(asset?.toUpperCase());
 }
 
-function createSparkline(priceData, width = 60, height = 24) {
+function createSparkline(priceData, width = 60, height = 24, currentChange24h = null) {
   if (!Array.isArray(priceData) || priceData.length < 2) {
     return null;
   }
@@ -31,10 +31,16 @@ function createSparkline(priceData, width = 60, height = 24) {
     return `${x},${y}`;
   }).join(' ');
   
-  // Determine color based on first vs last price
-  const firstPrice = prices[0];
-  const lastPrice = prices[prices.length - 1];
-  const color = lastPrice >= firstPrice ? 'var(--green)' : 'var(--red)';
+  // Determine color: use 24h change if provided (for consistency with 24h% column),
+  // otherwise fall back to first vs last price comparison
+  let color;
+  if (currentChange24h !== null && currentChange24h !== undefined) {
+    color = currentChange24h >= 0 ? 'var(--green)' : 'var(--red)';
+  } else {
+    const firstPrice = prices[0];
+    const lastPrice = prices[prices.length - 1];
+    color = lastPrice >= firstPrice ? 'var(--green)' : 'var(--red)';
+  }
   
   return `<svg width="${width}" height="${height}" class="sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
 }
@@ -129,7 +135,7 @@ function createTableRow(doc, pos, opts) {
   // Create sparkline chart (skip for stablecoins)
   let chartCell = '<span class="chart-loading">—</span>';
   if (!isStablecoin(pos.asset)) {
-    const chartSvg = pos.priceHistory ? createSparkline(pos.priceHistory) : null;
+    const chartSvg = pos.priceHistory ? createSparkline(pos.priceHistory, 60, 24, pos.change24h) : null;
     chartCell = chartSvg || '<span class="chart-loading">—</span>';
   }
   
@@ -244,7 +250,7 @@ function createTableRow(doc, pos, opts) {
     }
     
     // Mark cells that should flash on price changes
-    if (pos.priceChanged && (isPrice || isValue || isPnL)) {
+    if (pos.priceChanged && (isPrice || isValue || isPnL || isChart || isChange24h)) {
       td.setAttribute('data-flash', 'true');
     }
     

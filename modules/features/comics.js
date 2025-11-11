@@ -169,7 +169,8 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
   const dateStr = formatDate(date);
   const url = `${comic.baseUrl}/${dateStr}`;
   
-  // Add fading animation to current comic while loading
+  // Show loading message and add fading animation
+  container.textContent = 'Loading...';
   container.classList.add('fading');
   
   const result = await fetchComicImage(comicKey, date);
@@ -194,7 +195,7 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
     const imgStyle = isFarSide
       ? 'max-width: 100%; height: auto; border: 1px solid var(--border);'
       : (isMobile 
-          ? 'min-height: 200px; max-height: 400px; width: auto; border: 1px solid var(--border);'
+          ? 'min-height: 200px; max-height: 200px; width: auto; border: 1px solid var(--border);'
           : 'width: 100%; height: auto; border: 1px solid var(--border);');
     
     // Successfully fetched comic image

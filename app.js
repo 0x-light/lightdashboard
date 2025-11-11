@@ -246,7 +246,8 @@ async function renderDemoSummary() {
     });
 
     // Show loading state initially - will be replaced with real data
-    summaryEl.innerHTML = '<span class="loading-terminal">Loading portfolio...</span>';
+    // Note: Loading state removed - using fade animation instead during refresh
+    // summaryEl.innerHTML = '<span class="loading-terminal">Loading portfolio...</span>';
 
     // Render positions via providers if settings are available; fallback to demo
     const positionsBody = document.getElementById('newPositionsBody');
@@ -951,6 +952,9 @@ async function renderDemoSummary() {
                       const precipitation = weatherData.daily?.precipitation_sum?.[0] || 0;
                       const weather = { temp, city, icon: weatherIcon, moonText, precipitation };
                       
+                      // Cache weather for reuse in re-renders
+                      cachedWeather = weather;
+                      
                       // Re-render hero with weather
                       const heroHtmlWithWeather = HeroUI.composeSummary({
                         portfolioValue: totalValue,
@@ -999,6 +1003,7 @@ let hideSmallPositions = true; // Default: hide positions under $100
 let hiddenAssets = new Set();
 let cachedPositions = [];
 let cachedSummaryData = {};
+let cachedWeather = null; // Cache weather data globally to preserve across re-renders
 let cachedWatchlistData = null; // Cache watchlist data globally
 let watchlistEditMode = false;
 let rerenderPositions = null; // Global reference to rerender function
@@ -1140,6 +1145,8 @@ function setupControls() {
         return sum + (p.value || 0);
       }, 0);
       const totalPnL = filtered.reduce((sum, p) => sum + (p.pnl || 0), 0);
+      const costBasis = totalValue - totalPnL;
+      const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
       const summaryEl = document.getElementById('newSummary');
       const HeroUI = window.AppModules?.ui?.hero;
       if (HeroUI && summaryEl) {
@@ -1148,12 +1155,12 @@ function setupControls() {
           amountsVisible,
           heroPnLMode: 'total',
           totalPnL,
-          totalPnLPercent: 0,
+          totalPnLPercent,
           totalDailyChange: 0,
           totalDailyChangePercent: 0,
           useColoredPnL: true,
           highlightsHtml: [],
-          weather: null
+          weather: cachedWeather // Use cached weather to preserve it across re-renders
         });
         summaryEl.innerHTML = heroHtml;
       }
@@ -1853,6 +1860,88 @@ function setupControls() {
                 `;
               }
             }
+          }
+        }
+        
+        // Update positions table header based on showPriceChart setting
+        const posTable = document.getElementById('newPositionsTable');
+        if (posTable) {
+          const headerRow = posTable.querySelector('thead tr');
+          if (headerRow) {
+            const showPriceChart = newSettings.showPriceChart ?? true;
+            
+            if (showPriceChart) {
+              if (compactMode) {
+                // Compact: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
+                headerRow.innerHTML = `
+                  <th class="th-asset">Asset</th>
+                  <th class="th-price">Price</th>
+                  <th class="th-chart">Chart</th>
+                  <th class="th-value">Value</th>
+                  <th class="th-pnl">P&L</th>
+                  <th class="th-change">24H%</th>
+                  <th class="th-amount">Amount</th>
+                  <th class="th-exchange">Exchange</th>
+                `;
+              } else {
+                // Normal: Asset, Exchange, Amount, Price, Chart, Value, 24H%, P&L
+                headerRow.innerHTML = `
+                  <th class="th-asset">Asset</th>
+                  <th class="th-exchange">Exchange</th>
+                  <th class="th-amount">Amount</th>
+                  <th class="th-price">Price</th>
+                  <th class="th-chart">Chart</th>
+                  <th class="th-value">Value</th>
+                  <th class="th-change">24H%</th>
+                  <th class="th-pnl">P&L</th>
+                `;
+              }
+            } else {
+              // No chart column
+              if (compactMode) {
+                // Compact: Asset, Price, Value, P&L, 24H%, Amount, Exchange
+                headerRow.innerHTML = `
+                  <th class="th-asset">Asset</th>
+                  <th class="th-price">Price</th>
+                  <th class="th-value">Value</th>
+                  <th class="th-pnl">P&L</th>
+                  <th class="th-change">24H%</th>
+                  <th class="th-amount">Amount</th>
+                  <th class="th-exchange">Exchange</th>
+                `;
+              } else {
+                // Normal: Asset, Exchange, Amount, Price, Value, 24H%, P&L
+                headerRow.innerHTML = `
+                  <th class="th-asset">Asset</th>
+                  <th class="th-exchange">Exchange</th>
+                  <th class="th-amount">Amount</th>
+                  <th class="th-price">Price</th>
+                  <th class="th-value">Value</th>
+                  <th class="th-change">24H%</th>
+                  <th class="th-pnl">P&L</th>
+                `;
+              }
+            }
+          }
+        }
+        
+        // Re-render watchlist with new showPriceChart setting
+        const watchlistBody = document.getElementById('newWatchlistBody');
+        if (watchlistBody && newSettings.watchlist && newSettings.watchlist.length > 0) {
+          try {
+            const watchlistMod = await import('./modules/features/watchlist.js');
+            const pythProvider = window.AppModules?.data?.providers?.pyth;
+            const prices = await watchlistMod.render(watchlistBody, {
+              feedIds: newSettings.watchlist,
+              pythProvider,
+              useColoredPnL: newSettings.useColoredPnL ?? true,
+              editMode: watchlistEditMode,
+              cachedData: cachedWatchlistData,
+              showPriceChart: newSettings.showPriceChart ?? true
+            });
+            cachedWatchlistData = prices; // Update cache
+          } catch (e) {
+            // Silently fail if watchlist re-render fails
           }
         }
         
@@ -2605,10 +2694,25 @@ window.addEventListener('DOMContentLoaded', async () => {
     heroSection.addEventListener('click', async () => {
       if (spinnerInterval) return; // Already refreshing
       
+      const summaryEl = document.getElementById('newSummary');
+      
       try {
         startSpinner();
+        
+        // Apply pulsing animation (like comics)
+        if (summaryEl) {
+          summaryEl.classList.add('fading');
+        }
+        
         await renderDemoSummary();
         rerenderPositions();
+        
+        // Remove pulsing animation after content is loaded
+        if (summaryEl) {
+          setTimeout(() => {
+            summaryEl.classList.remove('fading');
+          }, 100);
+        }
         
         // Also refresh watchlist if present
         const watchlistModule = await import('./modules/features/watchlist.js').catch(() => null);
@@ -2727,6 +2831,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     let currentComicDate = getValidComicDate(currentComicStrip);
     
     const loadComic = async (comicKey = currentComicStrip, date = currentComicDate) => {
+      comicEl.textContent = 'Loading...';
       try {
         const mod = await import('./modules/features/comics.js');
         await mod.renderComic(comicEl, comicKey, date);
@@ -2942,6 +3047,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     watchlistSection.style.display = 'none';
   } else if (watchlistBody) {
     const loadWatchlist = async () => {
+      const colspan = (settings.showPriceChart ?? true) ? 4 : 3;
+      watchlistBody.innerHTML = `<tr><td colspan="${colspan}" class="loading">Loading...</td></tr>`;
       try {
         const mod = await import('./modules/features/watchlist.js');
         const pythProvider = window.AppModules?.data?.providers?.pyth;
@@ -2955,7 +3062,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         // Cache the data for instant edit toggle
         cachedWatchlistData = prices;
       } catch (e) {
-        const colspan = (settings.showPriceChart ?? true) ? 4 : 3;
         watchlistBody.innerHTML = `<tr><td colspan="${colspan}" class="loading">Watchlist unavailable</td></tr>`;
       }
     };
@@ -3134,7 +3240,7 @@ window.addEventListener('DOMContentLoaded', async () => {
               totalDailyChangePercent: 0,
               useColoredPnL: s.useColoredPnL ?? true,
               highlightsHtml: [],
-              weather: null // Keep existing weather
+              weather: cachedWeather // Use cached weather to preserve it
             });
             summaryEl.innerHTML = heroHtml;
           }

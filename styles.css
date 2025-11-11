@@ -247,7 +247,6 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: 'Berkeley Mono', 'Courier New', monospace !important;
-  line-height: 1.6;
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;
@@ -380,10 +379,6 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   gap: 4px;
   align-items: center;
-}
-
-.font-size-controls .btn-text {
-  padding: 6px 2px;
 }
 
 .font-size-controls #fontSizeDisplay {
@@ -523,11 +518,15 @@ h1, h2, h3, h4, h5, h6 {
   50% { opacity: 0.6; }
 }
 
+/* Hero pulsing animation (same as comics) */
+#newSummary.fading {
+  animation: pulse-fade 2s ease-in-out infinite !important;
+}
+
 /* Sparkline Charts */
 .chart-cell {
-  text-align: center;
   vertical-align: middle;
-  padding: 0 !important;
+  padding: 0 8px !important;
 }
 
 .sparkline {
@@ -1336,14 +1335,13 @@ body.mobile-menu-open {
 .mobile-menu-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
   align-items: flex-start;
   padding: 0 20px;
 }
 
 .mobile-menu-content .font-size-controls {
   display: flex;
-  gap: 4px;
   align-items: center;
 }
 
@@ -1466,6 +1464,12 @@ body.mobile-menu-open {
     padding-left: 20px;
     margin-right: -20px;
     padding-right: 20px;
+  }
+  
+  /* Calvin & Hobbes and Peanuts comics on mobile */
+  #newComic img {
+    min-height: 200px !important;
+    max-height: 200px !important;
   }
   
   /* Full bleed settings dialog on mobile */
