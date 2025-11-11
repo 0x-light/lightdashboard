@@ -1,6 +1,44 @@
 // Positions UI module (incremental extraction)
 // This module progressively takes over rendering of desktop table and mobile cards.
 
+const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
+
+function isStablecoin(asset) {
+  return STABLECOINS.has(asset?.toUpperCase());
+}
+
+function createSparkline(priceData, width = 60, height = 24) {
+  if (!Array.isArray(priceData) || priceData.length < 2) {
+    return null;
+  }
+  
+  const prices = priceData.map(d => d.price);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min;
+  
+  if (range === 0) {
+    // Flat line
+    const y = height / 2;
+    const points = priceData.map((_, i) => `${(i / (priceData.length - 1)) * width},${y}`).join(' ');
+    return `<svg width="${width}" height="${height}" class="sparkline"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
+  }
+  
+  // Normalize prices to chart height
+  const points = priceData.map((d, i) => {
+    const x = (i / (priceData.length - 1)) * width;
+    const y = height - ((d.price - min) / range) * height;
+    return `${x},${y}`;
+  }).join(' ');
+  
+  // Determine color based on first vs last price
+  const firstPrice = prices[0];
+  const lastPrice = prices[prices.length - 1];
+  const color = lastPrice >= firstPrice ? 'var(--green)' : 'var(--red)';
+  
+  return `<svg width="${width}" height="${height}" class="sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
+}
+
 function formatAmount(num, visible, showExact = false) {
   if (!visible) return '••••';
   const n = Number(num || 0);
@@ -87,13 +125,21 @@ function createTableRow(doc, pos, opts) {
   // Check if compact mode is active by checking body class
   const isCompactMode = doc.body?.classList?.contains('compact-mode');
   
+  // Create sparkline chart (skip for stablecoins)
+  let chartCell = '<span class="chart-loading">—</span>';
+  if (!isStablecoin(pos.asset)) {
+    const chartSvg = pos.priceHistory ? createSparkline(pos.priceHistory) : null;
+    chartCell = chartSvg || '<span class="chart-loading">—</span>';
+  }
+  
   let cells;
   if (isCompactMode) {
-    // Compact: Asset, Price, Value, P&L, 24H%, Amount, Exchange
+    // Compact: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
     // Price and 24H% always visible, hide Value/PnL/Amount
     cells = [
       pos.asset || '—',
       formatUsd(pos.price, true), // Always show price
+      chartCell, // Chart
       formatUsd(value, amountVisible), // Hide value
       formatUsd(pos.pnl, amountVisible, true), // Hide PnL, show + for positive
       formatPct(pos.change24h), // Always show 24H%
@@ -101,13 +147,14 @@ function createTableRow(doc, pos, opts) {
       pos.exchange || '—'
     ];
   } else {
-    // Normal: Asset, Exchange, Amount, Price, Value, 24H%, P&L
+    // Normal: Asset, Exchange, Amount, Price, Chart, Value, 24H%, P&L
     // Price and 24H% always visible, hide Value/PnL/Amount
     cells = [
       pos.asset || '—',
       pos.exchange || '—',
       formatAmount(pos.amount, amountVisible, showExactAmounts), // Hide amount
       formatUsd(pos.price, true), // Always show price
+      chartCell, // Chart
       formatUsd(value, amountVisible), // Hide value
       formatPct(pos.change24h), // Always show 24H%
       formatUsd(pos.pnl, amountVisible, true) // Hide PnL, show + for positive
@@ -124,18 +171,21 @@ function createTableRow(doc, pos, opts) {
     let isChange24h = false;
     let isPrice = false;
     let isValue = false;
+    let isChart = false;
     if (isCompactMode) {
-      // Compact: Asset, Price, Value, P&L, 24H%, Amount, Exchange
+      // Compact: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
       isPrice = (i === 1);
-      isValue = (i === 2);
-      isPnL = (i === 3);
-      isChange24h = (i === 4);
-    } else {
-      // Normal: Asset, Exchange, Amount, Price, Value, 24H%, P&L
-      isPrice = (i === 3);
-      isValue = (i === 4);
+      isChart = (i === 2);
+      isValue = (i === 3);
+      isPnL = (i === 4);
       isChange24h = (i === 5);
-      isPnL = (i === 6);
+    } else {
+      // Normal: Asset, Exchange, Amount, Price, Chart, Value, 24H%, P&L
+      isPrice = (i === 3);
+      isChart = (i === 4);
+      isValue = (i === 5);
+      isChange24h = (i === 6);
+      isPnL = (i === 7);
     }
     
     // Add color classes for PnL and 24H%
@@ -160,6 +210,10 @@ function createTableRow(doc, pos, opts) {
       } else {
         td.innerHTML = `${String(cells[i])} <button class="position-edit-btn" data-asset-key="${assetKey}">[HIDE]</button>`;
       }
+    } else if (isChart) {
+      // Chart column uses innerHTML
+      td.innerHTML = cells[i];
+      td.className = 'chart-cell';
     } else {
       td.textContent = String(cells[i]);
     }
@@ -204,7 +258,7 @@ export function renderPositions({ positions, containers, options }) {
     const filtered = list.filter(p => !shouldHidePosition(p, opts));
 
     if (filtered.length === 0) {
-      containers.positionsBody.innerHTML = '<tr><td colspan="7" class="loading">No positions found</td></tr>';
+      containers.positionsBody.innerHTML = '<tr><td colspan="8" class="loading">No positions found</td></tr>';
       if (containers.mobilePositionsContainer) containers.mobilePositionsContainer.innerHTML = '';
       return true;
     }

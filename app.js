@@ -825,6 +825,35 @@ async function renderDemoSummary() {
             
             const sorted = aggregatedRows.sort((a, b) => (b.value || 0) - (a.value || 0));
             
+            // Fetch 24h price history for sparkline charts (skip stablecoins)
+            try {
+              const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
+              const pythFeedMap = await providers.pyth.getPriceFeeds(8000);
+              const historyPromises = sorted.map(async (pos) => {
+                // Skip stablecoins
+                if (STABLECOINS.has(pos.asset?.toUpperCase())) {
+                  pos.priceHistory = null;
+                  return;
+                }
+                
+                const feedId = pythFeedMap[pos.asset];
+                if (feedId && providers.pyth.get24hPriceHistory) {
+                  try {
+                    const history = await providers.pyth.get24hPriceHistory(feedId, 5000);
+                    pos.priceHistory = history.length > 0 ? history : null;
+                  } catch (e) {
+                    pos.priceHistory = null;
+                  }
+                } else {
+                  pos.priceHistory = null;
+                }
+              });
+              await Promise.all(historyPromises);
+            } catch (e) {
+              // If price history fetch fails, continue without it
+              console.warn('Failed to fetch price history:', e);
+            }
+            
             // Cache for re-rendering
             cachedPositions = sorted;
             
@@ -953,7 +982,7 @@ async function renderDemoSummary() {
 
       if (!rendered) {
         // No positions found
-        positionsBody.innerHTML = '<tr><td colspan="7" class="loading">No positions found. Add wallets in Settings.</td></tr>';
+        positionsBody.innerHTML = '<tr><td colspan="8" class="loading">No positions found. Add wallets in Settings.</td></tr>';
         if (mobileContainer) mobileContainer.innerHTML = '';
         summaryEl.innerHTML = 'Your portfolio is empty. Add wallets in Settings.';
       }
@@ -1243,10 +1272,11 @@ function setupControls() {
         const headerRow = posTable.querySelector('thead tr');
         if (headerRow) {
           if (compactMode) {
-            // Compact: Asset, Price, Value, P&L, 24H%, Amount, Exchange
+            // Compact: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
             headerRow.innerHTML = `
               <th class="th-asset">Asset</th>
               <th class="th-price">Price</th>
+              <th class="th-chart">Chart</th>
               <th class="th-value">Value</th>
               <th class="th-pnl">P&L</th>
               <th class="th-change">24H%</th>
@@ -1254,12 +1284,13 @@ function setupControls() {
               <th class="th-exchange">Exchange</th>
             `;
           } else {
-            // Normal: Asset, Exchange, Amount, Price, Value, 24H%, P&L
+            // Normal: Asset, Exchange, Amount, Price, Chart, Value, 24H%, P&L
             headerRow.innerHTML = `
               <th class="th-asset">Asset</th>
               <th class="th-exchange">Exchange</th>
               <th class="th-amount">Amount</th>
               <th class="th-price">Price</th>
+              <th class="th-chart">Chart</th>
               <th class="th-value">Value</th>
               <th class="th-change">24H%</th>
               <th class="th-pnl">P&L</th>
@@ -2938,6 +2969,38 @@ window.addEventListener('DOMContentLoaded', async () => {
         
         if (hasChanges) {
           cachedPositions = updatedPositions;
+          
+          // Update price history for changed positions (skip stablecoins)
+          const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
+          const changedAssets = updatedPositions.filter(p => p.priceChanged && !STABLECOINS.has(p.asset?.toUpperCase()));
+          
+          if (changedAssets.length > 0) {
+            // Update price history in background (don't await to avoid blocking UI)
+            (async () => {
+              try {
+                const pythFeedMap = await providers.pyth.getPriceFeeds(5000);
+                const historyUpdates = changedAssets.map(async (pos) => {
+                  const feedId = pythFeedMap[pos.asset];
+                  if (feedId && providers.pyth.get24hPriceHistory) {
+                    try {
+                      const history = await providers.pyth.get24hPriceHistory(feedId, 3000);
+                      if (history.length > 0) {
+                        pos.priceHistory = history;
+                      }
+                    } catch (e) {
+                      // Keep existing history on error
+                    }
+                  }
+                });
+                await Promise.all(historyUpdates);
+                
+                // Re-render after history updates
+                rerenderPositions();
+              } catch (e) {
+                // Silently fail history updates
+              }
+            })();
+          }
           
           // Re-render positions
           rerenderPositions();

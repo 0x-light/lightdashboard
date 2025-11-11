@@ -57,6 +57,45 @@ export async function getAtTimestampByFeedIds(feedIds, timestampSeconds, timeout
   return prices;
 }
 
-export default { getPriceFeeds, getLatestByFeedIds, getAtTimestampByFeedIds };
+export async function get24hPriceHistory(feedId, timeoutMs = 10000) {
+  if (!feedId) return [];
+  const normalizedId = feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`;
+  const now = Math.floor(Date.now() / 1000);
+  const day = 24 * 60 * 60;
+  const startTime = now - day;
+  
+  // Fetch 12 data points (one every 2 hours) for better performance
+  const points = 12;
+  const interval = day / points;
+  const timestamps = [];
+  for (let i = 0; i < points; i++) {
+    timestamps.push(Math.floor(startTime + (i * interval)));
+  }
+  
+  // Fetch all prices in parallel for better performance
+  const fetchPromises = timestamps.map(async (ts) => {
+    try {
+      const url = `${HERMES}/updates/price/${ts}?ids[]=${normalizedId}&parsed=true`;
+      const data = await HttpClient.getJson(url, { timeoutMs: 2000 }).catch(() => null);
+      const parsed = data?.parsed?.[0];
+      if (parsed) {
+        const price = parseFloat(parsed?.price?.price) * Math.pow(10, parsed?.price?.expo || 0);
+        if (Number.isFinite(price)) {
+          return { timestamp: ts, price };
+        }
+      }
+    } catch (e) {
+      // Skip failed fetches
+    }
+    return null;
+  });
+  
+  const results = await Promise.all(fetchPromises);
+  const priceData = results.filter(r => r !== null);
+  
+  return priceData;
+}
+
+export default { getPriceFeeds, getLatestByFeedIds, getAtTimestampByFeedIds, get24hPriceHistory };
 
 

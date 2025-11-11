@@ -98,8 +98,8 @@ html[data-theme="eva01"] {
   --bg-elev: #1a0f1a;
   --text: #a78bfa;
   --text-bright: #c4b5fd;
-  --muted: #7c3aed;
-  --accent: #8b5cf6;
+  --muted: #a78bfa;
+  --accent: #a78bfa;
   --border: #2d1b3d;
   --card-bg: #0d0a0d;
   --green: #22c55e;
@@ -521,6 +521,28 @@ h1, h2, h3, h4, h5, h6 {
 @keyframes pulse-fade {
   0%, 100% { opacity: 0.3; }
   50% { opacity: 0.6; }
+}
+
+/* Sparkline Charts */
+.chart-cell {
+  text-align: center;
+  vertical-align: middle;
+  padding: 0 !important;
+}
+
+.sparkline {
+  display: inline-block;
+  vertical-align: middle;
+  shape-rendering: geometricPrecision;
+}
+
+.sparkline polyline {
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-loading {
+  color: var(--muted);
+  font-size: 0.9em;
 }
 
 /* Performance: CSS containment for better rendering */
@@ -1383,9 +1405,9 @@ body.mobile-menu-open {
   }
   
   /* Hide exchange column on mobile in compact mode for positions table only */
-  /* Exchange is now the last column (7th) in compact mode */
-  #positionsTable.data-table.compact-mode th:nth-child(7),
-  #positionsTable.data-table.compact-mode td:nth-child(7) {
+  /* Exchange is now the last column (8th) in compact mode */
+  #positionsTable.data-table.compact-mode th:nth-child(8),
+  #positionsTable.data-table.compact-mode td:nth-child(8) {
     display: none;
   }
   
