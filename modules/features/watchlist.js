@@ -78,13 +78,16 @@ export async function fetchPrices(feedIds, pythProvider, includePriceHistory = f
     }
     
     // Fetch price history if requested (skip stablecoins)
-    if (includePriceHistory && pythProvider.get24hPriceHistory) {
+    // Force to true by default for better UX
+    const shouldFetchHistory = includePriceHistory !== false;
+    if (shouldFetchHistory && pythProvider.get24hPriceHistory) {
       const historyPromises = results.map(async (item) => {
         if (!isStablecoin(item.symbol)) {
           try {
             const history = await pythProvider.get24hPriceHistory(item.feedId, 3000);
             item.priceHistory = history.length > 0 ? history : null;
           } catch (e) {
+            console.warn(`Failed to fetch price history for ${item.symbol}:`, e);
             item.priceHistory = null;
           }
         }
@@ -93,7 +96,8 @@ export async function fetchPrices(feedIds, pythProvider, includePriceHistory = f
     }
     
     return results;
-  } catch (_) {
+  } catch (e) {
+    console.error('Watchlist fetchPrices error:', e);
     return [];
   }
 }

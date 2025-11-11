@@ -26,7 +26,12 @@ export function loadSettings() {
     if (s.hyperliquidAddress) s.hyperliquidAddress = simpleDecrypt(s.hyperliquidAddress);
     if (s.lighterAddress) s.lighterAddress = simpleDecrypt(s.lighterAddress);
     if (s.zerionApiKey) s.zerionApiKey = simpleDecrypt(s.zerionApiKey);
-    return s;
+    
+    // Merge with defaults to ensure new settings are included
+    const defaults = getDefaultSettings();
+    const merged = { ...defaults, ...s };
+    
+    return merged;
   } catch (_) {
     return null;
   }
