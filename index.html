@@ -294,7 +294,7 @@
           <fieldset>
             <legend>Backup & Restore</legend>
             <div class="help" style="margin-bottom: 8px;">Export your settings as text to backup or transfer between devices</div>
-            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <div class="button-row" style="margin-bottom: 8px;">
               <button type="button" id="newExportSettingsBtn" class="btn-text">[EXPORT]</button>
               <button type="button" id="newImportSettingsBtn" class="btn-text">[IMPORT]</button>
             </div>
@@ -336,7 +336,7 @@
           </table>
         </div>
         <div id="newMobilePositionsContainer" class="mobile-positions-container"></div>
-        <div style="margin-top: 16px; display: flex; gap: 8px;">
+        <div class="button-row">
           <button id="newHideSmallBtn" class="btn-text">[SHOW &lt;$100]</button>
           <button id="newEditListBtn" class="btn-text">[EDIT]</button>
         </div>
@@ -362,7 +362,7 @@
             </tbody>
           </table>
         </div>
-        <div style="margin-top: 16px; display: flex; gap: 8px;">
+        <div class="button-row">
           <button id="newEditWatchlistBtn" class="btn-text">[EDIT]</button>
         </div>
       </section>
@@ -404,9 +404,9 @@
         <button id="newCloseWatchlistSearchBtn" class="btn-text">[CLOSE]</button>
       </div>
       <div class="sticker-window-content">
-        <div class="help" style="margin-bottom: 12px;">Search for tokens</div>
+        <div class="help" style="margin: 0 0 12px 0;">Search for tokens</div>
         <input type="text" id="newWatchlistSearchInput" class="settings-input" placeholder="Search tokens..." style="width: 100%; margin-bottom: 12px;">
-        <div id="newWatchlistSearchResults" style="max-height: calc(100vh - 170px); overflow-y: auto; border: 1px solid var(--border);">
+        <div id="newWatchlistSearchResults" style="max-height: calc(100vh - 170px); overflow-y: auto; display: none;">
         </div>
       </div>
     </div>
@@ -453,14 +453,14 @@
         <button id="newCloseAddPositionBtn" class="btn-text">[CLOSE]</button>
       </div>
       <div class="sticker-window-content">
-        <div class="help" style="margin-bottom: 12px;">Add a manual position using a live price feed, or add a custom asset</div>
+        <div class="help" style="margin: 0 0 12px 0;">Add a manual position using a live price feed, or add a custom asset</div>
         
         <!-- Type Selection -->
         <div style="margin-bottom: 16px;">
           <label style="display: block; margin-bottom: 8px;">Position Type</label>
-          <div style="display: flex; gap: 8px;">
-            <button id="newAddPositionTypePyth" class="btn-text" style="flex: 1; background: var(--accent); color: var(--bg);">[LIVE PRICE]</button>
-            <button id="newAddPositionTypeCustom" class="btn-text" style="flex: 1;">[CUSTOM ASSET]</button>
+          <div class="button-row">
+            <button id="newAddPositionTypePyth" class="btn-tab active" style="flex: 1;">[LIVE PRICE]</button>
+            <button id="newAddPositionTypeCustom" class="btn-tab" style="flex: 1;">[CUSTOM ASSET]</button>
           </div>
         </div>
         
@@ -468,7 +468,7 @@
         <div id="newAddPositionPythSection">
           <label style="display: block; margin-bottom: 8px;">Search Ticker</label>
           <input type="text" id="newAddPositionPythSearch" class="settings-input" placeholder="Search for tickers..." style="width: 100%; margin-bottom: 12px;">
-          <div id="newAddPositionPythResults" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border); margin-bottom: 16px;">
+          <div id="newAddPositionPythResults" style="max-height: 200px; overflow-y: auto; display: none; margin-bottom: 16px;">
           </div>
           
           <label style="display: block; margin-bottom: 8px;">Amount</label>
@@ -492,7 +492,7 @@
     </div>
 
     <script type="module" src="./modules/app-init.js?v=2.2.9"></script>
-    <script type="module" src="./app.js?v=2.2.9">
+    <script type="module" src="./app.js?v=2.2.9"></script>
     
     <!-- Service Worker Registration - ensures users always get latest version -->
     <script>

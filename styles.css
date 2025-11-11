@@ -313,13 +313,67 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 400;
   cursor: pointer;
   color: var(--muted);
-  padding: 6px 0;
+  padding: 0;
   text-transform: uppercase;
   opacity: .6
 }
 
 .btn-text:hover {
   color: var(--text);
+}
+
+.btn-text-accent {
+  background: var(--accent);
+  border: none;
+  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-size: inherit;
+  font-weight: 400;
+  cursor: pointer;
+  color: var(--bg);
+  padding: 6px;
+  text-transform: uppercase;
+  opacity: 1;
+}
+
+.btn-text-accent:hover {
+  opacity: 0.8;
+}
+
+.btn-text-accent.active {
+  background: var(--accent);
+  color: var(--bg);
+  opacity: 1;
+}
+
+.btn-text.active {
+  background: var(--accent);
+  color: var(--bg);
+  opacity: 1;
+}
+
+.btn-tab {
+  background: transparent;
+  border: none;
+  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-size: inherit;
+  font-weight: 400;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 6px 0;
+  text-transform: uppercase;
+  opacity: .6;
+}
+
+.btn-tab:hover {
+  color: var(--text);
+  opacity: 1;
+}
+
+.btn-tab.active {
+  background: var(--accent);
+  color: var(--bg);
+  opacity: 1;
+  padding: 6px;
 }
 
 .font-size-controls {
@@ -1053,10 +1107,17 @@ textarea:focus {
   margin-top: 16px;
 }
 
+.button-row {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0;
+}
+
 .calvin-controls-mobile {
   display: none;
   justify-content: space-between;
   gap: 8px;
+  margin: 6px 0;
   flex-wrap: wrap;
 }
 
@@ -1774,7 +1835,7 @@ html[data-theme="bioluminescence"] {
   --text-bright: #9ef0f0;
   --muted: #007d79;
   --accent: #00cfcf;
-  --border: rgba(0, 125, 121, 0.7);
+  --border: rgba(0, 125, 121, 0.3);
   --card-bg: #081a1c;
   --green: #cefaff;
   --red: #007785;
@@ -2445,6 +2506,11 @@ input[type="range"]:focus::-moz-range-thumb {
 
 #watchlistSection:not(.collapsed) .toggle-expanded {
   display: inline;
+}
+
+#newWatchlistSearchResults:not(:empty),
+#newAddPositionPythResults:not(:empty) {
+  border: 1px solid var(--border);
 }
 
 .watchlist-search-result {

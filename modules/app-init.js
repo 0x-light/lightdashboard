@@ -16,6 +16,7 @@ import * as PositionsUI from './ui/positions.js';
 import * as Settings from './core/settings.js';
 import * as Themes from './core/themes.js';
 import * as Rain from './features/rain.js';
+import * as Weather from './features/weather.js';
 
 if (!window.AppModules) {
   window.AppModules = {};
@@ -35,6 +36,7 @@ window.AppModules.data.providers.bitcoin = BTC;
 window.AppModules.data.providers.zcash = ZEC;
 window.AppModules.data.providers.alchemy = ALCHEMY;
 window.AppModules.data.providers.helius = HELIUS;
+window.AppModules.data.providers.weather = Weather;
 window.AppModules.ui = window.AppModules.ui || {};
 window.AppModules.ui.hero = HeroUI;
 window.AppModules.ui.positions = PositionsUI;

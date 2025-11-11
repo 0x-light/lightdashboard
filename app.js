@@ -1885,7 +1885,10 @@ function setupControls() {
     if (watchlistSearchWindow) watchlistSearchWindow.style.display = 'none';
     if (watchlistSearchBackdrop) watchlistSearchBackdrop.style.display = 'none';
     if (watchlistSearchInput) watchlistSearchInput.value = '';
-    if (watchlistSearchResults) watchlistSearchResults.innerHTML = '';
+    if (watchlistSearchResults) {
+      watchlistSearchResults.innerHTML = '';
+      watchlistSearchResults.style.display = 'none';
+    }
   }
   
   if (addToWatchlistBtn) {
@@ -1924,6 +1927,7 @@ function setupControls() {
       
       if (!query) {
         watchlistSearchResults.innerHTML = '<div class="help" style="padding: 16px;">Type to search tokens...</div>';
+        watchlistSearchResults.style.display = 'block';
         return;
       }
       
@@ -1933,10 +1937,12 @@ function setupControls() {
       
       if (matches.length === 0) {
         watchlistSearchResults.innerHTML = '<div class="help" style="padding: 16px;">No results found</div>';
+        watchlistSearchResults.style.display = 'block';
         return;
       }
       
       watchlistSearchResults.innerHTML = '';
+      watchlistSearchResults.style.display = 'block';
       matches.forEach(feed => {
         const resultDiv = document.createElement('div');
         resultDiv.className = 'watchlist-search-result';
@@ -2120,18 +2126,19 @@ function setupControls() {
       if (addPositionPythEntryPrice) addPositionPythEntryPrice.value = '';
       if (addPositionCustomName) addPositionCustomName.value = '';
       if (addPositionCustomValue) addPositionCustomValue.value = '';
-      if (addPositionPythResults) addPositionPythResults.innerHTML = '';
+      if (addPositionPythResults) {
+        addPositionPythResults.innerHTML = '';
+        addPositionPythResults.style.display = 'none';
+      }
       
       // Set initial view
       if (addPositionPythSection) addPositionPythSection.style.display = 'block';
       if (addPositionCustomSection) addPositionCustomSection.style.display = 'none';
       if (addPositionTypePyth) {
-        addPositionTypePyth.style.background = 'var(--accent)';
-        addPositionTypePyth.style.color = 'var(--bg)';
+        addPositionTypePyth.classList.add('active');
       }
       if (addPositionTypeCustom) {
-        addPositionTypeCustom.style.background = '';
-        addPositionTypeCustom.style.color = '';
+        addPositionTypeCustom.classList.remove('active');
       }
     });
   }
@@ -2149,11 +2156,9 @@ function setupControls() {
       selectedPositionType = 'pyth';
       if (addPositionPythSection) addPositionPythSection.style.display = 'block';
       if (addPositionCustomSection) addPositionCustomSection.style.display = 'none';
-      addPositionTypePyth.style.background = 'var(--accent)';
-      addPositionTypePyth.style.color = 'var(--bg)';
+      addPositionTypePyth.classList.add('active');
       if (addPositionTypeCustom) {
-        addPositionTypeCustom.style.background = '';
-        addPositionTypeCustom.style.color = '';
+        addPositionTypeCustom.classList.remove('active');
       }
     });
   }
@@ -2163,11 +2168,9 @@ function setupControls() {
       selectedPositionType = 'custom';
       if (addPositionPythSection) addPositionPythSection.style.display = 'none';
       if (addPositionCustomSection) addPositionCustomSection.style.display = 'block';
-      addPositionTypeCustom.style.background = 'var(--accent)';
-      addPositionTypeCustom.style.color = 'var(--bg)';
+      addPositionTypeCustom.classList.add('active');
       if (addPositionTypePyth) {
-        addPositionTypePyth.style.background = '';
-        addPositionTypePyth.style.color = '';
+        addPositionTypePyth.classList.remove('active');
       }
     });
   }
@@ -2176,7 +2179,10 @@ function setupControls() {
     addPositionPythSearch.addEventListener('input', (e) => {
       const query = e.target.value.trim();
       if (!query || !addPositionPythResults) {
-        if (addPositionPythResults) addPositionPythResults.innerHTML = '';
+        if (addPositionPythResults) {
+          addPositionPythResults.innerHTML = '';
+          addPositionPythResults.style.display = 'none';
+        }
         return;
       }
       
@@ -2186,18 +2192,24 @@ function setupControls() {
       ).slice(0, 20);
       
       addPositionPythResults.innerHTML = '';
-      matches.forEach(feed => {
-        const resultDiv = document.createElement('div');
-        resultDiv.className = 'watchlist-search-result';
-        resultDiv.innerHTML = `<span>${feed.symbol}</span>`;
-        resultDiv.style.cursor = 'pointer';
-        resultDiv.addEventListener('click', () => {
-          selectedPythFeed = feed;
-          addPositionPythSearch.value = feed.symbol;
-          addPositionPythResults.innerHTML = '';
+      if (matches.length > 0) {
+        addPositionPythResults.style.display = 'block';
+        matches.forEach(feed => {
+          const resultDiv = document.createElement('div');
+          resultDiv.className = 'watchlist-search-result';
+          resultDiv.innerHTML = `<span>${feed.symbol}</span>`;
+          resultDiv.style.cursor = 'pointer';
+          resultDiv.addEventListener('click', () => {
+            selectedPythFeed = feed;
+            addPositionPythSearch.value = feed.symbol;
+            addPositionPythResults.innerHTML = '';
+            addPositionPythResults.style.display = 'none';
+          });
+          addPositionPythResults.appendChild(resultDiv);
         });
-        addPositionPythResults.appendChild(resultDiv);
-      });
+      } else {
+        addPositionPythResults.style.display = 'none';
+      }
     });
   }
   

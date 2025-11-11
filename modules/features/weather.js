@@ -67,6 +67,9 @@ export async function renderWeather(container, settings = {}) {
   }
 }
 
-export default { fetchWeather, renderWeather };
+// Alias for compatibility with app.js
+export const getWeather = fetchWeather;
+
+export default { fetchWeather, renderWeather, getWeather };
 
 
