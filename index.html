@@ -252,7 +252,7 @@
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
               <input id="newLeftAligned" type="checkbox" class="settings-input" checked>
-              Center content
+              Center layout
             </label>
             <label style="margin-top: 8px;">
               Comics
@@ -513,80 +513,14 @@
     <!-- Service Worker Registration - ensures users always get latest version -->
     <script defer>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', async () => {
-          // iOS PWA fix: Force check version and unregister old SW if needed
-          const APP_VERSION = '2.2.9';
-          const storedVersion = localStorage.getItem('app_version');
-          
-          if (storedVersion && storedVersion !== APP_VERSION) {
-            console.log('[SW] Version change detected:', storedVersion, '->', APP_VERSION);
-            console.log('[SW] Forcing service worker update...');
-            
-            // Unregister all existing service workers
-            const registrations = await navigator.serviceWorker.getRegistrations();
-            for (const registration of registrations) {
-              await registration.unregister();
-              console.log('[SW] Unregistered old service worker');
-            }
-            
-            // Clear all caches
-            const cacheNames = await caches.keys();
-            for (const cacheName of cacheNames) {
-              await caches.delete(cacheName);
-              console.log('[SW] Cleared cache:', cacheName);
-            }
-          }
-          
-          // Store current version
-          localStorage.setItem('app_version', APP_VERSION);
-          
+        window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
             .then((registration) => {
               console.log('[SW] Registered:', registration.scope);
-              
-              // Force immediate update check
-              registration.update();
-              
-              // Check for updates every 2 minutes (more aggressive for iOS)
-              setInterval(() => {
-                registration.update().catch(err => {
-                  console.warn('[SW] Update check failed:', err);
-                });
-              }, 2 * 60 * 1000);
-              
-              // Handle updates
-              registration.addEventListener('updatefound', () => {
-                const newWorker = registration.installing;
-                console.log('[SW] Update found, installing new version...');
-                
-                newWorker.addEventListener('statechange', () => {
-                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    // New service worker is installed and ready
-                    console.log('[SW] New version available! Reloading page...');
-                    // Show notification to user
-                    const banner = document.createElement('div');
-                    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:var(--accent,#4CAF50);color:var(--bg,#000);padding:12px;text-align:center;z-index:99999;font-size:14px;';
-                    banner.textContent = 'New version available! Refreshing in 2 seconds...';
-                    document.body.appendChild(banner);
-                    
-                    // Auto-reload after 2 seconds
-                    setTimeout(() => {
-                      newWorker.postMessage({ type: 'SKIP_WAITING' });
-                      window.location.reload();
-                    }, 2000);
-                  }
-                });
-              });
             })
             .catch((error) => {
               console.warn('[SW] Registration failed:', error);
             });
-          
-          // Handle controller change (new SW activated)
-          navigator.serviceWorker.addEventListener('controllerchange', () => {
-            console.log('[SW] Controller changed, reloading...');
-            window.location.reload();
-          });
         });
       }
     </script>
