@@ -106,7 +106,7 @@ All settings are stored in `localStorage` and persist across sessions:
 **🔒 Your data never leaves your device** - This dashboard is designed with privacy-first principles:
 
 - ✅ **100% Local Storage**: All settings, wallet addresses, and API keys are stored only in your browser's localStorage
-- ✅ **Encrypted**: Sensitive data (wallet addresses, API keys) is encrypted before storage
+- ✅ **Client-Side Only**: Sensitive data stays in your browser - never sent to external servers (except blockchain APIs for data fetching)
 - ✅ **No Tracking**: Zero analytics, no cookies, no telemetry
 - ✅ **No Accounts**: No sign-up, no server, no database
 - ✅ **Open Source**: Audit the code yourself
