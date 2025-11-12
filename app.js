@@ -2554,6 +2554,31 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Init loading screen
   initLoadingScreen();
   
+  // Display version from service worker
+  const versionDisplay = document.getElementById('versionDisplay');
+  if (versionDisplay) {
+    // Try to get version from service worker
+    fetch('/sw.js')
+      .then(response => response.text())
+      .then(swCode => {
+        const versionMatch = swCode.match(/CACHE_VERSION\s*=\s*'v([0-9.]+)'/);
+        const timestampMatch = swCode.match(/BUILD_TIMESTAMP\s*=\s*'([^']+)'/);
+        if (versionMatch) {
+          const version = versionMatch[1];
+          const timestamp = timestampMatch ? new Date(timestampMatch[1]).toLocaleString('en-US', { 
+            month: 'short', 
+            day: 'numeric', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          }) : '';
+          versionDisplay.textContent = `v${version}${timestamp ? ` (${timestamp})` : ''}`;
+        }
+      })
+      .catch(() => {
+        versionDisplay.textContent = 'Version: Unknown';
+      });
+  }
+  
   // Init theme
   const Themes = window.AppModules?.core?.themes;
   const Settings = window.AppModules?.core?.settings;
@@ -3148,16 +3173,154 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
-  // Periodic price updates (every 5 seconds)
+  // Periodic price updates (every 5 seconds for prices, every 30 seconds for full position refresh)
   let updateInterval = null;
+  let updateCount = 0;
   
   async function updatePrices() {
     try {
       const providers = window.AppModules?.data?.providers;
+      const Settings = window.AppModules?.core?.settings;
       if (!providers) return;
+      
+      updateCount++;
+      const doLeveragedRefresh = true; // Refresh leveraged positions every 5 seconds
       
       // Update positions if they exist
       if (cachedPositions && cachedPositions.length > 0) {
+        // If we have leveraged positions and it's time for refresh, fetch fresh data from Hyperliquid
+        if (doLeveragedRefresh && cachedPositions.some(p => p.isLeveraged)) {
+          console.log('[Update] Refreshing leveraged positions from API');
+          const settings = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+          const wallets = (settings.walletAddresses || '').split(',').map(w => w.trim()).filter(Boolean);
+          
+          if (wallets.length > 0) {
+            try {
+              // Fetch fresh Hyperliquid positions
+              const hlResults = await Promise.all(wallets.map(async (wallet) => {
+                try {
+                  const hl = providers.hyperliquid;
+                  const data = await hl.fetchPositions(wallet, 8000);
+                  const rows = [];
+                  if (data?.perp?.assetPositions) {
+                    for (const pos of data.perp.assetPositions) {
+                      const position = pos.position;
+                      const szi = parseFloat(position?.szi || 0);
+                      if (Math.abs(szi) > 0) {
+                        const entryPrice = parseFloat(position?.entryPx || 0);
+                        const leverage = parseFloat(position?.leverage?.value || 10);
+                        const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
+                        const pnl = parseFloat(position?.unrealizedPnl || 0);
+                        const entryNotional = Math.abs(szi) * entryPrice;
+                        const marginUsed = entryNotional / leverage;
+                        
+                        rows.push({
+                          asset: position.coin,
+                          exchange: 'Hyperliquid',
+                          amount: szi,
+                          price: entryPrice,
+                          value: notionalValue,
+                          pnl: pnl,
+                          entryPrice: entryPrice,
+                          marginUsed: marginUsed,
+                          isLeveraged: true
+                        });
+                      }
+                    }
+                  }
+                  return rows;
+                } catch (e) {
+                  console.error('[Update] Failed to fetch HL positions:', e);
+                  return [];
+                }
+              }));
+              
+              // Flatten and create a map of fresh leveraged positions by asset
+              const freshLeveragedPositions = hlResults.flat();
+              const leveragedMap = new Map();
+              for (const pos of freshLeveragedPositions) {
+                const key = `${pos.asset}_${pos.exchange}`;
+                leveragedMap.set(key, pos);
+              }
+              
+              // Update cachedPositions with fresh leveraged data
+              let hasLeveragedChanges = false;
+              cachedPositions = cachedPositions.map(pos => {
+                if (pos.isLeveraged) {
+                  const key = `${pos.asset}_${pos.exchange}`;
+                  const freshPos = leveragedMap.get(key);
+                  if (freshPos) {
+                    // Check if PnL or value changed
+                    const pnlChanged = Math.abs((freshPos.pnl || 0) - (pos.pnl || 0)) > 0.01;
+                    const valueChanged = Math.abs((freshPos.value || 0) - (pos.value || 0)) > 0.01;
+                    if (pnlChanged || valueChanged) {
+                      hasLeveragedChanges = true;
+                      return { ...freshPos, priceChanged: true };
+                    }
+                  }
+                }
+                return pos;
+              });
+              
+              if (hasLeveragedChanges) {
+                // Re-render positions and update hero
+                rerenderPositions();
+                
+                // Update hero totals
+                const totalValue = cachedPositions.reduce((sum, p) => {
+                  if (p.isLeveraged && p.marginUsed !== undefined) {
+                    return sum + p.marginUsed + (p.pnl || 0);
+                  }
+                  return sum + (p.value || 0);
+                }, 0);
+                const totalPnL = cachedPositions.reduce((sum, p) => {
+                  if (p.isLeveraged) return sum;
+                  return sum + (p.pnl || 0);
+                }, 0);
+                const costBasis = totalValue - totalPnL;
+                const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
+                cachedSummaryData = { totalValue, totalPnL, totalPnLPercent };
+                
+                const summaryEl = document.getElementById('newSummary');
+                const HeroUI = window.AppModules?.ui?.hero;
+                const Settings = window.AppModules?.core?.settings;
+                const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+                const amountsVisible = !document.body.classList.contains('amounts-hidden');
+                
+                if (summaryEl && HeroUI) {
+                  const heroHtml = HeroUI.composeSummary({
+                    portfolioValue: totalValue,
+                    amountsVisible,
+                    heroPnLMode: 'total',
+                    totalPnL,
+                    totalPnLPercent,
+                    totalDailyChange: 0,
+                    totalDailyChangePercent: 0,
+                    useColoredPnL: s.useColoredPnL ?? true,
+                    highlightsHtml: [],
+                    weather: cachedWeather // Preserve weather data during updates
+                  });
+                  summaryEl.innerHTML = heroHtml;
+                }
+                
+                // Flash updated cells with background color animation
+                setTimeout(() => {
+                  const cells = document.querySelectorAll('td[data-flash="true"]');
+                  cells.forEach(cell => {
+                    cell.classList.add('cell-flash');
+                    // Remove the class after animation completes
+                    cell.addEventListener('animationend', () => {
+                      cell.classList.remove('cell-flash');
+                      cell.removeAttribute('data-flash');
+                    }, { once: true });
+                  });
+                }, 50);
+              }
+            } catch (e) {
+              console.error('[Update] Failed to refresh leveraged positions:', e);
+            }
+          }
+        }
         // Get current prices from Hyperliquid (perps + spot)
         const [marketData, allMids, spotMeta] = await Promise.all([
           providers.hyperliquid.fetchMetaAndAssetCtxs(8000),
@@ -3212,6 +3375,12 @@ window.addEventListener('DOMContentLoaded', async () => {
         let hasChanges = false;
         const updatedPositions = cachedPositions.map(pos => {
           let newPrice = priceMap[pos.asset];
+          
+          // Skip leveraged positions - they are refreshed from API periodically
+          // Leveraged PnL includes funding payments which can't be calculated from price alone
+          if (pos.isLeveraged) {
+            return { ...pos, priceChanged: false };
+          }
           
           // Stablecoins default to $1 if no price found
           if ((!newPrice || newPrice === 0) && STABLECOINS.has(pos.asset)) {
@@ -3341,7 +3510,6 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
       
       // Update watchlist prices
-      const Settings = window.AppModules?.core?.settings;
       const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
       const watchlistBody = document.getElementById('newWatchlistBody');
       
