@@ -7,6 +7,66 @@ function isStablecoin(asset) {
   return STABLECOINS.has(asset?.toUpperCase());
 }
 
+const HEADER_TEMPLATES = {
+  'chart-compact': `
+    <th class="th-asset">Asset</th>
+    <th class="th-price">Price</th>
+    <th class="th-chart">Chart</th>
+    <th class="th-value">Value</th>
+    <th class="th-pnl">P&L</th>
+    <th class="th-change">24H%</th>
+    <th class="th-amount">Amount</th>
+    <th class="th-exchange">Exchange</th>
+  `,
+  'chart-normal': `
+    <th class="th-asset">Asset</th>
+    <th class="th-exchange">Exchange</th>
+    <th class="th-amount">Amount</th>
+    <th class="th-price">Price</th>
+    <th class="th-chart">Chart</th>
+    <th class="th-value">Value</th>
+    <th class="th-change">24H%</th>
+    <th class="th-pnl">P&L</th>
+  `,
+  'nochart-compact': `
+    <th class="th-asset">Asset</th>
+    <th class="th-price">Price</th>
+    <th class="th-value">Value</th>
+    <th class="th-pnl">P&L</th>
+    <th class="th-change">24H%</th>
+    <th class="th-amount">Amount</th>
+    <th class="th-exchange">Exchange</th>
+  `,
+  'nochart-normal': `
+    <th class="th-asset">Asset</th>
+    <th class="th-exchange">Exchange</th>
+    <th class="th-amount">Amount</th>
+    <th class="th-price">Price</th>
+    <th class="th-value">Value</th>
+    <th class="th-change">24H%</th>
+    <th class="th-pnl">P&L</th>
+  `
+};
+
+function updateHeaderIfNeeded(positionsBody, showPriceChart, isCompactMode) {
+  if (!positionsBody || typeof positionsBody.closest !== 'function') return;
+  const table = positionsBody.closest('table');
+  if (!table) return;
+  const headerRow = table.querySelector('thead tr');
+  if (!headerRow) return;
+
+  const layoutKey = showPriceChart
+    ? (isCompactMode ? 'chart-compact' : 'chart-normal')
+    : (isCompactMode ? 'nochart-compact' : 'nochart-normal');
+
+  if (headerRow.dataset.layout === layoutKey) return;
+
+  const template = HEADER_TEMPLATES[layoutKey];
+  if (!template) return;
+  headerRow.innerHTML = template.trim();
+  headerRow.dataset.layout = layoutKey;
+}
+
 function createSparkline(priceData, width = 60, height = 24, currentChange24h = null) {
   if (!Array.isArray(priceData) || priceData.length < 2) {
     return null;
@@ -306,11 +366,15 @@ export function renderPositions({ positions, containers, options }) {
     if (!containers?.positionsBody) return false;
     const doc = containers.positionsBody.ownerDocument || document;
     const opts = options || {};
+    const showPriceChart = opts.settings?.showPriceChart ?? true;
+    const isCompactMode = doc.body?.classList?.contains('compact-mode');
+
+    updateHeaderIfNeeded(containers.positionsBody, showPriceChart, isCompactMode);
+
     const list = Array.isArray(positions) ? positions : [];
     const filtered = list.filter(p => !shouldHidePosition(p, opts));
 
     if (filtered.length === 0) {
-      const showPriceChart = opts.settings?.showPriceChart ?? true;
       const colspan = showPriceChart ? 8 : 7;
       containers.positionsBody.innerHTML = `<tr><td colspan="${colspan}" class="loading">No positions found</td></tr>`;
       if (containers.mobilePositionsContainer) containers.mobilePositionsContainer.innerHTML = '';
