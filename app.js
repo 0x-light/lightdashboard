@@ -623,12 +623,13 @@ async function renderDemoSummary() {
                 let entryPricesUpdated = false;
                 
                 // Apply prices and 24h% to all positions (calculate PnL)
+                const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD', 'FEUSD']);
                 for (const row of allRows) {
                   const currentPrice = priceMap[row.asset] || row.price || 0;
                   const change24h = change24hMap[row.asset];
                   
                   // Stablecoins default to $1
-                  const finalPrice = (row.asset === 'USDC' || row.asset === 'USDT' || row.asset === 'FEUSD') && currentPrice === 0 ? 1 : currentPrice;
+                  const finalPrice = STABLECOINS.has(row.asset) && currentPrice === 0 ? 1 : currentPrice;
                   
                   if (finalPrice > 0) {
                     row.price = finalPrice;
@@ -3146,9 +3147,16 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
         
         // Update positions with new prices
+        const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD', 'FEUSD']);
         let hasChanges = false;
         const updatedPositions = cachedPositions.map(pos => {
-          const newPrice = priceMap[pos.asset];
+          let newPrice = priceMap[pos.asset];
+          
+          // Stablecoins default to $1 if no price found
+          if ((!newPrice || newPrice === 0) && STABLECOINS.has(pos.asset)) {
+            newPrice = 1;
+          }
+          
           if (newPrice && newPrice !== pos.price && Math.abs(newPrice - pos.price) > 0.0001) {
             hasChanges = true;
             const newValue = Math.abs(pos.amount) * newPrice;
