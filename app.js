@@ -828,6 +828,8 @@ async function renderDemoSummary() {
             const sorted = aggregatedRows.sort((a, b) => (b.value || 0) - (a.value || 0));
             
             // Fetch 24h price history for sparkline charts (skip stablecoins)
+            // Track failed positions for retry
+            const failedPositions = [];
             try {
               const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
               const pythFeedMap = await providers.pyth.getPriceFeeds(8000);
@@ -835,7 +837,7 @@ async function renderDemoSummary() {
                 // Skip stablecoins
                 if (STABLECOINS.has(pos.asset?.toUpperCase())) {
                   pos.priceHistory = null;
-                  return;
+                  return { success: true, pos };
                 }
                 
                 const feedId = pythFeedMap[pos.asset];
@@ -843,17 +845,68 @@ async function renderDemoSummary() {
                   try {
                     const history = await providers.pyth.get24hPriceHistory(feedId, 5000);
                     pos.priceHistory = history.length > 0 ? history : null;
+                    return { success: history.length > 0, pos };
                   } catch (e) {
                     pos.priceHistory = null;
+                    return { success: false, pos };
                   }
                 } else {
                   pos.priceHistory = null;
+                  return { success: false, pos };
                 }
               });
-              await Promise.all(historyPromises);
+              const results = await Promise.all(historyPromises);
+              
+              // Track which positions failed to load charts
+              results.forEach(r => {
+                if (!r.success && r.pos && !STABLECOINS.has(r.pos.asset?.toUpperCase())) {
+                  failedPositions.push(r.pos);
+                }
+              });
+              
+              // Log summary for debugging
+              const successCount = results.filter(r => r.success).length;
+              const totalNonStable = results.filter(r => !STABLECOINS.has(r.pos?.asset?.toUpperCase())).length;
+              if (totalNonStable > 0) {
+                console.log(`[Charts] Loaded ${successCount}/${totalNonStable} charts on initial load`);
+              }
             } catch (e) {
               // If price history fetch fails, continue without it
-              console.warn('Failed to fetch price history:', e);
+              console.warn('[Charts] Failed to fetch price history:', e);
+            }
+            
+            // Retry failed chart loads in background (don't block rendering)
+            if (failedPositions.length > 0 && providers.pyth.get24hPriceHistory) {
+              setTimeout(async () => {
+                try {
+                  console.log(`[Charts] Retrying ${failedPositions.length} failed chart loads...`);
+                  const pythFeedMap = await providers.pyth.getPriceFeeds(8000);
+                  const retryPromises = failedPositions.map(async (pos) => {
+                    const feedId = pythFeedMap[pos.asset];
+                    if (feedId) {
+                      try {
+                        const history = await providers.pyth.get24hPriceHistory(feedId, 8000);
+                        if (history.length > 0) {
+                          pos.priceHistory = history;
+                          return true;
+                        }
+                      } catch (e) {
+                        // Silent fail on retry
+                      }
+                    }
+                    return false;
+                  });
+                  const retryResults = await Promise.all(retryPromises);
+                  const retrySuccessCount = retryResults.filter(r => r).length;
+                  if (retrySuccessCount > 0) {
+                    console.log(`[Charts] Retry recovered ${retrySuccessCount}/${failedPositions.length} charts`);
+                    // Re-render to show the newly loaded charts
+                    rerenderPositions();
+                  }
+                } catch (e) {
+                  console.warn('[Charts] Retry failed:', e);
+                }
+              }, 2000); // Wait 2 seconds before retry
             }
             
             // Cache for re-rendering
@@ -870,7 +923,11 @@ async function renderDemoSummary() {
               // Regular position: use full value
               return sum + (p.value || 0);
             }, 0);
-            const totalPnL = sorted.reduce((sum, p) => sum + (p.pnl || 0), 0);
+            // Only count PnL from non-leveraged positions (leveraged PnL is already in totalValue)
+            const totalPnL = sorted.reduce((sum, p) => {
+              if (p.isLeveraged) return sum; // Skip leveraged positions to avoid double-counting
+              return sum + (p.pnl || 0);
+            }, 0);
             
             // Calculate PnL percentage: (PnL / cost basis) * 100
             // Cost basis = current value - PnL
@@ -1145,7 +1202,11 @@ function setupControls() {
         }
         return sum + (p.value || 0);
       }, 0);
-      const totalPnL = filtered.reduce((sum, p) => sum + (p.pnl || 0), 0);
+      // Only count PnL from non-leveraged positions (leveraged PnL is already in totalValue)
+      const totalPnL = filtered.reduce((sum, p) => {
+        if (p.isLeveraged) return sum; // Skip leveraged positions to avoid double-counting
+        return sum + (p.pnl || 0);
+      }, 0);
       const costBasis = totalValue - totalPnL;
       const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
       const summaryEl = document.getElementById('newSummary');
@@ -3197,19 +3258,26 @@ window.addEventListener('DOMContentLoaded', async () => {
                   const feedId = pythFeedMap[pos.asset];
                   if (feedId && providers.pyth.get24hPriceHistory) {
                     try {
-                      const history = await providers.pyth.get24hPriceHistory(feedId, 3000);
+                      // Increased timeout for better reliability during price updates
+                      const history = await providers.pyth.get24hPriceHistory(feedId, 6000);
                       if (history.length > 0) {
                         pos.priceHistory = history;
+                        return true;
                       }
                     } catch (e) {
                       // Keep existing history on error
+                      return false;
                     }
                   }
+                  return false;
                 });
-                await Promise.all(historyUpdates);
+                const results = await Promise.all(historyUpdates);
+                const successCount = results.filter(r => r).length;
                 
-                // Re-render after history updates
-                rerenderPositions();
+                // Only re-render if at least one chart was updated
+                if (successCount > 0) {
+                  rerenderPositions();
+                }
               } catch (e) {
                 // Silently fail history updates
               }
@@ -3227,7 +3295,11 @@ window.addEventListener('DOMContentLoaded', async () => {
             }
             return sum + (p.value || 0);
           }, 0);
-          const totalPnL = cachedPositions.reduce((sum, p) => sum + (p.pnl || 0), 0);
+          // Only count PnL from non-leveraged positions (leveraged PnL is already in totalValue)
+          const totalPnL = cachedPositions.reduce((sum, p) => {
+            if (p.isLeveraged) return sum; // Skip leveraged positions to avoid double-counting
+            return sum + (p.pnl || 0);
+          }, 0);
           const costBasis = totalValue - totalPnL;
           const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
           cachedSummaryData = { totalValue, totalPnL, totalPnLPercent };

@@ -84,15 +84,24 @@ export async function fetchPrices(feedIds, pythProvider, includePriceHistory = f
       const historyPromises = results.map(async (item) => {
         if (!isStablecoin(item.symbol)) {
           try {
-            const history = await pythProvider.get24hPriceHistory(item.feedId, 3000);
+            // Increased timeout from 3000ms to 6000ms for better reliability
+            const history = await pythProvider.get24hPriceHistory(item.feedId, 6000);
             item.priceHistory = history.length > 0 ? history : null;
+            return history.length > 0;
           } catch (e) {
-            console.warn(`Failed to fetch price history for ${item.symbol}:`, e);
+            console.warn(`[Watchlist] Failed to fetch price history for ${item.symbol}:`, e);
             item.priceHistory = null;
+            return false;
           }
         }
+        return true;
       });
-      await Promise.all(historyPromises);
+      const historyResults = await Promise.all(historyPromises);
+      const successCount = historyResults.filter(r => r).length;
+      const totalNonStable = results.filter(item => !isStablecoin(item.symbol)).length;
+      if (totalNonStable > 0) {
+        console.log(`[Watchlist Charts] Loaded ${successCount}/${totalNonStable} charts`);
+      }
     }
     
     return results;

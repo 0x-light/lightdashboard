@@ -73,14 +73,16 @@ export async function get24hPriceHistory(feedId, timeoutMs = 10000) {
   }
   
   // Fetch all prices in parallel for better performance
+  // Increased individual timeout from 2000ms to 5000ms to handle slow networks
   const fetchPromises = timestamps.map(async (ts) => {
     try {
       const url = `${HERMES}/updates/price/${ts}?ids[]=${normalizedId}&parsed=true`;
-      const data = await HttpClient.getJson(url, { timeoutMs: 2000 }).catch(() => null);
+      // Increased timeout and added retry logic for better reliability
+      const data = await HttpClient.getJson(url, { timeoutMs: 5000, retries: 1 }).catch(() => null);
       const parsed = data?.parsed?.[0];
       if (parsed) {
         const price = parseFloat(parsed?.price?.price) * Math.pow(10, parsed?.price?.expo || 0);
-        if (Number.isFinite(price)) {
+        if (Number.isFinite(price) && price > 0) {
           return { timestamp: ts, price };
         }
       }
@@ -92,6 +94,12 @@ export async function get24hPriceHistory(feedId, timeoutMs = 10000) {
   
   const results = await Promise.all(fetchPromises);
   const priceData = results.filter(r => r !== null);
+  
+  // Only return data if we have at least 4 valid data points (33% success rate)
+  // This ensures charts are only shown when we have enough data for a meaningful visualization
+  if (priceData.length < 4) {
+    return [];
+  }
   
   return priceData;
 }
