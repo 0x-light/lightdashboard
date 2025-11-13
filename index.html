@@ -27,13 +27,13 @@
     <meta name="apple-mobile-web-app-title" content="Viewport">
     
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json?v=2.3.0">
+    <link rel="manifest" href="/manifest.json?v=2.3.1">
     
     <!-- Cache busting: update version number on each deployment -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="./styles.css?v=2.3.0">
+    <link rel="stylesheet" href="./styles.css?v=2.3.1">
   </head>
   <body>
     <!-- Rain/Snow Canvas -->
@@ -506,21 +506,21 @@
       </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.3.0" defer></script>
-    <script type="module" src="./app.js?v=2.3.0" defer></script>
+    <script type="module" src="./modules/app-init.js?v=2.3.1" defer></script>
+    <script type="module" src="./app.js?v=2.3.1" defer></script>
     
     <!-- Service Worker Registration - ensures users always get latest version -->
     <script defer>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
-            .then((registration) => {
-              console.log('[SW] Registered:', registration.scope);
+            .then(() => {
+              // SW registered
             })
             .catch((error) => {
               console.warn('[SW] Registration failed:', error);
             });
-        });
+ ucle        });
       }
     </script>
   </body>

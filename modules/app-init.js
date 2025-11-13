@@ -46,14 +46,6 @@ window.AppModules.core.themes = Themes;
 window.AppModules.features = window.AppModules.features || {};
 window.AppModules.features.rain = Rain;
 
-// Non-blocking log to confirm availability during development
-try {
-  if (Http.HttpClient && Http.HttpClient.isProductionHost) {
-    const env = Http.HttpClient.isProductionHost() ? 'prod' : 'dev';
-    console.debug(`[modules] loaded (env=${env})`);
-  }
-} catch (_) {
-  // ignore
-}
+// Modules loaded
 
 

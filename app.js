@@ -52,6 +52,9 @@ function filterPositions(positions, options = {}) {
   } = options;
   
   return positions.filter(p => {
+    // Always hide the synthetic account equity positions (HL and Lighter)
+    if (p.isHlAccountEquity || p.isLighterAccountEquity) return false;
+    
     // Check hidden assets
     if (hideHidden) {
       const key = `${p.asset}_${p.exchange}`;
@@ -69,18 +72,64 @@ function filterPositions(positions, options = {}) {
 }
 
 // Calculate portfolio totals (value and PnL)
+// SUPER SIMPLE: Just sum the dollar values from each source
+// - Hyperliquid total equity (perps + spot)
+// - Lighter total equity
+// - Onchain wallet balances
 function calculatePortfolioTotals(positions) {
-  const totalValue = positions.reduce((sum, p) => {
-    if (p.isLeveraged && p.marginUsed !== undefined) {
-      return sum + p.marginUsed + (p.pnl || 0);
-    }
-    return sum + (p.value || 0);
-  }, 0);
+  let totalValue = 0;
+  let totalPnL = 0;
+  const breakdown = []; // For debugging
   
-  const totalPnL = positions.reduce((sum, p) => {
-    if (p.isLeveraged) return sum; // Skip leveraged to avoid double-counting
-    return sum + (p.pnl || 0);
-  }, 0);
+  // Check for account equity positions (Hyperliquid and Lighter)
+  const hlEquity = positions.find(p => p.isHlAccountEquity);
+  const lighterEquity = positions.find(p => p.isLighterAccountEquity);
+  
+  let hlValue = 0;
+  let lighterValue = 0;
+  let walletValue = 0;
+  
+  // Add Hyperliquid total equity
+  if (hlEquity) {
+    hlValue = (hlEquity.value || 0);
+    totalValue += hlValue;
+    totalPnL += (hlEquity.pnl || 0);
+    breakdown.push(`Hyperliquid Equity: $${hlEquity.value?.toFixed(2)}`);
+  }
+  
+  // Add Lighter total equity
+  if (lighterEquity) {
+    lighterValue = (lighterEquity.value || 0);
+    totalValue += lighterValue;
+    totalPnL += (lighterEquity.pnl || 0);
+    breakdown.push(`Lighter Equity: $${lighterEquity.value?.toFixed(2)}`);
+  }
+  
+  // Add all wallet balances (skip synthetic equity positions and individual HL/Lighter positions)
+  let walletCount = 0;
+  for (const p of positions) {
+    // Skip the synthetic equity positions
+    if (p.isHlAccountEquity || p.isLighterAccountEquity) continue;
+    
+    // Skip individual Hyperliquid/Lighter positions (already counted in equity)
+    if (p.exchange === 'Hyperliquid' || p.exchange === 'Hyperliquid Spot' || p.exchange === 'Lighter') continue;
+    
+    // Add wallet balance
+    const value = p.value || 0;
+    if (value > 0) {
+      walletValue += value;
+      totalValue += value;
+      walletCount++;
+      breakdown.push(`${p.asset} (${p.exchange}): $${value.toFixed(2)}`);
+    }
+    
+    // Add PnL if available
+    if (p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl)) {
+      totalPnL += p.pnl;
+    }
+  }
+  
+  // Portfolio totals calculated
   
   const costBasis = totalValue - totalPnL;
   const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
@@ -131,7 +180,7 @@ window.walletPnLUtils = {
       if (entryPrices[assetKey]) {
         delete entryPrices[assetKey];
         localStorage.setItem('walletAssetEntryPrices', JSON.stringify(entryPrices));
-        console.log(`✓ Reset entry price for ${assetKey}. Refresh to see changes.`);
+        // Entry price reset
         return true;
       } else {
         console.warn(`No entry price found for ${assetKey}`);
@@ -154,7 +203,7 @@ window.walletPnLUtils = {
         amount: entryPrices[assetKey]?.amount || 0
       };
       localStorage.setItem('walletAssetEntryPrices', JSON.stringify(entryPrices));
-      console.log(`✓ Set entry price for ${assetKey} to $${price}. Refresh to see changes.`);
+      // Entry price set
       return true;
     } catch (e) {
       console.error('Failed to set entry price:', e);
@@ -167,7 +216,7 @@ window.walletPnLUtils = {
     if (confirm('Are you sure you want to reset all wallet asset entry prices? This cannot be undone.')) {
       try {
         localStorage.removeItem('walletAssetEntryPrices');
-        console.log('✓ Reset all entry prices. Refresh to recalculate.');
+        // All entry prices reset
         return true;
       } catch (e) {
         console.error('Failed to reset entry prices:', e);
@@ -183,8 +232,7 @@ window.walletPnLUtils = {
       const stored = localStorage.getItem('walletAssetEntryPrices');
       const entryPrices = stored ? JSON.parse(stored) : {};
       const json = JSON.stringify(entryPrices, null, 2);
-      console.log('Entry prices JSON (copy and save):');
-      console.log(json);
+      // Entry prices exported
       return json;
     } catch (e) {
       console.error('Failed to export entry prices:', e);
@@ -197,7 +245,7 @@ window.walletPnLUtils = {
     try {
       const entryPrices = JSON.parse(jsonString);
       localStorage.setItem('walletAssetEntryPrices', JSON.stringify(entryPrices));
-      console.log('✓ Imported entry prices. Refresh to see changes.');
+      // Entry prices imported
       return true;
     } catch (e) {
       console.error('Failed to import entry prices:', e);
@@ -207,13 +255,7 @@ window.walletPnLUtils = {
 };
 
 // Log utility availability on load
-console.log('💡 Wallet PnL utilities available: window.walletPnLUtils');
-console.log('   • viewEntryPrices() - View all tracked entry prices');
-console.log('   • setEntryPrice(assetKey, price) - Manually set entry price');
-console.log('   • resetEntryPrice(assetKey) - Reset specific asset');
-console.log('   • resetAll() - Clear all entry prices');
-console.log('   • export() - Export entry prices as JSON');
-console.log('   • import(json) - Import entry prices from JSON');
+// Wallet PnL utilities available at window.walletPnLUtils
 
 async function runHealthChecks() {
   const parts = [];
@@ -356,9 +398,9 @@ async function renderDemoSummary() {
           // CRITICAL: Only HL + Multi-chain for speed (fastest 2 providers)
           // Fetch Hyperliquid market data once for all wallets
           const [hlMarketData, hlAllMids, hlSpotMeta] = await Promise.all([
-            providers.hyperliquid.fetchMetaAndAssetCtxs(10000),
-            providers.hyperliquid.fetchAllMids(10000),
-            providers.hyperliquid.fetchSpotMeta(10000)
+            providers.hyperliquid.fetchMetaAndAssetCtxs(5000),
+            providers.hyperliquid.fetchAllMids(5000),
+            providers.hyperliquid.fetchSpotMeta(5000)
           ]);
           
           // Build price map from market data
@@ -373,13 +415,45 @@ async function renderDemoSummary() {
             }
           }
           
-          const [hlResults, multichainData] = await Promise.all([
+          const [hlResults, lighterResults, multichainData] = await Promise.all([
             // Hyperliquid
             Promise.all(wallets.map(async (wallet) => {
               try {
                 const hl = providers.hyperliquid;
-                const data = await hl.fetchPositions(wallet, 10000);
+                const data = await hl.fetchPositions(wallet, 5000);
+                
                 const rows = [];
+                
+                // Extract total account equity from Hyperliquid API
+                // Perp equity from marginSummary.accountValue
+                let perpEquity = 0;
+                if (data?.perp?.marginSummary) {
+                  perpEquity = parseFloat(data.perp.marginSummary.accountValue || 0);
+                  // Perp equity calculated
+                }
+                
+                // Spot equity from spot balances
+                // Build spot price map from market data
+                const spotPriceMap = providers.hyperliquid.buildSpotPriceMap(hlAllMids, hlSpotMeta);
+                let spotEquity = 0;
+                if (data?.spot?.balances) {
+                  for (const bal of data.spot.balances) {
+                    const total = parseFloat(bal.total || 0);
+                    if (total > 0) {
+                      const price = parseFloat(spotPriceMap[bal.coin] || 0);
+                      const value = total * price;
+                      spotEquity += value;
+                    }
+                  }
+                  // Spot equity calculated
+                }
+                
+                // Total Hyperliquid equity = perp + spot
+                const hlAccountEquity = perpEquity + spotEquity;
+                // Total equity calculated
+                
+                // Calculate total PnL from all positions
+                let totalHlPnL = 0;
                 if (data?.perp?.assetPositions) {
                   for (const pos of data.perp.assetPositions) {
                     const position = pos.position;
@@ -390,6 +464,8 @@ async function renderDemoSummary() {
                       const leverage = parseFloat(position?.leverage?.value || 10); // Default to 10x if not available
                       const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
                       const pnl = parseFloat(position?.unrealizedPnl || 0);
+                      totalHlPnL += pnl;
+                      
                       // Calculate margin based on ENTRY value to avoid double-counting PnL
                       const entryNotional = Math.abs(szi) * entryPrice;
                       const marginUsed = entryNotional / leverage;
@@ -404,7 +480,8 @@ async function renderDemoSummary() {
                         pnl: pnl,
                         entryPrice: entryPrice,
                         marginUsed: marginUsed, // Track margin for portfolio total calculation
-                        isLeveraged: true
+                        isLeveraged: true,
+                        hlAccountEquity: hlAccountEquity // Store account equity on first position
                       });
                     }
                   }
@@ -426,8 +503,100 @@ async function renderDemoSummary() {
                     }
                   }
                 }
+                
+                // If we have account equity from API, add a synthetic position to track it
+                // This ensures the total portfolio value reflects the true Hyperliquid equity
+                if (hlAccountEquity !== null && hlAccountEquity > 0) {
+                  // Account equity position created
+                  // Add a synthetic position that represents the Hyperliquid account equity
+                  // We'll use this to ensure portfolio total is correct
+                  rows.push({
+                    asset: 'HL_ACCOUNT_EQUITY',
+                    exchange: 'Hyperliquid',
+                    amount: 1,
+                    price: hlAccountEquity,
+                    value: hlAccountEquity,
+                    change24h: null,
+                    pnl: totalHlPnL,
+                    isHlAccountEquity: true, // Mark this as special
+                    isLeveraged: false, // Don't apply leveraged logic to this
+                    walletAddress: wallet // Track which wallet this belongs to
+                  });
+                } else if (hlAccountEquity === 0) {
+                  // Account equity is zero
+                } else {
+                  console.warn('[Hyperliquid] Could not extract account equity from API');
+                }
+                
                 return rows;
               } catch (_) { return []; }
+            })),
+            
+            // Lighter
+            Promise.all(wallets.map(async (wallet) => {
+              try {
+                const lighter = providers.lighter;
+                const data = await lighter.fetchAccountByAddress(wallet, { timeoutMs: 5000 });
+                
+                const rows = [];
+                
+                // Extract total equity from Lighter API
+                // The API returns accounts array with account data
+                let lighterAccountEquity = null;
+                let totalLighterPnL = 0;
+                
+                if (data && data.accounts && Array.isArray(data.accounts) && data.accounts.length > 0) {
+                  // Get the first account (user should only have one account per address)
+                  const account = data.accounts[0];
+                  
+                  // Extract equity - Lighter typically returns equity_usd or total_equity
+                  // Try multiple possible field names
+                  lighterAccountEquity = parseFloat(
+                    account.equity_usd || 
+                    account.total_equity || 
+                    account.equity || 
+                    account.balance_usd ||
+                    account.total_balance ||
+                    0
+                  );
+                  
+                  // Extract PnL if available
+                  totalLighterPnL = parseFloat(
+                    account.unrealized_pnl || 
+                    account.pnl || 
+                    account.total_pnl || 
+                    0
+                  );
+                  
+                  // Lighter account data extracted
+                }
+                
+                // If we have account equity from API, add a synthetic position to track it
+                if (lighterAccountEquity !== null && lighterAccountEquity > 0) {
+                  // Lighter account equity position created
+                  rows.push({
+                    asset: 'LIGHTER_ACCOUNT_EQUITY',
+                    exchange: 'Lighter',
+                    amount: 1,
+                    price: lighterAccountEquity,
+                    value: lighterAccountEquity,
+                    change24h: null,
+                    pnl: totalLighterPnL,
+                    isLighterAccountEquity: true, // Mark this as special
+                    isLeveraged: false,
+                    walletAddress: wallet
+                  });
+                } else if (lighterAccountEquity === 0) {
+                  // Lighter account equity is zero
+                } else {
+                  // No Lighter account found
+                }
+                
+                return rows;
+              } catch (e) { 
+                console.error('[Lighter] Error fetching account:', e);
+                return []; 
+              }
             })),
             
             // Multi-chain balances (Zerion PRIMARY, Alchemy/Helius as fallback)
@@ -451,7 +620,7 @@ async function renderDemoSummary() {
                   const z = providers.zerion;
                   
                   // Fetch positions only
-                  const positionsData = await z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 10000 }).catch(e => {
+                  const positionsData = await z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 5000 }).catch(e => {
                     console.error('[/portfolio] Zerion positions error:', e);
                     return null;
                   });
@@ -524,7 +693,7 @@ async function renderDemoSummary() {
                   const [btcTokens, zcashTokens, cryptoPrices] = await Promise.all([
                     // Bitcoin
                     bitcoinAddrs.length > 0
-                      ? providers.bitcoin.getTokenBalances(bitcoinAddrs, { timeoutMs: 15000 }).catch(e => {
+                      ? providers.bitcoin.getTokenBalances(bitcoinAddrs, { timeoutMs: 5000 }).catch(e => {
                           console.error('[/portfolio] Bitcoin error:', e.message || e);
                           return [];
                         })
@@ -532,14 +701,14 @@ async function renderDemoSummary() {
                     
                     // Zcash
                     zcashAddrs.length > 0
-                      ? providers.zcash.getTokenBalances(zcashAddrs, { timeoutMs: 15000 }).catch(e => {
+                      ? providers.zcash.getTokenBalances(zcashAddrs, { timeoutMs: 5000 }).catch(e => {
                           console.error('[/portfolio] Zcash error:', e.message || e);
                           return [];
                         })
                       : Promise.resolve([]),
                     
                     // Get BTC and ZEC prices from CoinGecko
-                    providers.coingecko.getSimplePrice('bitcoin,zcash', { timeoutMs: 8000, ttlMs: 60000 }).catch(e => {
+                    providers.coingecko.getSimplePrice('bitcoin,zcash', { timeoutMs: 5000, ttlMs: 60000 }).catch(e => {
                       console.error('[/portfolio] CoinGecko price error:', e.message || e);
                       return {};
                     })
@@ -592,7 +761,7 @@ async function renderDemoSummary() {
                 const [alchemyTokens, heliusTokens] = await Promise.all([
                   // Alchemy (EVM chains)
                   alchemyKey && wallets.length > 0 
-                    ? providers.alchemy.getTokenBalances(wallets, alchemyKey, { timeoutMs: 20000 }).catch(e => {
+                    ? providers.alchemy.getTokenBalances(wallets, alchemyKey, { timeoutMs: 8000 }).catch(e => {
                         console.error('[/portfolio] Alchemy error:', e.message || e);
                         return [];
                       })
@@ -600,7 +769,7 @@ async function renderDemoSummary() {
                   
                   // Helius (Solana)
                   heliusKey && solanaAddrs.length > 0
-                    ? providers.helius.getTokenBalances(solanaAddrs, heliusKey, { timeoutMs: 15000 }).catch(e => {
+                    ? providers.helius.getTokenBalances(solanaAddrs, heliusKey, { timeoutMs: 8000 }).catch(e => {
                         console.error('[/portfolio] Helius error:', e.message || e);
                         return [];
                       })
@@ -647,7 +816,10 @@ async function renderDemoSummary() {
             })()
           ]);
           
-          allRows.push(...hlResults.flat(), ...multichainData);
+          const flatHlResults = hlResults.flat();
+          const flatLighterResults = lighterResults.flat();
+          // Data fetched from all sources
+          allRows.push(...flatHlResults, ...flatLighterResults, ...multichainData);
           
           if (allRows.length > 0) {
             // Enrich with prices for HL/Lighter (Zerion already has prices)
@@ -657,9 +829,9 @@ async function renderDemoSummary() {
               try {
                 // Fetch market data from Hyperliquid for all assets (perps + spot)
                 const [marketData, allMids, spotMeta] = await Promise.all([
-                  providers.hyperliquid.fetchMetaAndAssetCtxs(10000),
-                  providers.hyperliquid.fetchAllMids(10000),
-                  providers.hyperliquid.fetchSpotMeta(10000)
+                  providers.hyperliquid.fetchMetaAndAssetCtxs(5000),
+                  providers.hyperliquid.fetchAllMids(5000),
+                  providers.hyperliquid.fetchSpotMeta(5000)
                 ]);
                 
                 const priceMap = {};
@@ -794,7 +966,7 @@ async function renderDemoSummary() {
                 // Save updated entry prices if any were added
                 if (entryPricesUpdated) {
                   saveWalletEntryPrices(walletEntryPrices);
-                  console.log('[Portfolio] Saved entry prices for new wallet assets');
+                  // Entry prices saved
                 }
                 
                 // Log PnL summary
@@ -803,7 +975,7 @@ async function renderDemoSummary() {
                   r.exchange !== 'Hyperliquid' && r.exchange !== 'Lighter'
                 );
                 if (walletAssetsWithPnl.length > 0) {
-                  console.log(`[Portfolio] Tracking PnL for ${walletAssetsWithPnl.length} wallet assets`);
+                  // Wallet PnL tracking active
                 }
               } catch (e) {
                 console.error('[/portfolio] Price enrichment failed:', e);
@@ -872,13 +1044,28 @@ async function renderDemoSummary() {
               }
             }
             
-            // Aggregate duplicate assets (except leveraged positions)
+            // Aggregate duplicate assets (except leveraged positions and special tracking positions)
             const aggregatedRows = [];
             const assetGroups = new Map();
+            const hasHlEquity = allRows.some(r => r.isHlAccountEquity);
             
             for (const row of allRows) {
               // Keep leveraged positions separate - don't aggregate them
               if (row.isLeveraged) {
+                aggregatedRows.push(row);
+                continue;
+              }
+              
+              // Keep special account equity tracking positions separate (hidden from UI)
+              if (row.isHlAccountEquity || row.isLighterAccountEquity) {
+                aggregatedRows.push(row);
+                continue;
+              }
+              
+              // For Hyperliquid positions: keep them for display, but they won't be counted in total
+              // (the account equity already includes them in the portfolio total)
+              if (row.exchange === 'Hyperliquid' || row.exchange === 'Hyperliquid Spot') {
+                // Don't aggregate HL positions with other exchanges to avoid confusion
                 aggregatedRows.push(row);
                 continue;
               }
@@ -935,115 +1122,15 @@ async function renderDemoSummary() {
               }
             }
             
+            // Positions aggregated
+            
             const sorted = aggregatedRows.sort((a, b) => (b.value || 0) - (a.value || 0));
-            
-            // Fetch 24h price history for sparkline charts (skip stablecoins)
-            // Track failed positions for retry
-            const failedPositions = [];
-            try {
-              const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
-              const pythFeedMap = await providers.pyth.getPriceFeeds(8000);
-              const historyPromises = sorted.map(async (pos) => {
-                // Skip stablecoins
-                if (STABLECOINS.has(pos.asset?.toUpperCase())) {
-                  pos.priceHistory = null;
-                  return { success: true, pos };
-                }
-                
-                const feedId = pythFeedMap[pos.asset];
-                if (feedId && providers.pyth.get24hPriceHistory) {
-                  try {
-                    const history = await providers.pyth.get24hPriceHistory(feedId, 5000);
-                    pos.priceHistory = history.length > 0 ? history : null;
-                    return { success: history.length > 0, pos };
-                  } catch (e) {
-                    pos.priceHistory = null;
-                    return { success: false, pos };
-                  }
-                } else {
-                  pos.priceHistory = null;
-                  return { success: false, pos };
-                }
-              });
-              const results = await Promise.all(historyPromises);
-              
-              // Track which positions failed to load charts
-              results.forEach(r => {
-                if (!r.success && r.pos && !STABLECOINS.has(r.pos.asset?.toUpperCase())) {
-                  failedPositions.push(r.pos);
-                }
-              });
-              
-              // Log summary for debugging
-              const successCount = results.filter(r => r.success).length;
-              const totalNonStable = results.filter(r => !STABLECOINS.has(r.pos?.asset?.toUpperCase())).length;
-              if (totalNonStable > 0) {
-                console.log(`[Charts] Loaded ${successCount}/${totalNonStable} charts on initial load`);
-              }
-            } catch (e) {
-              // If price history fetch fails, continue without it
-              console.warn('[Charts] Failed to fetch price history:', e);
-            }
-            
-            // Retry failed chart loads in background (don't block rendering)
-            if (failedPositions.length > 0 && providers.pyth.get24hPriceHistory) {
-              setTimeout(async () => {
-                try {
-                  console.log(`[Charts] Retrying ${failedPositions.length} failed chart loads...`);
-                  const pythFeedMap = await providers.pyth.getPriceFeeds(8000);
-                  const retryPromises = failedPositions.map(async (pos) => {
-                    const feedId = pythFeedMap[pos.asset];
-                    if (feedId) {
-                      try {
-                        const history = await providers.pyth.get24hPriceHistory(feedId, 8000);
-                        if (history.length > 0) {
-                          pos.priceHistory = history;
-                          return true;
-                        }
-                      } catch (e) {
-                        // Silent fail on retry
-                      }
-                    }
-                    return false;
-                  });
-                  const retryResults = await Promise.all(retryPromises);
-                  const retrySuccessCount = retryResults.filter(r => r).length;
-                  if (retrySuccessCount > 0) {
-                    console.log(`[Charts] Retry recovered ${retrySuccessCount}/${failedPositions.length} charts`);
-                    // Re-render to show the newly loaded charts
-                    rerenderPositions();
-                  }
-                } catch (e) {
-                  console.warn('[Charts] Retry failed:', e);
-                }
-              }, 2000); // Wait 2 seconds before retry
-            }
             
             // Cache for re-rendering
             cachedPositions = sorted;
             
             // Calculate total value and PnL from ALL positions (including hidden ones)
-            // For leveraged positions: use margin + PnL (actual equity)
-            // For spot/regular positions: use full value
-            const totalValue = sorted.reduce((sum, p) => {
-              if (p.isLeveraged && p.marginUsed !== undefined) {
-                // Leveraged position: equity = margin + PnL
-                return sum + p.marginUsed + (p.pnl || 0);
-              }
-              // Regular position: use full value
-              return sum + (p.value || 0);
-            }, 0);
-            // Only count PnL from non-leveraged positions (leveraged PnL is already in totalValue)
-            const totalPnL = sorted.reduce((sum, p) => {
-              if (p.isLeveraged) return sum; // Skip leveraged positions to avoid double-counting
-              return sum + (p.pnl || 0);
-            }, 0);
-            
-            // Calculate PnL percentage: (PnL / cost basis) * 100
-            // Cost basis = current value - PnL
-            const costBasis = totalValue - totalPnL;
-            const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
-            
+            const { totalValue, totalPnL, totalPnLPercent } = calculatePortfolioTotals(sorted);
             cachedSummaryData = { totalValue, totalPnL, totalPnLPercent };
             
             // Filter out hidden assets for display
@@ -1056,6 +1143,54 @@ async function renderDemoSummary() {
             });
             
             rendered = true; // Mark as successfully rendered
+            
+            // Load charts in background (non-blocking)
+            (async () => {
+              try {
+                const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
+                const pythFeedMap = await providers.pyth.getPriceFeeds(5000);
+                const historyPromises = sorted.map(async (pos) => {
+                  if (STABLECOINS.has(pos.asset?.toUpperCase())) {
+                    pos.priceHistory = null;
+                    return { success: true, pos };
+                  }
+                  
+                  const feedId = pythFeedMap[pos.asset];
+                  if (feedId && providers.pyth.get24hPriceHistory) {
+                    try {
+                      const history = await providers.pyth.get24hPriceHistory(feedId, 3000);
+                      pos.priceHistory = history.length > 0 ? history : null;
+                      return { success: history.length > 0, pos };
+                    } catch (e) {
+                      pos.priceHistory = null;
+                      return { success: false, pos };
+                    }
+                  } else {
+                    pos.priceHistory = null;
+                    return { success: false, pos };
+                  }
+                });
+                const results = await Promise.all(historyPromises);
+                const successCount = results.filter(r => r.success).length;
+                const totalNonStable = results.filter(r => !STABLECOINS.has(r.pos?.asset?.toUpperCase())).length;
+                if (totalNonStable > 0) {
+                  // Charts loaded in background
+                }
+                // Re-render ONLY positions (don't recalculate portfolio)
+                const positionsBody = document.getElementById('newPositionsBody');
+                const mobileContainer = document.getElementById('newMobilePositionsContainer');
+                const visible = filterPositions(cachedPositions, { hideHidden: true, hideSmall: hideSmallPositions });
+                if (PositionsUI && positionsBody) {
+                  PositionsUI.renderPositions({
+                    positions: visible,
+                    containers: { positionsBody, mobilePositionsContainer: mobileContainer },
+                    options: { amountsVisible: !document.body.classList.contains('amounts-hidden'), hideSmallPositions, editMode: false, settings: { minBalanceThreshold: s.minBalanceThreshold || 100, showExactAmounts: s.showExactAmounts || false, useColoredPnL: s.useColoredPnL ?? true, showPriceChart: s.showPriceChart ?? true } }
+                  });
+                }
+              } catch (e) {
+                console.warn('[Charts] Background chart loading failed:', e);
+              }
+            })();
             
             // Update hero with real portfolio value and PnL (without weather first)
             const heroHtml = HeroUI.composeSummary({
@@ -1222,6 +1357,35 @@ function setupControls() {
   const savedHidden = settings.hiddenAssets || [];
   hiddenAssets = new Set(savedHidden);
   
+  // Cleanup: Remove any manual positions that are in hiddenAssets
+  // (users might think hiding = deleting for manual positions)
+  let needsSave = false;
+  if (settings.cryptoPositions && Array.isArray(settings.cryptoPositions) && settings.cryptoPositions.length > 0) {
+    const originalCount = settings.cryptoPositions.length;
+    settings.cryptoPositions = settings.cryptoPositions.filter(p => {
+      const assetName = p.type === 'custom' ? p.name : p.symbol;
+      const assetKey = `${assetName}_Manual`;
+      const isHidden = hiddenAssets.has(assetKey);
+      if (isHidden) {
+        // Hidden manual position removed
+        hiddenAssets.delete(assetKey); // Also remove from hiddenAssets
+      }
+      return !isHidden;
+    });
+    
+    if (settings.cryptoPositions.length !== originalCount) {
+      needsSave = true;
+      settings.hiddenAssets = Array.from(hiddenAssets);
+    }
+  }
+  
+  // Save if we cleaned up anything
+  if (needsSave) {
+    localStorage.setItem('myDashboardSettings.v1', JSON.stringify(settings));
+    invalidateSettingsCache();
+    // Cleanup completed
+  }
+  
   // Mobile menu
   const mobileMenuBtn = document.getElementById('newMobileMenuBtn');
   const mobileMenu = document.getElementById('newMobileMenu');
@@ -1289,6 +1453,12 @@ function setupControls() {
         threshold: settings.minBalanceThreshold || 100 
       });
       
+      // Debug: log positions with priceChanged flag
+      const changedPositions = filtered.filter(p => p.priceChanged);
+      if (changedPositions.length > 0) {
+        // Positions marked as changed
+      }
+      
       // Pre-compute options object (avoid spreading in hot path)
       const renderOptions = {
         amountsVisible,
@@ -1308,8 +1478,27 @@ function setupControls() {
         options: renderOptions
       });
       
-      // Update hero with filtered totals
-      const { totalValue, totalPnL, totalPnLPercent } = calculatePortfolioTotals(filtered);
+      // Flash updated cells with background color animation
+      setTimeout(() => {
+        const cells = document.querySelectorAll('td[data-flash="true"]');
+        if (cells.length > 0) {
+          // Cells flashed
+        }
+        cells.forEach(cell => {
+          cell.classList.add('cell-flash');
+          // Remove the class after animation completes
+          cell.addEventListener('animationend', () => {
+            cell.classList.remove('cell-flash');
+            cell.removeAttribute('data-flash');
+          }, { once: true });
+        });
+        
+        // Clear priceChanged flags after flashing
+        cachedPositions = cachedPositions.map(pos => ({ ...pos, priceChanged: false }));
+      }, 50);
+      
+      // Update hero with ALL positions (not filtered - need to include hidden equity positions)
+      const { totalValue, totalPnL, totalPnLPercent } = calculatePortfolioTotals(cachedPositions);
       const summaryEl = DOMCache.get('newSummary');
       const HeroUI = window.AppModules?.ui?.hero;
       if (HeroUI && summaryEl) {
@@ -1378,6 +1567,12 @@ function setupControls() {
                     s.cryptoPositions = s.cryptoPositions.filter(p => !(p.type === 'pyth' && p.symbol === asset));
                   }
                   
+                  // Also remove from hiddenAssets if present (so it doesn't linger as hidden)
+                  const assetKey = `${asset}_Manual`;
+                  if (s.hiddenAssets && s.hiddenAssets.includes(assetKey)) {
+                    s.hiddenAssets = s.hiddenAssets.filter(key => key !== assetKey);
+                  }
+                  
                   // Save
                   localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
                   invalidateSettingsCache();
@@ -1388,6 +1583,9 @@ function setupControls() {
                   } else if (manualType === 'pyth') {
                     cachedPositions = cachedPositions.filter(p => !(p.isManual && p.manualType === 'pyth' && p.asset === asset));
                   }
+                  
+                  // Also remove from hiddenAssets set in memory
+                  hiddenAssets.delete(assetKey);
                   
                   // Re-render without page reload
                   rerenderPositions();
@@ -2504,30 +2702,31 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Init loading screen
   initLoadingScreen();
   
-  // Display version from service worker
-  const versionDisplay = document.getElementById('versionDisplay');
-  if (versionDisplay) {
-    // Try to get version from service worker
-    fetch('/sw.js')
-      .then(response => response.text())
-      .then(swCode => {
-        const versionMatch = swCode.match(/CACHE_VERSION\s*=\s*'v([0-9.]+)'/);
-        const timestampMatch = swCode.match(/BUILD_TIMESTAMP\s*=\s*'([^']+)'/);
-        if (versionMatch) {
-          const version = versionMatch[1];
-          const timestamp = timestampMatch ? new Date(timestampMatch[1]).toLocaleString('en-US', { 
-            month: 'short', 
-            day: 'numeric', 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          }) : '';
-          versionDisplay.textContent = `v${version}${timestamp ? ` (${timestamp})` : ''}`;
-        }
-      })
-      .catch(() => {
-        versionDisplay.textContent = 'Version: Unknown';
-      });
-  }
+  // NON-CRITICAL: Display version from service worker (async, non-blocking)
+  setTimeout(() => {
+    const versionDisplay = document.getElementById('versionDisplay');
+    if (versionDisplay) {
+      fetch('/sw.js')
+        .then(response => response.text())
+        .then(swCode => {
+          const versionMatch = swCode.match(/CACHE_VERSION\s*=\s*'v([0-9.]+)'/);
+          const timestampMatch = swCode.match(/BUILD_TIMESTAMP\s*=\s*'([^']+)'/);
+          if (versionMatch) {
+            const version = versionMatch[1];
+            const timestamp = timestampMatch ? new Date(timestampMatch[1]).toLocaleString('en-US', { 
+              month: 'short', 
+              day: 'numeric', 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            }) : '';
+            versionDisplay.textContent = `v${version}${timestamp ? ` (${timestamp})` : ''}`;
+          }
+        })
+        .catch(() => {
+          versionDisplay.textContent = 'Version: Unknown';
+        });
+    }
+  }, 100);
   
   // Init theme
   const Themes = window.AppModules?.core?.themes;
@@ -3084,20 +3283,23 @@ window.addEventListener('DOMContentLoaded', async () => {
       
       updateCount++;
       const doLeveragedRefresh = true; // Refresh leveraged positions every 5 seconds
+      let hasEquityChanges = false; // Track if equity positions changed
       
       // Update positions if they exist
       if (cachedPositions && cachedPositions.length > 0) {
-        // If we have leveraged positions and it's time for refresh, fetch fresh data from Hyperliquid
-        if (doLeveragedRefresh && cachedPositions.some(p => p.isLeveraged)) {
-          console.log('[Update] Refreshing leveraged positions from API');
+        // If we have account equity positions, refresh them from APIs
+        if (doLeveragedRefresh && cachedPositions.some(p => p.isLeveraged || p.isHlAccountEquity || p.isLighterAccountEquity)) {
+          // Refreshing account equity
           const settings = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
           const wallets = (settings.walletAddresses || '').split(',').map(w => w.trim()).filter(Boolean);
           
           if (wallets.length > 0) {
             try {
               // Fetch Hyperliquid market data for current prices
-              const [hlMarketData] = await Promise.all([
-                providers.hyperliquid.fetchMetaAndAssetCtxs(8000)
+              const [hlMarketData, hlAllMids, hlSpotMeta] = await Promise.all([
+                providers.hyperliquid.fetchMetaAndAssetCtxs(8000),
+                providers.hyperliquid.fetchAllMids(8000),
+                providers.hyperliquid.fetchSpotMeta(8000)
               ]);
               
               // Build price map from market data
@@ -3112,126 +3314,171 @@ window.addEventListener('DOMContentLoaded', async () => {
                 }
               }
               
-              // Fetch fresh Hyperliquid positions
-              const hlResults = await Promise.all(wallets.map(async (wallet) => {
-                try {
-                  const hl = providers.hyperliquid;
-                  const data = await hl.fetchPositions(wallet, 8000);
-                  const rows = [];
-                  if (data?.perp?.assetPositions) {
-                    for (const pos of data.perp.assetPositions) {
-                      const position = pos.position;
-                      const szi = parseFloat(position?.szi || 0);
-                      if (Math.abs(szi) > 0) {
-                        const entryPrice = parseFloat(position?.entryPx || 0);
-                        const currentPrice = hlPriceMap[position.coin] || entryPrice; // Use current market price
-                        const leverage = parseFloat(position?.leverage?.value || 10);
-                        const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
-                        const pnl = parseFloat(position?.unrealizedPnl || 0);
-                        const entryNotional = Math.abs(szi) * entryPrice;
-                        const marginUsed = entryNotional / leverage;
-                        
-                        rows.push({
-                          asset: position.coin,
-                          exchange: 'Hyperliquid',
-                          amount: szi,
-                          price: currentPrice, // Use current market price instead of entry price
-                          value: notionalValue,
-                          pnl: pnl,
-                          entryPrice: entryPrice,
-                          marginUsed: marginUsed,
-                          isLeveraged: true
-                        });
+              // Fetch fresh Hyperliquid and Lighter positions
+              const [hlResults, lighterResults] = await Promise.all([
+                // Hyperliquid
+                Promise.all(wallets.map(async (wallet) => {
+                  try {
+                    const hl = providers.hyperliquid;
+                    const data = await hl.fetchPositions(wallet, 8000);
+                    const rows = [];
+                    
+                    // Extract account equity (perp + spot)
+                    let perpEquity = 0;
+                    if (data?.perp?.marginSummary) {
+                      perpEquity = parseFloat(data.perp.marginSummary.accountValue || 0);
+                    }
+                    
+                    // Spot equity from spot balances
+                    const spotPriceMap = providers.hyperliquid.buildSpotPriceMap(hlAllMids, hlSpotMeta);
+                    let spotEquity = 0;
+                    if (data?.spot?.balances) {
+                      for (const bal of data.spot.balances) {
+                        const total = parseFloat(bal.total || 0);
+                        if (total > 0) {
+                          const price = parseFloat(spotPriceMap[bal.coin] || 0);
+                          spotEquity += total * price;
+                        }
                       }
                     }
+                    
+                    const hlAccountEquity = perpEquity + spotEquity;
+                    
+                    // Calculate total PnL from all positions
+                    let totalHlPnL = 0;
+                    if (data?.perp?.assetPositions) {
+                      for (const pos of data.perp.assetPositions) {
+                        const position = pos.position;
+                        const szi = parseFloat(position?.szi || 0);
+                        if (Math.abs(szi) > 0) {
+                          const entryPrice = parseFloat(position?.entryPx || 0);
+                          const currentPrice = hlPriceMap[position.coin] || entryPrice; // Use current market price
+                          const leverage = parseFloat(position?.leverage?.value || 10);
+                          const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
+                          const pnl = parseFloat(position?.unrealizedPnl || 0);
+                          totalHlPnL += pnl;
+                          const entryNotional = Math.abs(szi) * entryPrice;
+                          const marginUsed = entryNotional / leverage;
+                          
+                          rows.push({
+                            asset: position.coin,
+                            exchange: 'Hyperliquid',
+                            amount: szi,
+                            price: currentPrice, // Use current market price instead of entry price
+                            value: notionalValue,
+                            pnl: pnl,
+                            entryPrice: entryPrice,
+                            marginUsed: marginUsed,
+                            isLeveraged: true
+                          });
+                        }
+                      }
+                    }
+                    
+                    // Add synthetic account equity position if available
+                    if (hlAccountEquity !== null && hlAccountEquity > 0) {
+                      rows.push({
+                        asset: 'HL_ACCOUNT_EQUITY',
+                        exchange: 'Hyperliquid',
+                        amount: 1,
+                        price: hlAccountEquity,
+                        value: hlAccountEquity,
+                        change24h: null,
+                        pnl: totalHlPnL,
+                        isHlAccountEquity: true,
+                        isLeveraged: false
+                      });
+                    }
+                    
+                    return rows;
+                  } catch (e) {
+                    console.error('[Update] Failed to fetch HL positions:', e);
+                    return [];
                   }
-                  return rows;
-                } catch (e) {
-                  console.error('[Update] Failed to fetch HL positions:', e);
-                  return [];
-                }
-              }));
+                })),
+                
+                // Lighter
+                Promise.all(wallets.map(async (wallet) => {
+                  try {
+                    const lighter = providers.lighter;
+                    const data = await lighter.fetchAccountByAddress(wallet, { timeoutMs: 8000 });
+                    const rows = [];
+                    
+                    let lighterAccountEquity = null;
+                    let totalLighterPnL = 0;
+                    
+                    if (data && data.accounts && Array.isArray(data.accounts) && data.accounts.length > 0) {
+                      const account = data.accounts[0];
+                      lighterAccountEquity = parseFloat(
+                        account.equity_usd || 
+                        account.total_equity || 
+                        account.equity || 
+                        account.balance_usd ||
+                        account.total_balance ||
+                        0
+                      );
+                      totalLighterPnL = parseFloat(
+                        account.unrealized_pnl || 
+                        account.pnl || 
+                        account.total_pnl || 
+                        0
+                      );
+                    }
+                    
+                    if (lighterAccountEquity !== null && lighterAccountEquity > 0) {
+                      rows.push({
+                        asset: 'LIGHTER_ACCOUNT_EQUITY',
+                        exchange: 'Lighter',
+                        amount: 1,
+                        price: lighterAccountEquity,
+                        value: lighterAccountEquity,
+                        change24h: null,
+                        pnl: totalLighterPnL,
+                        isLighterAccountEquity: true,
+                        isLeveraged: false
+                      });
+                    }
+                    
+                    return rows;
+                  } catch (e) {
+                    console.error('[Update] Failed to fetch Lighter account:', e);
+                    return [];
+                  }
+                }))
+              ]);
               
-              // Flatten and create a map of fresh leveraged positions by asset
-              const freshLeveragedPositions = hlResults.flat();
-              const leveragedMap = new Map();
-              for (const pos of freshLeveragedPositions) {
+              // Flatten and create a map of fresh equity positions by asset
+              const freshEquityPositions = [...hlResults.flat(), ...lighterResults.flat()];
+              const equityMap = new Map();
+              for (const pos of freshEquityPositions) {
                 const key = `${pos.asset}_${pos.exchange}`;
-                leveragedMap.set(key, pos);
+                equityMap.set(key, pos);
               }
               
-              // Update cachedPositions with fresh leveraged data
-              let hasLeveragedChanges = false;
+              // Update cachedPositions with fresh equity data
+              hasEquityChanges = false;
               cachedPositions = cachedPositions.map(pos => {
-                if (pos.isLeveraged) {
+                if (pos.isLeveraged || pos.isHlAccountEquity || pos.isLighterAccountEquity) {
                   const key = `${pos.asset}_${pos.exchange}`;
-                  const freshPos = leveragedMap.get(key);
+                  const freshPos = equityMap.get(key);
                   if (freshPos) {
                     // Check if PnL or value changed
                     const pnlChanged = Math.abs((freshPos.pnl || 0) - (pos.pnl || 0)) > 0.01;
                     const valueChanged = Math.abs((freshPos.value || 0) - (pos.value || 0)) > 0.01;
                     if (pnlChanged || valueChanged) {
-                      hasLeveragedChanges = true;
-                      return { ...freshPos, priceChanged: true };
+                      hasEquityChanges = true;
+                      // Preserve priceHistory and other chart-related data from existing position
+                      return { ...freshPos, priceChanged: true, priceHistory: pos.priceHistory };
                     }
                   }
                 }
                 return pos;
               });
               
-              if (hasLeveragedChanges) {
-                // Re-render positions and update hero
-                rerenderPositions();
-                
-                // Update hero totals
-                const totalValue = cachedPositions.reduce((sum, p) => {
-                  if (p.isLeveraged && p.marginUsed !== undefined) {
-                    return sum + p.marginUsed + (p.pnl || 0);
-                  }
-                  return sum + (p.value || 0);
-                }, 0);
-                const totalPnL = cachedPositions.reduce((sum, p) => {
-                  if (p.isLeveraged) return sum;
-                  return sum + (p.pnl || 0);
-                }, 0);
-                const costBasis = totalValue - totalPnL;
-                const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
-                cachedSummaryData = { totalValue, totalPnL, totalPnLPercent };
-                
-                const summaryEl = document.getElementById('newSummary');
-                const HeroUI = window.AppModules?.ui?.hero;
-                const Settings = window.AppModules?.core?.settings;
-                const s = getSettings();
-                const amountsVisible = !document.body.classList.contains('amounts-hidden');
-                
-                if (summaryEl && HeroUI) {
-                  const heroHtml = HeroUI.composeSummary({
-                    portfolioValue: totalValue,
-                    amountsVisible,
-                    heroPnLMode: 'total',
-                    totalPnL,
-                    totalPnLPercent,
-                    totalDailyChange: 0,
-                    totalDailyChangePercent: 0,
-                    useColoredPnL: s.useColoredPnL ?? true,
-                    highlightsHtml: [],
-                    weather: cachedWeather // Preserve weather data during updates
-                  });
-                  summaryEl.innerHTML = heroHtml;
-                }
-                
-                // Flash updated cells with background color animation
-                setTimeout(() => {
-                  const cells = document.querySelectorAll('td[data-flash="true"]');
-                  cells.forEach(cell => {
-                    cell.classList.add('cell-flash');
-                    // Remove the class after animation completes
-                    cell.addEventListener('animationend', () => {
-                      cell.classList.remove('cell-flash');
-                      cell.removeAttribute('data-flash');
-                    }, { once: true });
-                  });
-                }, 50);
+              // Don't recalculate portfolio here - will do it after ALL updates are done
+              if (hasEquityChanges) {
+                const changedEquity = cachedPositions.filter(p => (p.isLeveraged || p.isHlAccountEquity || p.isLighterAccountEquity) && p.priceChanged);
+                console.log('[Update] Equity positions updated:', changedEquity.map(p => `${p.asset} ($${p.value?.toFixed(2)})`));
               }
             } catch (e) {
               console.error('[Update] Failed to refresh leveraged positions:', e);
@@ -3301,8 +3548,14 @@ window.addEventListener('DOMContentLoaded', async () => {
           
           // Skip leveraged positions - they are refreshed from API periodically
           // Leveraged PnL includes funding payments which can't be calculated from price alone
+          // BUT preserve their priceChanged flag if it was set by equity update
           if (pos.isLeveraged) {
-            return { ...pos, priceChanged: false };
+            return pos; // Keep as-is, including priceChanged flag from equity update
+          }
+          
+          // Skip synthetic equity positions
+          if (pos.isHlAccountEquity || pos.isLighterAccountEquity) {
+            return pos; // Keep as-is, including priceChanged flag from equity update
           }
           
           // Stablecoins default to $1 if no price found
@@ -3334,7 +3587,15 @@ window.addEventListener('DOMContentLoaded', async () => {
           return { ...pos, priceChanged: false };
         });
         
-        if (hasChanges) {
+        // Check if ANY positions have priceChanged flag set (from equity or wallet updates)
+        const hasAnyPriceChanges = updatedPositions.some(p => p.priceChanged);
+        let anyChanges = hasEquityChanges || hasChanges || hasAnyPriceChanges;
+        
+        // Always update cachedPositions to preserve priceChanged flags
+        if (hasChanges || hasEquityChanges) {
+          if (hasChanges) {
+            console.log('[Update] Wallet prices updated');
+          }
           cachedPositions = updatedPositions;
           
           // Update price history for changed positions (skip stablecoins)
@@ -3366,9 +3627,35 @@ window.addEventListener('DOMContentLoaded', async () => {
                 const results = await Promise.all(historyUpdates);
                 const successCount = results.filter(r => r).length;
                 
-                // Only re-render if at least one chart was updated
+                // Re-render positions to show updated charts (don't recalculate portfolio)
                 if (successCount > 0) {
-                  rerenderPositions();
+                  const positionsBody = document.getElementById('newPositionsBody');
+                  const mobileContainer = document.getElementById('newMobilePositionsContainer');
+                  const PositionsUI = window.AppModules?.ui?.positions;
+                  const Settings = window.AppModules?.core?.settings;
+                  const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+                  if (PositionsUI && positionsBody && cachedPositions.length > 0) {
+                    const filtered = filterPositions(cachedPositions, { 
+                      hideHidden: true, 
+                      hideSmall: hideSmallPositions, 
+                      threshold: s.minBalanceThreshold || 100 
+                    });
+                    PositionsUI.renderPositions({
+                      positions: filtered,
+                      containers: { positionsBody, mobilePositionsContainer: mobileContainer },
+                      options: { 
+                        amountsVisible: !document.body.classList.contains('amounts-hidden'), 
+                        hideSmallPositions: false, 
+                        editMode: false, 
+                        settings: { 
+                          minBalanceThreshold: s.minBalanceThreshold || 100, 
+                          showExactAmounts: s.showExactAmounts || false, 
+                          useColoredPnL: s.useColoredPnL ?? true, 
+                          showPriceChart: s.showPriceChart ?? true 
+                        } 
+                      }
+                    });
+                  }
                 }
               } catch (e) {
                 // Silently fail history updates
@@ -3376,59 +3663,13 @@ window.addEventListener('DOMContentLoaded', async () => {
             })();
           }
           
-          // Re-render positions
+        }
+        
+        // Recalculate portfolio ONCE if ANY changes happened (equity or wallet prices)
+        if (anyChanges) {
+          console.log('[Update] Recalculating portfolio after all updates...');
+          // Re-render positions and hero together
           rerenderPositions();
-          
-          // Update hero
-          // For leveraged positions: use margin + PnL (actual equity)
-          const totalValue = cachedPositions.reduce((sum, p) => {
-            if (p.isLeveraged && p.marginUsed !== undefined) {
-              return sum + p.marginUsed + (p.pnl || 0);
-            }
-            return sum + (p.value || 0);
-          }, 0);
-          // Only count PnL from non-leveraged positions (leveraged PnL is already in totalValue)
-          const totalPnL = cachedPositions.reduce((sum, p) => {
-            if (p.isLeveraged) return sum; // Skip leveraged positions to avoid double-counting
-            return sum + (p.pnl || 0);
-          }, 0);
-          const costBasis = totalValue - totalPnL;
-          const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
-          cachedSummaryData = { totalValue, totalPnL, totalPnLPercent };
-          
-          const summaryEl = document.getElementById('newSummary');
-          const HeroUI = window.AppModules?.ui?.hero;
-          const Settings = window.AppModules?.core?.settings;
-          const s = getSettings();
-          
-          if (summaryEl && HeroUI) {
-            const heroHtml = HeroUI.composeSummary({
-              portfolioValue: totalValue,
-              amountsVisible,
-              heroPnLMode: 'total',
-              totalPnL,
-              totalPnLPercent,
-              totalDailyChange: 0,
-              totalDailyChangePercent: 0,
-              useColoredPnL: s.useColoredPnL ?? true,
-              highlightsHtml: [],
-              weather: cachedWeather // Use cached weather to preserve it
-            });
-            summaryEl.innerHTML = heroHtml;
-          }
-          
-          // Flash updated cells with background color animation
-          setTimeout(() => {
-            const cells = document.querySelectorAll('td[data-flash="true"]');
-            cells.forEach(cell => {
-              cell.classList.add('cell-flash');
-              // Remove the class after animation completes
-              cell.addEventListener('animationend', () => {
-                cell.classList.remove('cell-flash');
-                cell.removeAttribute('data-flash');
-              }, { once: true });
-            });
-          }, 50);
         }
       }
       
@@ -3472,7 +3713,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     DOMCache.clear(); // Clear DOM element cache
   });
   
-  // Cleanup on visibility change (pause when tab hidden)
+  // Resume updates when tab becomes visible again
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       // Tab hidden - pause updates to save resources
