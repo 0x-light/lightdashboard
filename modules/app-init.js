@@ -1,5 +1,6 @@
 // ESM bootstrap: expose modules on window without altering existing app flow
 import * as Portfolio from './domain/portfolio.js';
+import * as IncrementalPortfolio from './domain/incremental-portfolio.js';
 import * as Http from './http/client.js';
 import * as HL from './data/providers/hyperliquid.js';
 import * as CG from './data/providers/coingecko.js';
@@ -23,6 +24,7 @@ if (!window.AppModules) {
 }
 
 window.AppModules.portfolio = Portfolio;
+window.AppModules.incrementalPortfolio = IncrementalPortfolio;
 window.AppModules.http = Http;
 window.AppModules.data = window.AppModules.data || {};
 window.AppModules.data.providers = window.AppModules.data.providers || {};

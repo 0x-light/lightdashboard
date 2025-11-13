@@ -26,7 +26,7 @@ export async function getTokenBalances(wallets, apiKey, { timeoutMs = 15000 } = 
   
   for (const wallet of solanaWallets) {
     try {
-      const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${apiKey}`, {
+      const response = await HttpClient.fetchWithTimeout(`https://mainnet.helius-rpc.com/?api-key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -39,7 +39,7 @@ export async function getTokenBalances(wallets, apiKey, { timeoutMs = 15000 } = 
           },
           id: 1
         })
-      });
+      }, timeoutMs);
       
       if (!response.ok) {
         console.warn(`[Helius] Request failed for ${wallet}:`, response.status);
@@ -101,7 +101,7 @@ export async function getNFTs(wallets, apiKey, { timeoutMs = 15000 } = {}) {
   
   for (const wallet of solanaWallets) {
     try {
-      const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${apiKey}`, {
+      const response = await HttpClient.fetchWithTimeout(`https://mainnet.helius-rpc.com/?api-key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -114,7 +114,7 @@ export async function getNFTs(wallets, apiKey, { timeoutMs = 15000 } = {}) {
           },
           id: 1
         })
-      });
+      }, timeoutMs);
       
       if (!response.ok) {
         console.warn(`[Helius] Request failed for ${wallet}:`, response.status);

@@ -1200,7 +1200,6 @@ textarea::-moz-placeholder {
   display: flex;
   gap: 8px;
   align-items: center;
-  justify-content: space-between;
   margin-top: 16px;
 }
 
@@ -1220,9 +1219,16 @@ textarea::-moz-placeholder {
 
 .calvin-container img,
 #newComic img {
+  max-width: 100%;
   max-height: 500px;
   height: auto;
   border: 1px solid var(--border);
+}
+
+/* Far Side comics - full width on all screen sizes */
+#newComic img[data-comic-type="farside"] {
+  max-height: none;
+  width: 100%;
 }
 
 .calvin-container.fading,
@@ -1509,6 +1515,11 @@ body.mobile-menu-open {
     display: flex;
     justify-content: space-between;
   }
+
+  .calvin-container img,
+  #newComic img {
+    max-width: unset;
+  }
   
   /* Comic controls on mobile */
   .calvin-controls {
@@ -1542,10 +1553,16 @@ body.mobile-menu-open {
     padding-right: 20px;
   }
   
-  /* Calvin & Hobbes and Peanuts comics on mobile */
-  #newComic img {
+  /* Calvin & Hobbes and Peanuts comics on mobile - exclude Far Side */
+  #newComic img:not([data-comic-type="farside"]) {
     min-height: 200px !important;
     max-height: 200px !important;
+  }
+  
+  /* Far Side comics on mobile - full width */
+  #newComic img[data-comic-type="farside"] {
+    width: 100%;
+    height: auto;
   }
   
   /* Full bleed settings dialog on mobile */

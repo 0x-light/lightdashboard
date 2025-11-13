@@ -15,11 +15,11 @@ function isEVMAddress(address) {
   return /^0x[a-fA-F0-9]{40}$/.test(address);
 }
 
-async function fetchNativeBalance(wallet, network, apiKey) {
+async function fetchNativeBalance(wallet, network, apiKey, timeoutMs = 15000) {
   const url = `https://${network.id}.g.alchemy.com/v2/${apiKey}`;
   
   try {
-    const response = await fetch(url, {
+    const response = await HttpClient.fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -28,7 +28,7 @@ async function fetchNativeBalance(wallet, network, apiKey) {
         params: [wallet, 'latest'],
         id: 1
       })
-    });
+    }, timeoutMs);
     
     if (!response.ok) return null;
     
@@ -57,13 +57,13 @@ async function fetchNativeBalance(wallet, network, apiKey) {
   return null;
 }
 
-async function fetchERC20Balances(wallet, network, apiKey) {
+async function fetchERC20Balances(wallet, network, apiKey, timeoutMs = 20000) {
   const url = `https://${network.id}.g.alchemy.com/v2/${apiKey}`;
   const tokens = [];
   
   try {
     // Get token balances
-    const response = await fetch(url, {
+    const response = await HttpClient.fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -72,7 +72,7 @@ async function fetchERC20Balances(wallet, network, apiKey) {
         params: [wallet, 'erc20'],
         id: 1
       })
-    });
+    }, timeoutMs);
     
     if (!response.ok) return tokens;
     
@@ -90,7 +90,7 @@ async function fetchERC20Balances(wallet, network, apiKey) {
             const balance = parseInt(token.tokenBalance, 16);
             
             // Get token metadata
-            const metaResp = await fetch(url, {
+            const metaResp = await HttpClient.fetchWithTimeout(url, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -99,7 +99,7 @@ async function fetchERC20Balances(wallet, network, apiKey) {
                 params: [token.contractAddress],
                 id: 1
               })
-            });
+            }, timeoutMs);
             
             if (!metaResp.ok) return null;
             
@@ -159,8 +159,8 @@ export async function getTokenBalances(wallets, apiKey, { timeoutMs = 30000 } = 
     for (const network of NETWORKS) {
       fetchTasks.push((async () => {
         const [native, erc20] = await Promise.all([
-          fetchNativeBalance(wallet, network, apiKey),
-          fetchERC20Balances(wallet, network, apiKey)
+          fetchNativeBalance(wallet, network, apiKey, timeoutMs),
+          fetchERC20Balances(wallet, network, apiKey, timeoutMs)
         ]);
         return [native, ...erc20].filter(t => t !== null);
       })());

@@ -327,6 +327,457 @@ async function runHealthChecks() {
   setHealth(parts.join('<br>'));
 }
 
+/**
+ * NEW: Incremental portfolio renderer - shows positions as each provider responds
+ * This replaces the bloated renderDemoSummary with streaming updates
+ */
+async function renderPortfolioIncremental() {
+  const mods = window.AppModules || {};
+  const providers = mods.data?.providers || {};
+  const { IncrementalPortfolioRenderer } = mods.incrementalPortfolio || {};
+  const HeroUI = mods.ui?.hero;
+  const PositionsUI = mods.ui?.positions;
+  
+  if (!IncrementalPortfolioRenderer) {
+    console.error('[Portfolio] Incremental renderer not loaded');
+    return;
+  }
+  
+  const settings = getSettings();
+  const wallets = (settings.walletAddresses || '').split(',').map(w => w.trim()).filter(Boolean);
+  const solanaAddrs = (settings.solanaAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+  const bitcoinAddrs = (settings.bitcoinAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+  const zcashAddrs = (settings.zcashAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+  
+  if (wallets.length === 0 && solanaAddrs.length === 0 && bitcoinAddrs.length === 0 && zcashAddrs.length === 0) {
+    const summaryEl = document.getElementById('newSummary');
+    const positionsBody = document.getElementById('newPositionsBody');
+    if (summaryEl) summaryEl.innerHTML = 'Your portfolio is empty. Add wallets in Settings.';
+    if (positionsBody) positionsBody.innerHTML = '<tr><td colspan="8" class="loading">No wallets configured</td></tr>';
+    return;
+  }
+  
+  // Build list of expected providers based on configuration
+  const expectedProviders = [];
+  if (wallets.length > 0) {
+    expectedProviders.push('Hyperliquid', 'Lighter');
+    if (settings.zerionApiKey) {
+      expectedProviders.push('Zerion');
+    } else if (settings.alchemyApiKey || settings.heliusApiKey) {
+      expectedProviders.push('Alchemy/Helius');
+    }
+  }
+  if (bitcoinAddrs.length > 0 || zcashAddrs.length > 0) {
+    expectedProviders.push('Bitcoin/Zcash');
+  }
+  
+  const renderer = new IncrementalPortfolioRenderer({
+    providers,
+    settings,
+    containers: {
+      positionsBody: document.getElementById('newPositionsBody'),
+      mobileContainer: document.getElementById('newMobilePositionsContainer'),
+      summaryEl: document.getElementById('newSummary')
+    },
+    ui: { HeroUI, PositionsUI },
+    expectedProviders
+  });
+  
+  // Launch all providers concurrently (non-blocking)
+  // Each will call renderer.appendPositions() when done
+  
+  // 1. Hyperliquid (fastest, ~500ms)
+  if (wallets.length > 0) {
+    (async () => {
+      try {
+        const [hlMarketData, hlAllMids, hlSpotMeta] = await Promise.all([
+          providers.hyperliquid.fetchMetaAndAssetCtxs(3000),
+          providers.hyperliquid.fetchAllMids(3000),
+          providers.hyperliquid.fetchSpotMeta(3000)
+        ]);
+        
+        const hlPriceMap = {};
+        if (hlMarketData?.[0] && hlMarketData?.[1]) {
+          for (let i = 0; i < hlMarketData[1].length; i++) {
+            const ctx = hlMarketData[1][i];
+            const assetName = hlMarketData[0].universe[i]?.name;
+            if (assetName && ctx?.markPx) {
+              hlPriceMap[assetName] = parseFloat(ctx.markPx);
+            }
+          }
+        }
+        
+        for (const wallet of wallets) {
+          const data = await providers.hyperliquid.fetchPositions(wallet, 3000);
+          const rows = [];
+          
+          let perpEquity = 0;
+          if (data?.perp?.marginSummary) {
+            perpEquity = parseFloat(data.perp.marginSummary.accountValue || 0);
+          }
+          
+          const spotPriceMap = providers.hyperliquid.buildSpotPriceMap(hlAllMids, hlSpotMeta);
+          let spotEquity = 0;
+          if (data?.spot?.balances) {
+            for (const bal of data.spot.balances) {
+              const total = parseFloat(bal.total || 0);
+              if (total > 0) {
+                const price = parseFloat(spotPriceMap[bal.coin] || 0);
+                spotEquity += total * price;
+              }
+            }
+          }
+          
+          const hlAccountEquity = perpEquity + spotEquity;
+          let totalHlPnL = 0;
+          
+          if (data?.perp?.assetPositions) {
+            for (const pos of data.perp.assetPositions) {
+              const position = pos.position;
+              const szi = parseFloat(position?.szi || 0);
+              if (Math.abs(szi) > 0) {
+                const entryPrice = parseFloat(position?.entryPx || 0);
+                const currentPrice = hlPriceMap[position.coin] || entryPrice;
+                const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
+                const pnl = parseFloat(position?.unrealizedPnl || 0);
+                totalHlPnL += pnl;
+                
+                rows.push({
+                  asset: position.coin,
+                  exchange: 'Hyperliquid',
+                  amount: szi,
+                  price: currentPrice,
+                  value: notionalValue,
+                  change24h: null,
+                  pnl,
+                  entryPrice,
+                  isLeveraged: true
+                });
+              }
+            }
+          }
+          
+          if (data?.spot?.balances) {
+            for (const bal of data.spot.balances) {
+              const available = parseFloat(bal.total || 0) - parseFloat(bal.hold || 0);
+              if (available > 0) {
+                const price = parseFloat(spotPriceMap[bal.coin] || 0);
+                const value = available * price;
+                const entryNtl = parseFloat(bal.entryNtl || 0);
+                const pnl = (entryNtl > 0 && value > 0) ? (value - entryNtl) : null;
+                
+                rows.push({
+                  asset: bal.coin,
+                  exchange: 'Hyperliquid Spot',
+                  amount: available,
+                  price,
+                  value,
+                  change24h: null,
+                  pnl,
+                  entryNtl
+                });
+              }
+            }
+          }
+          
+          if (hlAccountEquity > 0) {
+            rows.push({
+              asset: 'HL_ACCOUNT_EQUITY',
+              exchange: 'Hyperliquid',
+              amount: 1,
+              price: hlAccountEquity,
+              value: hlAccountEquity,
+              pnl: totalHlPnL,
+              isHlAccountEquity: true,
+              isLeveraged: false
+            });
+          }
+          
+          renderer.appendPositions(rows, 'Hyperliquid');
+        }
+      } catch (e) {
+        renderer.markProviderFailed('Hyperliquid', e);
+      }
+    })();
+  }
+  
+  // 2. Lighter (fast, ~500ms)
+  if (wallets.length > 0) {
+    (async () => {
+      try {
+        const rows = [];
+        for (const wallet of wallets) {
+          try {
+            const data = await providers.lighter.fetchAccountByAddress(wallet, { timeoutMs: 3000 });
+            if (data?.accounts?.[0]) {
+              const account = data.accounts[0];
+              const equity = parseFloat(account.equity_usd || account.total_equity || account.equity || 0);
+              const pnl = parseFloat(account.unrealized_pnl || account.pnl || 0);
+              
+              if (equity > 0) {
+                rows.push({
+                  asset: 'LIGHTER_ACCOUNT_EQUITY',
+                  exchange: 'Lighter',
+                  amount: 1,
+                  price: equity,
+                  value: equity,
+                  pnl,
+                  isLighterAccountEquity: true,
+                  isLeveraged: false
+                });
+              }
+            }
+          } catch (walletError) {
+            console.warn(`[Lighter] Error for wallet ${wallet}:`, walletError.message);
+          }
+        }
+        
+        // Report completion even if no positions found
+        renderer.appendPositions(rows, 'Lighter');
+      } catch (e) {
+        renderer.markProviderFailed('Lighter', e);
+      }
+    })();
+  }
+  
+  // 3. Zerion (multichain, ~2-3s)
+  if (settings.zerionApiKey && wallets.length > 0) {
+    (async () => {
+      try {
+        const positionsData = await providers.zerion.getWalletPositions(wallets[0], settings.zerionApiKey, { timeoutMs: 5000 });
+        const chainMap = {
+          'ethereum': 'Ethereum', 'arbitrum': 'Arbitrum', 'optimism': 'Optimism',
+          'polygon': 'Polygon', 'base': 'Base', 'avalanche': 'Avalanche',
+          'bsc': 'BSC', 'solana': 'Solana', 'zksync-era': 'zkSync',
+          'blast': 'Blast', 'hyperevm': 'HyperEVM'
+        };
+        
+        const rows = [];
+        if (positionsData?.data) {
+          for (const item of positionsData.data) {
+            const attr = item?.attributes || {};
+            const fungible = attr.fungible_info;
+            if (fungible && !attr.flags?.is_trash) {
+              const chainId = item?.relationships?.chain?.data?.id || 'unknown';
+              const chain = chainMap[chainId] || chainId;
+              rows.push({
+                asset: fungible.symbol || 'Unknown',
+                exchange: chain,
+                amount: attr.quantity?.float || 0,
+                price: attr.price || 0,
+                value: attr.value || 0,
+                change24h: attr.changes?.percent_24h ?? null,
+                pnl: null
+              });
+            }
+          }
+        }
+        renderer.appendPositions(rows, 'Zerion');
+      } catch (e) {
+        renderer.markProviderFailed('Zerion', e);
+        // Fallback to Alchemy/Helius if Zerion fails
+        if (settings.alchemyApiKey || settings.heliusApiKey) {
+          (async () => {
+            try {
+              const [alchemyTokens, heliusTokens] = await Promise.all([
+                settings.alchemyApiKey && wallets.length > 0
+                  ? providers.alchemy.getTokenBalances(wallets, settings.alchemyApiKey, { timeoutMs: 5000 })
+                  : Promise.resolve([]),
+                settings.heliusApiKey && solanaAddrs.length > 0
+                  ? providers.helius.getTokenBalances(solanaAddrs, settings.heliusApiKey, { timeoutMs: 5000 })
+                  : Promise.resolve([])
+              ]);
+              
+              const rows = [];
+              for (const token of alchemyTokens) {
+                rows.push({
+                  asset: token.tokenSymbol,
+                  exchange: token.blockchain,
+                  amount: token.balance,
+                  price: token.tokenPrice || 0,
+                  value: token.balanceUsd || 0,
+                  change24h: null,
+                  pnl: null
+                });
+              }
+              for (const token of heliusTokens) {
+                rows.push({
+                  asset: token.tokenSymbol,
+                  exchange: token.blockchain,
+                  amount: token.balance,
+                  price: token.tokenPrice || 0,
+                  value: token.balanceUsd || 0,
+                  change24h: null,
+                  pnl: null
+                });
+              }
+              
+              // Calculate PnL for wallet assets using entry price tracking
+              const getWalletEntryPrices = () => {
+                try {
+                  const stored = localStorage.getItem('walletAssetEntryPrices');
+                  return stored ? JSON.parse(stored) : {};
+                } catch {
+                  return {};
+                }
+              };
+              const walletEntryPrices = getWalletEntryPrices();
+              let entryPricesUpdated = false;
+              const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD', 'FEUSD']);
+              
+              for (const row of rows) {
+                const finalPrice = row.price || 0;
+                const posKey = `${row.asset}_${row.exchange}`;
+                
+                // Skip stablecoins
+                if (STABLECOINS.has(row.asset)) {
+                  row.pnl = 0;
+                  continue;
+                }
+                
+                // Check if we have a stored entry price
+                if (walletEntryPrices[posKey]) {
+                  const storedEntry = walletEntryPrices[posKey];
+                  row.entryPrice = storedEntry.price;
+                  row.entryDate = storedEntry.date;
+                  
+                  // Calculate PnL using stored entry price
+                  const costBasis = Math.abs(row.amount) * storedEntry.price;
+                  const currentValue = Math.abs(row.amount) * finalPrice;
+                  row.pnl = currentValue - costBasis;
+                } 
+                // First time seeing this asset - record current price as entry
+                else if (Math.abs(row.amount) > 0 && finalPrice > 0) {
+                  walletEntryPrices[posKey] = {
+                    price: finalPrice,
+                    date: new Date().toISOString(),
+                    amount: Math.abs(row.amount)
+                  };
+                  row.entryPrice = finalPrice;
+                  row.entryDate = walletEntryPrices[posKey].date;
+                  row.pnl = 0; // No PnL on first detection
+                  entryPricesUpdated = true;
+                }
+              }
+              
+              // Save updated entry prices if any were added
+              if (entryPricesUpdated) {
+                try {
+                  localStorage.setItem('walletAssetEntryPrices', JSON.stringify(walletEntryPrices));
+                } catch (e) {
+                  console.error('[Portfolio] Failed to save entry prices:', e);
+                }
+              }
+              
+              renderer.appendPositions(rows, 'Alchemy/Helius');
+            } catch (e2) {
+              renderer.markProviderFailed('Alchemy/Helius', e2);
+            }
+          })();
+        }
+      }
+    })();
+  }
+  
+  // 4. Bitcoin + Zcash (slow, ~3-5s)
+  if (bitcoinAddrs.length > 0 || zcashAddrs.length > 0) {
+    (async () => {
+      try {
+        const [btcTokens, zcashTokens, cryptoPrices] = await Promise.all([
+          bitcoinAddrs.length > 0 ? providers.bitcoin.getTokenBalances(bitcoinAddrs, { timeoutMs: 5000 }) : [],
+          zcashAddrs.length > 0 ? providers.zcash.getTokenBalances(zcashAddrs, { timeoutMs: 5000 }) : [],
+          providers.coingecko.getSimplePrice('bitcoin,zcash', { timeoutMs: 5000, ttlMs: 60000 })
+        ]);
+        
+        const rows = [];
+        const btcPrice = cryptoPrices?.bitcoin?.usd || 0;
+        const zecPrice = cryptoPrices?.zcash?.usd || 0;
+        
+        for (const btc of btcTokens) {
+          rows.push({
+            asset: 'BTC',
+            exchange: 'Bitcoin',
+            amount: btc.balance,
+            price: btcPrice,
+            value: btc.balance * btcPrice,
+            change24h: cryptoPrices?.bitcoin?.usd_24h_change,
+            pnl: null
+          });
+        }
+        
+        for (const zec of zcashTokens) {
+          rows.push({
+            asset: 'ZEC',
+            exchange: 'Zcash',
+            amount: zec.balance,
+            price: zecPrice,
+            value: zec.balance * zecPrice,
+            change24h: cryptoPrices?.zcash?.usd_24h_change,
+            pnl: null
+          });
+        }
+        
+        // Calculate PnL for BTC/ZEC wallet assets using entry price tracking
+        const getWalletEntryPrices = () => {
+          try {
+            const stored = localStorage.getItem('walletAssetEntryPrices');
+            return stored ? JSON.parse(stored) : {};
+          } catch {
+            return {};
+          }
+        };
+        const walletEntryPrices = getWalletEntryPrices();
+        let entryPricesUpdated = false;
+        
+        for (const row of rows) {
+          const finalPrice = row.price || 0;
+          const posKey = `${row.asset}_${row.exchange}`;
+          
+          // Check if we have a stored entry price
+          if (walletEntryPrices[posKey]) {
+            const storedEntry = walletEntryPrices[posKey];
+            row.entryPrice = storedEntry.price;
+            row.entryDate = storedEntry.date;
+            
+            // Calculate PnL using stored entry price
+            const costBasis = Math.abs(row.amount) * storedEntry.price;
+            const currentValue = Math.abs(row.amount) * finalPrice;
+            row.pnl = currentValue - costBasis;
+          } 
+          // First time seeing this asset - record current price as entry
+          else if (Math.abs(row.amount) > 0 && finalPrice > 0) {
+            walletEntryPrices[posKey] = {
+              price: finalPrice,
+              date: new Date().toISOString(),
+              amount: Math.abs(row.amount)
+            };
+            row.entryPrice = finalPrice;
+            row.entryDate = walletEntryPrices[posKey].date;
+            row.pnl = 0; // No PnL on first detection
+            entryPricesUpdated = true;
+          }
+        }
+        
+        // Save updated entry prices if any were added
+        if (entryPricesUpdated) {
+          try {
+            localStorage.setItem('walletAssetEntryPrices', JSON.stringify(walletEntryPrices));
+          } catch (e) {
+            console.error('[Portfolio] Failed to save entry prices:', e);
+          }
+        }
+        
+        renderer.appendPositions(rows, 'Bitcoin/Zcash');
+      } catch (e) {
+        renderer.markProviderFailed('Bitcoin/Zcash', e);
+      }
+    })();
+  }
+  
+  // Initial render to show skeleton replaced by "Fetching..."
+  renderer.render();
+}
+
 async function renderDemoSummary() {
   const mods = window.AppModules || {};
   const providers = mods.data?.providers || {};
@@ -1312,6 +1763,13 @@ let watchlistEditMode = false;
 let rerenderPositions = null; // Global reference to rerender function
 let currentFontSize = 15; // Default font size in px
 
+// Expose to window for incremental renderer
+window.hideSmallPositions = hideSmallPositions;
+window.hiddenAssets = hiddenAssets;
+window.editMode = editMode;
+window.cachedPositions = cachedPositions;
+window.cachedSummaryData = cachedSummaryData;
+
 function initLoadingScreen() {
   const dotGrid = document.getElementById('newDotGrid');
   if (!dotGrid) return;
@@ -1338,6 +1796,41 @@ function hideLoadingScreen() {
   if (loadingScreen) {
     loadingScreen.classList.add('hidden');
     setTimeout(() => { loadingScreen.style.display = 'none'; }, 300);
+  }
+}
+
+// Render lightweight skeletons so the app feels instant
+function renderHeroSkeleton() {
+  const summaryEl = document.getElementById('newSummary');
+  if (!summaryEl) return;
+  summaryEl.innerHTML = `
+    <div class="skeleton-row" style="gap: 8px;">
+      <div class="skeleton-text skeleton-text-long"></div>
+    </div>
+    <div class="skeleton-row" style="gap: 8px;">
+      <div class="skeleton-text skeleton-text-medium"></div>
+    </div>
+  `;
+}
+
+function renderPositionsSkeleton(rows = 6) {
+  const tbody = document.getElementById('newPositionsBody');
+  const mobile = document.getElementById('newMobilePositionsContainer');
+  if (!tbody) return;
+  const cells = 8; // Asset, Price, Chart, Value, P&L, 24H %, Amount, Exchange
+  let html = '';
+  for (let r = 0; r < rows; r++) {
+    html += '<tr>';
+    for (let c = 0; c < cells; c++) {
+      const widthClass = c === 0 ? 'skeleton-text-medium' : (c === 3 ? 'skeleton-text-long' : 'skeleton-text-short');
+      html += `<td><div class="skeleton-text ${widthClass}"></div></td>`;
+    }
+    html += '</tr>';
+  }
+  tbody.innerHTML = html;
+  if (mobile) {
+    // Keep mobile container empty; table skeleton covers initial paint. Mobile shows cards later.
+    mobile.innerHTML = '';
   }
 }
 
@@ -1433,6 +1926,7 @@ function setupControls() {
   if (hideSmallBtn) {
     hideSmallBtn.addEventListener('click', () => {
       hideSmallPositions = !hideSmallPositions;
+      window.hideSmallPositions = hideSmallPositions; // Update global for incremental renderer
       const threshold = settings.minBalanceThreshold || 100;
       hideSmallBtn.textContent = hideSmallPositions ? `[SHOW <$${threshold}]` : `[HIDE <$${threshold}]`;
       rerenderPositions();
@@ -2165,7 +2659,7 @@ function setupControls() {
         body.classList.toggle('hide-comic', !(newSettings.showComic ?? false));
         
         // Soft reload: re-fetch positions without full page refresh (this will reload settings)
-        await renderDemoSummary();
+        await renderPortfolioIncremental();
         rerenderPositions();
       } catch (e) {
         alert('Failed to save settings: ' + e.message);
@@ -2687,7 +3181,7 @@ function setupControls() {
         closeAddPosition();
         
         // Soft reload: re-fetch positions without full page refresh
-        await renderDemoSummary();
+        await renderPortfolioIncremental();
         rerenderPositions();
       } catch (e) {
         alert('Failed to save position: ' + e.message);
@@ -2708,6 +3202,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   
   // Init loading screen
   initLoadingScreen();
+  // Do not block on loading overlay; switch to skeleton UI immediately
+  hideLoadingScreen();
+  renderHeroSkeleton();
+  renderPositionsSkeleton(7);
   
   // NON-CRITICAL: Display version from service worker (async, non-blocking)
   setTimeout(() => {
@@ -2916,7 +3414,7 @@ window.addEventListener('DOMContentLoaded', async () => {
           summaryEl.classList.add('fading');
         }
         
-        await renderDemoSummary();
+        await renderPortfolioIncremental();
         rerenderPositions();
         
         // Remove pulsing animation after content is loaded
@@ -2947,9 +3445,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   
   // CRITICAL PATH: Positions + Hero only (everything else lazy)
   try {
-    await renderDemoSummary();
+    await renderPortfolioIncremental();
   } catch (error) {
-    console.error('[/portfolio] renderDemoSummary failed:', error);
+    console.error('[/portfolio] renderPortfolioIncremental failed:', error);
     // Show error in hero
     const summaryEl = document.getElementById('newSummary');
     if (summaryEl) {
@@ -3058,7 +3556,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         updateComicButtons(comicKey, date);
       } catch (e) {
         console.error(`[Comics] Failed to load ${comicKey}:`, e);
-        comicEl.textContent = 'Comic failed to load';
+        comicEl.textContent = 'Loading...';
       }
     };
     

@@ -170,7 +170,7 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
   const url = `${comic.baseUrl}/${dateStr}`;
   
   // Show loading message and add fading animation
-  container.textContent = 'Loading...';
+  container.innerHTML = '<div style="text-align: center; padding: 10px 0;">Loading...</div>';
   container.classList.add('fading');
   
   const result = await fetchComicImage(comicKey, date);
@@ -179,7 +179,7 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
     const isFarSide = comicKey === 'farside';
     const isMobile = window.innerWidth <= 768;
     
-    // Mobile only: set height to 200px and enable horizontal scroll on container
+    // Mobile only: set horizontal scroll on container for non-Far Side comics
     if (!isFarSide && isMobile) {
       container.style.overflowX = 'auto';
       container.style.overflowY = 'hidden';
@@ -189,21 +189,8 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
       container.style.overflowY = '';
     }
     
-    // Determine link display style
-    const linkStyle = (!isFarSide && isMobile) ? 'display: inline-block;' : 'display: block;';
-    
-    const imgStyle = isFarSide
-      ? 'max-width: 100%; height: auto; border: 1px solid var(--border);'
-      : (isMobile 
-          ? 'min-height: 200px; max-height: 200px; width: auto; border: 1px solid var(--border);'
-          : 'width: 100%; height: auto; border: 1px solid var(--border);');
-    
     // Successfully fetched comic image
-    let html = `
-      <a href="${url}" target="_blank" rel="noopener noreferrer" style="${linkStyle}">
-        <img src="${result.src}" alt="${comic.name}" style="${imgStyle}">
-      </a>
-    `;
+    let html = `<img src="${result.src}" alt="${comic.name}" data-comic-type="${comicKey}">`;
     
     // Add caption if available (for The Far Side)
     if (result.caption) {

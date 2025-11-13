@@ -1,9 +1,9 @@
 // Minimal centralized HTTP client for native ESM usage
 // Features: timeout, retries with jittered backoff, request de-duplication, and TTL cache
 
-const DEFAULT_TIMEOUT_MS = 15000;
-const DEFAULT_RETRIES = 2;
-const DEFAULT_BACKOFF_BASE_MS = 300;
+const DEFAULT_TIMEOUT_MS = 5000; // Reduced from 15s to 5s for faster failures
+const DEFAULT_RETRIES = 1; // Reduced from 2 to 1 retry for speed
+const DEFAULT_BACKOFF_BASE_MS = 200; // Reduced from 300ms to 200ms
 
 // In-flight requests for deduplication
 const inFlightByKey = new Map();
