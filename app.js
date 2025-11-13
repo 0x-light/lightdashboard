@@ -71,6 +71,104 @@ function filterPositions(positions, options = {}) {
   });
 }
 
+// Map asset symbols to CoinGecko IDs for 24h change data
+function getCoingeckoId(assetSymbol) {
+  const mapping = {
+    'BTC': 'bitcoin',
+    'ETH': 'ethereum',
+    'SOL': 'solana',
+    'ARB': 'arbitrum',
+    'AVAX': 'avalanche-2',
+    'MATIC': 'matic-network',
+    'OP': 'optimism',
+    'LINK': 'chainlink',
+    'UNI': 'uniswap',
+    'AAVE': 'aave',
+    'MKR': 'maker',
+    'SNX': 'synthetix-network-token',
+    'CRV': 'curve-dao-token',
+    'LDO': 'lido-dao',
+    'DOGE': 'dogecoin',
+    'XRP': 'ripple',
+    'ADA': 'cardano',
+    'DOT': 'polkadot',
+    'ATOM': 'cosmos',
+    'NEAR': 'near',
+    'FIL': 'filecoin',
+    'LTC': 'litecoin',
+    'BCH': 'bitcoin-cash',
+    'ETC': 'ethereum-classic',
+    'XMR': 'monero',
+    'APT': 'aptos',
+    'SUI': 'sui',
+    'SEI': 'sei-network',
+    'TIA': 'celestia',
+    'INJ': 'injective-protocol',
+    'WIF': 'dogwifcoin',
+    'BONK': 'bonk',
+    'PEPE': 'pepe',
+    'SHIB': 'shiba-inu',
+    'WLD': 'worldcoin-wld',
+    'RNDR': 'render-token',
+    'IMX': 'immutable-x',
+    'STX': 'blockstack',
+    'FTM': 'fantom',
+    'BLUR': 'blur',
+    'MINA': 'mina-protocol',
+    'SAND': 'the-sandbox',
+    'MANA': 'decentraland',
+    'AXS': 'axie-infinity',
+    'GALA': 'gala',
+    'ENJ': 'enjincoin',
+    'CHZ': 'chiliz',
+    'HBAR': 'hedera-hashgraph',
+    'ALGO': 'algorand',
+    'EOS': 'eos',
+    'XTZ': 'tezos',
+    'THETA': 'theta-token',
+    'VET': 'vechain',
+    'ICP': 'internet-computer',
+    'ZEC': 'zcash',
+    'KAVA': 'kava',
+    'COMP': 'compound-governance-token',
+    'SUSHI': 'sushi',
+    'YFI': 'yearn-finance',
+    'BAL': 'balancer',
+    '1INCH': '1inch',
+    'RUNE': 'thorchain',
+    'HYPE': 'hyperliquid',
+    'ONDO': 'ondo-finance',
+    'PENDLE': 'pendle',
+    'ENA': 'ethena',
+    'EIGEN': 'eigenlayer',
+    'TAO': 'bittensor',
+    'JUP': 'jupiter-exchange-solana',
+    'PYTH': 'pyth-network',
+    'JTO': 'jito-governance-token',
+    'TNSR': 'tensor',
+    'W': 'wormhole',
+    'STRK': 'starknet',
+    'ORDI': 'ordinals',
+    'SATS': 'sats-ordinals',
+    'TRX': 'tron',
+    'DYDX': 'dydx-chain',
+    'GMX': 'gmx',
+    'GRT': 'the-graph',
+    'LRC': 'loopring',
+    'ENS': 'ethereum-name-service',
+    'APE': 'apecoin',
+    'JASMY': 'jasmy',
+    'QNT': 'quant-network',
+    'ROSE': 'oasis-network',
+    'FLOW': 'flow',
+    'ONE': 'harmony',
+    'ZIL': 'zilliqa',
+    'BAT': 'basic-attention-token',
+    'ZRX': '0x'
+  };
+  return mapping[assetSymbol] || null;
+}
+
 // Calculate portfolio totals (value and PnL)
 // SUPER SIMPLE: Just sum the dollar values from each source
 // - Hyperliquid total equity (perps + spot)
@@ -466,6 +564,11 @@ async function renderPortfolioIncremental() {
                 const entryNtl = parseFloat(bal.entryNtl || 0);
                 const pnl = (entryNtl > 0 && value > 0) ? (value - entryNtl) : null;
                 
+                // Add spot position PnL to total
+                if (pnl !== null && !isNaN(pnl)) {
+                  totalHlPnL += pnl;
+                }
+                
                 rows.push({
                   asset: bal.coin,
                   exchange: 'Hyperliquid Spot',
@@ -491,6 +594,36 @@ async function renderPortfolioIncremental() {
               isHlAccountEquity: true,
               isLeveraged: false
             });
+          }
+          
+          // Enrich positions with 24h change data from CoinGecko
+          const uniqueAssets = [...new Set(rows.filter(r => !r.isHlAccountEquity).map(r => r.asset))];
+          const coingeckoIds = uniqueAssets.map(asset => getCoingeckoId(asset)).filter(id => id !== null);
+          
+          if (coingeckoIds.length > 0) {
+            try {
+              const cgData = await providers.coingecko.getSimplePrice(coingeckoIds.join(','), { timeoutMs: 3000, ttlMs: 60000 });
+              if (cgData) {
+                // Create a reverse mapping from CoinGecko ID to asset symbol
+                const idToAsset = {};
+                for (const asset of uniqueAssets) {
+                  const cgId = getCoingeckoId(asset);
+                  if (cgId) idToAsset[cgId] = asset;
+                }
+                
+                // Enrich each row with 24h change
+                for (const row of rows) {
+                  if (!row.isHlAccountEquity) {
+                    const cgId = getCoingeckoId(row.asset);
+                    if (cgId && cgData[cgId]) {
+                      row.change24h = cgData[cgId].usd_24h_change || null;
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              // Continue without 24h change data if CoinGecko fails
+            }
           }
           
           renderer.appendPositions(rows, 'Hyperliquid');
@@ -572,6 +705,33 @@ async function renderPortfolioIncremental() {
             }
           }
         }
+        
+        // Enrich positions missing 24h change data with CoinGecko
+        const missingChange24h = rows.filter(r => r.change24h === null);
+        if (missingChange24h.length > 0) {
+          const uniqueAssets = [...new Set(missingChange24h.map(r => r.asset))];
+          const coingeckoIds = uniqueAssets.map(asset => getCoingeckoId(asset)).filter(id => id !== null);
+          
+          if (coingeckoIds.length > 0) {
+            try {
+              const cgData = await providers.coingecko.getSimplePrice(coingeckoIds.join(','), { timeoutMs: 3000, ttlMs: 60000 });
+              if (cgData) {
+                // Enrich rows that are missing change24h
+                for (const row of rows) {
+                  if (row.change24h === null) {
+                    const cgId = getCoingeckoId(row.asset);
+                    if (cgId && cgData[cgId]) {
+                      row.change24h = cgData[cgId].usd_24h_change || null;
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              // Continue without 24h change data if CoinGecko fails
+            }
+          }
+        }
+        
         renderer.appendPositions(rows, 'Zerion');
       } catch (e) {
         renderer.markProviderFailed('Zerion', e);
@@ -666,6 +826,27 @@ async function renderPortfolioIncremental() {
                   localStorage.setItem('walletAssetEntryPrices', JSON.stringify(walletEntryPrices));
                 } catch (e) {
                   console.error('[Portfolio] Failed to save entry prices:', e);
+                }
+              }
+              
+              // Enrich positions with 24h change data from CoinGecko
+              const uniqueAssets = [...new Set(rows.map(r => r.asset))];
+              const coingeckoIds = uniqueAssets.map(asset => getCoingeckoId(asset)).filter(id => id !== null);
+              
+              if (coingeckoIds.length > 0) {
+                try {
+                  const cgData = await providers.coingecko.getSimplePrice(coingeckoIds.join(','), { timeoutMs: 3000, ttlMs: 60000 });
+                  if (cgData) {
+                    // Enrich each row with 24h change
+                    for (const row of rows) {
+                      const cgId = getCoingeckoId(row.asset);
+                      if (cgId && cgData[cgId]) {
+                        row.change24h = cgData[cgId].usd_24h_change || null;
+                      }
+                    }
+                  }
+                } catch (e) {
+                  // Continue without 24h change data if CoinGecko fails
                 }
               }
               
@@ -2908,7 +3089,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                     
                     const hlAccountEquity = perpEquity + spotEquity;
                     
-                    // Calculate total PnL from all positions
+                    // Calculate total PnL from all positions (perp + spot)
                     let totalHlPnL = 0;
                     if (data?.perp?.assetPositions) {
                       for (const pos of data.perp.assetPositions) {
@@ -2935,6 +3116,23 @@ window.addEventListener('DOMContentLoaded', async () => {
                             marginUsed: marginUsed,
                             isLeveraged: true
                           });
+                        }
+                      }
+                    }
+                    
+                    // Add spot position PnL to total
+                    if (data?.spot?.balances) {
+                      for (const bal of data.spot.balances) {
+                        const available = parseFloat(bal.total || 0) - parseFloat(bal.hold || 0);
+                        if (available > 0) {
+                          const price = parseFloat(spotPriceMap[bal.coin] || 0);
+                          const value = available * price;
+                          const entryNtl = parseFloat(bal.entryNtl || 0);
+                          const pnl = (entryNtl > 0 && value > 0) ? (value - entryNtl) : null;
+                          
+                          if (pnl !== null && !isNaN(pnl)) {
+                            totalHlPnL += pnl;
+                          }
                         }
                       }
                     }

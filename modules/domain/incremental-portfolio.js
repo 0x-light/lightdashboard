@@ -278,13 +278,16 @@ export class IncrementalPortfolioRenderer {
         const weightedPrice = totalAmount !== 0 ? totalValue / Math.abs(totalAmount) : 0;
         const exchanges = [...new Set(items.map(p => p.exchange))];
         
+        // Use the first non-null change24h value from any of the items
+        const change24h = items.find(p => p.change24h !== null && p.change24h !== undefined)?.change24h || null;
+        
         aggregated.push({
           asset,
           exchange: exchanges.length > 1 ? 'Multiple' : exchanges[0],
           amount: totalAmount,
           value: totalValue,
           price: weightedPrice,
-          change24h: items[0].change24h,
+          change24h,
           pnl: totalPnL,
           isAggregated: true
         });
