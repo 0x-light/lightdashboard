@@ -7,65 +7,7 @@ function isStablecoin(asset) {
   return STABLECOINS.has(asset?.toUpperCase());
 }
 
-const HEADER_TEMPLATES = {
-  'chart-compact': `
-    <th class="th-asset">Asset</th>
-    <th class="th-price">Price</th>
-    <th class="th-chart">Chart</th>
-    <th class="th-value">Value</th>
-    <th class="th-pnl">P&L</th>
-    <th class="th-change">24H%</th>
-    <th class="th-amount">Amount</th>
-    <th class="th-exchange">Exchange</th>
-  `,
-  'chart-normal': `
-    <th class="th-asset">Asset</th>
-    <th class="th-exchange">Exchange</th>
-    <th class="th-amount">Amount</th>
-    <th class="th-price">Price</th>
-    <th class="th-chart">Chart</th>
-    <th class="th-value">Value</th>
-    <th class="th-change">24H%</th>
-    <th class="th-pnl">P&L</th>
-  `,
-  'nochart-compact': `
-    <th class="th-asset">Asset</th>
-    <th class="th-price">Price</th>
-    <th class="th-value">Value</th>
-    <th class="th-pnl">P&L</th>
-    <th class="th-change">24H%</th>
-    <th class="th-amount">Amount</th>
-    <th class="th-exchange">Exchange</th>
-  `,
-  'nochart-normal': `
-    <th class="th-asset">Asset</th>
-    <th class="th-exchange">Exchange</th>
-    <th class="th-amount">Amount</th>
-    <th class="th-price">Price</th>
-    <th class="th-value">Value</th>
-    <th class="th-change">24H%</th>
-    <th class="th-pnl">P&L</th>
-  `
-};
-
-function updateHeaderIfNeeded(positionsBody, showPriceChart, isCompactMode) {
-  if (!positionsBody || typeof positionsBody.closest !== 'function') return;
-  const table = positionsBody.closest('table');
-  if (!table) return;
-  const headerRow = table.querySelector('thead tr');
-  if (!headerRow) return;
-
-  const layoutKey = showPriceChart
-    ? (isCompactMode ? 'chart-compact' : 'chart-normal')
-    : (isCompactMode ? 'nochart-compact' : 'nochart-normal');
-
-  if (headerRow.dataset.layout === layoutKey) return;
-
-  const template = HEADER_TEMPLATES[layoutKey];
-  if (!template) return;
-  headerRow.innerHTML = template.trim();
-  headerRow.dataset.layout = layoutKey;
-}
+// No header templates needed - CSS handles chart visibility via .chart class
 
 function createSparkline(priceData, width = 60, height = 24, currentChange24h = null) {
   if (!Array.isArray(priceData) || priceData.length < 2) {
@@ -189,9 +131,6 @@ function createTableRow(doc, pos, opts) {
   const showExactAmounts = opts.settings?.showExactAmounts ?? false;
   const showPriceChart = opts.settings?.showPriceChart ?? true;
   
-  // Check if compact mode is active by checking body class
-  const isCompactMode = doc.body?.classList?.contains('compact-mode');
-  
   // Create sparkline chart (skip for stablecoins)
   let chartCell = '<span class="chart-loading">—</span>';
   if (!isStablecoin(pos.asset)) {
@@ -199,106 +138,30 @@ function createTableRow(doc, pos, opts) {
     chartCell = chartSvg || '<span class="chart-loading">—</span>';
   }
   
-  let cells;
-  if (showPriceChart) {
-    if (isCompactMode) {
-      // Compact: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
-      // Price and 24H% always visible, hide Value/PnL/Amount
-      cells = [
-        pos.asset || '—',
-        formatUsd(pos.price, true), // Always show price
-        chartCell, // Chart
-        formatUsd(value, amountVisible), // Hide value
-        formatUsd(pos.pnl, amountVisible, true), // Hide PnL, show + for positive
-        formatPct(pos.change24h), // Always show 24H%
-        formatAmount(pos.amount, amountVisible, showExactAmounts), // Hide amount
-        pos.exchange || '—'
-      ];
-    } else {
-      // Normal: Asset, Exchange, Amount, Price, Chart, Value, 24H%, P&L
-      // Price and 24H% always visible, hide Value/PnL/Amount
-      cells = [
-        pos.asset || '—',
-        pos.exchange || '—',
-        formatAmount(pos.amount, amountVisible, showExactAmounts), // Hide amount
-        formatUsd(pos.price, true), // Always show price
-        chartCell, // Chart
-        formatUsd(value, amountVisible), // Hide value
-        formatPct(pos.change24h), // Always show 24H%
-        formatUsd(pos.pnl, amountVisible, true) // Hide PnL, show + for positive
-      ];
-    }
-  } else {
-    // Chart column hidden
-    if (isCompactMode) {
-      // Compact: Asset, Price, Value, P&L, 24H%, Amount, Exchange
-      cells = [
-        pos.asset || '—',
-        formatUsd(pos.price, true),
-        formatUsd(value, amountVisible),
-        formatUsd(pos.pnl, amountVisible, true),
-        formatPct(pos.change24h),
-        formatAmount(pos.amount, amountVisible, showExactAmounts),
-        pos.exchange || '—'
-      ];
-    } else {
-      // Normal: Asset, Exchange, Amount, Price, Value, 24H%, P&L
-      cells = [
-        pos.asset || '—',
-        pos.exchange || '—',
-        formatAmount(pos.amount, amountVisible, showExactAmounts),
-        formatUsd(pos.price, true),
-        formatUsd(value, amountVisible),
-        formatPct(pos.change24h),
-        formatUsd(pos.pnl, amountVisible, true)
-      ];
-    }
-  }
+  // Use compact column order (only order)
+  // Order: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
+  const cells = [
+    pos.asset || '—',
+    formatUsd(pos.price, true),
+    chartCell,
+    formatUsd(value, amountVisible),
+    formatUsd(pos.pnl, amountVisible, true),
+    formatPct(pos.change24h),
+    formatAmount(pos.amount, amountVisible, showExactAmounts),
+    pos.exchange || '—'
+  ];
   
   const useColoredPnL = opts.settings?.useColoredPnL ?? true;
   
   for (let i = 0; i < cells.length; i++) {
     const td = doc.createElement('td');
     
-    // Determine which column this is
-    let isPnL = false;
-    let isChange24h = false;
-    let isPrice = false;
-    let isValue = false;
-    let isChart = false;
-    
-    if (showPriceChart) {
-      if (isCompactMode) {
-        // Compact: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
-        isPrice = (i === 1);
-        isChart = (i === 2);
-        isValue = (i === 3);
-        isPnL = (i === 4);
-        isChange24h = (i === 5);
-      } else {
-        // Normal: Asset, Exchange, Amount, Price, Chart, Value, 24H%, P&L
-        isPrice = (i === 3);
-        isChart = (i === 4);
-        isValue = (i === 5);
-        isChange24h = (i === 6);
-        isPnL = (i === 7);
-      }
-    } else {
-      // No chart column
-      if (isCompactMode) {
-        // Compact: Asset, Price, Value, P&L, 24H%, Amount, Exchange
-        isPrice = (i === 1);
-        isValue = (i === 2);
-        isPnL = (i === 3);
-        isChange24h = (i === 4);
-      } else {
-        // Normal: Asset, Exchange, Amount, Price, Value, 24H%, P&L
-        isPrice = (i === 3);
-        isValue = (i === 4);
-        isChange24h = (i === 5);
-        isPnL = (i === 6);
-      }
-    }
+    // Column indices: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
+    const isPrice = (i === 1);
+    const isChart = (i === 2);
+    const isValue = (i === 3);
+    const isPnL = (i === 4);
+    const isChange24h = (i === 5);
     
     // Add color classes for PnL and 24H%
     if (useColoredPnL) {
@@ -325,7 +188,7 @@ function createTableRow(doc, pos, opts) {
     } else if (isChart) {
       // Chart column uses innerHTML
       td.innerHTML = cells[i];
-      td.className = 'chart-cell';
+      td.className = 'chart-cell chart';
     } else {
       td.textContent = String(cells[i]);
     }
@@ -359,28 +222,25 @@ function createMobileCard(doc, pos, opts) {
 }
 
 /**
- * Attempt to render positions. Return true if handled, false to let legacy code run.
+ * Render positions with atomic header+body update.
+ * Returns true if handled, false to let legacy code run.
  */
 export function renderPositions({ positions, containers, options }) {
   try {
     if (!containers?.positionsBody) return false;
     const doc = containers.positionsBody.ownerDocument || document;
     const opts = options || {};
-    const showPriceChart = opts.settings?.showPriceChart ?? true;
-    const isCompactMode = doc.body?.classList?.contains('compact-mode');
-
-    updateHeaderIfNeeded(containers.positionsBody, showPriceChart, isCompactMode);
 
     const list = Array.isArray(positions) ? positions : [];
     const filtered = list.filter(p => !shouldHidePosition(p, opts));
 
     if (filtered.length === 0) {
-      const colspan = showPriceChart ? 8 : 7;
-      containers.positionsBody.innerHTML = `<tr><td colspan="${colspan}" class="loading">No positions found</td></tr>`;
+      containers.positionsBody.innerHTML = `<tr><td colspan="8" class="loading">No positions found</td></tr>`;
       if (containers.mobilePositionsContainer) containers.mobilePositionsContainer.innerHTML = '';
       return true;
     }
 
+    // Build fragments for atomic update
     const frag = doc.createDocumentFragment();
     const mobileFrag = doc.createDocumentFragment();
     for (const pos of filtered) {
@@ -390,6 +250,7 @@ export function renderPositions({ positions, containers, options }) {
       }
     }
 
+    // Atomic DOM update - clear and replace in one operation
     containers.positionsBody.innerHTML = '';
     containers.positionsBody.appendChild(frag);
     if (containers.mobilePositionsContainer) {

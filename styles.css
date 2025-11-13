@@ -544,6 +544,63 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 0.9em;
 }
 
+/* Ensure chart header is never orphaned */
+.th-chart {
+  white-space: nowrap;
+}
+
+/* === VISIBILITY CONTROLS VIA BODY CLASSES === */
+
+/* Hide chart columns when charts are disabled */
+body.no-charts .chart {
+  display: none !important;
+}
+
+/* Button visibility controls */
+body.hide-snow-btn #newToggleSnowBtn,
+body.hide-snow-btn #newToggleSnowBtnMobile {
+  display: none !important;
+}
+
+body.hide-rain-btn #newToggleRainBtn,
+body.hide-rain-btn #newToggleRainBtnMobile {
+  display: none !important;
+}
+
+body.hide-font-size .font-size-controls {
+  display: none !important;
+}
+
+body.hide-theme-btn .theme-select-wrapper {
+  display: none !important;
+}
+
+body.hide-amounts-btn #newToggleAmountsBtn,
+body.hide-amounts-btn #newToggleAmountsBtnMobile {
+  display: none !important;
+}
+
+body.hide-refresh-btn #newRefreshBtn,
+body.hide-refresh-btn #newRefreshBtnMobile {
+  display: none !important;
+}
+
+body.hide-donate-btn #newDonateBtn,
+body.hide-donate-btn #newDonateBtnMobile {
+  display: none !important;
+}
+
+/* Section visibility controls */
+body.hide-watchlist #watchlistSection,
+body.hide-watchlist #newWatchlistSection {
+  display: none !important;
+}
+
+body.hide-comic #comicSection,
+body.hide-comic #newComicSection {
+  display: none !important;
+}
+
 /* Performance: CSS containment for better rendering */
 .data-table,
 .position-card,
@@ -901,6 +958,25 @@ select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+/* Placeholder text styling */
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+input::-webkit-input-placeholder,
+textarea::-webkit-input-placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+input::-moz-placeholder,
+textarea::-moz-placeholder {
+  color: var(--muted);
+  opacity: 1;
 }
 
 .help {
@@ -2482,7 +2558,8 @@ input[type="range"]:focus::-moz-range-thumb {
 }
 
 .position-edit-btn,
-.position-delete-btn {
+.position-delete-btn,
+.watchlist-edit-btn {
   padding: 0;
   border: none;
   margin-left: 8px;
@@ -2490,11 +2567,13 @@ input[type="range"]:focus::-moz-range-thumb {
   cursor: pointer;
   background: var(--bg);
   color: var(--muted);
+  opacity: 0.6;
   transition: all 0.2s ease;
 }
 
 .position-edit-btn:hover,
-.position-delete-btn:hover {
+.position-delete-btn:hover,
+.watchlist-edit-btn:hover {
   color: var(--text);
 }
 

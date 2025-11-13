@@ -113,11 +113,11 @@ export async function fetchPrices(feedIds, pythProvider, includePriceHistory = f
 
 export async function render(container, { feedIds, pythProvider, useColoredPnL = true, editMode = false, cachedData = null, previousData = null, showPriceChart = true }) {
   if (!container) return;
+  
   // Use cached data if available, otherwise fetch fresh (with price history if chart enabled)
   const prices = cachedData || await fetchPrices(feedIds, pythProvider, showPriceChart);
   if (prices.length === 0) {
-    const colspan = showPriceChart ? 4 : 3;
-    container.innerHTML = `<tr><td colspan="${colspan}" class="loading">No assets in watchlist</td></tr>`;
+    container.innerHTML = `<tr><td colspan="4" class="loading">No assets in watchlist</td></tr>`;
     return prices; // Return empty array for caching
   }
   
@@ -158,16 +158,14 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
     
     td2.textContent = `$${item.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
     
-    // Chart cell (conditionally rendered)
-    if (showPriceChart) {
-      let chartCell = '<span class="chart-loading">—</span>';
-      if (!isStablecoin(item.symbol)) {
-        const chartSvg = item.priceHistory ? createSparkline(item.priceHistory, 60, 24, item.change24h) : null;
-        chartCell = chartSvg || '<span class="chart-loading">—</span>';
-      }
-      td3.innerHTML = chartCell;
-      td3.className = 'chart-cell';
+    // Chart cell - always render, CSS will hide if needed
+    let chartCell = '<span class="chart-loading">—</span>';
+    if (!isStablecoin(item.symbol)) {
+      const chartSvg = item.priceHistory ? createSparkline(item.priceHistory, 60, 24, item.change24h) : null;
+      chartCell = chartSvg || '<span class="chart-loading">—</span>';
     }
+    td3.innerHTML = chartCell;
+    td3.className = 'chart-cell chart';
     
     td4.textContent = changeDisplay;
     td4.className = cls;
@@ -183,9 +181,7 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
     
     tr.appendChild(td1);
     tr.appendChild(td2);
-    if (showPriceChart) {
-      tr.appendChild(td3);
-    }
+    tr.appendChild(td3); // Always append, CSS will hide if needed
     tr.appendChild(td4);
     frag.appendChild(tr);
   }

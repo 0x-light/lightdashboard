@@ -251,7 +251,7 @@
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
               <input id="newShowPriceChart" type="checkbox" class="settings-input" checked>
-              Show 24h price chart
+              Show 24h price chart (BETA)
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
               <input id="newLeftAligned" type="checkbox" class="settings-input" checked>
@@ -302,10 +302,6 @@
               <input id="newShowDonateBtn" type="checkbox" class="settings-input" checked>
               Show Donate button
             </label>
-            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <input id="newShowSettingsBtn" type="checkbox" class="settings-input" checked>
-              Show Settings button
-            </label>
           </fieldset>
           
           <fieldset>
@@ -340,7 +336,7 @@
               <tr>
                 <th class="th-asset">Asset</th>
                 <th class="th-price">Price</th>
-                <th class="th-chart">Chart</th>
+                <th class="th-chart chart">Chart</th>
                 <th class="th-value">Value</th>
                 <th class="th-pnl">P&L</th>
                 <th class="th-change">24H %</th>
@@ -367,12 +363,12 @@
           <button id="newAddToWatchlistBtn" class="btn-text">[+]</button>
         </div>
         <div class="table-wrapper">
-          <table class="data-table">
+          <table id="newWatchlistTable" class="data-table">
             <thead>
               <tr>
                 <th>Asset</th>
                 <th>Price</th>
-                <th>Chart</th>
+                <th class="chart">Chart</th>
                 <th>24H %</th>
               </tr>
             </thead>
