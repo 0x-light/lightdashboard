@@ -1144,53 +1144,56 @@ async function renderDemoSummary() {
             
             rendered = true; // Mark as successfully rendered
             
-            // Load charts in background (non-blocking)
-            (async () => {
-              try {
-                const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
-                const pythFeedMap = await providers.pyth.getPriceFeeds(5000);
-                const historyPromises = sorted.map(async (pos) => {
-                  if (STABLECOINS.has(pos.asset?.toUpperCase())) {
-                    pos.priceHistory = null;
-                    return { success: true, pos };
-                  }
-                  
-                  const feedId = pythFeedMap[pos.asset];
-                  if (feedId && providers.pyth.get24hPriceHistory) {
-                    try {
-                      const history = await providers.pyth.get24hPriceHistory(feedId, 3000);
-                      pos.priceHistory = history.length > 0 ? history : null;
-                      return { success: history.length > 0, pos };
-                    } catch (e) {
+            // Load charts in background (non-blocking) - ONLY if showPriceChart is enabled
+            const showPriceChart = s.showPriceChart ?? true;
+            if (showPriceChart) {
+              (async () => {
+                try {
+                  const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
+                  const pythFeedMap = await providers.pyth.getPriceFeeds(5000);
+                  const historyPromises = sorted.map(async (pos) => {
+                    if (STABLECOINS.has(pos.asset?.toUpperCase())) {
+                      pos.priceHistory = null;
+                      return { success: true, pos };
+                    }
+                    
+                    const feedId = pythFeedMap[pos.asset];
+                    if (feedId && providers.pyth.get24hPriceHistory) {
+                      try {
+                        const history = await providers.pyth.get24hPriceHistory(feedId, 3000);
+                        pos.priceHistory = history.length > 0 ? history : null;
+                        return { success: history.length > 0, pos };
+                      } catch (e) {
+                        pos.priceHistory = null;
+                        return { success: false, pos };
+                      }
+                    } else {
                       pos.priceHistory = null;
                       return { success: false, pos };
                     }
-                  } else {
-                    pos.priceHistory = null;
-                    return { success: false, pos };
-                  }
-                });
-                const results = await Promise.all(historyPromises);
-                const successCount = results.filter(r => r.success).length;
-                const totalNonStable = results.filter(r => !STABLECOINS.has(r.pos?.asset?.toUpperCase())).length;
-                if (totalNonStable > 0) {
-                  // Charts loaded in background
-                }
-                // Re-render ONLY positions (don't recalculate portfolio)
-                const positionsBody = document.getElementById('newPositionsBody');
-                const mobileContainer = document.getElementById('newMobilePositionsContainer');
-                const visible = filterPositions(cachedPositions, { hideHidden: true, hideSmall: hideSmallPositions });
-                if (PositionsUI && positionsBody) {
-                  PositionsUI.renderPositions({
-                    positions: visible,
-                    containers: { positionsBody, mobilePositionsContainer: mobileContainer },
-                    options: { amountsVisible: !document.body.classList.contains('amounts-hidden'), hideSmallPositions, editMode: false, settings: { minBalanceThreshold: s.minBalanceThreshold || 100, showExactAmounts: s.showExactAmounts || false, useColoredPnL: s.useColoredPnL ?? true, showPriceChart: s.showPriceChart ?? true } }
                   });
+                  const results = await Promise.all(historyPromises);
+                  const successCount = results.filter(r => r.success).length;
+                  const totalNonStable = results.filter(r => !STABLECOINS.has(r.pos?.asset?.toUpperCase())).length;
+                  if (totalNonStable > 0) {
+                    // Charts loaded in background
+                  }
+                  // Re-render ONLY positions (don't recalculate portfolio)
+                  const positionsBody = document.getElementById('newPositionsBody');
+                  const mobileContainer = document.getElementById('newMobilePositionsContainer');
+                  const visible = filterPositions(cachedPositions, { hideHidden: true, hideSmall: hideSmallPositions });
+                  if (PositionsUI && positionsBody) {
+                    PositionsUI.renderPositions({
+                      positions: visible,
+                      containers: { positionsBody, mobilePositionsContainer: mobileContainer },
+                      options: { amountsVisible: !document.body.classList.contains('amounts-hidden'), hideSmallPositions, editMode: false, settings: { minBalanceThreshold: s.minBalanceThreshold || 100, showExactAmounts: s.showExactAmounts || false, useColoredPnL: s.useColoredPnL ?? true, showPriceChart: s.showPriceChart ?? true } }
+                    });
+                  }
+                } catch (e) {
+                  console.warn('[Charts] Background chart loading failed:', e);
                 }
-              } catch (e) {
-                console.warn('[Charts] Background chart loading failed:', e);
-              }
-            })();
+              })();
+            }
             
             // Update hero with real portfolio value and PnL (without weather first)
             const heroHtml = HeroUI.composeSummary({
@@ -2923,10 +2926,13 @@ window.addEventListener('DOMContentLoaded', async () => {
           }, 100);
         }
         
-        // Also refresh watchlist if present
-        const watchlistModule = await import('./modules/features/watchlist.js').catch(() => null);
-        if (watchlistModule && watchlistModule.refreshWatchlist) {
-          await watchlistModule.refreshWatchlist().catch(() => {});
+        // Also refresh watchlist if present and enabled in settings
+        const currentSettings = getSettings();
+        if (currentSettings.showWatchlist !== false) {
+          const watchlistModule = await import('./modules/features/watchlist.js').catch(() => null);
+          if (watchlistModule && watchlistModule.refreshWatchlist) {
+            await watchlistModule.refreshWatchlist().catch(() => {});
+          }
         }
       } catch (error) {
         console.error('[Hero] Refresh failed:', error);
@@ -3605,69 +3611,73 @@ window.addEventListener('DOMContentLoaded', async () => {
           }
           cachedPositions = updatedPositions;
           
-          // Update price history for changed positions (skip stablecoins)
-          const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
-          const changedAssets = updatedPositions.filter(p => p.priceChanged && !STABLECOINS.has(p.asset?.toUpperCase()));
+          // Update price history for changed positions (skip stablecoins) - ONLY if showPriceChart is enabled
+          const Settings = window.AppModules?.core?.settings;
+          const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
+          const showPriceChart = s.showPriceChart ?? true;
           
-          if (changedAssets.length > 0) {
-            // Update price history in background (don't await to avoid blocking UI)
-            (async () => {
-              try {
-                const pythFeedMap = await providers.pyth.getPriceFeeds(5000);
-                const historyUpdates = changedAssets.map(async (pos) => {
-                  const feedId = pythFeedMap[pos.asset];
-                  if (feedId && providers.pyth.get24hPriceHistory) {
-                    try {
-                      // Increased timeout for better reliability during price updates
-                      const history = await providers.pyth.get24hPriceHistory(feedId, 6000);
-                      if (history.length > 0) {
-                        pos.priceHistory = history;
-                        return true;
+          if (showPriceChart) {
+            const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
+            const changedAssets = updatedPositions.filter(p => p.priceChanged && !STABLECOINS.has(p.asset?.toUpperCase()));
+            
+            if (changedAssets.length > 0) {
+              // Update price history in background (don't await to avoid blocking UI)
+              (async () => {
+                try {
+                  const pythFeedMap = await providers.pyth.getPriceFeeds(5000);
+                  const historyUpdates = changedAssets.map(async (pos) => {
+                    const feedId = pythFeedMap[pos.asset];
+                    if (feedId && providers.pyth.get24hPriceHistory) {
+                      try {
+                        // Increased timeout for better reliability during price updates
+                        const history = await providers.pyth.get24hPriceHistory(feedId, 6000);
+                        if (history.length > 0) {
+                          pos.priceHistory = history;
+                          return true;
+                        }
+                      } catch (e) {
+                        // Keep existing history on error
+                        return false;
                       }
-                    } catch (e) {
-                      // Keep existing history on error
-                      return false;
+                    }
+                    return false;
+                  });
+                  const results = await Promise.all(historyUpdates);
+                  const successCount = results.filter(r => r).length;
+                  
+                  // Re-render positions to show updated charts (don't recalculate portfolio)
+                  if (successCount > 0) {
+                    const positionsBody = document.getElementById('newPositionsBody');
+                    const mobileContainer = document.getElementById('newMobilePositionsContainer');
+                    const PositionsUI = window.AppModules?.ui?.positions;
+                    if (PositionsUI && positionsBody && cachedPositions.length > 0) {
+                      const filtered = filterPositions(cachedPositions, { 
+                        hideHidden: true, 
+                        hideSmall: hideSmallPositions, 
+                        threshold: s.minBalanceThreshold || 100 
+                      });
+                      PositionsUI.renderPositions({
+                        positions: filtered,
+                        containers: { positionsBody, mobilePositionsContainer: mobileContainer },
+                        options: { 
+                          amountsVisible: !document.body.classList.contains('amounts-hidden'), 
+                          hideSmallPositions: false, 
+                          editMode: false, 
+                          settings: { 
+                            minBalanceThreshold: s.minBalanceThreshold || 100, 
+                            showExactAmounts: s.showExactAmounts || false, 
+                            useColoredPnL: s.useColoredPnL ?? true, 
+                            showPriceChart: s.showPriceChart ?? true 
+                          } 
+                        }
+                      });
                     }
                   }
-                  return false;
-                });
-                const results = await Promise.all(historyUpdates);
-                const successCount = results.filter(r => r).length;
-                
-                // Re-render positions to show updated charts (don't recalculate portfolio)
-                if (successCount > 0) {
-                  const positionsBody = document.getElementById('newPositionsBody');
-                  const mobileContainer = document.getElementById('newMobilePositionsContainer');
-                  const PositionsUI = window.AppModules?.ui?.positions;
-                  const Settings = window.AppModules?.core?.settings;
-                  const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
-                  if (PositionsUI && positionsBody && cachedPositions.length > 0) {
-                    const filtered = filterPositions(cachedPositions, { 
-                      hideHidden: true, 
-                      hideSmall: hideSmallPositions, 
-                      threshold: s.minBalanceThreshold || 100 
-                    });
-                    PositionsUI.renderPositions({
-                      positions: filtered,
-                      containers: { positionsBody, mobilePositionsContainer: mobileContainer },
-                      options: { 
-                        amountsVisible: !document.body.classList.contains('amounts-hidden'), 
-                        hideSmallPositions: false, 
-                        editMode: false, 
-                        settings: { 
-                          minBalanceThreshold: s.minBalanceThreshold || 100, 
-                          showExactAmounts: s.showExactAmounts || false, 
-                          useColoredPnL: s.useColoredPnL ?? true, 
-                          showPriceChart: s.showPriceChart ?? true 
-                        } 
-                      }
-                    });
-                  }
+                } catch (e) {
+                  // Silently fail history updates
                 }
-              } catch (e) {
-                // Silently fail history updates
-              }
-            })();
+              })();
+            }
           }
           
         }
