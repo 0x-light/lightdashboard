@@ -82,7 +82,7 @@ export function getDefaultSettings() {
     watchlistCollapsed: false, // Whether watchlist section is collapsed
     compactList: false, // Whether to use compact list mode
     buttonBackgrounds: false, // Whether to add backgrounds to buttons
-    showPriceChart: false // Whether to show 24h price chart column
+    showPriceChart: true // Whether to show 24h price chart column
   };
 }
 

@@ -447,11 +447,13 @@ async function renderPortfolioIncremental() {
   const bitcoinAddrs = (settings.bitcoinAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
   const zcashAddrs = (settings.zcashAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
   
-  if (wallets.length === 0 && solanaAddrs.length === 0 && bitcoinAddrs.length === 0 && zcashAddrs.length === 0) {
+  const hasManualPositions = settings.cryptoPositions && Array.isArray(settings.cryptoPositions) && settings.cryptoPositions.length > 0;
+  
+  if (wallets.length === 0 && solanaAddrs.length === 0 && bitcoinAddrs.length === 0 && zcashAddrs.length === 0 && !hasManualPositions) {
     const summaryEl = document.getElementById('newSummary');
     const positionsBody = document.getElementById('newPositionsBody');
-    if (summaryEl) summaryEl.innerHTML = 'Your portfolio is empty. Add wallets in Settings.';
-    if (positionsBody) positionsBody.innerHTML = '<tr><td colspan="8" class="loading">No wallets configured</td></tr>';
+    if (summaryEl) summaryEl.innerHTML = 'Your portfolio is empty. Add wallets in Settings or add manual positions.';
+    if (positionsBody) positionsBody.innerHTML = '<tr><td colspan="8" class="loading">No wallets or positions configured</td></tr>';
     return;
   }
   
@@ -467,6 +469,9 @@ async function renderPortfolioIncremental() {
   }
   if (bitcoinAddrs.length > 0 || zcashAddrs.length > 0) {
     expectedProviders.push('Bitcoin/Zcash');
+  }
+  if (hasManualPositions) {
+    expectedProviders.push('Manual');
   }
   
   const renderer = new IncrementalPortfolioRenderer({
@@ -951,6 +956,94 @@ async function renderPortfolioIncremental() {
         renderer.appendPositions(rows, 'Bitcoin/Zcash');
       } catch (e) {
         renderer.markProviderFailed('Bitcoin/Zcash', e);
+      }
+    })();
+  }
+  
+  // 5. Manual positions from settings (cryptoPositions)
+  if (settings.cryptoPositions && Array.isArray(settings.cryptoPositions) && settings.cryptoPositions.length > 0) {
+    (async () => {
+      try {
+        const rows = [];
+        const pythPositions = settings.cryptoPositions.filter(p => p.type === 'pyth');
+        const customPositions = settings.cryptoPositions.filter(p => p.type === 'custom');
+        
+        // Fetch prices for Pyth positions
+        if (pythPositions.length > 0) {
+          const feedIds = pythPositions.map(p => p.feedId).filter(Boolean);
+          if (feedIds.length > 0) {
+            try {
+              const pythPrices = await providers.pyth.getLatestByFeedIds(feedIds, 5000);
+              
+              for (const pos of pythPositions) {
+                const currentPrice = pythPrices[pos.feedId] || 0;
+                const amount = parseFloat(pos.amount || 0);
+                const entryPrice = parseFloat(pos.entryPrice || 0);
+                const value = amount * currentPrice;
+                const pnl = amount > 0 && entryPrice > 0 ? (amount * (currentPrice - entryPrice)) : null;
+                
+                rows.push({
+                  asset: pos.symbol,
+                  exchange: 'Manual',
+                  amount: amount,
+                  price: currentPrice,
+                  value: value,
+                  change24h: null,
+                  pnl: pnl,
+                  entryPrice: entryPrice,
+                  isManual: true,
+                  manualType: 'pyth'
+                });
+              }
+            } catch (e) {
+              console.warn('[Portfolio] Failed to fetch Pyth prices for manual positions:', e);
+            }
+          }
+        }
+        
+        // Add custom positions (no price fetch needed)
+        for (const pos of customPositions) {
+          const value = parseFloat(pos.value || 0);
+          rows.push({
+            asset: pos.name,
+            exchange: 'Manual',
+            amount: 1,
+            price: value,
+            value: value,
+            change24h: null,
+            pnl: null,
+            isManual: true,
+            manualType: 'custom'
+          });
+        }
+        
+        // Enrich Pyth positions with 24h change data from CoinGecko
+        if (pythPositions.length > 0) {
+          const uniqueAssets = [...new Set(pythPositions.map(p => p.symbol))];
+          const coingeckoIds = uniqueAssets.map(asset => getCoingeckoId(asset)).filter(id => id !== null);
+          
+          if (coingeckoIds.length > 0) {
+            try {
+              const cgData = await providers.coingecko.getSimplePrice(coingeckoIds.join(','), { timeoutMs: 3000, ttlMs: 60000 });
+              if (cgData) {
+                for (const row of rows) {
+                  if (row.manualType === 'pyth') {
+                    const cgId = getCoingeckoId(row.asset);
+                    if (cgId && cgData[cgId]) {
+                      row.change24h = cgData[cgId].usd_24h_change || null;
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              // Continue without 24h change data if CoinGecko fails
+            }
+          }
+        }
+        
+        renderer.appendPositions(rows, 'Manual');
+      } catch (e) {
+        console.error('[Portfolio] Failed to load manual positions:', e);
       }
     })();
   }
