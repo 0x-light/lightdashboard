@@ -39,7 +39,7 @@ export function loadSettings() {
 
 export function getDefaultSettings() {
   return {
-    theme: 'light',
+    theme: 'dark',
     refreshMinutes: 30,
     userName: '',
     cryptoPositions: [], // { type: 'pyth', symbol, feedId, amount, entryPrice } or { type: 'custom', name, value }
@@ -54,9 +54,9 @@ export function getDefaultSettings() {
     zerionApiKey: '',
     fontSize: 15,
     comicStrip: 'calvinandhobbes',
-    showComic: true,
+    hideComic: false,
     comicCollapsed: false, // Whether comic section is collapsed
-    showWatchlist: true,
+    hideWatchlist: false,
     showRainForecast: true,
     useColoredPnL: true,
     leftAligned: true, // true = centered, false = left-aligned
@@ -65,15 +65,14 @@ export function getDefaultSettings() {
     enableRealTimeUpdates: true,
     realTimeUpdateInterval: 5, // seconds
     heroPnLMode: 'total', // 'total' or '24h'
-    showSnowBtn: true,
-    showRainBtn: true,
-    showThemeBtn: true,
-    showAmountsBtn: true,
-    showFontSize: true,
+    hideSnowBtn: false,
+    hideRainBtn: false,
+    hideThemeBtn: false,
+    hideAmountsBtn: false,
+    hideFontSize: false,
     showCompactBtn: true,
-    showRefreshBtn: true,
     showStickersBtn: true,
-    showDonateBtn: true,
+    hideDonateBtn: false,
     showSettingsBtn: true,
     hiddenAssets: [], // Array of hidden asset keys: "ASSET_EXCHANGE"
     rainEnabled: false,

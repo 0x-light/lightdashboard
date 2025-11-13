@@ -151,8 +151,6 @@ export async function getTokenBalances(wallets, apiKey, { timeoutMs = 30000 } = 
     return [];
   }
   
-  console.log(`[Alchemy] Fetching balances for ${evmWallets.length} wallets across ${NETWORKS.length} networks...`);
-  
   // Parallelize all wallet×network combinations
   const fetchTasks = [];
   for (const wallet of evmWallets) {
@@ -169,8 +167,6 @@ export async function getTokenBalances(wallets, apiKey, { timeoutMs = 30000 } = 
   
   const results = await Promise.all(fetchTasks);
   const allTokens = results.flat();
-  
-  console.log(`[Alchemy] Found ${allTokens.length} tokens`);
   
   return allTokens;
 }

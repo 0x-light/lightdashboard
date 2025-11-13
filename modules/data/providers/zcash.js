@@ -29,8 +29,6 @@ export async function getTokenBalances(addresses, { timeoutMs = 15000 } = {}) {
     return [];
   }
   
-  console.log(`[Zcash] Fetching balances for ${zecAddresses.length} address(es)...`);
-  
   // Fetch all addresses in parallel for maximum speed
   const results = await Promise.all(
     zecAddresses.map(async (address) => {
@@ -63,7 +61,6 @@ export async function getTokenBalances(addresses, { timeoutMs = 15000 } = {}) {
   );
   
   const validResults = results.filter(r => r !== null);
-  console.log(`[Zcash] Found ${validResults.length} non-zero balance(s)`);
   
   return validResults;
 }

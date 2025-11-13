@@ -38,8 +38,6 @@ export async function fetchComicImage(comicKey, date = new Date()) {
   const dateStr = formatDate(date);
   const url = `${comic.baseUrl}/${dateStr}`;
   
-  console.log(`[Comics] Fetching ${comic.name} for ${dateStr}`);
-  
   // Add cache-busting timestamp to prevent proxy caching
   const cacheBuster = Date.now();
   const urlWithCacheBuster = `${url}?_=${cacheBuster}`;
@@ -53,7 +51,6 @@ export async function fetchComicImage(comicKey, date = new Date()) {
   
   for (const proxyUrl of proxies) {
     try {
-      console.log(`[Comics] Trying proxy: ${proxyUrl.split('?')[0]}`);
       const response = await fetch(proxyUrl, { 
         signal: AbortSignal.timeout(10000),
         cache: 'no-store'
@@ -98,16 +95,11 @@ export async function fetchComicImage(comicKey, date = new Date()) {
             if (farsideCaption) {
               caption = farsideCaption.textContent.trim();
             }
-            
-            if (!imgSrc) {
-              console.log(`[Comics] Far Side: Could not find amuniversal CDN URL in HTML`);
-            }
           } else {
             // Method 1: Try og:image meta tag first (most reliable for GoComics)
             const ogImage = doc.querySelector('meta[property="og:image"]');
             if (ogImage) {
               imgSrc = ogImage.getAttribute('content');
-              console.log(`[Comics] Found og:image: ${imgSrc?.substring(0, 60)}...`);
             }
             
             // Method 2: Try multiple image selectors
@@ -125,7 +117,6 @@ export async function fetchComicImage(comicKey, date = new Date()) {
                 if (img) {
                   imgSrc = img.getAttribute('src') || img.getAttribute('data-src') || img.src;
                   if (imgSrc) {
-                    console.log(`[Comics] Found via selector ${selector}: ${imgSrc?.substring(0, 60)}...`);
                     break;
                   }
                 }
@@ -146,19 +137,13 @@ export async function fetchComicImage(comicKey, date = new Date()) {
             }
             return { src: imgSrc, caption };
           }
-          
-          console.log(`[Comics] ❌ No image found in HTML (length: ${html.length})`);
         }
-      } else {
-        console.log(`[Comics] ❌ Proxy responded with status: ${response.status}`);
       }
     } catch (e) {
-      console.log(`[Comics] ❌ Proxy error: ${e.message}`);
       continue;
     }
   }
   
-  console.log('[Comics] All proxies failed');
   return null;
 }
 

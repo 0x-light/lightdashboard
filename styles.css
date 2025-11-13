@@ -36,14 +36,14 @@
 }
 
 html[data-theme="light"] {
-  /* Solarized Light - Zen palette */
+  /* Light */
   --bg: #fdf6e3;
   --bg-elev: #eee8d5;
-  --text: #657b83;
+  --text: #596b72;
   --text-bright: #000000;
   --muted: #93a1a1;
   --accent: #000000;
-  --border: #d9d2c2;
+  --border: #d9d2c265;
   --card-bg: #fffdf7;
   --green: #00a25d;
   --red: #fe3a3a;
@@ -107,6 +107,25 @@ html[data-theme="eva01"] {
   --orange: #FE8600;
   --yellow: #eab308;
   --cyan: #22c55e;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+html[data-theme="lcars"] {
+  /* LCARS - Star Trek: The Next Generation */
+  --bg: #000000;
+  --bg-elev: #1a0d00;
+  --text: #FF9900;
+  --text-bright: #FFCC99;
+  --muted: #CC9966;
+  --accent: #FF9900;
+  --border: rgba(255, 153, 0, 0.2);
+  --card-bg: #0a0500;
+  --green: #9999FF;
+  --red: #CC6699;
+  --orange: #FF9900;
+  --yellow: #FFCC00;
+  --cyan: #9999FF;
   --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
@@ -175,6 +194,10 @@ html[data-theme="eva01"] {
   50% {
     opacity: 1;
   }
+}
+
+a {
+  color: var(--accent);
 }
 
 /* Greeting container with loader */
@@ -981,11 +1004,23 @@ textarea::-moz-placeholder {
 
 .help {
   color: var(--muted);
-  margin: 8px 0;
-  opacity: 0.7;
   max-width: 100%;
   overflow-wrap: break-word;
   word-wrap: break-word;
+  padding: 10px;
+  background-color: var(--border);
+}
+
+.info {
+  color: var(--muted);
+  max-width: 100%;
+  overflow-wrap: break-word;
+}
+
+.status-info {
+  color: var(--muted);
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 
 .item-row {
@@ -1309,8 +1344,11 @@ textarea::-moz-placeholder {
   bottom: 0;
   background: var(--bg);
   z-index: 1000;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  flex-direction: column;
+}
+
+.mobile-menu.active {
+  display: flex;
 }
 
 /* Theme select wrapper and label */
@@ -1387,9 +1425,6 @@ textarea::-moz-placeholder {
   color: var(--text);
 }
 
-.mobile-menu.active {
-  display: block;
-}
 
 /* Prevent body scrolling when mobile menu is open */
 body.mobile-menu-open {
@@ -1420,6 +1455,13 @@ body.mobile-menu-open {
   gap: 20px;
   align-items: flex-start;
   padding: 0 20px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.mobile-menu-footer {
+  padding: 20px;
+  margin-top: auto;
 }
 
 .mobile-menu-content .font-size-controls {
@@ -1675,6 +1717,16 @@ body.mobile-menu-open {
     line-height: 1.4;
   }
   
+  .info {
+    font-size: 0.9em;
+    line-height: 1.4;
+  }
+  
+  .status-info {
+    font-size: 0.9em;
+    line-height: 1.4;
+  }
+  
   /* Scale inputs with user's font size on mobile */
   input:not([type="checkbox"]):not([type="range"]),
   select,
@@ -1732,6 +1784,14 @@ body.mobile-menu-open {
   
   /* Ensure help text wraps */
   .help {
+    word-break: break-word;
+  }
+  
+  .info {
+    word-break: break-word;
+  }
+  
+  .status-info {
     word-break: break-word;
   }
 }
@@ -2633,6 +2693,14 @@ input[type="range"]:focus::-moz-range-thumb {
 #newWatchlistSearchResults:not(:empty),
 #newAddPositionPythResults:not(:empty) {
   border: 1px solid var(--border);
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  #newWatchlistSearchResults:not(:empty) {
+    max-height: calc(100vh - 150px);
+  }
 }
 
 .watchlist-search-result {
@@ -2788,6 +2856,7 @@ input[type="range"]:focus::-moz-range-thumb {
 }
 
 /* Donate window styling - minimal */
+
 .donate-address-row {
   display: flex;
   flex-direction: column;

@@ -20,8 +20,6 @@ export async function getTokenBalances(wallets, apiKey, { timeoutMs = 15000 } = 
     return [];
   }
   
-  console.log(`[Helius] Fetching balances for ${solanaWallets.length} wallets...`);
-  
   const allTokens = [];
   
   for (const wallet of solanaWallets) {
@@ -76,8 +74,6 @@ export async function getTokenBalances(wallets, apiKey, { timeoutMs = 15000 } = 
     }
   }
   
-  console.log(`[Helius] Found ${allTokens.length} tokens`);
-  
   return allTokens;
 }
 
@@ -94,8 +90,6 @@ export async function getNFTs(wallets, apiKey, { timeoutMs = 15000 } = {}) {
     console.warn('[Helius] No valid Solana addresses');
     return [];
   }
-  
-  console.log(`[Helius] Fetching NFTs for ${solanaWallets.length} wallets...`);
   
   const allNFTs = [];
   
@@ -146,8 +140,6 @@ export async function getNFTs(wallets, apiKey, { timeoutMs = 15000 } = {}) {
       console.warn(`[Helius] Error fetching NFTs for ${wallet}:`, err.message);
     }
   }
-  
-  console.log(`[Helius] Found ${allNFTs.length} NFTs`);
   
   return allNFTs;
 }

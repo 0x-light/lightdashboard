@@ -27,13 +27,13 @@
     <meta name="apple-mobile-web-app-title" content="Viewport">
     
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json?v=2.3.3">
+    <link rel="manifest" href="/manifest.json?v=2.4.0">
     
     <!-- Cache busting: update version number on each deployment -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="./styles.css?v=2.3.3">
+    <link rel="stylesheet" href="./styles.css?v=2.4.0">
   </head>
   <body>
     <!-- Rain/Snow Canvas -->
@@ -62,22 +62,23 @@
             <option value="light">Light</option>
             <option value="dark">Dark</option>
             <option value="matrix">Matrix</option>
+            <option value="ft">FT</option>
+            <option value="bloomberg">Bloomberg Terminal</option>
+            <option value="daily">Newspaper</option>
+            <option value="eva01">EVA01</option>
+            <option value="lcars">LCARS (Star Trek)</option>
+            <option value="astronomy">Astronomy</option>
             <option value="halloween">Halloween</option>
             <option value="christmas">Christmas</option>
             <option value="cyberpunk">Cyberpunk</option>
             <option value="retro">Retro</option>
             <option value="cozy-wooden">Wood</option>
-            <option value="daily">Newspaper</option>
-            <option value="ft">FT</option>
-            <option value="bloomberg">Bloomberg Terminal</option>
             <option value="ntsc-bw">B&W NTSC TV (CGA)</option>
             <option value="amber-low">Low-res Amber TTL (CGA)</option>
             <option value="vga-white">White Mono VGA</option>
             <option value="paper-white">Paper White VGA</option>
             <option value="vga-amber">Amber VGA</option>
             <option value="p7-phosphor">P7 Phosphor</option>
-            <option value="astronomy">Astronomy</option>
-            <option value="eva01">EVA01</option>
             <option value="yellow-terminal">Yellow Terminal</option>
             <option value="as400">Kirkland Signature AS/400 by sacred.computer</option>
             <option value="bioluminescence">Digital Bioluminescence by sacred.computer</option>
@@ -127,6 +128,7 @@
             <option value="p7-phosphor">P7 Phosphor</option>
             <option value="astronomy">Astronomy</option>
             <option value="eva01">EVA01</option>
+            <option value="lcars">LCARS (Star Trek)</option>
             <option value="yellow-terminal">Yellow Terminal</option>
             <option value="as400">Kirkland Signature AS/400 by sacred.computer</option>
             <option value="bioluminescence">Digital Bioluminescence by sacred.computer</option>
@@ -135,14 +137,17 @@
           <span class="theme-select-label">[THEME]</span>
         </span>
         <button id="newToggleAmountsBtnMobile" class="btn-text">[HIDE AMOUNTS]</button>
+        <button id="newHideSmallBtnMobile" class="btn-text">[SHOW &lt;$100]</button>
         <button id="newRefreshBtnMobile" class="btn-text">[REFRESH]</button>
         <button id="newDonateBtnMobile" class="btn-text">[DONATE]</button>
         <button id="newSettingsBtnMobile" class="btn-text">[SETTINGS]</button>
-        <div id="healthMobile" class="help" style="margin-bottom: 16px; font-size: 13px;">
+      </div>
+      <div class="mobile-menu-footer">
+        <div id="healthMobile" class="status-info" style="margin-bottom: 16px; font-size: 13px;">
           <div style="margin-bottom: 4px;">Providers:</div>
           <div style="white-space: pre-line; line-height: 1.6;">Initializing…</div>
         </div>
-        <div class="help" style="margin-bottom: 16px; font-size: 13px; opacity: 0.6;">
+        <div class="status-info" style="margin-bottom: 16px; font-size: 13px; opacity: 0.6;">
           <div id="versionDisplay">Version: Loading...</div>
         </div>
       </div>
@@ -156,7 +161,17 @@
           <h3>Settings</h3>
           <button id="newCloseSettingsBtn" class="btn-text">[CLOSE]</button>
         </header>
+        
         <section>
+        <!-- Backup & Restore Section -->
+        <div class="help">
+          <div style="margin-bottom: 8px;">Import/export your settings as text to backup or transfer between devices</div>
+          <div class="button-row" style="margin-bottom: 8px;">
+            <button type="button" id="newExportSettingsBtn" class="btn-text">[EXPORT]</button>
+            <button type="button" id="newImportSettingsBtn" class="btn-text">[IMPORT]</button>
+          </div>
+          <textarea id="newSettingsExportArea" class="settings-input" style="display: none; font-family: monospace; font-size: 12px; min-height: 100px;" placeholder="Paste exported settings here, then click [SAVE & RELOAD] at the bottom" readonly></textarea>
+        </div>
           <fieldset>
             <legend>Personal</legend>
             <label>
@@ -186,22 +201,22 @@
               EVM Addresses (comma-separated)
               <textarea id="newWalletAddresses" class="settings-input" rows="2" placeholder="0xYourAddress1, 0xYourAddress2"></textarea>
             </label>
-            <div class="help" style="margin-top: 4px;">Ethereum, Arbitrum, Optimism, Polygon, Base, HyperEVM</div>
+            <div class="info" style="margin-top: 4px;">Ethereum, Arbitrum, Optimism, Polygon, Base, HyperEVM</div>
             <label style="margin-top: 12px;">
               Solana Addresses (comma-separated)
               <textarea id="newSolanaAddresses" class="settings-input" rows="2" placeholder="YourSolanaAddress1, YourSolanaAddress2"></textarea>
             </label>
-            <div class="help" style="margin-top: 4px;">Solana mainnet addresses</div>
+            <div class="info" style="margin-top: 4px;">Solana mainnet addresses</div>
             <label style="margin-top: 12px;">
               Bitcoin Addresses (comma-separated)
               <textarea id="newBitcoinAddresses" class="settings-input" rows="2" placeholder="bc1qxxx, 1xxx, 3xxx"></textarea>
             </label>
-            <div class="help" style="margin-top: 4px;">Bitcoin mainnet - all address types supported</div>
+            <div class="info" style="margin-top: 4px;">Bitcoin mainnet - all address types supported</div>
             <label style="margin-top: 12px;">
               Zcash Addresses (comma-separated)
               <textarea id="newZcashAddresses" class="settings-input" rows="2" placeholder="t1xxx"></textarea>
             </label>
-            <div class="help" style="margin-top: 4px;">Zcash transparent addresses only (t-addr)</div>
+            <div class="info" style="margin-top: 4px;">Zcash transparent addresses only (t-addr)</div>
           </fieldset>
           
           <fieldset>
@@ -210,25 +225,25 @@
               Zerion API Key
               <input id="newZerionApiKey" type="text" class="settings-input" placeholder="Your Zerion API key">
             </label>
-            <div class="help" style="margin-top: 4px;">Primary source for multichain portfolio data. Get a key at <a href="https://developers.zerion.io/reference/intro/getting-started" target="_blank" rel="noopener noreferrer">Zerion</a></div>
+            <div class="info" style="margin-top: 4px;">Primary source for multichain portfolio data. Get a key at <a href="https://developers.zerion.io/reference/intro/getting-started" target="_blank" rel="noopener noreferrer">Zerion</a></div>
             
             <label style="margin-top: 12px;">
               Alchemy API Key
               <input id="newAlchemyApiKey" type="text" class="settings-input" placeholder="Your Alchemy API key">
             </label>
-            <div class="help" style="margin-top: 4px;">Fallback for EVM chains (Ethereum, Arbitrum, Optimism, Polygon, Base, HyperEVM). Get a free key at <a href="https://www.alchemy.com/" target="_blank" rel="noopener noreferrer">Alchemy</a></div>
+            <div class="info" style="margin-top: 4px;">Fallback for EVM chains (Ethereum, Arbitrum, Optimism, Polygon, Base, HyperEVM). Get a free key at <a href="https://www.alchemy.com/" target="_blank" rel="noopener noreferrer">Alchemy</a></div>
             
             <label style="margin-top: 12px;">
               Helius API Key
               <input id="newHeliusApiKey" type="text" class="settings-input" placeholder="Your Helius API key">
             </label>
-            <div class="help" style="margin-top: 4px;">Fallback for Solana. Get a free key at <a href="https://www.helius.dev/" target="_blank" rel="noopener noreferrer">Helius</a></div>
+            <div class="info" style="margin-top: 4px;">Fallback for Solana. Get a free key at <a href="https://www.helius.dev/" target="_blank" rel="noopener noreferrer">Helius</a></div>
             
             <label style="margin-top: 12px;">
               OpenSea API Key
               <input id="newOpenSeaApiKey" type="text" class="settings-input" placeholder="Your OpenSea API key">
             </label>
-            <div class="help" style="margin-top: 4px;">For NFT data. Get a key at <a href="https://opensea.io/account/developer" target="_blank" rel="noopener noreferrer">OpenSea</a></div>
+            <div class="info" style="margin-top: 4px;">For NFT data. Get a key at <a href="https://opensea.io/account/developer" target="_blank" rel="noopener noreferrer">OpenSea</a></div>
           </fieldset>
           
           <fieldset>
@@ -238,12 +253,12 @@
               Use colored P&L (green/red)
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <input id="newShowWatchlist" type="checkbox" class="settings-input" checked>
-              Show watchlist
+              <input id="newHideWatchlist" type="checkbox" class="settings-input">
+              Hide watchlist
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <input id="newShowComic" type="checkbox" class="settings-input">
-              Show comic strip
+              <input id="newHideComic" type="checkbox" class="settings-input">
+              Hide comic strip
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
               <input id="newShowExactAmounts" type="checkbox" class="settings-input">
@@ -257,14 +272,6 @@
               <input id="newLeftAligned" type="checkbox" class="settings-input" checked>
               Center layout
             </label>
-            <label style="margin-top: 8px;">
-              Comics
-              <select id="newComicStrip" class="settings-input">
-                <option value="calvinandhobbes">Calvin & Hobbes</option>
-                <option value="peanuts">Peanuts</option>
-                <option value="farside">The Far Side</option>
-              </select>
-            </label>
             <label style="margin-top: 12px;">
               Hide balances below (USD)
               <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100" style="width: 100px;" class="settings-input">
@@ -273,45 +280,31 @@
           
           <fieldset>
             <legend>Menu Buttons</legend>
-            <div class="help" style="margin-bottom: 12px;">Show or hide menu bar buttons</div>
+            <div class="info" style="margin-bottom: 12px;">Hide menu bar buttons</div>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <input id="newShowSnowBtn" type="checkbox" class="settings-input" checked>
-              Show Snow button
+              <input id="newHideSnowBtn" type="checkbox" class="settings-input">
+              Hide Snow button
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <input id="newShowRainBtn" type="checkbox" class="settings-input" checked>
-              Show Rain button
+              <input id="newHideRainBtn" type="checkbox" class="settings-input">
+              Hide Rain button
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <input id="newShowFontSize" type="checkbox" class="settings-input" checked>
-              Show Font Size controls
+              <input id="newHideFontSize" type="checkbox" class="settings-input">
+              Hide Font Size controls
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <input id="newShowThemeBtn" type="checkbox" class="settings-input" checked>
-              Show Theme selector
+              <input id="newHideThemeBtn" type="checkbox" class="settings-input">
+              Hide Theme selector
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <input id="newShowAmountsBtn" type="checkbox" class="settings-input" checked>
-              Show Amounts toggle
+              <input id="newHideAmountsBtn" type="checkbox" class="settings-input">
+              Hide Amounts toggle
             </label>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <input id="newShowRefreshBtn" type="checkbox" class="settings-input" checked>
-              Show Refresh button
+              <input id="newHideDonateBtn" type="checkbox" class="settings-input">
+              Hide Donate button
             </label>
-            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <input id="newShowDonateBtn" type="checkbox" class="settings-input" checked>
-              Show Donate button
-            </label>
-          </fieldset>
-          
-          <fieldset>
-            <legend>Backup & Restore</legend>
-            <div class="help" style="margin-bottom: 8px;">Export your settings as text to backup or transfer between devices</div>
-            <div class="button-row" style="margin-bottom: 8px;">
-              <button type="button" id="newExportSettingsBtn" class="btn-text">[EXPORT]</button>
-              <button type="button" id="newImportSettingsBtn" class="btn-text">[IMPORT]</button>
-            </div>
-            <textarea id="newSettingsExportArea" class="settings-input" style="display: none; font-family: monospace; font-size: 12px; min-height: 100px;" placeholder="Paste exported settings here, then click [SAVE & RELOAD] at the bottom" readonly></textarea>
           </fieldset>
         </section>
         <footer class="settings-actions">
@@ -419,9 +412,9 @@
         <button id="newCloseWatchlistSearchBtn" class="btn-text">[CLOSE]</button>
       </div>
       <div class="sticker-window-content">
-        <div class="help" style="margin: 0 0 12px 0;">Search for tokens</div>
+        <div class="info" style="margin: 0 0 12px 0;">Search for tokens</div>
         <input type="text" id="newWatchlistSearchInput" class="settings-input" placeholder="Search tokens..." style="width: 100%; margin-bottom: 12px;">
-        <div id="newWatchlistSearchResults" style="max-height: calc(100vh - 170px); overflow-y: auto; display: none;">
+        <div id="newWatchlistSearchResults" style="display: none;">
         </div>
       </div>
     </div>
@@ -468,7 +461,7 @@
         <button id="newCloseAddPositionBtn" class="btn-text">[CLOSE]</button>
       </div>
       <div class="sticker-window-content">
-        <div class="help" style="margin: 0 0 12px 0;">Add a manual position using a live price feed, or add a custom asset</div>
+        <div class="help" style="margin: 0 0 12px 0;">Add a manual position using a live price feed, or add a custom asset.</div>
         
         <!-- Type Selection -->
         <div style="margin-bottom: 16px;">
@@ -506,8 +499,8 @@
       </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.3.3" defer></script>
-    <script type="module" src="./app.js?v=2.3.3" defer></script>
+    <script type="module" src="./modules/app-init.js?v=2.4.0" defer></script>
+    <script type="module" src="./app.js?v=2.4.0" defer></script>
     
     <!-- Service Worker Registration - ensures users always get latest version -->
     <script defer>

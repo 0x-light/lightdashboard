@@ -99,9 +99,6 @@ export async function fetchPrices(feedIds, pythProvider, includePriceHistory = f
       const historyResults = await Promise.all(historyPromises);
       const successCount = historyResults.filter(r => r).length;
       const totalNonStable = results.filter(item => !isStablecoin(item.symbol)).length;
-      if (totalNonStable > 0) {
-        console.log(`[Watchlist Charts] Loaded ${successCount}/${totalNonStable} charts`);
-      }
     }
     
     return results;

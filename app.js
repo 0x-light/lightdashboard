@@ -778,976 +778,12 @@ async function renderPortfolioIncremental() {
   renderer.render();
 }
 
+// OLD renderDemoSummary removed - replaced by renderPortfolioIncremental for performance
+
+// Legacy function wrapper for compatibility
 async function renderDemoSummary() {
-  const mods = window.AppModules || {};
-  const providers = mods.data?.providers || {};
-  const Portfolio = mods.portfolio;
-  const HeroUI = mods.ui?.hero;
-  const PositionsUI = mods.ui?.positions;
-  const Settings = mods.core?.settings;
-
-  const summaryEl = document.getElementById('newSummary');
-  if (!summaryEl) return;
-
-  try {
-    const settings = getSettings();
-    // Try to fetch BTC/ETH prices and 24h ago values via Pyth
-    const feedMap = await providers.pyth.getPriceFeeds(8000);
-    const assets = ['BTC', 'ETH'];
-    const feedIds = assets.map(a => feedMap[a]).filter(Boolean);
-
-    let currentPrices = {};
-    let prices24hAgo = {};
-
-    if (feedIds.length > 0) {
-      const latest = await providers.pyth.getLatestByFeedIds(feedIds, 8000);
-      const ts24h = get24hAgoTsSec();
-      const atTs = await providers.pyth.getAtTimestampByFeedIds(feedIds, ts24h, 8000);
-      // Map back to asset keys
-      for (const asset of assets) {
-        const id = feedMap[asset];
-        if (!id) continue;
-        currentPrices[`${asset}_PYTH`] = latest[id];
-        prices24hAgo[`${asset}_PYTH`] = atTs[id];
-      }
-    }
-
-    // Fallback: CoinGecko if Pyth missing
-    if (!currentPrices['BTC_PYTH'] || !currentPrices['ETH_PYTH']) {
-      const cg = await providers.coingecko.getSimplePrice('bitcoin,ethereum', { timeoutMs: 8000, ttlMs: 15000 });
-      if (cg?.bitcoin?.usd) currentPrices['BTC_PYTH'] = cg.bitcoin.usd;
-      if (cg?.ethereum?.usd) currentPrices['ETH_PYTH'] = cg.ethereum.usd;
-    }
-
-    // Build demo positions with nominal amounts
-    const positions = assets.map(a => ({ asset: a, exchange: 'PYTH', amount: 1 }));
-    const { changeUsd, changePct } = Portfolio.calculatePortfolio24hChange({
-      positions,
-      currentPrices,
-      prices24hAgo,
-      keyFn: (p) => `${p.asset}_PYTH`
-    });
-
-    // Show loading state initially - will be replaced with real data
-    // Note: Loading state removed - using fade animation instead during refresh
-    // summaryEl.innerHTML = '<span class="loading-terminal">Loading portfolio...</span>';
-
-    // Render positions via providers if settings are available; fallback to demo
-    const positionsBody = document.getElementById('newPositionsBody');
-    const mobileContainer = document.getElementById('newMobilePositionsContainer');
-    if (PositionsUI && typeof PositionsUI.renderPositions === 'function') {
-      let rendered = false;
-      try {
-        const s = getSettings();
-        const walletsRaw = s.walletAddresses || '';
-        const wallets = walletsRaw.split(',').map(w => w.trim()).filter(Boolean);
-        const zerionKey = s.zerionApiKey || '';
-
-        if (wallets.length > 0) {
-          const allRows = [];
-          
-          // CRITICAL: Only HL + Multi-chain for speed (fastest 2 providers)
-          // Fetch Hyperliquid market data once for all wallets
-          const [hlMarketData, hlAllMids, hlSpotMeta] = await Promise.all([
-            providers.hyperliquid.fetchMetaAndAssetCtxs(5000),
-            providers.hyperliquid.fetchAllMids(5000),
-            providers.hyperliquid.fetchSpotMeta(5000)
-          ]);
-          
-          // Build price map from market data
-          const hlPriceMap = {};
-          if (hlMarketData && hlMarketData[0] && hlMarketData[1]) {
-            for (let i = 0; i < hlMarketData[1].length; i++) {
-              const ctx = hlMarketData[1][i];
-              const assetName = hlMarketData[0].universe[i]?.name;
-              if (assetName && ctx?.markPx) {
-                hlPriceMap[assetName] = parseFloat(ctx.markPx);
-              }
-            }
-          }
-          
-          const [hlResults, lighterResults, multichainData] = await Promise.all([
-            // Hyperliquid
-            Promise.all(wallets.map(async (wallet) => {
-              try {
-                const hl = providers.hyperliquid;
-                const data = await hl.fetchPositions(wallet, 5000);
-                
-                const rows = [];
-                
-                // Extract total account equity from Hyperliquid API
-                // Perp equity from marginSummary.accountValue
-                let perpEquity = 0;
-                if (data?.perp?.marginSummary) {
-                  perpEquity = parseFloat(data.perp.marginSummary.accountValue || 0);
-                  // Perp equity calculated
-                }
-                
-                // Spot equity from spot balances
-                // Build spot price map from market data
-                const spotPriceMap = providers.hyperliquid.buildSpotPriceMap(hlAllMids, hlSpotMeta);
-                let spotEquity = 0;
-                if (data?.spot?.balances) {
-                  for (const bal of data.spot.balances) {
-                    const total = parseFloat(bal.total || 0);
-                    if (total > 0) {
-                      const price = parseFloat(spotPriceMap[bal.coin] || 0);
-                      const value = total * price;
-                      spotEquity += value;
-                    }
-                  }
-                  // Spot equity calculated
-                }
-                
-                // Total Hyperliquid equity = perp + spot
-                const hlAccountEquity = perpEquity + spotEquity;
-                // Total equity calculated
-                
-                // Calculate total PnL from all positions
-                let totalHlPnL = 0;
-                if (data?.perp?.assetPositions) {
-                  for (const pos of data.perp.assetPositions) {
-                    const position = pos.position;
-                    const szi = parseFloat(position?.szi || 0);
-                    if (Math.abs(szi) > 0) {
-                      const entryPrice = parseFloat(position?.entryPx || 0);
-                      const currentPrice = hlPriceMap[position.coin] || entryPrice; // Use current market price
-                      const leverage = parseFloat(position?.leverage?.value || 10); // Default to 10x if not available
-                      const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
-                      const pnl = parseFloat(position?.unrealizedPnl || 0);
-                      totalHlPnL += pnl;
-                      
-                      // Calculate margin based on ENTRY value to avoid double-counting PnL
-                      const entryNotional = Math.abs(szi) * entryPrice;
-                      const marginUsed = entryNotional / leverage;
-                      
-                      rows.push({
-                        asset: position.coin,
-                        exchange: 'Hyperliquid',
-                        amount: szi,
-                        price: currentPrice, // Use current market price instead of entry price
-                        value: notionalValue, // Show leveraged value in position display
-                        change24h: null,
-                        pnl: pnl,
-                        entryPrice: entryPrice,
-                        marginUsed: marginUsed, // Track margin for portfolio total calculation
-                        isLeveraged: true,
-                        hlAccountEquity: hlAccountEquity // Store account equity on first position
-                      });
-                    }
-                  }
-                }
-                if (data?.spot?.balances) {
-                  for (const bal of data.spot.balances) {
-                    const available = parseFloat(bal.total || 0) - parseFloat(bal.hold || 0);
-                    if (available > 0) {
-                      rows.push({
-                        asset: bal.coin,
-                        exchange: 'Hyperliquid Spot',
-                        amount: available,
-                        price: 0,
-                        value: 0,
-                        change24h: null,
-                        pnl: null,
-                        entryNtl: parseFloat(bal.entryNtl || 0)
-                      });
-                    }
-                  }
-                }
-                
-                // If we have account equity from API, add a synthetic position to track it
-                // This ensures the total portfolio value reflects the true Hyperliquid equity
-                if (hlAccountEquity !== null && hlAccountEquity > 0) {
-                  // Account equity position created
-                  // Add a synthetic position that represents the Hyperliquid account equity
-                  // We'll use this to ensure portfolio total is correct
-                  rows.push({
-                    asset: 'HL_ACCOUNT_EQUITY',
-                    exchange: 'Hyperliquid',
-                    amount: 1,
-                    price: hlAccountEquity,
-                    value: hlAccountEquity,
-                    change24h: null,
-                    pnl: totalHlPnL,
-                    isHlAccountEquity: true, // Mark this as special
-                    isLeveraged: false, // Don't apply leveraged logic to this
-                    walletAddress: wallet // Track which wallet this belongs to
-                  });
-                } else if (hlAccountEquity === 0) {
-                  // Account equity is zero
-                } else {
-                  console.warn('[Hyperliquid] Could not extract account equity from API');
-                }
-                
-                return rows;
-              } catch (_) { return []; }
-            })),
-            
-            // Lighter
-            Promise.all(wallets.map(async (wallet) => {
-              try {
-                const lighter = providers.lighter;
-                const data = await lighter.fetchAccountByAddress(wallet, { timeoutMs: 5000 });
-                
-                const rows = [];
-                
-                // Extract total equity from Lighter API
-                // The API returns accounts array with account data
-                let lighterAccountEquity = null;
-                let totalLighterPnL = 0;
-                
-                if (data && data.accounts && Array.isArray(data.accounts) && data.accounts.length > 0) {
-                  // Get the first account (user should only have one account per address)
-                  const account = data.accounts[0];
-                  
-                  // Extract equity - Lighter typically returns equity_usd or total_equity
-                  // Try multiple possible field names
-                  lighterAccountEquity = parseFloat(
-                    account.equity_usd || 
-                    account.total_equity || 
-                    account.equity || 
-                    account.balance_usd ||
-                    account.total_balance ||
-                    0
-                  );
-                  
-                  // Extract PnL if available
-                  totalLighterPnL = parseFloat(
-                    account.unrealized_pnl || 
-                    account.pnl || 
-                    account.total_pnl || 
-                    0
-                  );
-                  
-                  // Lighter account data extracted
-                }
-                
-                // If we have account equity from API, add a synthetic position to track it
-                if (lighterAccountEquity !== null && lighterAccountEquity > 0) {
-                  // Lighter account equity position created
-                  rows.push({
-                    asset: 'LIGHTER_ACCOUNT_EQUITY',
-                    exchange: 'Lighter',
-                    amount: 1,
-                    price: lighterAccountEquity,
-                    value: lighterAccountEquity,
-                    change24h: null,
-                    pnl: totalLighterPnL,
-                    isLighterAccountEquity: true, // Mark this as special
-                    isLeveraged: false,
-                    walletAddress: wallet
-                  });
-                } else if (lighterAccountEquity === 0) {
-                  // Lighter account equity is zero
-                } else {
-                  // No Lighter account found
-                }
-                
-                return rows;
-              } catch (e) { 
-                console.error('[Lighter] Error fetching account:', e);
-                return []; 
-              }
-            })),
-            
-            // Multi-chain balances (Zerion PRIMARY, Alchemy/Helius as fallback)
-            (async () => {
-              const alchemyKey = settings.alchemyApiKey;
-              const heliusKey = settings.heliusApiKey;
-              const solanaAddrs = (settings.solanaAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
-              const allWallets = [...wallets, ...solanaAddrs];
-              
-              if (allWallets.length === 0) {
-                console.warn('[/portfolio] Multi-chain: No wallet addresses configured');
-                return [];
-              }
-              
-              // Try Zerion first (if API key available)
-              let zerionRows = [];
-              let zerionSucceeded = false;
-              
-              if (zerionKey && wallets.length > 0) {
-                try {
-                  const z = providers.zerion;
-                  
-                  // Fetch positions only
-                  const positionsData = await z.getWalletPositions(wallets[0], zerionKey, { timeoutMs: 5000 }).catch(e => {
-                    console.error('[/portfolio] Zerion positions error:', e);
-                    return null;
-                  });
-                  
-                  const chainMap = {
-                    'ethereum': 'Ethereum', 
-                    'arbitrum': 'Arbitrum', 
-                    'optimism': 'Optimism',
-                    'polygon': 'Polygon', 
-                    'base': 'Base', 
-                    'avalanche': 'Avalanche',
-                    'bsc': 'BSC', 
-                    'solana': 'Solana', 
-                    'zksync-era': 'zkSync', 
-                    'blast': 'Blast',
-                    'hyperevm': 'HyperEVM',
-                    'linea': 'Linea',
-                    'scroll': 'Scroll',
-                    'mantle': 'Mantle',
-                    'fantom': 'Fantom',
-                    'celo': 'Celo',
-                    'gnosis': 'Gnosis',
-                    'moonbeam': 'Moonbeam',
-                    'moonriver': 'Moonriver',
-                    'aurora': 'Aurora',
-                    'cronos': 'Cronos'
-                  };
-                  
-                  // Process fungible positions
-                  if (positionsData && Array.isArray(positionsData.data)) {
-                    for (const item of positionsData.data) {
-                      const attr = item?.attributes || {};
-                      const fungible = attr.fungible_info;
-                      const flags = attr.flags || {};
-                      
-                      if (fungible && !flags.is_trash) {
-                        const chainId = item?.relationships?.chain?.data?.id || 'unknown';
-                        const chain = chainMap[chainId] || chainId.charAt(0).toUpperCase() + chainId.slice(1);
-                        
-                        zerionRows.push({
-                          asset: fungible.symbol || 'Unknown',
-                          exchange: chain,
-                          amount: attr.quantity?.float || 0,
-                          price: attr.price || 0,
-                          value: attr.value || 0,
-                          change24h: attr.changes?.percent_24h ?? null,
-                          pnl: null
-                        });
-                      }
-                    }
-                  }
-                  
-                  // If we got data from Zerion, use it (but still fetch Bitcoin/Zcash separately)
-                  if (zerionRows.length > 0) {
-                    zerionSucceeded = true;
-                  }
-                } catch (e) { 
-                  console.error('[/portfolio] Zerion error:', e.message || e);
-                }
-              }
-              
-              // Get Bitcoin and Zcash addresses from settings (always check, regardless of Zerion)
-              const bitcoinAddrs = (settings.bitcoinAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
-              const zcashAddrs = (settings.zcashAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
-              
-              // Fetch Bitcoin/Zcash separately since Zerion doesn't support them
-              const btcZecRows = [];
-              if (bitcoinAddrs.length > 0 || zcashAddrs.length > 0) {
-                try {
-                  const [btcTokens, zcashTokens, cryptoPrices] = await Promise.all([
-                    // Bitcoin
-                    bitcoinAddrs.length > 0
-                      ? providers.bitcoin.getTokenBalances(bitcoinAddrs, { timeoutMs: 5000 }).catch(e => {
-                          console.error('[/portfolio] Bitcoin error:', e.message || e);
-                          return [];
-                        })
-                      : Promise.resolve([]),
-                    
-                    // Zcash
-                    zcashAddrs.length > 0
-                      ? providers.zcash.getTokenBalances(zcashAddrs, { timeoutMs: 5000 }).catch(e => {
-                          console.error('[/portfolio] Zcash error:', e.message || e);
-                          return [];
-                        })
-                      : Promise.resolve([]),
-                    
-                    // Get BTC and ZEC prices from CoinGecko
-                    providers.coingecko.getSimplePrice('bitcoin,zcash', { timeoutMs: 5000, ttlMs: 60000 }).catch(e => {
-                      console.error('[/portfolio] CoinGecko price error:', e.message || e);
-                      return {};
-                    })
-                  ]);
-                  
-                  // Process Bitcoin - enrich with price
-                  const btcPrice = cryptoPrices?.bitcoin?.usd || 0;
-                  const btcChange24h = cryptoPrices?.bitcoin?.usd_24h_change || null;
-                  for (const btc of btcTokens) {
-                    btcZecRows.push({
-                      asset: 'BTC',
-                      exchange: 'Bitcoin',
-                      amount: btc.balance,
-                      price: btcPrice,
-                      value: btc.balance * btcPrice,
-                      change24h: btcChange24h,
-                      pnl: null
-                    });
-                  }
-                  
-                  // Process Zcash - enrich with price
-                  const zecPrice = cryptoPrices?.zcash?.usd || 0;
-                  const zecChange24h = cryptoPrices?.zcash?.usd_24h_change || null;
-                  for (const zec of zcashTokens) {
-                    btcZecRows.push({
-                      asset: 'ZEC',
-                      exchange: 'Zcash',
-                      amount: zec.balance,
-                      price: zecPrice,
-                      value: zec.balance * zecPrice,
-                      change24h: zecChange24h,
-                      pnl: null
-                    });
-                  }
-                } catch (e) {
-                  console.error('[/portfolio] Bitcoin/Zcash fetch error:', e.message || e);
-                }
-              }
-              
-              // Return Zerion data plus Bitcoin/Zcash
-              if (zerionSucceeded) {
-                return [...zerionRows, ...btcZecRows];
-              }
-              
-              // Fallback to Alchemy + Helius (if no Zerion)
-              if (alchemyKey || heliusKey) {
-                const rows = [];
-                
-                // Fetch Alchemy and Helius in parallel
-                const [alchemyTokens, heliusTokens] = await Promise.all([
-                  // Alchemy (EVM chains)
-                  alchemyKey && wallets.length > 0 
-                    ? providers.alchemy.getTokenBalances(wallets, alchemyKey, { timeoutMs: 8000 }).catch(e => {
-                        console.error('[/portfolio] Alchemy error:', e.message || e);
-                        return [];
-                      })
-                    : Promise.resolve([]),
-                  
-                  // Helius (Solana)
-                  heliusKey && solanaAddrs.length > 0
-                    ? providers.helius.getTokenBalances(solanaAddrs, heliusKey, { timeoutMs: 8000 }).catch(e => {
-                        console.error('[/portfolio] Helius error:', e.message || e);
-                        return [];
-                      })
-                    : Promise.resolve([])
-                ]);
-                
-                // Process Alchemy tokens
-                for (const token of alchemyTokens) {
-                  rows.push({
-                    asset: token.tokenSymbol,
-                    exchange: token.blockchain,
-                    amount: token.balance,
-                    price: token.tokenPrice || 0,
-                    value: token.balanceUsd || 0,
-                    change24h: token.change24h ?? null,
-                    pnl: null
-                  });
-                }
-                
-                // Process Helius tokens
-                for (const token of heliusTokens) {
-                  rows.push({
-                    asset: token.tokenSymbol,
-                    exchange: token.blockchain,
-                    amount: token.balance,
-                    price: token.tokenPrice || 0,
-                    value: token.balanceUsd || 0,
-                    change24h: token.change24h ?? null,
-                    pnl: null
-                  });
-                }
-                
-                // Combine with Bitcoin/Zcash data (fetched separately above)
-                return [...rows, ...btcZecRows];
-              }
-              
-              // If we only have Bitcoin/Zcash addresses (no other providers)
-              if (btcZecRows.length > 0) {
-                return btcZecRows;
-              }
-              
-              console.warn('[/portfolio] ⚠️ No multi-chain data available (no API keys or all providers failed)');
-              return [];
-            })()
-          ]);
-          
-          const flatHlResults = hlResults.flat();
-          const flatLighterResults = lighterResults.flat();
-          // Data fetched from all sources
-          allRows.push(...flatHlResults, ...flatLighterResults, ...multichainData);
-          
-          if (allRows.length > 0) {
-            // Enrich with prices for HL/Lighter (Zerion already has prices)
-            const uniqueAssets = [...new Set(allRows.filter(r => !r.price || r.price === 0).map(r => r.asset))];
-            
-            if (uniqueAssets.length > 0) {
-              try {
-                // Fetch market data from Hyperliquid for all assets (perps + spot)
-                const [marketData, allMids, spotMeta] = await Promise.all([
-                  providers.hyperliquid.fetchMetaAndAssetCtxs(5000),
-                  providers.hyperliquid.fetchAllMids(5000),
-                  providers.hyperliquid.fetchSpotMeta(5000)
-                ]);
-                
-                const priceMap = {};
-                const change24hMap = {};
-                
-                // Get perp prices
-                if (marketData && marketData[0] && marketData[1]) {
-                  for (let i = 0; i < marketData[1].length; i++) {
-                    const ctx = marketData[1][i];
-                    const assetName = marketData[0].universe[i]?.name;
-                    if (assetName && ctx?.markPx) {
-                      const markPx = parseFloat(ctx.markPx);
-                      const prevDayPx = parseFloat(ctx.prevDayPx || 0);
-                      priceMap[assetName] = markPx;
-                      
-                      if (prevDayPx > 0) {
-                        change24hMap[assetName] = ((markPx - prevDayPx) / prevDayPx) * 100;
-                      }
-                    }
-                  }
-                }
-                
-                // Get spot prices using proper @index mapping
-                if (allMids && spotMeta && spotMeta.universe) {
-                  for (const spotPair of spotMeta.universe) {
-                    if (spotPair.tokens && spotPair.tokens[1] === 0) { // USDC quote
-                      const spotKey = `@${spotPair.index}`;
-                      const tokenName = spotPair.name;
-                      if (allMids[spotKey]) {
-                        priceMap[tokenName] = parseFloat(allMids[spotKey]);
-                      }
-                    }
-                  }
-                  // Also check tokens array
-                  if (spotMeta.tokens) {
-                    for (const token of spotMeta.tokens) {
-                      if (token.name && token.index !== undefined) {
-                        const spotPair = spotMeta.universe.find(pair => 
-                          pair.tokens && pair.tokens[0] === token.index && pair.tokens[1] === 0
-                        );
-                        if (spotPair) {
-                          const spotKey = `@${spotPair.index}`;
-                          if (allMids[spotKey]) {
-                            priceMap[token.name] = parseFloat(allMids[spotKey]);
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-                
-                // Load wallet asset entry prices from localStorage
-                const getWalletEntryPrices = () => {
-                  try {
-                    const stored = localStorage.getItem('walletAssetEntryPrices');
-                    return stored ? JSON.parse(stored) : {};
-                  } catch {
-                    return {};
-                  }
-                };
-                
-                const saveWalletEntryPrices = (entryPrices) => {
-                  try {
-                    localStorage.setItem('walletAssetEntryPrices', JSON.stringify(entryPrices));
-                  } catch (e) {
-                    console.error('[Portfolio] Failed to save entry prices:', e);
-                  }
-                };
-                
-                const walletEntryPrices = getWalletEntryPrices();
-                let entryPricesUpdated = false;
-                
-                // Apply prices and 24h% to all positions (calculate PnL)
-                const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD', 'FEUSD']);
-                for (const row of allRows) {
-                  const currentPrice = priceMap[row.asset] || row.price || 0;
-                  const change24h = change24hMap[row.asset];
-                  
-                  // Stablecoins default to $1
-                  const finalPrice = STABLECOINS.has(row.asset) && currentPrice === 0 ? 1 : currentPrice;
-                  
-                  if (finalPrice > 0) {
-                    row.price = finalPrice;
-                    // Recalculate value with current price
-                    row.value = Math.abs(row.amount) * finalPrice;
-                    
-                    // Calculate PnL for Hyperliquid Spot using entryNtl
-                    if (row.entryNtl && row.entryNtl > 0) {
-                      row.pnl = row.value - row.entryNtl;
-                    }
-                    // Or use entry price if available (perp positions)
-                    else if (row.entryPrice && row.entryPrice > 0) {
-                      const costBasis = Math.abs(row.amount) * row.entryPrice;
-                      const currentValue = Math.abs(row.amount) * finalPrice;
-                      row.pnl = row.amount >= 0 ? (currentValue - costBasis) : (costBasis - currentValue);
-                    }
-                    // For wallet assets without entry price, track first-seen price
-                    else if (row.exchange !== 'Hyperliquid' && row.exchange !== 'Lighter') {
-                      const posKey = `${row.asset}_${row.exchange}`;
-                      
-                      // Check if we have a stored entry price
-                      if (walletEntryPrices[posKey]) {
-                        const storedEntry = walletEntryPrices[posKey];
-                        row.entryPrice = storedEntry.price;
-                        row.entryDate = storedEntry.date;
-                        
-                        // Calculate PnL using stored entry price
-                        const costBasis = Math.abs(row.amount) * storedEntry.price;
-                        const currentValue = Math.abs(row.amount) * finalPrice;
-                        row.pnl = currentValue - costBasis;
-                      } 
-                      // First time seeing this asset - record current price as entry
-                      else if (Math.abs(row.amount) > 0 && finalPrice > 0) {
-                        walletEntryPrices[posKey] = {
-                          price: finalPrice,
-                          date: new Date().toISOString(),
-                          amount: Math.abs(row.amount)
-                        };
-                        row.entryPrice = finalPrice;
-                        row.entryDate = walletEntryPrices[posKey].date;
-                        row.pnl = 0; // No PnL on first detection
-                        entryPricesUpdated = true;
-                      }
-                    }
-                  }
-                  
-                  if (change24h !== undefined && change24h !== null) {
-                    row.change24h = change24h;
-                  }
-                }
-                
-                // Save updated entry prices if any were added
-                if (entryPricesUpdated) {
-                  saveWalletEntryPrices(walletEntryPrices);
-                  // Entry prices saved
-                }
-                
-                // Log PnL summary
-                const walletAssetsWithPnl = allRows.filter(r => 
-                  r.pnl !== null && r.pnl !== undefined && 
-                  r.exchange !== 'Hyperliquid' && r.exchange !== 'Lighter'
-                );
-                if (walletAssetsWithPnl.length > 0) {
-                  // Wallet PnL tracking active
-                }
-              } catch (e) {
-                console.error('[/portfolio] Price enrichment failed:', e);
-              }
-            }
-            
-            // Add manual positions from settings
-            if (settings.cryptoPositions && settings.cryptoPositions.length > 0) {
-              for (const manualPos of settings.cryptoPositions) {
-                if (manualPos.type === 'custom') {
-                  // Custom asset with fixed value
-                  allRows.push({
-                    asset: manualPos.name,
-                    exchange: 'Manual',
-                    amount: 1,
-                    value: manualPos.value,
-                    price: manualPos.value,
-                    change24h: null,
-                    pnl: null,
-                    pnlPercent: null,
-                    isManual: true,
-                    manualType: 'custom'
-                  });
-                } else if (manualPos.type === 'pyth') {
-                  // Pyth oracle position - fetch current price
-                  const entryPrice = manualPos.entryPrice || 0;
-                  const currentValue = manualPos.amount * entryPrice;
-                  
-                  // We'll try to get the current Pyth price
-                  let currentPrice = entryPrice;
-                  let pnl = null;
-                  
-                  try {
-                    // Fetch Pyth price
-                    const pythResp = await fetch(`https://hermes.pyth.network/v2/updates/price/latest?ids[]=${manualPos.feedId}`);
-                    if (pythResp.ok) {
-                      const pythData = await pythResp.json();
-                      if (pythData.parsed && pythData.parsed[0]) {
-                        const priceData = pythData.parsed[0].price;
-                        currentPrice = parseFloat(priceData.price) * Math.pow(10, priceData.expo);
-                        
-                        // Calculate PnL
-                        const costBasis = manualPos.amount * entryPrice;
-                        const currentValue = manualPos.amount * currentPrice;
-                        pnl = currentValue - costBasis;
-                      }
-                    }
-                  } catch (e) {
-                    console.warn('Failed to fetch Pyth price for manual position:', e);
-                  }
-                  
-                  allRows.push({
-                    asset: manualPos.symbol,
-                    exchange: 'Manual',
-                    amount: manualPos.amount,
-                    value: manualPos.amount * currentPrice,
-                    price: currentPrice,
-                    change24h: null,
-                    pnl: pnl,
-                    pnlPercent: pnl && entryPrice > 0 ? (pnl / (manualPos.amount * entryPrice)) * 100 : null,
-                    entryPrice: entryPrice,
-                    isManual: true,
-                    manualType: 'pyth'
-                  });
-                }
-              }
-            }
-            
-            // Aggregate duplicate assets (except leveraged positions and special tracking positions)
-            const aggregatedRows = [];
-            const assetGroups = new Map();
-            const hasHlEquity = allRows.some(r => r.isHlAccountEquity);
-            
-            for (const row of allRows) {
-              // Keep leveraged positions separate - don't aggregate them
-              if (row.isLeveraged) {
-                aggregatedRows.push(row);
-                continue;
-              }
-              
-              // Keep special account equity tracking positions separate (hidden from UI)
-              if (row.isHlAccountEquity || row.isLighterAccountEquity) {
-                aggregatedRows.push(row);
-                continue;
-              }
-              
-              // For Hyperliquid positions: keep them for display, but they won't be counted in total
-              // (the account equity already includes them in the portfolio total)
-              if (row.exchange === 'Hyperliquid' || row.exchange === 'Hyperliquid Spot') {
-                // Don't aggregate HL positions with other exchanges to avoid confusion
-                aggregatedRows.push(row);
-                continue;
-              }
-              
-              // Group spot positions by asset
-              const assetKey = row.asset;
-              if (!assetGroups.has(assetKey)) {
-                assetGroups.set(assetKey, []);
-              }
-              assetGroups.get(assetKey).push(row);
-            }
-            
-            // Combine grouped positions
-            for (const [asset, positions] of assetGroups) {
-              if (positions.length === 1) {
-                // Single position, add as-is
-                aggregatedRows.push(positions[0]);
-              } else {
-                // Multiple positions for same asset - aggregate them
-                const totalAmount = positions.reduce((sum, p) => sum + (p.amount || 0), 0);
-                const totalValue = positions.reduce((sum, p) => sum + (p.value || 0), 0);
-                const totalPnL = positions.reduce((sum, p) => sum + (p.pnl || 0), 0);
-                
-                // Calculate weighted average price
-                const weightedPrice = totalAmount !== 0 ? totalValue / Math.abs(totalAmount) : 0;
-                
-                // Collect unique exchanges
-                const exchanges = [...new Set(positions.map(p => p.exchange))];
-                const exchangeLabel = exchanges.length > 1 ? 'Multiple' : exchanges[0];
-                
-                // Calculate weighted average entry price for PnL
-                let totalEntryValue = 0;
-                let hasEntryData = false;
-                for (const pos of positions) {
-                  if (pos.entryPrice && pos.amount) {
-                    totalEntryValue += Math.abs(pos.amount) * pos.entryPrice;
-                    hasEntryData = true;
-                  }
-                }
-                const avgEntryPrice = hasEntryData && totalAmount !== 0 ? totalEntryValue / Math.abs(totalAmount) : null;
-                
-                aggregatedRows.push({
-                  asset,
-                  exchange: exchangeLabel,
-                  amount: totalAmount,
-                  value: totalValue,
-                  price: weightedPrice,
-                  change24h: positions[0].change24h, // Use first position's 24h change
-                  pnl: totalPnL,
-                  entryPrice: avgEntryPrice,
-                  isAggregated: true,
-                  aggregatedFrom: exchanges
-                });
-              }
-            }
-            
-            // Positions aggregated
-            
-            const sorted = aggregatedRows.sort((a, b) => (b.value || 0) - (a.value || 0));
-            
-            // Cache for re-rendering
-            cachedPositions = sorted;
-            
-            // Calculate total value and PnL from ALL positions (including hidden ones)
-            const { totalValue, totalPnL, totalPnLPercent } = calculatePortfolioTotals(sorted);
-            cachedSummaryData = { totalValue, totalPnL, totalPnLPercent };
-            
-            // Filter out hidden assets for display
-            const visible = filterPositions(sorted, { hideHidden: true, hideSmall: false });
-            
-            PositionsUI.renderPositions({
-              positions: visible,
-              containers: { positionsBody, mobilePositionsContainer: mobileContainer },
-              options: { amountsVisible, hideSmallPositions, editMode, settings: { minBalanceThreshold: s.minBalanceThreshold || 100, showExactAmounts: s.showExactAmounts || false, useColoredPnL: s.useColoredPnL ?? true, showPriceChart: s.showPriceChart ?? true } }
-            });
-            
-            rendered = true; // Mark as successfully rendered
-            
-            // Load charts in background (non-blocking) - ONLY if showPriceChart is enabled
-            const showPriceChart = s.showPriceChart ?? true;
-            if (showPriceChart) {
-              (async () => {
-                try {
-                  const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
-                  const pythFeedMap = await providers.pyth.getPriceFeeds(5000);
-                  const historyPromises = sorted.map(async (pos) => {
-                    if (STABLECOINS.has(pos.asset?.toUpperCase())) {
-                      pos.priceHistory = null;
-                      return { success: true, pos };
-                    }
-                    
-                    const feedId = pythFeedMap[pos.asset];
-                    if (feedId && providers.pyth.get24hPriceHistory) {
-                      try {
-                        const history = await providers.pyth.get24hPriceHistory(feedId, 3000);
-                        pos.priceHistory = history.length > 0 ? history : null;
-                        return { success: history.length > 0, pos };
-                      } catch (e) {
-                        pos.priceHistory = null;
-                        return { success: false, pos };
-                      }
-                    } else {
-                      pos.priceHistory = null;
-                      return { success: false, pos };
-                    }
-                  });
-                  const results = await Promise.all(historyPromises);
-                  const successCount = results.filter(r => r.success).length;
-                  const totalNonStable = results.filter(r => !STABLECOINS.has(r.pos?.asset?.toUpperCase())).length;
-                  if (totalNonStable > 0) {
-                    // Charts loaded in background
-                  }
-                  // Re-render ONLY positions (don't recalculate portfolio)
-                  const positionsBody = document.getElementById('newPositionsBody');
-                  const mobileContainer = document.getElementById('newMobilePositionsContainer');
-                  const visible = filterPositions(cachedPositions, { hideHidden: true, hideSmall: hideSmallPositions });
-                  if (PositionsUI && positionsBody) {
-                    PositionsUI.renderPositions({
-                      positions: visible,
-                      containers: { positionsBody, mobilePositionsContainer: mobileContainer },
-                      options: { amountsVisible: !document.body.classList.contains('amounts-hidden'), hideSmallPositions, editMode: false, settings: { minBalanceThreshold: s.minBalanceThreshold || 100, showExactAmounts: s.showExactAmounts || false, useColoredPnL: s.useColoredPnL ?? true, showPriceChart: s.showPriceChart ?? true } }
-                    });
-                  }
-                } catch (e) {
-                  console.warn('[Charts] Background chart loading failed:', e);
-                }
-              })();
-            }
-            
-            // Update hero with real portfolio value and PnL (without weather first)
-            const heroHtml = HeroUI.composeSummary({
-              portfolioValue: totalValue,
-              amountsVisible,
-              heroPnLMode: 'total',
-              totalPnL,
-              totalPnLPercent,
-              totalDailyChange: 0,
-              totalDailyChangePercent: 0,
-              useColoredPnL: s.useColoredPnL ?? true,
-              highlightsHtml: [],
-              weather: null
-            });
-            summaryEl.innerHTML = heroHtml;
-            
-            // Load weather asynchronously and update hero when ready
-            (async () => {
-              try {
-                if (s.weather?.lat && s.weather?.lon) {
-                  const Weather = window.AppModules?.data?.providers?.weather;
-                  if (Weather) {
-                    const weatherData = await Weather.getWeather(s.weather.lat, s.weather.lon, 10000);
-                    if (weatherData && weatherData.current) {
-                      const temp = Math.round(weatherData.current.temperature_2m);
-                      const city = s.weather?.label || 'your location';
-                      const weatherCode = weatherData.current.weather_code || 0;
-                      const isDay = weatherData.current.is_day === 1;
-                      let weatherIcon = '';
-                      if (weatherCode === 0) weatherIcon = isDay ? '☀︎' : '☾';
-                      else if (weatherCode <= 3) weatherIcon = '☁︎';
-                      else if (weatherCode <= 49) weatherIcon = '☁︎';
-                      else if (weatherCode <= 67) weatherIcon = '⛆';
-                      else if (weatherCode <= 77) weatherIcon = '❅';
-                      else if (weatherCode <= 82) weatherIcon = '⛆';
-                      else if (weatherCode <= 86) weatherIcon = '❅';
-                      else if (weatherCode <= 99) weatherIcon = '⛈';
-                      else weatherIcon = '☁︎';
-                      const moonPhase = (weatherData.moonPhase !== undefined) ? weatherData.moonPhase : (() => {
-                        const today = new Date();
-                        const knownNewMoon = new Date('2000-01-06');
-                        const daysSince = (today - knownNewMoon) / (1000 * 60 * 60 * 24);
-                        return (daysSince % 29.53058867) / 29.53058867;
-                      })();
-                      let moonIcon = '';
-                      let moonName = '';
-                      if (moonPhase < 0.0625) { moonIcon = '○'; moonName = 'new moon'; }
-                      else if (moonPhase < 0.1875) { moonIcon = '☽'; moonName = 'waxing crescent'; }
-                      else if (moonPhase < 0.3125) { moonIcon = '◐'; moonName = 'first quarter'; }
-                      else if (moonPhase < 0.4375) { moonIcon = '◐'; moonName = 'waxing gibbous'; }
-                      else if (moonPhase < 0.5625) { moonIcon = '●'; moonName = 'full moon'; }
-                      else if (moonPhase < 0.6875) { moonIcon = '◑'; moonName = 'waning gibbous'; }
-                      else if (moonPhase < 0.8125) { moonIcon = '◑'; moonName = 'last quarter'; }
-                      else if (moonPhase < 0.9375) { moonIcon = '☾'; moonName = 'waning crescent'; }
-                      else { moonIcon = '○'; moonName = 'new moon'; }
-                      const hour = new Date().getHours();
-                      const showMoon = hour >= 18 || hour < 6;
-                      const moonText = showMoon ? ` with a ${moonIcon} ${moonName} moon` : '';
-                      const precipitation = weatherData.daily?.precipitation_sum?.[0] || 0;
-                      const weather = { temp, city, icon: weatherIcon, moonText, precipitation };
-                      
-                      // Cache weather for reuse in re-renders
-                      cachedWeather = weather;
-                      
-                      // Re-render hero with weather
-                      const heroHtmlWithWeather = HeroUI.composeSummary({
-                        portfolioValue: totalValue,
-                        amountsVisible,
-                        heroPnLMode: 'total',
-                        totalPnL,
-                        totalPnLPercent,
-                        totalDailyChange: 0,
-                        totalDailyChangePercent: 0,
-                        useColoredPnL: s.useColoredPnL ?? true,
-                        highlightsHtml: [],
-                        weather
-                      });
-                      summaryEl.innerHTML = heroHtmlWithWeather;
-                    }
-                  }
-                }
-              } catch (e) {
-                console.warn('[/portfolio] Weather load failed:', e);
-                // Don't show error to user, just skip weather
-              }
-            })();
-          }
-        }
-      } catch (e) {
-        console.error('[/portfolio] Positions error:', e);
-        summaryEl.innerHTML = `<span class="loading-terminal">Error loading positions: ${e?.message || e}</span>`;
-      }
-
-      if (!rendered) {
-        // No positions found
-        positionsBody.innerHTML = '<tr><td colspan="8" class="loading">No positions found. Add wallets in Settings.</td></tr>';
-        if (mobileContainer) mobileContainer.innerHTML = '';
-        summaryEl.innerHTML = 'Your portfolio is empty. Add wallets in Settings.';
-      }
-    }
-  } catch (e) {
-    summaryEl.innerHTML = `<span class="loading-terminal">Error: ${e?.message || e}</span>`;
-  }
+  // Redirect to new incremental renderer
+  return await renderPortfolioIncremental();
 }
 
 let amountsVisible = true; // Default: show values
@@ -1920,6 +956,7 @@ function setupControls() {
   syncMobileButtons('newCompactModeBtn', 'newCompactModeBtnMobile');
   syncMobileButtons('newRefreshBtn', 'newRefreshBtnMobile');
   syncMobileButtons('newSettingsBtn', 'newSettingsBtnMobile');
+  syncMobileButtons('newHideSmallBtn', 'newHideSmallBtnMobile');
   
   // Toggle small positions
   const hideSmallBtn = document.getElementById('newHideSmallBtn');
@@ -1929,10 +966,20 @@ function setupControls() {
       window.hideSmallPositions = hideSmallPositions; // Update global for incremental renderer
       const threshold = settings.minBalanceThreshold || 100;
       hideSmallBtn.textContent = hideSmallPositions ? `[SHOW <$${threshold}]` : `[HIDE <$${threshold}]`;
-      rerenderPositions();
+      // Also update mobile button text
+      const mobileHideSmallBtn = document.getElementById('newHideSmallBtnMobile');
+      if (mobileHideSmallBtn) {
+        mobileHideSmallBtn.textContent = hideSmallBtn.textContent;
+      }
+      // Call both renderers to support both incremental and full render modes
+      if (window._portfolioRenderer) {
+        window._portfolioRenderer.forceRender();
+      } else {
+        rerenderPositions();
+      }
     });
     // Sync button text with initial state
-    const mobileHideSmallBtn = document.getElementById('newMobileHideSmallBtn');
+    const mobileHideSmallBtn = document.getElementById('newHideSmallBtnMobile');
     if (mobileHideSmallBtn) {
       mobileHideSmallBtn.textContent = hideSmallBtn.textContent;
     }
@@ -2021,10 +1068,15 @@ function setupControls() {
   if (editListBtn) {
     editListBtn.addEventListener('click', () => {
       editMode = !editMode;
-      editListBtn.textContent = editMode ? '[SAVE CHANGES]' : '[EDIT LIST]';
+      window.editMode = editMode; // Update global for incremental renderer
+      editListBtn.textContent = editMode ? '[SAVE CHANGES]' : '[EDIT]';
       
-      // Re-render with edit mode
-      rerenderPositions();
+      // Re-render with edit mode - call both renderers to support both modes
+      if (window._portfolioRenderer) {
+        window._portfolioRenderer.forceRender();
+      } else {
+        rerenderPositions();
+      }
       
       // Add click handlers for hide/delete buttons if in edit mode
       if (editMode) {
@@ -2038,6 +1090,8 @@ function setupControls() {
               } else {
                 hiddenAssets.add(assetKey);
               }
+              window.hiddenAssets = hiddenAssets; // Update global for incremental renderer
+              
               // Save to localStorage
               const Settings = window.AppModules?.core?.settings;
               const s = getSettings();
@@ -2045,8 +1099,12 @@ function setupControls() {
               localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
               invalidateSettingsCache();
               
-              // Re-render
-              rerenderPositions();
+              // Re-render - call both renderers to support both modes
+              if (window._portfolioRenderer) {
+                window._portfolioRenderer.forceRender();
+              } else {
+                rerenderPositions();
+              }
             } else if (e.target.classList.contains('position-delete-btn')) {
               // Delete manual position
               const asset = e.target.getAttribute('data-asset');
@@ -2083,9 +1141,14 @@ function setupControls() {
                   
                   // Also remove from hiddenAssets set in memory
                   hiddenAssets.delete(assetKey);
+                  window.hiddenAssets = hiddenAssets; // Update global for incremental renderer
                   
-                  // Re-render without page reload
-                  rerenderPositions();
+                  // Re-render without page reload - call both renderers to support both modes
+                  if (window._portfolioRenderer) {
+                    window._portfolioRenderer.forceRender();
+                  } else {
+                    rerenderPositions();
+                  }
                 }
               }
             }
@@ -2166,23 +1229,21 @@ function setupControls() {
       const latInput = document.getElementById('newWeatherLat');
       const lonInput = document.getElementById('newWeatherLon');
       const coloredPnLInput = document.getElementById('newUseColoredPnL');
-      const showWatchlistInput = document.getElementById('newShowWatchlist');
-      const showComicInput = document.getElementById('newShowComic');
+      const hideWatchlistInput = document.getElementById('newHideWatchlist');
+      const hideComicInput = document.getElementById('newHideComic');
       const showExactAmountsInput = document.getElementById('newShowExactAmounts');
       const showPriceChartInput = document.getElementById('newShowPriceChart');
-      const comicStripInput = document.getElementById('newComicStrip');
       const minBalanceInput = document.getElementById('newMinBalanceThreshold');
       const leftAlignedInput = document.getElementById('newLeftAligned');
       
       // Menu visibility controls
-      const showSnowBtnInput = document.getElementById('newShowSnowBtn');
-      const showRainBtnInput = document.getElementById('newShowRainBtn');
-      const showFontSizeInput = document.getElementById('newShowFontSize');
-      const showThemeBtnInput = document.getElementById('newShowThemeBtn');
-      const showAmountsBtnInput = document.getElementById('newShowAmountsBtn');
+      const hideSnowBtnInput = document.getElementById('newHideSnowBtn');
+      const hideRainBtnInput = document.getElementById('newHideRainBtn');
+      const hideFontSizeInput = document.getElementById('newHideFontSize');
+      const hideThemeBtnInput = document.getElementById('newHideThemeBtn');
+      const hideAmountsBtnInput = document.getElementById('newHideAmountsBtn');
       const showCompactBtnInput = document.getElementById('newShowCompactBtn');
-      const showRefreshBtnInput = document.getElementById('newShowRefreshBtn');
-      const showDonateBtnInput = document.getElementById('newShowDonateBtn');
+      const hideDonateBtnInput = document.getElementById('newHideDonateBtn');
       
       if (userNameInput) userNameInput.value = s.userName || '';
       if (walletInput) walletInput.value = s.walletAddresses || '';
@@ -2197,23 +1258,21 @@ function setupControls() {
       if (latInput) latInput.value = s.weather?.lat || '';
       if (lonInput) lonInput.value = s.weather?.lon || '';
       if (coloredPnLInput) coloredPnLInput.checked = s.useColoredPnL ?? true;
-      if (showWatchlistInput) showWatchlistInput.checked = s.showWatchlist ?? true;
-      if (showComicInput) showComicInput.checked = s.showComic ?? false;
+      if (hideWatchlistInput) hideWatchlistInput.checked = s.hideWatchlist ?? false;
+      if (hideComicInput) hideComicInput.checked = s.hideComic ?? false;
       if (showExactAmountsInput) showExactAmountsInput.checked = s.showExactAmounts ?? false;
       if (showPriceChartInput) showPriceChartInput.checked = s.showPriceChart ?? true;
-      if (comicStripInput) comicStripInput.value = s.comicStrip || 'calvinandhobbes';
       if (minBalanceInput) minBalanceInput.value = s.minBalanceThreshold || 100;
       if (leftAlignedInput) leftAlignedInput.checked = s.leftAligned ?? true;
       
       // Menu visibility checkboxes
-      if (showSnowBtnInput) showSnowBtnInput.checked = s.showSnowBtn ?? true;
-      if (showRainBtnInput) showRainBtnInput.checked = s.showRainBtn ?? true;
-      if (showFontSizeInput) showFontSizeInput.checked = s.showFontSize ?? true;
-      if (showThemeBtnInput) showThemeBtnInput.checked = s.showThemeBtn ?? true;
-      if (showAmountsBtnInput) showAmountsBtnInput.checked = s.showAmountsBtn ?? true;
+      if (hideSnowBtnInput) hideSnowBtnInput.checked = s.hideSnowBtn ?? false;
+      if (hideRainBtnInput) hideRainBtnInput.checked = s.hideRainBtn ?? false;
+      if (hideFontSizeInput) hideFontSizeInput.checked = s.hideFontSize ?? false;
+      if (hideThemeBtnInput) hideThemeBtnInput.checked = s.hideThemeBtn ?? false;
+      if (hideAmountsBtnInput) hideAmountsBtnInput.checked = s.hideAmountsBtn ?? false;
       if (showCompactBtnInput) showCompactBtnInput.checked = s.showCompactBtn ?? true;
-      if (showRefreshBtnInput) showRefreshBtnInput.checked = s.showRefreshBtn ?? true;
-      if (showDonateBtnInput) showDonateBtnInput.checked = s.showDonateBtn ?? true;
+      if (hideDonateBtnInput) hideDonateBtnInput.checked = s.hideDonateBtn ?? false;
       
       settingsDialog.style.display = 'block';
       settingsBackdrop.style.display = 'block';
@@ -2551,23 +1610,21 @@ function setupControls() {
       const latInput = document.getElementById('newWeatherLat');
       const lonInput = document.getElementById('newWeatherLon');
       const coloredPnLInput = document.getElementById('newUseColoredPnL');
-      const showWatchlistInput = document.getElementById('newShowWatchlist');
-      const showComicInput = document.getElementById('newShowComic');
+      const hideWatchlistInput = document.getElementById('newHideWatchlist');
+      const hideComicInput = document.getElementById('newHideComic');
       const showExactAmountsInput = document.getElementById('newShowExactAmounts');
       const showPriceChartInput = document.getElementById('newShowPriceChart');
-      const comicStripInput = document.getElementById('newComicStrip');
       const minBalanceInput = document.getElementById('newMinBalanceThreshold');
       const leftAlignedInput = document.getElementById('newLeftAligned');
       
       // Menu visibility controls
-      const showSnowBtnInput = document.getElementById('newShowSnowBtn');
-      const showRainBtnInput = document.getElementById('newShowRainBtn');
-      const showFontSizeInput = document.getElementById('newShowFontSize');
-      const showThemeBtnInput = document.getElementById('newShowThemeBtn');
-      const showAmountsBtnInput = document.getElementById('newShowAmountsBtn');
+      const hideSnowBtnInput = document.getElementById('newHideSnowBtn');
+      const hideRainBtnInput = document.getElementById('newHideRainBtn');
+      const hideFontSizeInput = document.getElementById('newHideFontSize');
+      const hideThemeBtnInput = document.getElementById('newHideThemeBtn');
+      const hideAmountsBtnInput = document.getElementById('newHideAmountsBtn');
       const showCompactBtnInput = document.getElementById('newShowCompactBtn');
-      const showRefreshBtnInput = document.getElementById('newShowRefreshBtn');
-      const showDonateBtnInput = document.getElementById('newShowDonateBtn');
+      const hideDonateBtnInput = document.getElementById('newHideDonateBtn');
       
       if (userNameInput) newSettings.userName = userNameInput.value;
       if (walletInput) newSettings.walletAddresses = walletInput.value;
@@ -2579,23 +1636,21 @@ function setupControls() {
       if (heliusInput) newSettings.heliusApiKey = heliusInput.value;
       if (openseaInput) newSettings.openSeaApiKey = openseaInput.value;
       if (coloredPnLInput) newSettings.useColoredPnL = coloredPnLInput.checked;
-      if (showWatchlistInput) newSettings.showWatchlist = showWatchlistInput.checked;
-      if (showComicInput) newSettings.showComic = showComicInput.checked;
+      if (hideWatchlistInput) newSettings.hideWatchlist = hideWatchlistInput.checked;
+      if (hideComicInput) newSettings.hideComic = hideComicInput.checked;
       if (showExactAmountsInput) newSettings.showExactAmounts = showExactAmountsInput.checked;
       if (showPriceChartInput) newSettings.showPriceChart = showPriceChartInput.checked;
-      if (comicStripInput) newSettings.comicStrip = comicStripInput.value;
       if (minBalanceInput) newSettings.minBalanceThreshold = parseFloat(minBalanceInput.value) || 100;
       if (leftAlignedInput) newSettings.leftAligned = leftAlignedInput.checked;
       
       // Save menu visibility settings
-      if (showSnowBtnInput) newSettings.showSnowBtn = showSnowBtnInput.checked;
-      if (showRainBtnInput) newSettings.showRainBtn = showRainBtnInput.checked;
-      if (showFontSizeInput) newSettings.showFontSize = showFontSizeInput.checked;
-      if (showThemeBtnInput) newSettings.showThemeBtn = showThemeBtnInput.checked;
-      if (showAmountsBtnInput) newSettings.showAmountsBtn = showAmountsBtnInput.checked;
+      if (hideSnowBtnInput) newSettings.hideSnowBtn = hideSnowBtnInput.checked;
+      if (hideRainBtnInput) newSettings.hideRainBtn = hideRainBtnInput.checked;
+      if (hideFontSizeInput) newSettings.hideFontSize = hideFontSizeInput.checked;
+      if (hideThemeBtnInput) newSettings.hideThemeBtn = hideThemeBtnInput.checked;
+      if (hideAmountsBtnInput) newSettings.hideAmountsBtn = hideAmountsBtnInput.checked;
       if (showCompactBtnInput) newSettings.showCompactBtn = showCompactBtnInput.checked;
-      if (showRefreshBtnInput) newSettings.showRefreshBtn = showRefreshBtnInput.checked;
-      if (showDonateBtnInput) newSettings.showDonateBtn = showDonateBtnInput.checked;
+      if (hideDonateBtnInput) newSettings.hideDonateBtn = hideDonateBtnInput.checked;
       
       newSettings.weather = {
         label: cityInput?.value || '',
@@ -2648,15 +1703,14 @@ function setupControls() {
         
         // Apply visibility settings via body classes
         const body = document.body;
-        body.classList.toggle('hide-snow-btn', !(newSettings.showSnowBtn ?? true));
-        body.classList.toggle('hide-rain-btn', !(newSettings.showRainBtn ?? true));
-        body.classList.toggle('hide-font-size', !(newSettings.showFontSize ?? true));
-        body.classList.toggle('hide-theme-btn', !(newSettings.showThemeBtn ?? true));
-        body.classList.toggle('hide-amounts-btn', !(newSettings.showAmountsBtn ?? true));
-        body.classList.toggle('hide-refresh-btn', !(newSettings.showRefreshBtn ?? true));
-        body.classList.toggle('hide-donate-btn', !(newSettings.showDonateBtn ?? true));
-        body.classList.toggle('hide-watchlist', newSettings.showWatchlist === false);
-        body.classList.toggle('hide-comic', !(newSettings.showComic ?? false));
+        body.classList.toggle('hide-snow-btn', newSettings.hideSnowBtn ?? false);
+        body.classList.toggle('hide-rain-btn', newSettings.hideRainBtn ?? false);
+        body.classList.toggle('hide-font-size', newSettings.hideFontSize ?? false);
+        body.classList.toggle('hide-theme-btn', newSettings.hideThemeBtn ?? false);
+        body.classList.toggle('hide-amounts-btn', newSettings.hideAmountsBtn ?? false);
+        body.classList.toggle('hide-donate-btn', newSettings.hideDonateBtn ?? false);
+        body.classList.toggle('hide-watchlist', newSettings.hideWatchlist ?? false);
+        body.classList.toggle('hide-comic', newSettings.hideComic ?? false);
         
         // Soft reload: re-fetch positions without full page refresh (this will reload settings)
         await renderPortfolioIncremental();
@@ -3302,17 +2356,16 @@ window.addEventListener('DOMContentLoaded', async () => {
     const body = document.body;
     
     // Button visibility
-    body.classList.toggle('hide-snow-btn', !(settings.showSnowBtn ?? true));
-    body.classList.toggle('hide-rain-btn', !(settings.showRainBtn ?? true));
-    body.classList.toggle('hide-font-size', !(settings.showFontSize ?? true));
-    body.classList.toggle('hide-theme-btn', !(settings.showThemeBtn ?? true));
-    body.classList.toggle('hide-amounts-btn', !(settings.showAmountsBtn ?? true));
-    body.classList.toggle('hide-refresh-btn', !(settings.showRefreshBtn ?? true));
-    body.classList.toggle('hide-donate-btn', !(settings.showDonateBtn ?? true));
+    body.classList.toggle('hide-snow-btn', settings.hideSnowBtn ?? false);
+    body.classList.toggle('hide-rain-btn', settings.hideRainBtn ?? false);
+    body.classList.toggle('hide-font-size', settings.hideFontSize ?? false);
+    body.classList.toggle('hide-theme-btn', settings.hideThemeBtn ?? false);
+    body.classList.toggle('hide-amounts-btn', settings.hideAmountsBtn ?? false);
+    body.classList.toggle('hide-donate-btn', settings.hideDonateBtn ?? false);
     
     // Section visibility
-    body.classList.toggle('hide-watchlist', settings.showWatchlist === false);
-    body.classList.toggle('hide-comic', !(settings.showComic ?? false));
+    body.classList.toggle('hide-watchlist', settings.hideWatchlist ?? false);
+    body.classList.toggle('hide-comic', settings.hideComic ?? false);
   };
   applyVisibilityClasses();
   
@@ -3426,7 +2479,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         
         // Also refresh watchlist if present and enabled in settings
         const currentSettings = getSettings();
-        if (currentSettings.showWatchlist !== false) {
+        if (!currentSettings.hideWatchlist) {
           const watchlistModule = await import('./modules/features/watchlist.js').catch(() => null);
           if (watchlistModule && watchlistModule.refreshWatchlist) {
             await watchlistModule.refreshWatchlist().catch(() => {});
@@ -3492,7 +2545,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Comic section visibility controlled by CSS via body.hide-comic class
   const comicSection = document.getElementById('comicSection');
   const comicEl = document.getElementById('newComic');
-  if (settings.showComic !== false && comicEl) {
+  if (!settings.hideComic && comicEl) {
     let currentComicStrip = settings.comicStrip || 'calvinandhobbes';
     
     const getComicMetadata = () => {
@@ -3742,7 +2795,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   const watchlistSection = document.getElementById('watchlistSection');
   const watchlistBody = document.getElementById('newWatchlistBody');
   
-  if (settings.showWatchlist !== false && watchlistBody) {
+  if (!settings.hideWatchlist && watchlistBody) {
     const loadWatchlist = async () => {
       watchlistBody.innerHTML = `<tr><td colspan="4" class="loading">Loading...</td></tr>`;
       try {
@@ -3989,7 +3042,6 @@ window.addEventListener('DOMContentLoaded', async () => {
               // Don't recalculate portfolio here - will do it after ALL updates are done
               if (hasEquityChanges) {
                 const changedEquity = cachedPositions.filter(p => (p.isLeveraged || p.isHlAccountEquity || p.isLighterAccountEquity) && p.priceChanged);
-                console.log('[Update] Equity positions updated:', changedEquity.map(p => `${p.asset} ($${p.value?.toFixed(2)})`));
               }
             } catch (e) {
               console.error('[Update] Failed to refresh leveraged positions:', e);
@@ -4104,9 +3156,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         
         // Always update cachedPositions to preserve priceChanged flags
         if (hasChanges || hasEquityChanges) {
-          if (hasChanges) {
-            console.log('[Update] Wallet prices updated');
-          }
           cachedPositions = updatedPositions;
           
           // Update price history for changed positions (skip stablecoins) - ONLY if showPriceChart is enabled
@@ -4182,7 +3231,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         
         // Recalculate portfolio ONCE if ANY changes happened (equity or wallet prices)
         if (anyChanges) {
-          console.log('[Update] Recalculating portfolio after all updates...');
           // Re-render positions and hero together
           rerenderPositions();
         }

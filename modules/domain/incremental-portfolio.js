@@ -84,13 +84,11 @@ export class IncrementalPortfolioRenderer {
    */
   appendPositions(newRows, source) {
     if (!Array.isArray(newRows) || newRows.length === 0) {
-      console.log(`[${source}] No positions returned`);
       this.providerStatus.set(source, 'completed');
       this.checkIfAllProvidersFinished();
       return;
     }
     
-    console.log(`[${source}] Adding ${newRows.length} positions`);
     this.allPositions.push(...newRows);
     this.providerStatus.set(source, 'completed');
     
@@ -137,12 +135,9 @@ export class IncrementalPortfolioRenderer {
       }
     }
     
-    console.log(`[Portfolio] Finished: [${finished.join(', ')}] | Pending: [${pending.join(', ')}]`);
-    
     const allFinished = pending.length === 0;
     
     if (allFinished) {
-      console.log('[Portfolio] All providers finished, hiding loader');
       this.hideGreetingLoader();
     }
   }

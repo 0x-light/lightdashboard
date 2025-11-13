@@ -30,8 +30,6 @@ export async function getTokenBalances(addresses, { timeoutMs = 15000 } = {}) {
     return [];
   }
   
-  console.log(`[Bitcoin] Fetching balances for ${btcAddresses.length} address(es)...`);
-  
   // Use blockchain.info batch API - supports up to 100 addresses per request
   // For speed, we'll batch in groups of 50
   const BATCH_SIZE = 50;
@@ -85,7 +83,6 @@ export async function getTokenBalances(addresses, { timeoutMs = 15000 } = {}) {
   );
   
   const allResults = batchResults.flat();
-  console.log(`[Bitcoin] Found ${allResults.length} non-zero balance(s)`);
   
   return allResults;
 }
