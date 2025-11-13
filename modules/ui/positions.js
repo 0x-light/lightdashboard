@@ -258,6 +258,18 @@ export function renderPositions({ positions, containers, options }) {
       containers.mobilePositionsContainer.appendChild(mobileFrag);
     }
 
+    // Trigger flash animations on changed cells
+    requestAnimationFrame(() => {
+      const flashCells = containers.positionsBody.querySelectorAll('td[data-flash="true"]');
+      flashCells.forEach(cell => {
+        cell.classList.add('cell-flash');
+        cell.addEventListener('animationend', () => {
+          cell.classList.remove('cell-flash');
+          cell.removeAttribute('data-flash');
+        }, { once: true });
+      });
+    });
+
     return true;
   } catch (_) {
     return false;

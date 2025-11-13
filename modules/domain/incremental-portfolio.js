@@ -238,6 +238,16 @@ export class IncrementalPortfolioRenderer {
   forceRender() {
     this.render();
   }
+  
+  /**
+   * Update positions with new data (e.g., from price updates)
+   */
+  updatePositions(newPositions) {
+    if (Array.isArray(newPositions)) {
+      this.allPositions = newPositions;
+    }
+    this.render();
+  }
 
   /**
    * Aggregate duplicate assets
@@ -281,6 +291,12 @@ export class IncrementalPortfolioRenderer {
         // Use the first non-null change24h value from any of the items
         const change24h = items.find(p => p.change24h !== null && p.change24h !== undefined)?.change24h || null;
         
+        // Check if any of the items has priceChanged flag
+        const priceChanged = items.some(p => p.priceChanged);
+        
+        // Get priceHistory from first item that has it
+        const priceHistory = items.find(p => p.priceHistory)?.priceHistory || null;
+        
         aggregated.push({
           asset,
           exchange: exchanges.length > 1 ? 'Multiple' : exchanges[0],
@@ -289,6 +305,8 @@ export class IncrementalPortfolioRenderer {
           price: weightedPrice,
           change24h,
           pnl: totalPnL,
+          priceChanged,
+          priceHistory,
           isAggregated: true
         });
       }

@@ -1296,22 +1296,8 @@ function setupControls() {
         options: renderOptions
       });
       
-      // Flash updated cells with background color animation
+      // Clear priceChanged flags after rendering (flash animation is handled by positions.js)
       setTimeout(() => {
-        const cells = document.querySelectorAll('td[data-flash="true"]');
-        if (cells.length > 0) {
-          // Cells flashed
-        }
-        cells.forEach(cell => {
-          cell.classList.add('cell-flash');
-          // Remove the class after animation completes
-          cell.addEventListener('animationend', () => {
-            cell.classList.remove('cell-flash');
-            cell.removeAttribute('data-flash');
-          }, { once: true });
-        });
-        
-        // Clear priceChanged flags after flashing
         cachedPositions = cachedPositions.map(pos => ({ ...pos, priceChanged: false }));
       }, 50);
       
@@ -3117,11 +3103,17 @@ window.addEventListener('DOMContentLoaded', async () => {
     try {
       const providers = window.AppModules?.data?.providers;
       const Settings = window.AppModules?.core?.settings;
-      if (!providers) return;
+      if (!providers) {
+        console.warn('[updatePrices] No providers found');
+        return;
+      }
       
       updateCount++;
       const doLeveragedRefresh = true; // Refresh leveraged positions every 5 seconds
       let hasEquityChanges = false; // Track if equity positions changed
+      
+      // Read from window.cachedPositions which is updated by the renderer
+      cachedPositions = window.cachedPositions || cachedPositions || [];
       
       // Update positions if they exist
       if (cachedPositions && cachedPositions.length > 0) {
@@ -3312,7 +3304,7 @@ window.addEventListener('DOMContentLoaded', async () => {
               
               // Update cachedPositions with fresh equity data
               hasEquityChanges = false;
-              cachedPositions = cachedPositions.map(pos => {
+              const updatedCachedPositions = cachedPositions.map(pos => {
                 if (pos.isLeveraged || pos.isHlAccountEquity || pos.isLighterAccountEquity) {
                   const key = `${pos.asset}_${pos.exchange}`;
                   const freshPos = equityMap.get(key);
@@ -3330,6 +3322,9 @@ window.addEventListener('DOMContentLoaded', async () => {
                 return pos;
               });
               
+              cachedPositions = updatedCachedPositions;
+              window.cachedPositions = updatedCachedPositions;
+              
               // Don't recalculate portfolio here - will do it after ALL updates are done
               if (hasEquityChanges) {
                 const changedEquity = cachedPositions.filter(p => (p.isLeveraged || p.isHlAccountEquity || p.isLighterAccountEquity) && p.priceChanged);
@@ -3339,6 +3334,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             }
           }
         }
+        
         // Get current prices from Hyperliquid (perps + spot)
         const [marketData, allMids, spotMeta] = await Promise.all([
           providers.hyperliquid.fetchMetaAndAssetCtxs(8000),
@@ -3446,8 +3442,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         let anyChanges = hasEquityChanges || hasChanges || hasAnyPriceChanges;
         
         // Always update cachedPositions to preserve priceChanged flags
-        if (hasChanges || hasEquityChanges) {
+        if (anyChanges) {
           cachedPositions = updatedPositions;
+          window.cachedPositions = updatedPositions;
           
           // Update price history for changed positions (skip stablecoins) - ONLY if showPriceChart is enabled
           const Settings = window.AppModules?.core?.settings;
@@ -3485,30 +3482,10 @@ window.addEventListener('DOMContentLoaded', async () => {
                   
                   // Re-render positions to show updated charts (don't recalculate portfolio)
                   if (successCount > 0) {
-                    const positionsBody = document.getElementById('newPositionsBody');
-                    const mobileContainer = document.getElementById('newMobilePositionsContainer');
-                    const PositionsUI = window.AppModules?.ui?.positions;
-                    if (PositionsUI && positionsBody && cachedPositions.length > 0) {
-                      const filtered = filterPositions(cachedPositions, { 
-                        hideHidden: true, 
-                        hideSmall: hideSmallPositions, 
-                        threshold: s.minBalanceThreshold || 100 
-                      });
-                      PositionsUI.renderPositions({
-                        positions: filtered,
-                        containers: { positionsBody, mobilePositionsContainer: mobileContainer },
-                        options: { 
-                          amountsVisible: !document.body.classList.contains('amounts-hidden'), 
-                          hideSmallPositions: false, 
-                          editMode: false, 
-                          settings: { 
-                            minBalanceThreshold: s.minBalanceThreshold || 100, 
-                            showExactAmounts: s.showExactAmounts || false, 
-                            useColoredPnL: s.useColoredPnL ?? true, 
-                            showPriceChart: s.showPriceChart ?? true 
-                          } 
-                        }
-                      });
+                    if (window._portfolioRenderer) {
+                      window._portfolioRenderer.updatePositions(cachedPositions);
+                    } else if (rerenderPositions) {
+                      rerenderPositions();
                     }
                   }
                 } catch (e) {
@@ -3523,7 +3500,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         // Recalculate portfolio ONCE if ANY changes happened (equity or wallet prices)
         if (anyChanges) {
           // Re-render positions and hero together
-          rerenderPositions();
+          if (window._portfolioRenderer) {
+            window._portfolioRenderer.updatePositions(cachedPositions);
+          } else {
+            rerenderPositions();
+          }
         }
       }
       
@@ -3548,7 +3529,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
       }
     } catch (e) {
-      console.warn('Price update failed:', e);
+      console.warn('[updatePrices] Failed:', e?.message || e);
     }
   }
   
