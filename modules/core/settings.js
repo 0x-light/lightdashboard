@@ -78,11 +78,12 @@ export function getDefaultSettings() {
     hiddenAssets: [], // Array of hidden asset keys: "ASSET_EXCHANGE"
     rainEnabled: false,
     snowEnabled: false,
+    rainSnowManuallySet: false, // Whether user has manually set rain/snow preference
     watchlist: [], // Array of Pyth price feed IDs
     watchlistCollapsed: false, // Whether watchlist section is collapsed
     compactList: false, // Whether to use compact list mode
     buttonBackgrounds: false, // Whether to add backgrounds to buttons
-    showPriceChart: true // Whether to show 24h price chart column
+    showPriceChart: false // Whether to show 24h price chart column
   };
 }
 

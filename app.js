@@ -1817,6 +1817,7 @@ function setupControls() {
       const s = getSettings();
       s.rainEnabled = active;
       s.snowEnabled = false;
+      s.rainSnowManuallySet = true; // User has manually set preference
       localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
     });
   }
@@ -1837,6 +1838,7 @@ function setupControls() {
       const s = getSettings();
       s.snowEnabled = active;
       s.rainEnabled = false;
+      s.rainSnowManuallySet = true; // User has manually set preference
       localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
     });
   }
@@ -1864,6 +1866,7 @@ function setupControls() {
       const s = getSettings();
       s.rainEnabled = active;
       s.snowEnabled = false;
+      s.rainSnowManuallySet = true; // User has manually set preference
       localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
     });
   }
@@ -1891,6 +1894,7 @@ function setupControls() {
       const s = getSettings();
       s.snowEnabled = active;
       s.rainEnabled = false;
+      s.rainSnowManuallySet = true; // User has manually set preference
       localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
     });
   }
@@ -2958,21 +2962,24 @@ window.addEventListener('DOMContentLoaded', async () => {
     const Rain = window.AppModules?.features?.rain;
     if (!Rain) return;
     
-    // Check weather and auto-enable
-    const weather = await Rain.checkWeatherAndAutoEnable();
-    if (weather) {
-      if (weather.isSnowing) {
-        Rain.toggleSnow();
-        const btn = document.getElementById('newToggleSnowBtn');
-        const mobileBtn = document.getElementById('newToggleSnowBtnMobile');
-        if (btn) btn.textContent = '[SNOW OFF]';
-        if (mobileBtn) mobileBtn.textContent = '[SNOW OFF]';
-      } else if (weather.isRaining) {
-        Rain.toggleRain();
-        const btn = document.getElementById('newToggleRainBtn');
-        const mobileBtn = document.getElementById('newToggleRainBtnMobile');
-        if (btn) btn.textContent = '[RAIN OFF]';
-        if (mobileBtn) mobileBtn.textContent = '[RAIN OFF]';
+    // Only auto-enable if user hasn't manually set preference
+    if (!settings.rainSnowManuallySet) {
+      // Check weather and auto-enable
+      const weather = await Rain.checkWeatherAndAutoEnable();
+      if (weather) {
+        if (weather.isSnowing) {
+          Rain.toggleSnow();
+          const btn = document.getElementById('newToggleSnowBtn');
+          const mobileBtn = document.getElementById('newToggleSnowBtnMobile');
+          if (btn) btn.textContent = '[SNOW OFF]';
+          if (mobileBtn) mobileBtn.textContent = '[SNOW OFF]';
+        } else if (weather.isRaining) {
+          Rain.toggleRain();
+          const btn = document.getElementById('newToggleRainBtn');
+          const mobileBtn = document.getElementById('newToggleRainBtnMobile');
+          if (btn) btn.textContent = '[RAIN OFF]';
+          if (mobileBtn) mobileBtn.textContent = '[RAIN OFF]';
+        }
       }
     }
   }, 2000); // Wait 2 seconds after page load
