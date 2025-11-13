@@ -27,13 +27,13 @@
     <meta name="apple-mobile-web-app-title" content="Viewport">
     
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json?v=2.4.2">
+    <link rel="manifest" href="/manifest.json?v=2.4.3">
     
     <!-- Cache busting: update version number on each deployment -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="./styles.css?v=2.4.2">
+    <link rel="stylesheet" href="./styles.css?v=2.4.3">
   </head>
   <body>
     <!-- Rain/Snow Canvas -->
@@ -499,16 +499,41 @@
       </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.4.2" defer></script>
-    <script type="module" src="./app.js?v=2.4.2" defer></script>
+    <script type="module" src="./modules/app-init.js?v=2.4.3" defer></script>
+    <script type="module" src="./app.js?v=2.4.3" defer></script>
     
     <!-- Service Worker Registration - ensures users always get latest version -->
     <script defer>
       if ('serviceWorker' in navigator) {
+        let refreshing = false;
+        
+        // Reload page when new service worker takes over
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!refreshing) {
+            refreshing = true;
+            console.log('[SW] New version available, reloading...');
+            window.location.reload();
+          }
+        });
+        
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
-            .then(() => {
-              // SW registered
+            .then((registration) => {
+              // Check for updates every 60 seconds
+              setInterval(() => {
+                registration.update();
+              }, 60000);
+              
+              // Listen for waiting service worker
+              registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    // New service worker available, tell it to skip waiting
+                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                  }
+                });
+              });
             })
             .catch((error) => {
               console.warn('[SW] Registration failed:', error);
