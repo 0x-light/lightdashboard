@@ -41,6 +41,11 @@ export class IncrementalPortfolioRenderer {
     const greeting = document.getElementById('newGreeting');
     if (!greeting) return;
     
+    // Check if a spinner already exists (prevent duplicates)
+    if (document.getElementById('greetingLoader') || greeting.querySelector('span[style*="marginLeft"]')) {
+      return;
+    }
+    
     // ASCII spinner frames for smooth animation
     const frames = ['⢎⡰', '⢎⡡', '⢎⡑', '⢎⠱', '⠎⡱', '⢊⡱', '⢌⡱', '⢆⡱'];
     let currentFrame = 0;

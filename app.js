@@ -1170,6 +1170,9 @@ function setupControls() {
     mobileMenuBtn.addEventListener('click', () => {
       mobileMenu.classList.add('active');
       document.body.classList.add('mobile-menu-open');
+      
+      // Disable scroll when mobile menu open
+      document.body.classList.add('modal-open');
     });
   }
   
@@ -1177,6 +1180,9 @@ function setupControls() {
     closeMobileMenuBtn.addEventListener('click', () => {
       mobileMenu.classList.remove('active');
       document.body.classList.remove('mobile-menu-open');
+      
+      // Re-enable scroll when mobile menu closed
+      document.body.classList.remove('modal-open');
     });
   }
   
@@ -1496,6 +1502,9 @@ function setupControls() {
       
       settingsDialog.style.display = 'block';
       settingsBackdrop.style.display = 'block';
+      
+      // Disable scroll on mobile when settings open
+      document.body.classList.add('modal-open');
     }
   };
   
@@ -1516,6 +1525,9 @@ function setupControls() {
       }
       settingsDialog.style.display = 'none';
       settingsBackdrop.style.display = 'none';
+      
+      // Re-enable scroll on mobile
+      document.body.classList.remove('modal-open');
     }
   };
   
@@ -2326,6 +2338,9 @@ function setupControls() {
   function closeAddPosition() {
     if (addPositionModal) addPositionModal.style.display = 'none';
     if (addPositionBackdrop) addPositionBackdrop.style.display = 'none';
+    
+    // Re-enable scroll on mobile
+    document.body.classList.remove('modal-open');
   }
   
   if (addPositionBtn) {
@@ -2336,6 +2351,9 @@ function setupControls() {
       // Show modal
       if (addPositionModal) addPositionModal.style.display = 'block';
       if (addPositionBackdrop) addPositionBackdrop.style.display = 'block';
+      
+      // Disable scroll on mobile when modal open
+      document.body.classList.add('modal-open');
       
       // Reset state
       selectedPositionType = 'pyth';
@@ -2507,6 +2525,12 @@ function setupControls() {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+  // Clear HTTP cache to ensure fresh data on page load
+  const HttpClient = window.AppModules?.http?.HttpClient;
+  if (HttpClient?._internal?.memoryCacheByKey) {
+    HttpClient._internal.memoryCacheByKey.clear();
+  }
+  
   // Force service worker update if outdated
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(registrations => {
@@ -2672,6 +2696,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     let spinnerEl = null;
     
     const startSpinner = () => {
+      // Check if a spinner already exists (prevent duplicates)
+      if (document.getElementById('greetingLoader') || greetingEl.querySelector('span[style*="marginLeft"]')) {
+        return;
+      }
+      
       // ASCII spinner frames: ◐ ◓ ◑ ◒ or ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
       const frames = ['◐', '◓', '◑', '◒'];
       let frameIndex = 0;

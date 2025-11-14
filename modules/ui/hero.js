@@ -39,7 +39,8 @@ export function composeSummary({
   weather // { temp, city, icon, moonText } | null
 }) {
   const summaryParts = [];
-  const valueText = formatCurrency(portfolioValue, amountsVisible);
+  // Always show portfolio value (it's a price/total, not a position size)
+  const valueText = formatCurrency(portfolioValue, true);
 
   if (heroPnLMode === 'total') {
     if (totalPnL !== 0 && Math.abs(totalPnL) > 0.01) {

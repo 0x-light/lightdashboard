@@ -282,6 +282,15 @@ body {
   text-rendering: optimizeSpeed;
 }
 
+/* Disable scroll when modal or settings is open (mobile) */
+@media (max-width: 768px) {
+  body.modal-open {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+  }
+}
+
 /* Wallpaper overlay to maintain readability */
 body::before {
   content: '';
