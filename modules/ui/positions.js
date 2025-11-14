@@ -321,18 +321,24 @@ export function renderPositions({ positions, containers, options }) {
     }
 
     // Trigger flash animations on changed cells (unified with render for reliability)
+    // Use double RAF to ensure DOM is fully painted
     requestAnimationFrame(() => {
-      const flashCells = containers.positionsBody.querySelectorAll('td[data-flash="true"]');
-      if (flashCells.length > 0) {
-        console.log(`[Flash Animation] Animating ${flashCells.length} cells`);
-      }
-      flashCells.forEach(cell => {
-        cell.classList.add('cell-flash');
-        // Clean up after animation
-        setTimeout(() => {
-          cell.classList.remove('cell-flash');
-          cell.removeAttribute('data-flash');
-        }, 600); // Match animation duration in CSS
+      requestAnimationFrame(() => {
+        const flashCells = containers.positionsBody.querySelectorAll('td[data-flash="true"]');
+        console.log(`[Flash Debug] Found ${flashCells.length} cells with data-flash attribute`);
+        
+        if (flashCells.length > 0) {
+          console.log(`[Flash Animation] Animating ${flashCells.length} cells`);
+          flashCells.forEach((cell, i) => {
+            console.log(`[Flash] Cell ${i}: ${cell.textContent.trim()}`);
+            cell.classList.add('cell-flash');
+            // Clean up after animation
+            setTimeout(() => {
+              cell.classList.remove('cell-flash');
+              cell.removeAttribute('data-flash');
+            }, 600); // Match animation duration in CSS
+          });
+        }
       });
     });
 
