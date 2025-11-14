@@ -139,15 +139,7 @@ function createTableRow(doc, pos, opts, prevDataMap) {
   const pnlChanged = prev && Math.abs((pos.pnl || 0) - (prev.pnl || 0)) > 0.01;
   const change24hChanged = prev && Math.abs((pos.change24h || 0) - (prev.change24h || 0)) > 0.01;
   
-  // Debug logging for change detection
-  if (priceChanged || valueChanged || pnlChanged || change24hChanged) {
-    console.log(`[Flash Debug] ${pos.asset}: price=${priceChanged}, value=${valueChanged}, pnl=${pnlChanged}, change24h=${change24hChanged}`, {
-      key,
-      prevExists: !!prev,
-      currentPrice: pos.price,
-      prevPrice: prev?.price
-    });
-  }
+  // Change detection for flash animations
   
   // Create sparkline chart (skip for stablecoins)
   let chartCell = '<span class="chart-loading">—</span>';
@@ -262,7 +254,6 @@ function createMobileCard(doc, pos, opts) {
  * Returns positions array for caching (like watchlist).
  */
 export function renderPositions({ positions, containers, options, previousPositions = [] }) {
-  console.log(`[Positions Render] Called with ${positions?.length || 0} positions, ${previousPositions?.length || 0} previous`);
   try {
     if (!containers?.positionsBody) return positions;
     const doc = containers.positionsBody.ownerDocument || document;
@@ -280,7 +271,6 @@ export function renderPositions({ positions, containers, options, previousPositi
     // Build map of previous values for comparison (like watchlist)
     const prevDataMap = {};
     if (Array.isArray(previousPositions)) {
-      console.log(`[Flash Debug] Building prevDataMap from ${previousPositions.length} previous positions`);
       for (const pos of previousPositions) {
         if (!pos || !pos.asset || !pos.exchange) continue; // Skip invalid entries
         try {
@@ -296,9 +286,6 @@ export function renderPositions({ positions, containers, options, previousPositi
           continue;
         }
       }
-      console.log(`[Flash Debug] prevDataMap keys:`, Object.keys(prevDataMap));
-    } else {
-      console.log(`[Flash Debug] No valid previousPositions array`);
     }
 
     // Build fragments for atomic update
@@ -322,7 +309,6 @@ export function renderPositions({ positions, containers, options, previousPositi
     // Trigger flash animations (like watchlist)
     requestAnimationFrame(() => {
       const flashCells = containers.positionsBody.querySelectorAll('td[data-flash="true"]');
-      console.log(`[Flash Debug] Found ${flashCells.length} cells with data-flash="true"`);
       flashCells.forEach(cell => {
         cell.classList.add('cell-flash');
         cell.addEventListener('animationend', () => {
@@ -334,7 +320,6 @@ export function renderPositions({ positions, containers, options, previousPositi
       // Trigger flash animations in mobile cards
       if (containers.mobilePositionsContainer) {
         const mobileFlashNodes = containers.mobilePositionsContainer.querySelectorAll('[data-flash="true"]');
-        console.log(`[Flash Debug] Found ${mobileFlashNodes.length} mobile nodes with data-flash="true"`);
         mobileFlashNodes.forEach(node => {
           node.classList.add('cell-flash');
           node.addEventListener('animationend', () => {

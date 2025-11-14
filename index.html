@@ -515,7 +515,6 @@
       caches.keys().then(keys => {
         const hasWrongVersion = keys.some(k => k.startsWith('lightdash-') && k !== `lightdash-${EXPECTED_VERSION}`);
         if (hasWrongVersion) {
-          console.log('[Cache] Clearing old caches for version update');
           Promise.all(keys.map(k => caches.delete(k))).then(() => {
             window.location.reload(true);
           });
@@ -529,7 +528,6 @@
         navigator.serviceWorker.addEventListener('controllerchange', () => {
           if (!refreshing) {
             refreshing = true;
-            console.log('[SW] New version available, reloading...');
             window.location.reload();
           }
         });
@@ -551,7 +549,6 @@
                 newWorker.addEventListener('statechange', () => {
                   if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                     // New service worker available, tell it to skip waiting
-                    console.log('[SW] Update found, activating immediately...');
                     newWorker.postMessage({ type: 'SKIP_WAITING' });
                   }
                 });

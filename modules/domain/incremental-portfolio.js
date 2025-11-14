@@ -17,6 +17,7 @@ export class IncrementalPortfolioRenderer {
     this.isLoading = true;
     this.expectedProviders = expectedProviders; // List of provider names we're waiting for
     this.previousRenderData = []; // Cache for flash detection (like watchlist)
+    this.renderCount = 0; // Track render calls for performance monitoring
     
     // Store reference to renderer IMMEDIATELY for external re-renders
     window._portfolioRenderer = this;
@@ -99,9 +100,10 @@ export class IncrementalPortfolioRenderer {
     // Check if all providers finished
     this.checkIfAllProvidersFinished();
     
-    // Debounce renders to avoid thrashing (max 1 render per 100ms)
+    // Intelligent debouncing: longer delay at start, shorter once data is flowing
+    const debounceDelay = this.renderCount === 0 ? 50 : 250;
     clearTimeout(this.renderDebounce);
-    this.renderDebounce = setTimeout(() => this.render(), 100);
+    this.renderDebounce = setTimeout(() => this.render(), debounceDelay);
   }
 
   /**
@@ -150,6 +152,7 @@ export class IncrementalPortfolioRenderer {
    * Re-render positions table and hero with current data
    */
   render() {
+    this.renderCount++;
     const { PositionsUI, HeroUI } = this.ui;
     const { positionsBody, mobileContainer, summaryEl } = this.containers;
     

@@ -10,8 +10,6 @@ function checkVersion() {
   const lastVersion = localStorage.getItem(FORCE_UPDATE_KEY);
   
   if (lastVersion && lastVersion !== APP_VERSION) {
-    console.log(`[Version] Updating from ${lastVersion} to ${APP_VERSION}`);
-    
     // Clear all caches
     if ('caches' in window) {
       caches.keys().then(names => {
@@ -290,110 +288,48 @@ function get24hAgoTsSec() {
   return Math.floor((nowMs - 24 * 60 * 60 * 1000) / 1000);
 }
 
-// Wallet asset entry price management utilities
+// Wallet asset entry price management utilities (using centralized module)
 window.walletPnLUtils = {
-  // View all stored entry prices
   viewEntryPrices: () => {
-    try {
-      const stored = localStorage.getItem('walletAssetEntryPrices');
-      const entryPrices = stored ? JSON.parse(stored) : {};
-      console.table(Object.entries(entryPrices).map(([key, data]) => ({
-        Asset: key,
-        EntryPrice: `$${data.price.toFixed(4)}`,
-        Date: new Date(data.date).toLocaleString(),
-        OriginalAmount: data.amount.toFixed(6)
-      })));
-      return entryPrices;
-    } catch (e) {
-      console.error('Failed to load entry prices:', e);
+    const tracker = window.AppModules?.utils?.entryPriceTracker;
+    if (!tracker) {
+      console.error('Entry price tracker module not loaded');
       return {};
     }
+    const entryPrices = tracker.viewEntryPrices();
+    console.table(Object.entries(entryPrices).map(([key, data]) => ({
+      Asset: key,
+      EntryPrice: `$${data.price.toFixed(4)}`,
+      Date: new Date(data.date).toLocaleString(),
+      OriginalAmount: data.amount.toFixed(6)
+    })));
+    return entryPrices;
   },
-  
-  // Reset entry price for a specific asset (e.g., "BTC_Ethereum")
   resetEntryPrice: (assetKey) => {
-    try {
-      const stored = localStorage.getItem('walletAssetEntryPrices');
-      const entryPrices = stored ? JSON.parse(stored) : {};
-      if (entryPrices[assetKey]) {
-        delete entryPrices[assetKey];
-        localStorage.setItem('walletAssetEntryPrices', JSON.stringify(entryPrices));
-        // Entry price reset
-        return true;
-      } else {
-        console.warn(`No entry price found for ${assetKey}`);
-        return false;
-      }
-    } catch (e) {
-      console.error('Failed to reset entry price:', e);
-      return false;
-    }
+    const tracker = window.AppModules?.utils?.entryPriceTracker;
+    return tracker ? tracker.resetEntryPrice(assetKey) : false;
   },
-  
-  // Manually set entry price for an asset
   setEntryPrice: (assetKey, price, date = null) => {
-    try {
-      const stored = localStorage.getItem('walletAssetEntryPrices');
-      const entryPrices = stored ? JSON.parse(stored) : {};
-      entryPrices[assetKey] = {
-        price: parseFloat(price),
-        date: date || new Date().toISOString(),
-        amount: entryPrices[assetKey]?.amount || 0
-      };
-      localStorage.setItem('walletAssetEntryPrices', JSON.stringify(entryPrices));
-      // Entry price set
-      return true;
-    } catch (e) {
-      console.error('Failed to set entry price:', e);
-      return false;
-    }
+    const tracker = window.AppModules?.utils?.entryPriceTracker;
+    return tracker ? tracker.setEntryPrice(assetKey, price, date) : false;
   },
-  
-  // Reset all entry prices
   resetAll: () => {
-    if (confirm('Are you sure you want to reset all wallet asset entry prices? This cannot be undone.')) {
-      try {
-        localStorage.removeItem('walletAssetEntryPrices');
-        // All entry prices reset
-        return true;
-      } catch (e) {
-        console.error('Failed to reset entry prices:', e);
-        return false;
-      }
-    }
-    return false;
-  },
-  
-  // Export entry prices as JSON
-  export: () => {
-    try {
-      const stored = localStorage.getItem('walletAssetEntryPrices');
-      const entryPrices = stored ? JSON.parse(stored) : {};
-      const json = JSON.stringify(entryPrices, null, 2);
-      // Entry prices exported
-      return json;
-    } catch (e) {
-      console.error('Failed to export entry prices:', e);
-      return null;
-    }
-  },
-  
-  // Import entry prices from JSON
-  import: (jsonString) => {
-    try {
-      const entryPrices = JSON.parse(jsonString);
-      localStorage.setItem('walletAssetEntryPrices', JSON.stringify(entryPrices));
-      // Entry prices imported
-      return true;
-    } catch (e) {
-      console.error('Failed to import entry prices:', e);
+    if (!confirm('Are you sure you want to reset all wallet asset entry prices? This cannot be undone.')) {
       return false;
     }
+    const tracker = window.AppModules?.utils?.entryPriceTracker;
+    return tracker ? tracker.resetAllEntryPrices() : false;
+  },
+  export: () => {
+    const tracker = window.AppModules?.utils?.entryPriceTracker;
+    return tracker ? tracker.exportEntryPrices() : null;
+  },
+  import: (jsonString) => {
+    const tracker = window.AppModules?.utils?.entryPriceTracker;
+    return tracker ? tracker.importEntryPrices(jsonString) : false;
   }
 };
-
-// Log utility availability on load
-// Wallet PnL utilities available at window.walletPnLUtils
+// Wallet PnL utilities available at window.walletPnLUtils (powered by centralized tracker)
 
 async function runHealthChecks() {
   const parts = [];
@@ -817,61 +753,11 @@ async function renderPortfolioIncremental() {
                 });
               }
               
-              // Calculate PnL for wallet assets using entry price tracking
-              const getWalletEntryPrices = () => {
-                try {
-                  const stored = localStorage.getItem('walletAssetEntryPrices');
-                  return stored ? JSON.parse(stored) : {};
-                } catch {
-                  return {};
-                }
-              };
-              const walletEntryPrices = getWalletEntryPrices();
-              let entryPricesUpdated = false;
-              const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD', 'FEUSD']);
-              
-              for (const row of rows) {
-                const finalPrice = row.price || 0;
-                const posKey = `${row.asset}_${row.exchange}`;
-                
-                // Skip stablecoins
-                if (STABLECOINS.has(row.asset)) {
-                  row.pnl = 0;
-                  continue;
-                }
-                
-                // Check if we have a stored entry price
-                if (walletEntryPrices[posKey]) {
-                  const storedEntry = walletEntryPrices[posKey];
-                  row.entryPrice = storedEntry.price;
-                  row.entryDate = storedEntry.date;
-                  
-                  // Calculate PnL using stored entry price
-                  const costBasis = Math.abs(row.amount) * storedEntry.price;
-                  const currentValue = Math.abs(row.amount) * finalPrice;
-                  row.pnl = currentValue - costBasis;
-                } 
-                // First time seeing this asset - record current price as entry
-                else if (Math.abs(row.amount) > 0 && finalPrice > 0) {
-                  walletEntryPrices[posKey] = {
-                    price: finalPrice,
-                    date: new Date().toISOString(),
-                    amount: Math.abs(row.amount)
-                  };
-                  row.entryPrice = finalPrice;
-                  row.entryDate = walletEntryPrices[posKey].date;
-                  row.pnl = 0; // No PnL on first detection
-                  entryPricesUpdated = true;
-                }
-              }
-              
-              // Save updated entry prices if any were added
-              if (entryPricesUpdated) {
-                try {
-                  localStorage.setItem('walletAssetEntryPrices', JSON.stringify(walletEntryPrices));
-                } catch (e) {
-                  console.error('[Portfolio] Failed to save entry prices:', e);
-                }
+              // Calculate PnL for wallet assets using entry price tracking utility
+              const entryPriceTracker = window.AppModules?.utils?.entryPriceTracker;
+              if (entryPriceTracker) {
+                const result = entryPriceTracker.calculatePositionsPnL(rows);
+                rows = result.positions;
               }
               
               // Enrich positions with 24h change data from CoinGecko
@@ -943,54 +829,11 @@ async function renderPortfolioIncremental() {
           });
         }
         
-        // Calculate PnL for BTC/ZEC wallet assets using entry price tracking
-        const getWalletEntryPrices = () => {
-          try {
-            const stored = localStorage.getItem('walletAssetEntryPrices');
-            return stored ? JSON.parse(stored) : {};
-          } catch {
-            return {};
-          }
-        };
-        const walletEntryPrices = getWalletEntryPrices();
-        let entryPricesUpdated = false;
-        
-        for (const row of rows) {
-          const finalPrice = row.price || 0;
-          const posKey = `${row.asset}_${row.exchange}`;
-          
-          // Check if we have a stored entry price
-          if (walletEntryPrices[posKey]) {
-            const storedEntry = walletEntryPrices[posKey];
-            row.entryPrice = storedEntry.price;
-            row.entryDate = storedEntry.date;
-            
-            // Calculate PnL using stored entry price
-            const costBasis = Math.abs(row.amount) * storedEntry.price;
-            const currentValue = Math.abs(row.amount) * finalPrice;
-            row.pnl = currentValue - costBasis;
-          } 
-          // First time seeing this asset - record current price as entry
-          else if (Math.abs(row.amount) > 0 && finalPrice > 0) {
-            walletEntryPrices[posKey] = {
-              price: finalPrice,
-              date: new Date().toISOString(),
-              amount: Math.abs(row.amount)
-            };
-            row.entryPrice = finalPrice;
-            row.entryDate = walletEntryPrices[posKey].date;
-            row.pnl = 0; // No PnL on first detection
-            entryPricesUpdated = true;
-          }
-        }
-        
-        // Save updated entry prices if any were added
-        if (entryPricesUpdated) {
-          try {
-            localStorage.setItem('walletAssetEntryPrices', JSON.stringify(walletEntryPrices));
-          } catch (e) {
-            console.error('[Portfolio] Failed to save entry prices:', e);
-          }
+        // Calculate PnL for BTC/ZEC wallet assets using entry price tracking utility
+        const entryPriceTracker = window.AppModules?.utils?.entryPriceTracker;
+        if (entryPriceTracker) {
+          const result = entryPriceTracker.calculatePositionsPnL(rows);
+          rows = result.positions;
         }
         
         renderer.appendPositions(rows, 'Bitcoin/Zcash');
@@ -3169,7 +3012,8 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
       
       updateCount++;
-      const doLeveragedRefresh = true; // Refresh leveraged positions every 5 seconds
+      // Only refresh leveraged positions every 3rd update (90s instead of 30s) to reduce load
+      const doLeveragedRefresh = (updateCount % 3) === 0;
       let hasEquityChanges = false; // Track if equity positions changed
       
       // Read from window.cachedPositions which is updated by the renderer
@@ -3586,11 +3430,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
-  // Start updates after 5 seconds, then every 5 seconds
+  // Start updates after 10 seconds, then every 30 seconds (reduced from 5s for performance)
+  // Financial data doesn't need sub-second updates; 30s is standard for portfolio trackers
   setTimeout(() => {
     updatePrices();
-    updateInterval = setInterval(updatePrices, 5000);
-  }, 5000);
+    updateInterval = setInterval(updatePrices, 30000);
+  }, 10000);
   
   // Cleanup on page unload (prevent memory leaks)
   window.addEventListener('beforeunload', () => {
@@ -3613,7 +3458,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       // Tab visible again - resume updates
       if (!updateInterval) {
         updatePrices();
-        updateInterval = setInterval(updatePrices, 5000);
+        updateInterval = setInterval(updatePrices, 30000);
       }
     }
   });

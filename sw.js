@@ -39,7 +39,6 @@ self.addEventListener('install', (event) => {
       if (FORCE_CACHE_CLEAR) {
         const cacheNames = await caches.keys();
         await Promise.all(cacheNames.map(name => caches.delete(name)));
-        console.log('[SW] Force cleared all caches');
       }
       
       const cache = await caches.open(CACHE_NAME);
