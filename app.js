@@ -2543,19 +2543,40 @@ function setupControls() {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+  // Check if app has been closed for a while (detect stale sessions)
+  const lastLoadTime = localStorage.getItem('lastLoadTime');
+  const now = Date.now();
+  const timeSinceLastLoad = lastLoadTime ? now - parseInt(lastLoadTime, 10) : Infinity;
+  const shouldForceFresh = !lastLoadTime || timeSinceLastLoad > 60000; // 1 minute
+  
+  // Store current load time
+  localStorage.setItem('lastLoadTime', now.toString());
+  
   // Clear HTTP cache to ensure fresh data on page load
   const HttpClient = window.AppModules?.http?.HttpClient;
   if (HttpClient?._internal?.memoryCacheByKey) {
     HttpClient._internal.memoryCacheByKey.clear();
   }
   
-  // Force service worker update if outdated
+  // Clear in-flight requests to prevent using stale deduplicated requests
+  if (HttpClient?._internal?.inFlightByKey) {
+    HttpClient._internal.inFlightByKey.clear();
+  }
+  
+  // Force service worker update if outdated or stale session
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(registrations => {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
       for (const registration of registrations) {
-        registration.update();
+        await registration.update();
       }
-    });
+      // Clear API cache if this is a fresh session or stale
+      if (shouldForceFresh && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_API_CACHE' });
+      }
+    } catch (e) {
+      // Silently ignore SW update failures
+    }
   }
   
   // Init loading screen
@@ -3597,7 +3618,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   
   // Resume updates when tab becomes visible again
-  document.addEventListener('visibilitychange', () => {
+  document.addEventListener('visibilitychange', async () => {
     if (document.hidden) {
       // Tab hidden - pause updates to save resources
       if (updateInterval) {
@@ -3605,10 +3626,37 @@ window.addEventListener('DOMContentLoaded', async () => {
         updateInterval = null;
       }
     } else {
-      // Tab visible again - resume updates
+      // Tab visible again - force full refresh to get fresh data
       if (!updateInterval) {
+        // Clear HTTP cache to ensure fresh data
+        const HttpClient = window.AppModules?.http?.HttpClient;
+        if (HttpClient?._internal?.memoryCacheByKey) {
+          HttpClient._internal.memoryCacheByKey.clear();
+        }
+        
+        // Force service worker to update
+        if ('serviceWorker' in navigator) {
+          try {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const registration of registrations) {
+              await registration.update();
+            }
+          } catch (e) {
+            // Silently ignore SW update failures
+          }
+        }
+        
+        // Full portfolio re-fetch (not just price update)
+        try {
+          await renderPortfolioIncremental();
+          rerenderPositions();
+        } catch (e) {
+          console.warn('[Visibility] Portfolio refresh failed:', e);
+        }
+        
+        // Then start regular price updates with consistent 5s interval
         updatePrices();
-        updateInterval = setInterval(updatePrices, 30000);
+        updateInterval = setInterval(updatePrices, 5000);
       }
     }
   });

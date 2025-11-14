@@ -1,8 +1,8 @@
 // Service Worker for Light Dashboard
 // Provides offline support, intelligent caching, and automatic updates
 // UPDATE THIS VERSION NUMBER WHENEVER YOU DEPLOY CHANGES
-const CACHE_VERSION = 'v2.5.2';
-const BUILD_TIMESTAMP = '2025-11-14T18:00:00Z'; // Update on each deployment
+const CACHE_VERSION = 'v2.5.3';
+const BUILD_TIMESTAMP = '2025-11-14T23:00:00Z'; // Update on each deployment
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
 // CRITICAL: Delete ALL caches on install to fix production issues
@@ -22,12 +22,13 @@ const STATIC_ASSETS = [
 ];
 
 // API cache duration by endpoint pattern
+// Reduced cache durations to prevent stale price data
 const API_CACHE_CONFIG = {
-  'api.coingecko.com': 5 * 60 * 1000, // 5 minutes
-  'hermes.pyth.network': 30 * 1000, // 30 seconds
+  'api.coingecko.com': 30 * 1000, // 30 seconds (reduced from 5 minutes)
+  'hermes.pyth.network': 15 * 1000, // 15 seconds (reduced from 30 seconds)
   'api.hyperliquid.xyz': 10 * 1000, // 10 seconds
-  'blockchain.info': 60 * 1000, // 1 minute
-  'api.zcha.in': 60 * 1000 // 1 minute
+  'blockchain.info': 30 * 1000, // 30 seconds (reduced from 1 minute)
+  'api.zcha.in': 30 * 1000 // 30 seconds (reduced from 1 minute)
   // NOTE: api.zerion.io is NOT cached - always fetch fresh
 };
 
@@ -240,6 +241,27 @@ self.addEventListener('message', (event) => {
         return caches.open(CACHE_NAME);
       }).then((cache) => {
         return cache.addAll(STATIC_ASSETS);
+      })
+    );
+  }
+  
+  if (event.data && event.data.type === 'CLEAR_API_CACHE') {
+    // Clear only API responses, keep static assets
+    event.waitUntil(
+      caches.open(CACHE_NAME).then((cache) => {
+        return cache.keys().then((requests) => {
+          const apiRequests = requests.filter((request) => {
+            const url = request.url;
+            return url.includes('api.coingecko.com') ||
+                   url.includes('hermes.pyth.network') ||
+                   url.includes('api.hyperliquid.xyz') ||
+                   url.includes('blockchain.info') ||
+                   url.includes('api.zcha.in') ||
+                   url.includes('api.zerion.io') ||
+                   url.includes('api/');
+          });
+          return Promise.all(apiRequests.map((request) => cache.delete(request)));
+        });
       })
     );
   }

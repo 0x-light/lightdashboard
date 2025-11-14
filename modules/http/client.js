@@ -47,7 +47,14 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_M
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
+    // Add cache busting to ensure fresh data (especially on page load)
+    // This helps bypass stale service worker cache
+    const fetchOptions = { 
+      ...options, 
+      signal: controller.signal,
+      cache: options.bypassCache ? 'reload' : (options.cache || 'default')
+    };
+    const response = await fetch(url, fetchOptions);
     return response;
   } finally {
     clearTimeout(timeout);
@@ -81,14 +88,15 @@ async function requestJson(url, {
   body,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   retries = DEFAULT_RETRIES,
-  backoffBaseMs = DEFAULT_BACKOFF_BASE_MS
+  backoffBaseMs = DEFAULT_BACKOFF_BASE_MS,
+  bypassCache = false
 } = {}) {
   // CoinGecko proxy in production for CORS
   const finalUrl = maybeProxyCoinGecko(url);
   const key = buildKey(method, finalUrl, headers, body);
 
-  // De-duplicate concurrent identical requests
-  if (inFlightByKey.has(key)) {
+  // De-duplicate concurrent identical requests (but skip dedup if bypassing cache)
+  if (!bypassCache && inFlightByKey.has(key)) {
     return inFlightByKey.get(key);
   }
 
@@ -96,7 +104,7 @@ async function requestJson(url, {
     let attempt = 0;
     while (true) {
       try {
-        const response = await fetchWithTimeout(finalUrl, { method, headers, body }, timeoutMs);
+        const response = await fetchWithTimeout(finalUrl, { method, headers, body, bypassCache }, timeoutMs);
         if (!response.ok) {
           if (shouldRetry(response) && attempt < retries) {
             attempt += 1;
@@ -145,16 +153,18 @@ async function getJson(url, {
   headers = {},
   timeoutMs = DEFAULT_TIMEOUT_MS,
   retries = DEFAULT_RETRIES,
-  backoffBaseMs = DEFAULT_BACKOFF_BASE_MS
+  backoffBaseMs = DEFAULT_BACKOFF_BASE_MS,
+  bypassCache = false
 } = {}) {
   const key = buildKey('GET', url, headers, undefined);
-  if (ttlMs > 0) {
+  // Skip memory cache check if bypassCache is true
+  if (!bypassCache && ttlMs > 0) {
     const cached = memoryCacheByKey.get(key);
     if (cached && (Date.now() - cached.storedAt) < ttlMs) {
       return cached.value;
     }
   }
-  const value = await requestJson(url, { method: 'GET', headers, timeoutMs, retries, backoffBaseMs });
+  const value = await requestJson(url, { method: 'GET', headers, timeoutMs, retries, backoffBaseMs, bypassCache });
   if (ttlMs > 0) {
     memoryCacheByKey.set(key, { value, storedAt: Date.now(), ttlMs });
   }
