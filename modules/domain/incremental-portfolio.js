@@ -230,7 +230,7 @@ export class IncrementalPortfolioRenderer {
         totalDailyChangePercent: 0,
         useColoredPnL: this.settings.useColoredPnL ?? true,
         highlightsHtml: [],
-        weather: null
+        weather: window.cachedWeather || null
       });
       summaryEl.innerHTML = heroHtml;
     }

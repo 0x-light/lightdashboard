@@ -40,7 +40,6 @@ window.AppModules.data.providers.bitcoin = BTC;
 window.AppModules.data.providers.zcash = ZEC;
 window.AppModules.data.providers.alchemy = ALCHEMY;
 window.AppModules.data.providers.helius = HELIUS;
-window.AppModules.data.providers.weather = Weather;
 window.AppModules.ui = window.AppModules.ui || {};
 window.AppModules.ui.hero = HeroUI;
 window.AppModules.ui.positions = PositionsUI;
@@ -52,6 +51,7 @@ window.AppModules.core.settings = Settings;
 window.AppModules.core.themes = Themes;
 window.AppModules.features = window.AppModules.features || {};
 window.AppModules.features.rain = Rain;
+window.AppModules.features.weather = Weather;
 
 // Modules loaded
 

@@ -1246,7 +1246,6 @@ textarea::-moz-placeholder {
 
 .calvin-controls-mobile {
   display: none;
-  justify-content: space-between;
   gap: 8px;
   margin: 6px 0;
   flex-wrap: wrap;

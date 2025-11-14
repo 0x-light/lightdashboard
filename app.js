@@ -450,6 +450,91 @@ async function renderPortfolioIncremental() {
     expectedProviders.push('Manual');
   }
   
+  // Fetch weather data (non-blocking, will be used in hero summary)
+  (async () => {
+    try {
+      const weatherLat = settings.weather?.lat;
+      const weatherLon = settings.weather?.lon;
+      const weatherLabel = settings.weather?.label || 'your location';
+      
+      if (weatherLat && weatherLon && mods.features?.weather?.fetchWeather) {
+        const data = await mods.features.weather.fetchWeather(weatherLat, weatherLon, 5000);
+        if (data?.current) {
+          const temp = data.current.temperature_2m;
+          const code = data.current.weather_code || 0;
+          const isDay = data.current.is_day === 1;
+          
+          // Weather icon
+          let icon = '☁︎';
+          if (code === 0) icon = isDay ? '☀︎' : '☾';
+          else if (code <= 3) icon = '☁︎';
+          else if (code <= 49) icon = '☁︎';
+          else if (code <= 67) icon = '⛆';
+          else if (code <= 77) icon = '❆';
+          else if (code <= 82) icon = '⛆';
+          else if (code <= 86) icon = '❆';
+          else if (code <= 99) icon = '⛆';
+          
+          // Moon phase
+          const knownNewMoon = new Date('2000-01-06T00:00:00Z');
+          const now = new Date();
+          const days = (now - knownNewMoon) / (1000 * 60 * 60 * 24);
+          const cycle = 29.53058867;
+          const phase = (days % cycle) / cycle;
+          
+          let moonIcon = '', moonName = '';
+          if (phase < 0.0625) { moonIcon = '○'; moonName = 'new moon'; }
+          else if (phase < 0.1875) { moonIcon = '☽'; moonName = 'waxing crescent'; }
+          else if (phase < 0.3125) { moonIcon = '◐'; moonName = 'first quarter'; }
+          else if (phase < 0.4375) { moonIcon = '◐'; moonName = 'waxing gibbous'; }
+          else if (phase < 0.5625) { moonIcon = '●'; moonName = 'full moon'; }
+          else if (phase < 0.6875) { moonIcon = '◑'; moonName = 'waning gibbous'; }
+          else if (phase < 0.8125) { moonIcon = '◑'; moonName = 'last quarter'; }
+          else if (phase < 0.9375) { moonIcon = '☾'; moonName = 'waning crescent'; }
+          else { moonIcon = '○'; moonName = 'new moon'; }
+          
+          const hour = now.getHours();
+          const showMoon = hour >= 18 || hour < 6;
+          const moonText = showMoon ? ` with a ${moonIcon} ${moonName} moon` : '';
+          
+          const precipitation = data.daily?.precipitation_sum?.[0] || 0;
+          
+          cachedWeather = {
+            temp,
+            city: weatherLabel,
+            icon,
+            moonText,
+            precipitation
+          };
+          window.cachedWeather = cachedWeather; // Update global reference
+          
+          // Trigger a hero update with the new weather data if positions are already loaded
+          if (cachedPositions.length > 0) {
+            const summaryEl = document.getElementById('newSummary');
+            if (HeroUI && summaryEl) {
+              const { totalValue, totalPnL, totalPnLPercent } = calculatePortfolioTotals(cachedPositions);
+              const heroHtml = HeroUI.composeSummary({
+                portfolioValue: totalValue,
+                amountsVisible,
+                heroPnLMode: 'total',
+                totalPnL,
+                totalPnLPercent,
+                totalDailyChange: 0,
+                totalDailyChangePercent: 0,
+                useColoredPnL: true,
+                highlightsHtml: [],
+                weather: cachedWeather
+              });
+              summaryEl.innerHTML = heroHtml;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Weather] Failed to fetch weather:', err);
+    }
+  })();
+  
   const renderer = new IncrementalPortfolioRenderer({
     providers,
     settings,
@@ -961,6 +1046,7 @@ window.hideSmallPositions = hideSmallPositions;
 window.hiddenAssets = hiddenAssets;
 window.editMode = editMode;
 window.cachedPositions = cachedPositions;
+window.cachedWeather = cachedWeather;
 window.cachedSummaryData = cachedSummaryData;
 
 function initLoadingScreen() {
