@@ -260,6 +260,7 @@ export function renderPositions({ positions, containers, options, previousPositi
     const prevDataMap = {};
     if (Array.isArray(previousPositions)) {
       for (const pos of previousPositions) {
+        if (!pos) continue; // Skip undefined/null entries
         const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
         prevDataMap[key] = {
           price: pos.price,
