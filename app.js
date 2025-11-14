@@ -3617,10 +3617,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     DOMCache.clear(); // Clear DOM element cache
   });
   
+  // Track when tab was last hidden
+  let tabHiddenAt = null;
+  
   // Resume updates when tab becomes visible again
   document.addEventListener('visibilitychange', async () => {
     if (document.hidden) {
-      // Tab hidden - pause updates to save resources
+      // Tab hidden - pause updates to save resources and track time
+      tabHiddenAt = Date.now();
       if (updateInterval) {
         clearInterval(updateInterval);
         updateInterval = null;
@@ -3628,18 +3632,30 @@ window.addEventListener('DOMContentLoaded', async () => {
     } else {
       // Tab visible again - force full refresh to get fresh data
       if (!updateInterval) {
+        // Check if tab was hidden for a long time (more than 1 minute)
+        const wasHiddenLong = tabHiddenAt && (Date.now() - tabHiddenAt) > 60000;
+        
         // Clear HTTP cache to ensure fresh data
         const HttpClient = window.AppModules?.http?.HttpClient;
         if (HttpClient?._internal?.memoryCacheByKey) {
           HttpClient._internal.memoryCacheByKey.clear();
         }
         
-        // Force service worker to update
+        // Clear in-flight requests
+        if (HttpClient?._internal?.inFlightByKey) {
+          HttpClient._internal.inFlightByKey.clear();
+        }
+        
+        // Force service worker to update and clear stale API cache if hidden long
         if ('serviceWorker' in navigator) {
           try {
             const registrations = await navigator.serviceWorker.getRegistrations();
             for (const registration of registrations) {
               await registration.update();
+            }
+            // Clear API cache if tab was hidden for a while
+            if (wasHiddenLong && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_API_CACHE' });
             }
           } catch (e) {
             // Silently ignore SW update failures
@@ -3657,6 +3673,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         // Then start regular price updates with consistent 5s interval
         updatePrices();
         updateInterval = setInterval(updatePrices, 5000);
+        
+        // Reset hidden time
+        tabHiddenAt = null;
       }
     }
   });
