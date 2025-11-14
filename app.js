@@ -3,7 +3,7 @@
 // ============================================================================
 // VERSION CHECKING: Force reload if user is on old version
 // ============================================================================
-const APP_VERSION = '2.4.4';
+const APP_VERSION = '2.4.5';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
