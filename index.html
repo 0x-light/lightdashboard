@@ -508,21 +508,9 @@
     <script type="module" src="./modules/app-init.js?v=2.5.2" defer></script>
     <script type="module" src="./app.js?v=2.5.2" defer></script>
     
-    <!-- Service Worker Registration - ensures users always get latest version -->
+    <!-- Service Worker Registration -->
     <script defer>
-      // FORCE CACHE CLEAR on version mismatch - DISABLED to prevent reload loops
       const EXPECTED_VERSION = 'v2.5.4';
-      // Commenting out aggressive cache clearing to prevent reload loops
-      /*
-      caches.keys().then(keys => {
-        const hasWrongVersion = keys.some(k => k.startsWith('lightdash-') && k !== `lightdash-${EXPECTED_VERSION}`);
-        if (hasWrongVersion) {
-          Promise.all(keys.map(k => caches.delete(k))).then(() => {
-            window.location.reload(true);
-          });
-        }
-      });
-      */
       
       if ('serviceWorker' in navigator) {
         let refreshing = false;
@@ -541,7 +529,7 @@
               // Check for updates on page load
               registration.update();
               
-              // Check for updates every 5 minutes (reduced frequency to prevent reload loops)
+              // Check for updates every 5 minutes
               setInterval(() => {
                 registration.update();
               }, 300000);

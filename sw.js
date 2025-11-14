@@ -1,11 +1,10 @@
 // Service Worker for Light Dashboard
 // Provides offline support, intelligent caching, and automatic updates
-// UPDATE THIS VERSION NUMBER WHENEVER YOU DEPLOY CHANGES
 const CACHE_VERSION = 'v2.5.4';
-const BUILD_TIMESTAMP = '2025-11-14T23:00:00Z'; // Update on each deployment
+const BUILD_TIMESTAMP = '2025-11-14T23:00:00Z';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
-// CRITICAL: Delete ALL caches on install to fix production issues
+// Force clear all caches on install (disabled to prevent reload loops)
 const FORCE_CACHE_CLEAR = false;
 
 // Assets to cache immediately on install
@@ -22,21 +21,20 @@ const STATIC_ASSETS = [
 ];
 
 // API cache duration by endpoint pattern
-// Reduced cache durations to prevent stale price data
 const API_CACHE_CONFIG = {
-  'api.coingecko.com': 30 * 1000, // 30 seconds (reduced from 5 minutes)
-  'hermes.pyth.network': 15 * 1000, // 15 seconds (reduced from 30 seconds)
+  'api.coingecko.com': 30 * 1000, // 30 seconds
+  'hermes.pyth.network': 15 * 1000, // 15 seconds
   'api.hyperliquid.xyz': 10 * 1000, // 10 seconds
-  'blockchain.info': 30 * 1000, // 30 seconds (reduced from 1 minute)
-  'api.zcha.in': 30 * 1000 // 30 seconds (reduced from 1 minute)
-  // NOTE: api.zerion.io is NOT cached - always fetch fresh
+  'blockchain.info': 30 * 1000, // 30 seconds
+  'api.zcha.in': 30 * 1000 // 30 seconds
+  // Note: api.zerion.io is not cached, always fetches fresh
 };
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
-      // Force clear ALL caches if flag is set (fixes production issues)
+      // Clear all caches if flag is set
       if (FORCE_CACHE_CLEAR) {
         const cacheNames = await caches.keys();
         await Promise.all(cacheNames.map(name => caches.delete(name)));
@@ -44,7 +42,7 @@ self.addEventListener('install', (event) => {
       
       const cache = await caches.open(CACHE_NAME);
       await cache.addAll(STATIC_ASSETS);
-      await self.skipWaiting(); // Activate immediately
+      await self.skipWaiting();
     })()
   );
 });
@@ -77,7 +75,7 @@ function isFresh(response, maxAge) {
 
 // Helper: Clone response with custom headers
 async function cloneWithCacheTime(response) {
-  // IMPORTANT: Clone the response BEFORE reading the body
+  // Clone the response before reading the body
   const clone = response.clone();
   const headers = new Headers(clone.headers);
   headers.set('sw-cached-time', Date.now().toString());

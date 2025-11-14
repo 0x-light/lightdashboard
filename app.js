@@ -1,7 +1,7 @@
 // Minimal alpha boot for the new modular dashboard
 
 // ============================================================================
-// VERSION CHECKING: Force reload if user is on old version
+// VERSION CHECKING
 // ============================================================================
 const APP_VERSION = '2.5.4';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
@@ -9,14 +9,12 @@ const FORCE_UPDATE_KEY = 'viewport_last_version';
 function checkVersion() {
   const lastVersion = localStorage.getItem(FORCE_UPDATE_KEY);
   
-  // Only reload if there's a major version change (not on every minor version bump)
   if (lastVersion && lastVersion !== APP_VERSION) {
     console.log(`Version changed from ${lastVersion} to ${APP_VERSION}`);
     
-    // Store new version but DON'T auto-reload to prevent loops
+    // Store new version and clear caches
     localStorage.setItem(FORCE_UPDATE_KEY, APP_VERSION);
     
-    // Only clear caches, don't force reload
     if ('caches' in window) {
       caches.keys().then(names => {
         names.forEach(name => caches.delete(name));
@@ -29,10 +27,9 @@ function checkVersion() {
     localStorage.setItem(FORCE_UPDATE_KEY, APP_VERSION);
   }
   
-  return true; // Always continue initialization
+  return true;
 }
 
-// Check version immediately
 checkVersion();
 
 // ============================================================================
