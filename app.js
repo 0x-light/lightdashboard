@@ -1311,12 +1311,6 @@ function setupControls() {
         threshold: settings.minBalanceThreshold || 100 
       });
       
-      // Debug: log positions with priceChanged flag
-      const changedPositions = filtered.filter(p => p.priceChanged);
-      if (changedPositions.length > 0) {
-        // Positions marked as changed
-      }
-      
       // Pre-compute options object (avoid spreading in hot path)
       const renderOptions = {
         amountsVisible,
@@ -1335,11 +1329,6 @@ function setupControls() {
         containers: { positionsBody, mobilePositionsContainer: mobileContainer },
         options: renderOptions
       });
-      
-      // Clear priceChanged flags after rendering (flash animation is handled by positions.js)
-      setTimeout(() => {
-        cachedPositions = cachedPositions.map(pos => ({ ...pos, priceChanged: false }));
-      }, 50);
       
       // Update hero with ALL positions (not filtered - need to include hidden equity positions)
       const { totalValue, totalPnL, totalPnLPercent } = calculatePortfolioTotals(cachedPositions);
@@ -3385,7 +3374,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                     if (pnlChanged || valueChanged) {
                       hasEquityChanges = true;
                       // Preserve priceHistory and other chart-related data from existing position
-                      return { ...freshPos, priceChanged: true, priceHistory: pos.priceHistory };
+                      return { ...freshPos, priceHistory: pos.priceHistory };
                     }
                   }
                 }
@@ -3396,9 +3385,6 @@ window.addEventListener('DOMContentLoaded', async () => {
               window.cachedPositions = updatedCachedPositions;
               
               // Don't recalculate portfolio here - will do it after ALL updates are done
-              if (hasEquityChanges) {
-                const changedEquity = cachedPositions.filter(p => (p.isLeveraged || p.isHlAccountEquity || p.isLighterAccountEquity) && p.priceChanged);
-              }
             } catch (e) {
               console.error('[Update] Failed to refresh leveraged positions:', e);
             }
@@ -3468,14 +3454,13 @@ window.addEventListener('DOMContentLoaded', async () => {
           
           // Skip leveraged positions - they are refreshed from API periodically
           // Leveraged PnL includes funding payments which can't be calculated from price alone
-          // BUT preserve their priceChanged flag if it was set by equity update
           if (pos.isLeveraged) {
-            return pos; // Keep as-is, including priceChanged flag from equity update
+            return pos; // Keep as-is
           }
           
           // Skip synthetic equity positions
           if (pos.isHlAccountEquity || pos.isLighterAccountEquity) {
-            return pos; // Keep as-is, including priceChanged flag from equity update
+            return pos; // Keep as-is
           }
           
           // Stablecoins default to $1 if no price found
@@ -3500,24 +3485,15 @@ window.addEventListener('DOMContentLoaded', async () => {
               ...pos,
               price: newPrice,
               value: newValue,
-              pnl: newPnl,
-              priceChanged: true // Flag for flash animation
+              pnl: newPnl
             };
           }
-          return { ...pos, priceChanged: false };
+          return pos;
         });
         
-        // Check if ANY positions have priceChanged flag set (from equity or wallet updates)
-        const hasAnyPriceChanges = updatedPositions.some(p => p.priceChanged);
-        let anyChanges = hasEquityChanges || hasChanges || hasAnyPriceChanges;
+        // Update if anything changed
+        let anyChanges = hasEquityChanges || hasChanges;
         
-        // Debug: log positions with price changes
-        if (hasAnyPriceChanges) {
-          const changed = updatedPositions.filter(p => p.priceChanged);
-          console.log(`[Flash] ${changed.length} positions changed:`, changed.map(p => `${p.asset} (${p.exchange})`).join(', '));
-        }
-        
-        // Always update cachedPositions to preserve priceChanged flags
         if (anyChanges) {
           cachedPositions = updatedPositions;
           window.cachedPositions = updatedPositions;
@@ -3529,7 +3505,7 @@ window.addEventListener('DOMContentLoaded', async () => {
           
           if (showPriceChart) {
             const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
-            const changedAssets = updatedPositions.filter(p => p.priceChanged && !STABLECOINS.has(p.asset?.toUpperCase()));
+            const changedAssets = updatedPositions.filter(p => !STABLECOINS.has(p.asset?.toUpperCase()));
             
             if (changedAssets.length > 0) {
               // Update price history in background (don't await to avoid blocking UI)
