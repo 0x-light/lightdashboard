@@ -241,6 +241,7 @@ function createMobileCard(doc, pos, opts) {
  * Returns positions array for caching (like watchlist).
  */
 export function renderPositions({ positions, containers, options, previousPositions = [] }) {
+  console.log(`[Positions Render] Called with ${positions?.length || 0} positions, ${previousPositions?.length || 0} previous`);
   try {
     if (!containers?.positionsBody) return positions;
     const doc = containers.positionsBody.ownerDocument || document;
