@@ -16,6 +16,7 @@ export class IncrementalPortfolioRenderer {
     this.renderDebounce = null;
     this.isLoading = true;
     this.expectedProviders = expectedProviders; // List of provider names we're waiting for
+    this.previousRenderData = []; // Cache for flash detection (like watchlist)
     
     // Store reference to renderer IMMEDIATELY for external re-renders
     window._portfolioRenderer = this;
@@ -193,7 +194,7 @@ export class IncrementalPortfolioRenderer {
     
     // Render positions table
     if (PositionsUI && positionsBody) {
-      PositionsUI.renderPositions({
+      const rendered = PositionsUI.renderPositions({
         positions: visible,
         containers: { positionsBody, mobilePositionsContainer: mobileContainer },
         options: {
@@ -206,8 +207,11 @@ export class IncrementalPortfolioRenderer {
             useColoredPnL: this.settings.useColoredPnL ?? true,
             showPriceChart: this.settings.showPriceChart ?? true
           }
-        }
+        },
+        previousPositions: this.previousRenderData || []
       });
+      // Cache for next render (like watchlist)
+      this.previousRenderData = rendered;
     }
     
     // Render hero

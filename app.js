@@ -1324,11 +1324,13 @@ function setupControls() {
         }
       };
       
-      PositionsUI.renderPositions({
+      const rendered = PositionsUI.renderPositions({
         positions: filtered,
         containers: { positionsBody, mobilePositionsContainer: mobileContainer },
-        options: renderOptions
+        options: renderOptions,
+        previousPositions: window._previousRenderData || []
       });
+      window._previousRenderData = rendered; // Cache for flash detection
       
       // Update hero with ALL positions (not filtered - need to include hidden equity positions)
       const { totalValue, totalPnL, totalPnLPercent } = calculatePortfolioTotals(cachedPositions);

@@ -7,58 +7,6 @@ function isStablecoin(asset) {
   return STABLECOINS.has(asset?.toUpperCase());
 }
 
-/**
- * Get previous positions map (stored globally to survive module reloads)
- */
-function getPreviousPositions() {
-  if (!window._previousPositions) {
-    window._previousPositions = new Map();
-  }
-  return window._previousPositions;
-}
-
-/**
- * Detect if position has changed since last render
- */
-function detectChanges(pos) {
-  // Use _changeDetectionKey if available (for aggregated positions), otherwise use asset_exchange
-  const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
-  const previousPositions = getPreviousPositions();
-  const prev = previousPositions.get(key);
-  
-  if (!prev) {
-    // First time seeing this position - store and don't flash
-    previousPositions.set(key, {
-      price: pos.price,
-      value: computeValue(pos),
-      pnl: pos.pnl,
-      change24h: pos.change24h
-    });
-    return { priceChanged: false, valueChanged: false, pnlChanged: false, change24hChanged: false };
-  }
-  
-  // Compare with previous values
-  const priceChanged = Math.abs((pos.price || 0) - (prev.price || 0)) > 0.0001;
-  const valueChanged = Math.abs((computeValue(pos) || 0) - (prev.value || 0)) > 0.01;
-  const pnlChanged = Math.abs((pos.pnl || 0) - (prev.pnl || 0)) > 0.01;
-  const change24hChanged = Math.abs((pos.change24h || 0) - (prev.change24h || 0)) > 0.01;
-  
-  // Debug: Log changes
-  if (priceChanged || valueChanged || pnlChanged || change24hChanged) {
-    console.log(`[Change Detection] ${pos.asset}: price=${priceChanged}, value=${valueChanged}, pnl=${pnlChanged}, 24h=${change24hChanged}`);
-  }
-  
-  // Update stored values
-  previousPositions.set(key, {
-    price: pos.price,
-    value: computeValue(pos),
-    pnl: pos.pnl,
-    change24h: pos.change24h
-  });
-  
-  return { priceChanged, valueChanged, pnlChanged, change24hChanged };
-}
-
 // No header templates needed - CSS handles chart visibility via .chart class
 
 function createSparkline(priceData, width = 60, height = 24, currentChange24h = null) {
@@ -175,7 +123,7 @@ function shouldHidePosition(pos, opts) {
   return false;
 }
 
-function createTableRow(doc, pos, opts) {
+function createTableRow(doc, pos, opts, prevDataMap) {
   const tr = doc.createElement('tr');
   const amountVisible = !!opts.amountsVisible;
   const value = computeValue(pos);
@@ -183,8 +131,13 @@ function createTableRow(doc, pos, opts) {
   const showExactAmounts = opts.settings?.showExactAmounts ?? false;
   const showPriceChart = opts.settings?.showPriceChart ?? true;
   
-  // Detect changes from previous render
-  const changes = detectChanges(pos);
+  // Check if values changed (simple comparison like watchlist)
+  const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
+  const prev = prevDataMap[key];
+  const priceChanged = prev && Math.abs((pos.price || 0) - (prev.price || 0)) > 0.0001;
+  const valueChanged = prev && Math.abs(value - (prev.value || 0)) > 0.01;
+  const pnlChanged = prev && Math.abs((pos.pnl || 0) - (prev.pnl || 0)) > 0.01;
+  const change24hChanged = prev && Math.abs((pos.change24h || 0) - (prev.change24h || 0)) > 0.01;
   
   // Create sparkline chart (skip for stablecoins)
   let chartCell = '<span class="chart-loading">—</span>';
@@ -227,13 +180,13 @@ function createTableRow(doc, pos, opts) {
       }
     }
     
-    // Mark cells that should flash based on actual changes detected
+    // Mark cells that should flash on price changes (like watchlist)
     const shouldFlash = 
-      (isPrice && changes.priceChanged) ||
-      (isValue && changes.valueChanged) ||
-      (isPnL && changes.pnlChanged) ||
-      (isChart && (changes.priceChanged || changes.change24hChanged)) ||
-      (isChange24h && changes.change24hChanged);
+      (isPrice && priceChanged) ||
+      (isValue && valueChanged) ||
+      (isPnL && pnlChanged) ||
+      (isChart && (priceChanged || change24hChanged)) ||
+      (isChange24h && change24hChanged);
     
     if (shouldFlash) {
       td.setAttribute('data-flash', 'true');
@@ -285,11 +238,11 @@ function createMobileCard(doc, pos, opts) {
 
 /**
  * Render positions with atomic header+body update.
- * Returns true if handled, false to let legacy code run.
+ * Returns positions array for caching (like watchlist).
  */
-export function renderPositions({ positions, containers, options }) {
+export function renderPositions({ positions, containers, options, previousPositions = [] }) {
   try {
-    if (!containers?.positionsBody) return false;
+    if (!containers?.positionsBody) return positions;
     const doc = containers.positionsBody.ownerDocument || document;
     const opts = options || {};
 
@@ -299,14 +252,28 @@ export function renderPositions({ positions, containers, options }) {
     if (filtered.length === 0) {
       containers.positionsBody.innerHTML = `<tr><td colspan="8" class="loading">No positions found</td></tr>`;
       if (containers.mobilePositionsContainer) containers.mobilePositionsContainer.innerHTML = '';
-      return true;
+      return positions;
+    }
+
+    // Build map of previous values for comparison (like watchlist)
+    const prevDataMap = {};
+    if (Array.isArray(previousPositions)) {
+      for (const pos of previousPositions) {
+        const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
+        prevDataMap[key] = {
+          price: pos.price,
+          value: pos.value,
+          pnl: pos.pnl,
+          change24h: pos.change24h
+        };
+      }
     }
 
     // Build fragments for atomic update
     const frag = doc.createDocumentFragment();
     const mobileFrag = doc.createDocumentFragment();
     for (const pos of filtered) {
-      frag.appendChild(createTableRow(doc, pos, opts));
+      frag.appendChild(createTableRow(doc, pos, opts, prevDataMap));
       if (containers.mobilePositionsContainer) {
         mobileFrag.appendChild(createMobileCard(doc, pos, opts));
       }
@@ -320,31 +287,21 @@ export function renderPositions({ positions, containers, options }) {
       containers.mobilePositionsContainer.appendChild(mobileFrag);
     }
 
-    // Trigger flash animations on changed cells (unified with render for reliability)
-    // Use double RAF to ensure DOM is fully painted
+    // Trigger flash animations (like watchlist)
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const flashCells = containers.positionsBody.querySelectorAll('td[data-flash="true"]');
-        console.log(`[Flash Debug] Found ${flashCells.length} cells with data-flash attribute`);
-        
-        if (flashCells.length > 0) {
-          console.log(`[Flash Animation] Animating ${flashCells.length} cells`);
-          flashCells.forEach((cell, i) => {
-            console.log(`[Flash] Cell ${i}: ${cell.textContent.trim()}`);
-            cell.classList.add('cell-flash');
-            // Clean up after animation
-            setTimeout(() => {
-              cell.classList.remove('cell-flash');
-              cell.removeAttribute('data-flash');
-            }, 600); // Match animation duration in CSS
-          });
-        }
+      const flashCells = containers.positionsBody.querySelectorAll('td[data-flash="true"]');
+      flashCells.forEach(cell => {
+        cell.classList.add('cell-flash');
+        cell.addEventListener('animationend', () => {
+          cell.classList.remove('cell-flash');
+          cell.removeAttribute('data-flash');
+        }, { once: true });
       });
     });
 
-    return true;
+    return positions; // Return for caching
   } catch (_) {
-    return false;
+    return positions;
   }
 }
 
