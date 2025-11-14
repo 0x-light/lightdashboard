@@ -1,23 +1,24 @@
 // ESM bootstrap: expose modules on window without altering existing app flow
-import * as Portfolio from './domain/portfolio.js';
-import * as IncrementalPortfolio from './domain/incremental-portfolio.js';
-import * as Http from './http/client.js';
-import * as HL from './data/providers/hyperliquid.js';
-import * as CG from './data/providers/coingecko.js';
-import * as PYTH from './data/providers/pyth.js';
-import * as OPENSEA from './data/providers/opensea.js';
-import * as ZERION from './data/providers/zerion.js';
-import * as LIGHTER from './data/providers/lighter.js';
-import * as BTC from './data/providers/bitcoin.js';
-import * as ZEC from './data/providers/zcash.js';
-import * as ALCHEMY from './data/providers/alchemy.js';
-import * as HELIUS from './data/providers/helius.js';
-import * as HeroUI from './ui/hero.js';
-import * as PositionsUI from './ui/positions.js';
-import * as Settings from './core/settings.js';
-import * as Themes from './core/themes.js';
-import * as Rain from './features/rain.js';
-import * as Weather from './features/weather.js';
+const V = '2.4.9';
+import * as Portfolio from `./domain/portfolio.js?v=${V}`;
+import * as IncrementalPortfolio from `./domain/incremental-portfolio.js?v=${V}`;
+import * as Http from `./http/client.js?v=${V}`;
+import * as HL from `./data/providers/hyperliquid.js?v=${V}`;
+import * as CG from `./data/providers/coingecko.js?v=${V}`;
+import * as PYTH from `./data/providers/pyth.js?v=${V}`;
+import * as OPENSEA from `./data/providers/opensea.js?v=${V}`;
+import * as ZERION from `./data/providers/zerion.js?v=${V}`;
+import * as LIGHTER from `./data/providers/lighter.js?v=${V}`;
+import * as BTC from `./data/providers/bitcoin.js?v=${V}`;
+import * as ZEC from `./data/providers/zcash.js?v=${V}`;
+import * as ALCHEMY from `./data/providers/alchemy.js?v=${V}`;
+import * as HELIUS from `./data/providers/helius.js?v=${V}`;
+import * as HeroUI from `./ui/hero.js?v=${V}`;
+import * as PositionsUI from `./ui/positions.js?v=${V}`;
+import * as Settings from `./core/settings.js?v=${V}`;
+import * as Themes from `./core/themes.js?v=${V}`;
+import * as Rain from `./features/rain.js?v=${V}`;
+import * as Weather from `./features/weather.js?v=${V}`;
 
 if (!window.AppModules) {
   window.AppModules = {};
