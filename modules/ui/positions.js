@@ -139,6 +139,16 @@ function createTableRow(doc, pos, opts, prevDataMap) {
   const pnlChanged = prev && Math.abs((pos.pnl || 0) - (prev.pnl || 0)) > 0.01;
   const change24hChanged = prev && Math.abs((pos.change24h || 0) - (prev.change24h || 0)) > 0.01;
   
+  // Debug logging for change detection
+  if (priceChanged || valueChanged || pnlChanged || change24hChanged) {
+    console.log(`[Flash Debug] ${pos.asset}: price=${priceChanged}, value=${valueChanged}, pnl=${pnlChanged}, change24h=${change24hChanged}`, {
+      key,
+      prevExists: !!prev,
+      currentPrice: pos.price,
+      prevPrice: prev?.price
+    });
+  }
+  
   // Create sparkline chart (skip for stablecoins)
   let chartCell = '<span class="chart-loading">—</span>';
   if (!isStablecoin(pos.asset)) {
@@ -220,6 +230,17 @@ function createMobileCard(doc, pos, opts) {
   const useColoredPnL = opts.settings?.useColoredPnL ?? true;
   const showExactAmounts = opts.settings?.showExactAmounts ?? false;
   
+  // Compute change flags for mobile flash animations (mirrors table logic)
+  const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
+  const prevGlobal = (typeof window !== 'undefined' && Array.isArray(window._previousRenderData))
+    ? window._previousRenderData.find(p => (p._changeDetectionKey || `${p.asset}_${p.exchange}`) === key)
+    : null;
+  const prevValue = prevGlobal ? computeValue(prevGlobal) : null;
+  const priceChanged = prevGlobal && Math.abs((pos.price || 0) - (prevGlobal.price || 0)) > 0.0001;
+  const valueChanged = prevGlobal && Math.abs(value - (prevValue || 0)) > 0.01;
+  const pnlChanged = prevGlobal && Math.abs((pos.pnl || 0) - (prevGlobal.pnl || 0)) > 0.01;
+  const change24hChanged = prevGlobal && Math.abs((pos.change24h || 0) - (prevGlobal.change24h || 0)) > 0.01;
+  
   // Color classes for PnL and 24H%
   const pnlClass = useColoredPnL && pos.pnl != null ? (pos.pnl >= 0 ? 'positive-pnl' : 'negative-pnl') : '';
   const changeClass = useColoredPnL && pos.change24h != null ? (pos.change24h >= 0 ? 'positive-pnl' : 'negative-pnl') : '';
@@ -228,10 +249,10 @@ function createMobileCard(doc, pos, opts) {
     <div class="card-row"><span class="card-label">Asset</span><span class="card-asset">${pos.asset || '—'}</span></div>
     <div class="card-row"><span class="card-label">Exchange</span><span class="card-value">${pos.exchange || '—'}</span></div>
     <div class="card-row"><span class="card-label">Amount</span><span class="card-value">${formatAmount(pos.amount, amountVisible, showExactAmounts)}</span></div>
-    <div class="card-row"><span class="card-label">Price</span><span class="card-value">${formatUsd(pos.price, true)}</span></div>
-    <div class="card-row"><span class="card-label">Value</span><span class="card-value">${formatUsd(value, amountVisible)}</span></div>
-    <div class="card-row"><span class="card-label">24H%</span><span class="card-value ${changeClass}">${formatPct(pos.change24h)}</span></div>
-    <div class="card-row"><span class="card-label">P&L</span><span class="card-value ${pnlClass}">${formatUsd(pos.pnl, amountVisible, true)}</span></div>
+    <div class="card-row"><span class="card-label">Price</span><span class="card-value"${priceChanged ? ' data-flash="true"' : ''}>${formatUsd(pos.price, true)}</span></div>
+    <div class="card-row"><span class="card-label">Value</span><span class="card-value"${valueChanged ? ' data-flash="true"' : ''}>${formatUsd(value, amountVisible)}</span></div>
+    <div class="card-row"><span class="card-label">24H%</span><span class="card-value ${changeClass}"${change24hChanged ? ' data-flash="true"' : ''}>${formatPct(pos.change24h)}</span></div>
+    <div class="card-row"><span class="card-label">P&L</span><span class="card-value ${pnlClass}"${pnlChanged ? ' data-flash="true"' : ''}>${formatUsd(pos.pnl, amountVisible, true)}</span></div>
   `;
   return card;
 }
@@ -259,6 +280,7 @@ export function renderPositions({ positions, containers, options, previousPositi
     // Build map of previous values for comparison (like watchlist)
     const prevDataMap = {};
     if (Array.isArray(previousPositions)) {
+      console.log(`[Flash Debug] Building prevDataMap from ${previousPositions.length} previous positions`);
       for (const pos of previousPositions) {
         if (!pos || !pos.asset || !pos.exchange) continue; // Skip invalid entries
         try {
@@ -274,6 +296,9 @@ export function renderPositions({ positions, containers, options, previousPositi
           continue;
         }
       }
+      console.log(`[Flash Debug] prevDataMap keys:`, Object.keys(prevDataMap));
+    } else {
+      console.log(`[Flash Debug] No valid previousPositions array`);
     }
 
     // Build fragments for atomic update
@@ -297,6 +322,7 @@ export function renderPositions({ positions, containers, options, previousPositi
     // Trigger flash animations (like watchlist)
     requestAnimationFrame(() => {
       const flashCells = containers.positionsBody.querySelectorAll('td[data-flash="true"]');
+      console.log(`[Flash Debug] Found ${flashCells.length} cells with data-flash="true"`);
       flashCells.forEach(cell => {
         cell.classList.add('cell-flash');
         cell.addEventListener('animationend', () => {
@@ -304,6 +330,19 @@ export function renderPositions({ positions, containers, options, previousPositi
           cell.removeAttribute('data-flash');
         }, { once: true });
       });
+      
+      // Trigger flash animations in mobile cards
+      if (containers.mobilePositionsContainer) {
+        const mobileFlashNodes = containers.mobilePositionsContainer.querySelectorAll('[data-flash="true"]');
+        console.log(`[Flash Debug] Found ${mobileFlashNodes.length} mobile nodes with data-flash="true"`);
+        mobileFlashNodes.forEach(node => {
+          node.classList.add('cell-flash');
+          node.addEventListener('animationend', () => {
+            node.classList.remove('cell-flash');
+            node.removeAttribute('data-flash');
+          }, { once: true });
+        });
+      }
     });
 
     return positions; // Return for caching

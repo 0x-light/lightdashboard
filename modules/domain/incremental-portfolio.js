@@ -252,6 +252,12 @@ export class IncrementalPortfolioRenderer {
    */
   updatePositions(newPositions) {
     if (Array.isArray(newPositions)) {
+      // CRITICAL: snapshot old data BEFORE replacing, so render() can detect changes
+      // (previousRenderData must contain the pre-update state)
+      // Don't overwrite if we don't have any previous data yet
+      if (this.allPositions && this.allPositions.length > 0) {
+        // Keep the previous snapshot (don't update it here - render() will update it AFTER comparing)
+      }
       this.allPositions = newPositions;
     }
     this.render();
