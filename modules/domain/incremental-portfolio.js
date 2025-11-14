@@ -208,10 +208,11 @@ export class IncrementalPortfolioRenderer {
             showPriceChart: this.settings.showPriceChart ?? true
           }
         },
-        previousPositions: this.previousRenderData || []
+        previousPositions: this.previousRenderData || window._previousRenderData || []
       });
-      // Cache for next render (like watchlist)
+      // Cache for next render (like watchlist) - update both local and global
       this.previousRenderData = rendered;
+      window._previousRenderData = rendered;
     }
     
     // Render hero

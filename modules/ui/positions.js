@@ -263,7 +263,7 @@ export function renderPositions({ positions, containers, options, previousPositi
         const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
         prevDataMap[key] = {
           price: pos.price,
-          value: pos.value,
+          value: computeValue(pos), // Compute value dynamically
           pnl: pos.pnl,
           change24h: pos.change24h
         };
