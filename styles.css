@@ -1605,8 +1605,8 @@ body.mobile-menu-open {
   
   /* Calvin & Hobbes and Peanuts comics on mobile - exclude Far Side */
   #newComic img:not([data-comic-type="farside"]) {
-    min-height: 200px !important;
-    max-height: 200px !important;
+    min-height: 250px !important;
+    max-height: 250px !important;
   }
   
   /* Far Side comics on mobile - full width */

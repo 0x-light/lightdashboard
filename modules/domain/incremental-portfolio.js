@@ -275,10 +275,21 @@ export class IncrementalPortfolioRenderer {
    * Aggregate duplicate assets
    */
   aggregatePositions(positions) {
+    // First, deduplicate positions by unique key (asset + exchange)
+    // This prevents duplicates from showing up when providers are called multiple times
+    const uniquePositions = new Map();
+    for (const row of positions) {
+      const key = row._changeDetectionKey || `${row.asset}_${row.exchange}`;
+      // Keep the first occurrence of each position
+      if (!uniquePositions.has(key)) {
+        uniquePositions.set(key, row);
+      }
+    }
+    
     const aggregated = [];
     const assetGroups = new Map();
     
-    for (const row of positions) {
+    for (const row of uniquePositions.values()) {
       // Keep special positions separate
       if (row.isLeveraged || row.isHlAccountEquity || row.isLighterAccountEquity) {
         aggregated.push(row);

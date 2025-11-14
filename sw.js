@@ -17,7 +17,7 @@ const STATIC_ASSETS = [
   '/icon-180.png',
   '/icon-192.png',
   '/icon-512.png',
-  '/favicon_correct.png'
+  '/favicon.png'
 ];
 
 // API cache duration by endpoint pattern

@@ -399,7 +399,34 @@ async function runHealthChecks() {
  * NEW: Incremental portfolio renderer - shows positions as each provider responds
  * This replaces the bloated renderDemoSummary with streaming updates
  */
+// Track if a render is already in progress to prevent duplicate concurrent renders
+let _renderInProgress = false;
+let _pendingRenderRequest = false;
+
 async function renderPortfolioIncremental() {
+  // If a render is already in progress, mark that we need another render and return
+  if (_renderInProgress) {
+    _pendingRenderRequest = true;
+    return;
+  }
+  
+  _renderInProgress = true;
+  _pendingRenderRequest = false;
+  
+  try {
+    await _doRenderPortfolioIncremental();
+  } finally {
+    _renderInProgress = false;
+    
+    // If another render was requested while we were running, start it now
+    if (_pendingRenderRequest) {
+      _pendingRenderRequest = false;
+      renderPortfolioIncremental();
+    }
+  }
+}
+
+async function _doRenderPortfolioIncremental() {
   const mods = window.AppModules || {};
   const providers = mods.data?.providers || {};
   const { IncrementalPortfolioRenderer } = mods.incrementalPortfolio || {};
