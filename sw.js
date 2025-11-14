@@ -2,7 +2,7 @@
 // Provides offline support, intelligent caching, and automatic updates
 // UPDATE THIS VERSION NUMBER WHENEVER YOU DEPLOY CHANGES
 const CACHE_VERSION = 'v2.5.0';
-const BUILD_TIMESTAMP = '2025-11-14T21:00:00Z'; // Update on each deployment
+const BUILD_TIMESTAMP = '2025-11-14T21:30:00Z'; // Update on each deployment
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
 // Assets to cache immediately on install
