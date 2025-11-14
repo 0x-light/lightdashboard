@@ -1,6 +1,46 @@
 // Minimal alpha boot for the new modular dashboard
 
 // ============================================================================
+// VERSION CHECKING: Force reload if user is on old version
+// ============================================================================
+const APP_VERSION = '2.4.4';
+const FORCE_UPDATE_KEY = 'viewport_last_version';
+
+function checkVersion() {
+  const lastVersion = localStorage.getItem(FORCE_UPDATE_KEY);
+  
+  if (lastVersion && lastVersion !== APP_VERSION) {
+    console.log(`[Version] Updating from ${lastVersion} to ${APP_VERSION}`);
+    
+    // Clear all caches
+    if ('caches' in window) {
+      caches.keys().then(names => {
+        names.forEach(name => caches.delete(name));
+      });
+    }
+    
+    // Store new version
+    localStorage.setItem(FORCE_UPDATE_KEY, APP_VERSION);
+    
+    // Force hard reload (bypass cache)
+    window.location.reload(true);
+    return false; // Don't continue initialization
+  }
+  
+  // Store version if first time
+  if (!lastVersion) {
+    localStorage.setItem(FORCE_UPDATE_KEY, APP_VERSION);
+  }
+  
+  return true; // Continue initialization
+}
+
+// Check version immediately - if returns false, reload is happening
+if (!checkVersion()) {
+  throw new Error('Version update in progress, reloading...');
+}
+
+// ============================================================================
 // PERFORMANCE: Cache frequently accessed elements and data
 // ============================================================================
 const DOMCache = {
@@ -1610,6 +1650,48 @@ function setupControls() {
     });
   }
   
+  // Force update button - clears all caches and reloads
+  const forceUpdateBtn = document.getElementById('newForceUpdateBtn');
+  if (forceUpdateBtn) {
+    forceUpdateBtn.addEventListener('click', async () => {
+      const originalText = forceUpdateBtn.textContent;
+      forceUpdateBtn.textContent = '[CLEARING...]';
+      forceUpdateBtn.disabled = true;
+      
+      try {
+        // Clear all caches
+        if ('caches' in window) {
+          const cacheNames = await caches.keys();
+          await Promise.all(cacheNames.map(name => caches.delete(name)));
+        }
+        
+        // Send message to service worker to clear its cache
+        if ('serviceWorker' in navigator) {
+          const registration = await navigator.serviceWorker.getRegistration();
+          if (registration?.active) {
+            registration.active.postMessage({ type: 'CLEAR_CACHE' });
+          }
+        }
+        
+        // Reset version to force reload on next visit
+        localStorage.removeItem(FORCE_UPDATE_KEY);
+        
+        // Wait a moment for caches to clear
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Hard reload (bypass cache)
+        window.location.reload(true);
+      } catch (error) {
+        console.error('[Force Update] Error:', error);
+        forceUpdateBtn.textContent = '[ERROR - TRY AGAIN]';
+        forceUpdateBtn.disabled = false;
+        setTimeout(() => {
+          forceUpdateBtn.textContent = originalText;
+        }, 2000);
+      }
+    });
+  }
+  
   // Rain/Snow controls
   const Rain = window.AppModules?.features?.rain;
   const toggleRainBtn = document.getElementById('newToggleRainBtn');
@@ -2521,31 +2603,18 @@ window.addEventListener('DOMContentLoaded', async () => {
   renderHeroSkeleton();
   renderPositionsSkeleton(7);
   
-  // NON-CRITICAL: Display version from service worker (async, non-blocking)
-  setTimeout(() => {
-    const versionDisplay = document.getElementById('versionDisplay');
-    if (versionDisplay) {
-      fetch('/sw.js')
-        .then(response => response.text())
-        .then(swCode => {
-          const versionMatch = swCode.match(/CACHE_VERSION\s*=\s*'v([0-9.]+)'/);
-          const timestampMatch = swCode.match(/BUILD_TIMESTAMP\s*=\s*'([^']+)'/);
-          if (versionMatch) {
-            const version = versionMatch[1];
-            const timestamp = timestampMatch ? new Date(timestampMatch[1]).toLocaleString('en-US', { 
-              month: 'short', 
-              day: 'numeric', 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            }) : '';
-            versionDisplay.textContent = `v${version}${timestamp ? ` (${timestamp})` : ''}`;
-          }
-        })
-        .catch(() => {
-          versionDisplay.textContent = 'Version: Unknown';
-        });
-    }
-  }, 100);
+  // Display version immediately (using APP_VERSION constant)
+  const versionDisplay = document.getElementById('versionDisplay');
+  if (versionDisplay) {
+    const buildDate = new Date('2025-11-14T12:00:00Z').toLocaleString('en-US', { 
+      month: 'short', 
+      day: 'numeric', 
+      hour: '2-digit', 
+      minute: '2-digit',
+      timeZone: 'UTC'
+    });
+    versionDisplay.textContent = `v${APP_VERSION} (${buildDate} UTC)`;
+  }
   
   // Init theme
   const Themes = window.AppModules?.core?.themes;

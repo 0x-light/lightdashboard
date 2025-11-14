@@ -27,13 +27,13 @@
     <meta name="apple-mobile-web-app-title" content="Viewport">
     
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json?v=2.4.3">
+    <link rel="manifest" href="/manifest.json?v=2.4.4">
     
     <!-- Cache busting: update version number on each deployment -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="./styles.css?v=2.4.3">
+    <link rel="stylesheet" href="./styles.css?v=2.4.4">
   </head>
   <body>
     <!-- Rain/Snow Canvas -->
@@ -171,6 +171,12 @@
             <button type="button" id="newImportSettingsBtn" class="btn-text">[IMPORT]</button>
           </div>
           <textarea id="newSettingsExportArea" class="settings-input" style="display: none; font-family: monospace; font-size: 12px; min-height: 100px;" placeholder="Paste exported settings here, then click [SAVE & RELOAD] at the bottom" readonly></textarea>
+        </div>
+        
+        <!-- Force Update Section -->
+        <div class="help" style="margin-top: 16px;">
+          <div style="margin-bottom: 8px;">Not seeing the latest version? Force clear all caches and reload</div>
+          <button type="button" id="newForceUpdateBtn" class="btn-text">[FORCE UPDATE]</button>
         </div>
           <fieldset>
             <legend>Personal</legend>
@@ -499,8 +505,8 @@
       </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.4.3" defer></script>
-    <script type="module" src="./app.js?v=2.4.3" defer></script>
+    <script type="module" src="./modules/app-init.js?v=2.4.4" defer></script>
+    <script type="module" src="./app.js?v=2.4.4" defer></script>
     
     <!-- Service Worker Registration - ensures users always get latest version -->
     <script defer>
@@ -519,10 +525,13 @@
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
             .then((registration) => {
-              // Check for updates every 60 seconds
+              // Check for updates immediately on page load
+              registration.update();
+              
+              // Check for updates every 30 seconds (more frequent for critical updates)
               setInterval(() => {
                 registration.update();
-              }, 60000);
+              }, 30000);
               
               // Listen for waiting service worker
               registration.addEventListener('updatefound', () => {
@@ -530,6 +539,7 @@
                 newWorker.addEventListener('statechange', () => {
                   if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                     // New service worker available, tell it to skip waiting
+                    console.log('[SW] Update found, activating immediately...');
                     newWorker.postMessage({ type: 'SKIP_WAITING' });
                   }
                 });

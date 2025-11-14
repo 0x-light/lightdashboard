@@ -1,8 +1,8 @@
 // Service Worker for Light Dashboard
 // Provides offline support, intelligent caching, and automatic updates
 // UPDATE THIS VERSION NUMBER WHENEVER YOU DEPLOY CHANGES
-const CACHE_VERSION = 'v2.4.3';
-const BUILD_TIMESTAMP = '2025-01-13T05:30:00Z'; // Update on each deployment
+const CACHE_VERSION = 'v2.4.4';
+const BUILD_TIMESTAMP = '2025-11-14T12:00:00Z'; // Update on each deployment
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
 // Assets to cache immediately on install
@@ -129,21 +129,29 @@ self.addEventListener('fetch', (event) => {
       return;
     }
     
-    // For JS/CSS files - use stale-while-revalidate
+    // For JS/CSS files - use network-first to ensure users get latest version
     if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
       event.respondWith(
-        caches.open(CACHE_NAME).then((cache) => {
-          return cache.match(request).then((cached) => {
-            const fetchPromise = fetch(request).then((response) => {
-              if (response.ok) {
-                cache.put(request, response.clone());
-              }
-              return response;
+        fetch(request)
+          .then((response) => {
+            if (response.ok) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(request, clone);
+              });
+            }
+            return response;
+          })
+          .catch(() => {
+            // Fallback to cache only if network fails (offline support)
+            return caches.match(request).then((cached) => {
+              return cached || new Response('Offline - please check your connection', {
+                status: 503,
+                statusText: 'Service Unavailable',
+                headers: { 'Content-Type': 'text/javascript' }
+              });
             });
-            // Return cached version immediately, but update in background
-            return cached || fetchPromise;
-          });
-        })
+          })
       );
       return;
     }
