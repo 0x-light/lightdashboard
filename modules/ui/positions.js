@@ -14,7 +14,8 @@ function isStablecoin(asset) {
  * Detect if position has changed since last render
  */
 function detectChanges(pos) {
-  const key = `${pos.asset}_${pos.exchange}`;
+  // Use _changeDetectionKey if available (for aggregated positions), otherwise use asset_exchange
+  const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
   const prev = previousPositions.get(key);
   
   if (!prev) {
@@ -33,6 +34,11 @@ function detectChanges(pos) {
   const valueChanged = Math.abs((computeValue(pos) || 0) - (prev.value || 0)) > 0.01;
   const pnlChanged = Math.abs((pos.pnl || 0) - (prev.pnl || 0)) > 0.01;
   const change24hChanged = Math.abs((pos.change24h || 0) - (prev.change24h || 0)) > 0.01;
+  
+  // Debug: Log changes
+  if (priceChanged || valueChanged || pnlChanged || change24hChanged) {
+    console.log(`[Change Detection] ${pos.asset}: price=${priceChanged}, value=${valueChanged}, pnl=${pnlChanged}, 24h=${change24hChanged}`);
+  }
   
   // Update stored values
   previousPositions.set(key, {
@@ -309,6 +315,9 @@ export function renderPositions({ positions, containers, options }) {
     // Trigger flash animations on changed cells (unified with render for reliability)
     requestAnimationFrame(() => {
       const flashCells = containers.positionsBody.querySelectorAll('td[data-flash="true"]');
+      if (flashCells.length > 0) {
+        console.log(`[Flash Animation] Animating ${flashCells.length} cells`);
+      }
       flashCells.forEach(cell => {
         cell.classList.add('cell-flash');
         // Clean up after animation

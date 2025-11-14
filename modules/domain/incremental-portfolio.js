@@ -294,21 +294,22 @@ export class IncrementalPortfolioRenderer {
         // Use the first non-null change24h value from any of the items
         const change24h = items.find(p => p.change24h !== null && p.change24h !== undefined)?.change24h || null;
         
-        // Check if any of the items has priceChanged flag
-        const priceChanged = items.some(p => p.priceChanged);
-        
         // Get priceHistory from first item that has it
         const priceHistory = items.find(p => p.priceHistory)?.priceHistory || null;
+        
+        // Use consistent exchange name for aggregated positions (for change detection)
+        // If multiple exchanges, use the asset name itself as the exchange for stable keying
+        const exchangeKey = exchanges.length > 1 ? asset : exchanges[0];
         
         aggregated.push({
           asset,
           exchange: exchanges.length > 1 ? 'Multiple' : exchanges[0],
+          _changeDetectionKey: `${asset}_${exchangeKey}`, // Stable key for change detection
           amount: totalAmount,
           value: totalValue,
           price: weightedPrice,
           change24h,
           pnl: totalPnL,
-          priceChanged,
           priceHistory,
           isAggregated: true
         });
