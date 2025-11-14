@@ -2597,7 +2597,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Display version immediately (using APP_VERSION constant)
   const versionDisplay = document.getElementById('versionDisplay');
   if (versionDisplay) {
-    const buildDate = new Date('2025-11-14T19:30:00Z').toLocaleString('en-US', { 
+    const buildDate = new Date('2025-11-14T20:00:00Z').toLocaleString('en-US', { 
       month: 'short', 
       day: 'numeric', 
       hour: '2-digit', 
