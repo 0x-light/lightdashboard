@@ -3,11 +3,18 @@
 
 const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
 
-// Store previous position state for change detection
-const previousPositions = new Map(); // key: asset_exchange, value: { price, value, pnl, change24h }
-
 function isStablecoin(asset) {
   return STABLECOINS.has(asset?.toUpperCase());
+}
+
+/**
+ * Get previous positions map (stored globally to survive module reloads)
+ */
+function getPreviousPositions() {
+  if (!window._previousPositions) {
+    window._previousPositions = new Map();
+  }
+  return window._previousPositions;
 }
 
 /**
@@ -16,6 +23,7 @@ function isStablecoin(asset) {
 function detectChanges(pos) {
   // Use _changeDetectionKey if available (for aggregated positions), otherwise use asset_exchange
   const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
+  const previousPositions = getPreviousPositions();
   const prev = previousPositions.get(key);
   
   if (!prev) {
