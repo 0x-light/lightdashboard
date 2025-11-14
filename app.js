@@ -3,7 +3,7 @@
 // ============================================================================
 // VERSION CHECKING: Force reload if user is on old version
 // ============================================================================
-const APP_VERSION = '2.4.9';
+const APP_VERSION = '2.5.0';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
@@ -2597,7 +2597,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Display version immediately (using APP_VERSION constant)
   const versionDisplay = document.getElementById('versionDisplay');
   if (versionDisplay) {
-    const buildDate = new Date('2025-11-14T20:30:00Z').toLocaleString('en-US', { 
+    const buildDate = new Date('2025-11-14T21:00:00Z').toLocaleString('en-US', { 
       month: 'short', 
       day: 'numeric', 
       hour: '2-digit', 

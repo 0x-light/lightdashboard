@@ -31,8 +31,8 @@
   --orange: #cb4b16;
   --yellow: #b58900;
   --cyan: #2aa198;
-  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+  --flash-start: rgba(0, 0, 0, 0.3);
+  --flash-mid: rgba(0, 0, 0, 0.15);
 }
 
 html[data-theme="light"] {
@@ -50,8 +50,8 @@ html[data-theme="light"] {
   --orange: #cb4b16;
   --yellow: #b58900;
   --cyan: #2aa198;
-  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+  --flash-start: rgba(0, 0, 0, 0.3);
+  --flash-mid: rgba(0, 0, 0, 0.15);
 }
 
 html[data-theme="astronomy"] {
@@ -69,8 +69,8 @@ html[data-theme="astronomy"] {
   --orange: #f00;
   --yellow: #f00;
   --cyan: #f00;
-  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+  --flash-start: rgba(255, 0, 0, 0.3);
+  --flash-mid: rgba(255, 0, 0, 0.15);
 }
 
 html[data-theme="yellow-terminal"] {
@@ -88,8 +88,8 @@ html[data-theme="yellow-terminal"] {
   --orange: #ffbf00;
   --yellow: #ffbf00;
   --cyan: #ffbf00;
-  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+  --flash-start: rgba(255, 191, 0, 0.3);
+  --flash-mid: rgba(255, 191, 0, 0.15);
 }
 
 html[data-theme="eva01"] {
