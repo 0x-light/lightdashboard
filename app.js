@@ -3581,12 +3581,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
-  // Start updates after 10 seconds, then every 30 seconds (reduced from 5s for performance)
-  // Financial data doesn't need sub-second updates; 30s is standard for portfolio trackers
+  // Start updates after 5 seconds, then every 5 seconds for live price tracking
   setTimeout(() => {
     updatePrices();
-    updateInterval = setInterval(updatePrices, 30000);
-  }, 10000);
+    updateInterval = setInterval(updatePrices, 5000);
+  }, 5000);
   
   // Cleanup on page unload (prevent memory leaks)
   window.addEventListener('beforeunload', () => {
