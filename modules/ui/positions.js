@@ -309,17 +309,14 @@ export function renderPositions({ positions, containers, options }) {
     // Trigger flash animations on changed cells (unified with render for reliability)
     requestAnimationFrame(() => {
       const flashCells = containers.positionsBody.querySelectorAll('td[data-flash="true"]');
-      if (flashCells.length > 0) {
-        console.log(`[Flash] ${flashCells.length} cells changed - animating`);
-        flashCells.forEach(cell => {
-          cell.classList.add('cell-flash');
-          // Clean up after animation
-          setTimeout(() => {
-            cell.classList.remove('cell-flash');
-            cell.removeAttribute('data-flash');
-          }, 600); // Match animation duration in CSS
-        });
-      }
+      flashCells.forEach(cell => {
+        cell.classList.add('cell-flash');
+        // Clean up after animation
+        setTimeout(() => {
+          cell.classList.remove('cell-flash');
+          cell.removeAttribute('data-flash');
+        }, 600); // Match animation duration in CSS
+      });
     });
 
     return true;
