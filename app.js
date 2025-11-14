@@ -571,6 +571,15 @@ async function renderPortfolioIncremental() {
           }
         }
         
+        // Also include allMids directly for HIP-3 and other assets not in metaAndAssetCtxs
+        if (hlAllMids) {
+          for (const [key, value] of Object.entries(hlAllMids)) {
+            if (value && !key.startsWith('@')) { // Skip spot market keys (those start with @)
+              hlPriceMap[key] = parseFloat(value);
+            }
+          }
+        }
+        
         for (const wallet of wallets) {
           const data = await providers.hyperliquid.fetchPositions(wallet, 3000);
           const rows = [];
@@ -601,8 +610,17 @@ async function renderPortfolioIncremental() {
               const szi = parseFloat(position?.szi || 0);
               if (Math.abs(szi) > 0) {
                 const entryPrice = parseFloat(position?.entryPx || 0);
-                const currentPrice = hlPriceMap[position.coin] || entryPrice;
                 const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
+                
+                // For positions, calculate current price from position value / size
+                // This works for all markets including HIP-3 (xyz:PLTR etc)
+                let currentPrice = notionalValue / Math.abs(szi);
+                
+                // Fallback to price map or entry price if calculation fails
+                if (!currentPrice || isNaN(currentPrice)) {
+                  currentPrice = hlPriceMap[position.coin] || entryPrice;
+                }
+                
                 const pnl = parseFloat(position?.unrealizedPnl || 0);
                 totalHlPnL += pnl;
                 
@@ -3163,6 +3181,15 @@ window.addEventListener('DOMContentLoaded', async () => {
                 }
               }
               
+              // Also include allMids directly for HIP-3 and other assets not in metaAndAssetCtxs
+              if (hlAllMids) {
+                for (const [key, value] of Object.entries(hlAllMids)) {
+                  if (value && !key.startsWith('@')) { // Skip spot market keys (those start with @)
+                    hlPriceMap[key] = parseFloat(value);
+                  }
+                }
+              }
+              
               // Fetch fresh Hyperliquid and Lighter positions
               const [hlResults, lighterResults] = await Promise.all([
                 // Hyperliquid
@@ -3201,9 +3228,18 @@ window.addEventListener('DOMContentLoaded', async () => {
                         const szi = parseFloat(position?.szi || 0);
                         if (Math.abs(szi) > 0) {
                           const entryPrice = parseFloat(position?.entryPx || 0);
-                          const currentPrice = hlPriceMap[position.coin] || entryPrice; // Use current market price
-                          const leverage = parseFloat(position?.leverage?.value || 10);
                           const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
+                          
+                          // Calculate current price from position value / size
+                          // This works for all markets including HIP-3 (xyz:PLTR etc)
+                          let currentPrice = notionalValue / Math.abs(szi);
+                          
+                          // Fallback to price map or entry price if calculation fails
+                          if (!currentPrice || isNaN(currentPrice)) {
+                            currentPrice = hlPriceMap[position.coin] || entryPrice;
+                          }
+                          
+                          const leverage = parseFloat(position?.leverage?.value || 10);
                           const pnl = parseFloat(position?.unrealizedPnl || 0);
                           totalHlPnL += pnl;
                           const entryNotional = Math.abs(szi) * entryPrice;
@@ -3213,7 +3249,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                             asset: position.coin,
                             exchange: 'Hyperliquid',
                             amount: szi,
-                            price: currentPrice, // Use current market price instead of entry price
+                            price: currentPrice,
                             value: notionalValue,
                             pnl: pnl,
                             entryPrice: entryPrice,

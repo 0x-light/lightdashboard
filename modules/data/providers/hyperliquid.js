@@ -14,10 +14,84 @@ async function post(body, timeoutMs) {
 
 export async function fetchPositions(address, timeoutMs = 10000) {
   if (!address) return null;
-  const [perp, spot] = await Promise.all([
+  
+  // First get meta to find all vaults
+  const meta = await post({ type: 'meta' }, timeoutMs).catch(() => null);
+  
+  const queries = [
+    // Standard dex (main Hyperliquid)
     post({ type: 'clearinghouseState', user: address }, timeoutMs).catch(() => null),
-    post({ type: 'spotClearinghouseState', user: address }, timeoutMs).catch(() => null)
-  ]);
+    post({ type: 'spotClearinghouseState', user: address }, timeoutMs).catch(() => null),
+    // Query xyz dex (trade.xyz HIP-3 markets)
+    post({ type: 'clearinghouseState', user: address, dex: 'xyz' }, timeoutMs).catch(() => null)
+  ];
+  
+  // Query additional HIP-3 vaults if discovered in meta
+  if (meta?.vaults && Array.isArray(meta.vaults)) {
+    for (const vault of meta.vaults) {
+      queries.push(
+        post({ 
+          type: 'clearinghouseState', 
+          user: address,
+          vaultAddress: vault.vaultAddress || vault.address || vault
+        }, timeoutMs).catch(() => null)
+      );
+    }
+  }
+  
+  const results = await Promise.all(queries);
+  const [perp, spot, xyzDex, ...vaultResults] = results;
+  
+  // Merge xyz dex and vault positions into main perp response
+  // Track which coins we've already seen to avoid duplicates
+  const existingCoins = new Set(perp?.assetPositions?.map(p => p.position?.coin) || []);
+  
+  // Combine perp equity from main dex and xyz dex (spot will be added in app)
+  let mainPerpEquity = 0;
+  let xyzEquity = 0;
+  
+  if (perp?.marginSummary) {
+    mainPerpEquity = parseFloat(perp.marginSummary.accountValue || 0);
+  }
+  
+  if (xyzDex?.marginSummary) {
+    xyzEquity = parseFloat(xyzDex.marginSummary.accountValue || 0);
+  }
+  
+  const combinedPerpEquity = mainPerpEquity + xyzEquity;
+  
+  if (perp && perp.marginSummary) {
+    perp.marginSummary.accountValue = combinedPerpEquity.toString();
+  }
+  
+  // Add xyz dex positions (trade.xyz equity perps)
+  if (xyzDex?.assetPositions) {
+    for (const pos of xyzDex.assetPositions) {
+      const coin = pos.position?.coin;
+      if (!existingCoins.has(coin)) {
+        if (!perp) perp = { assetPositions: [] };
+        if (!perp.assetPositions) perp.assetPositions = [];
+        perp.assetPositions.push(pos);
+        existingCoins.add(coin);
+      }
+    }
+  }
+  
+  // Add positions from other HIP-3 vaults (if any discovered)
+  for (const vaultData of vaultResults) {
+    if (vaultData?.assetPositions) {
+      for (const pos of vaultData.assetPositions) {
+        const coin = pos.position?.coin;
+        if (!existingCoins.has(coin)) {
+          if (!perp) perp = { assetPositions: [] };
+          if (!perp.assetPositions) perp.assetPositions = [];
+          perp.assetPositions.push(pos);
+          existingCoins.add(coin);
+        }
+      }
+    }
+  }
+  
   return { perp, spot };
 }
 
