@@ -151,6 +151,12 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
   if (!container) return;
   
   const comic = METADATA[comicKey];
+  if (!comic) {
+    console.error(`[Comics] Invalid comic key: ${comicKey}`);
+    container.textContent = 'Error: Invalid comic';
+    return;
+  }
+  
   const dateStr = formatDate(date);
   const url = `${comic.baseUrl}/${dateStr}`;
   

@@ -260,14 +260,19 @@ export function renderPositions({ positions, containers, options, previousPositi
     const prevDataMap = {};
     if (Array.isArray(previousPositions)) {
       for (const pos of previousPositions) {
-        if (!pos) continue; // Skip undefined/null entries
-        const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
-        prevDataMap[key] = {
-          price: pos.price,
-          value: computeValue(pos), // Compute value dynamically
-          pnl: pos.pnl,
-          change24h: pos.change24h
-        };
+        if (!pos || !pos.asset || !pos.exchange) continue; // Skip invalid entries
+        try {
+          const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
+          prevDataMap[key] = {
+            price: pos.price,
+            value: computeValue(pos), // Compute value dynamically
+            pnl: pos.pnl,
+            change24h: pos.change24h
+          };
+        } catch (e) {
+          // Skip this position if there's an error computing value
+          continue;
+        }
       }
     }
 

@@ -1,9 +1,12 @@
 // Service Worker for Light Dashboard
 // Provides offline support, intelligent caching, and automatic updates
 // UPDATE THIS VERSION NUMBER WHENEVER YOU DEPLOY CHANGES
-const CACHE_VERSION = 'v2.5.0';
-const BUILD_TIMESTAMP = '2025-11-14T22:00:00Z'; // Update on each deployment
+const CACHE_VERSION = 'v2.5.1';
+const BUILD_TIMESTAMP = '2025-11-14T12:34:33Z'; // Update on each deployment
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
+
+// CRITICAL: Delete ALL caches on install to fix production issues
+const FORCE_CACHE_CLEAR = true;
 
 // Assets to cache immediately on install
 const STATIC_ASSETS = [
@@ -31,11 +34,18 @@ const API_CACHE_CONFIG = {
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    }).then(() => {
-      return self.skipWaiting(); // Activate immediately
-    })
+    (async () => {
+      // Force clear ALL caches if flag is set (fixes production issues)
+      if (FORCE_CACHE_CLEAR) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map(name => caches.delete(name)));
+        console.log('[SW] Force cleared all caches');
+      }
+      
+      const cache = await caches.open(CACHE_NAME);
+      await cache.addAll(STATIC_ASSETS);
+      await self.skipWaiting(); // Activate immediately
+    })()
   );
 });
 
