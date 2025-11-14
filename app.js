@@ -3169,6 +3169,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   let updateCount = 0;
   
   async function updatePrices() {
+    console.log('[updatePrices] Starting update cycle #' + (updateCount + 1));
     try {
       const providers = window.AppModules?.data?.providers;
       const Settings = window.AppModules?.core?.settings;
@@ -3603,7 +3604,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
   
   // Start updates after 5 seconds, then every 5 seconds
+  console.log('[Intervals] Setting up 5-second update interval');
   setTimeout(() => {
+    console.log('[Intervals] Starting first update and beginning 5s interval');
     updatePrices();
     updateInterval = setInterval(updatePrices, 5000);
   }, 5000);
@@ -3621,12 +3624,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       // Tab hidden - pause updates to save resources
+      console.log('[Intervals] Tab hidden - pausing updates');
       if (updateInterval) {
         clearInterval(updateInterval);
         updateInterval = null;
       }
     } else {
       // Tab visible again - resume updates
+      console.log('[Intervals] Tab visible - resuming updates');
       if (!updateInterval) {
         updatePrices();
         updateInterval = setInterval(updatePrices, 5000);
