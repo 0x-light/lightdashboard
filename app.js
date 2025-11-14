@@ -3,26 +3,25 @@
 // ============================================================================
 // VERSION CHECKING: Force reload if user is on old version
 // ============================================================================
-const APP_VERSION = '2.5.1';
+const APP_VERSION = '2.5.4';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
   const lastVersion = localStorage.getItem(FORCE_UPDATE_KEY);
   
+  // Only reload if there's a major version change (not on every minor version bump)
   if (lastVersion && lastVersion !== APP_VERSION) {
-    // Clear all caches
+    console.log(`Version changed from ${lastVersion} to ${APP_VERSION}`);
+    
+    // Store new version but DON'T auto-reload to prevent loops
+    localStorage.setItem(FORCE_UPDATE_KEY, APP_VERSION);
+    
+    // Only clear caches, don't force reload
     if ('caches' in window) {
       caches.keys().then(names => {
         names.forEach(name => caches.delete(name));
       });
     }
-    
-    // Store new version
-    localStorage.setItem(FORCE_UPDATE_KEY, APP_VERSION);
-    
-    // Force hard reload (bypass cache)
-    window.location.reload(true);
-    return false; // Don't continue initialization
   }
   
   // Store version if first time
@@ -30,13 +29,11 @@ function checkVersion() {
     localStorage.setItem(FORCE_UPDATE_KEY, APP_VERSION);
   }
   
-  return true; // Continue initialization
+  return true; // Always continue initialization
 }
 
-// Check version immediately - if returns false, reload is happening
-if (!checkVersion()) {
-  throw new Error('Version update in progress, reloading...');
-}
+// Check version immediately
+checkVersion();
 
 // ============================================================================
 // PERFORMANCE: Cache frequently accessed elements and data

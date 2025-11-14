@@ -510,8 +510,10 @@
     
     <!-- Service Worker Registration - ensures users always get latest version -->
     <script defer>
-      // FORCE CACHE CLEAR on version mismatch
-      const EXPECTED_VERSION = 'v2.5.2';
+      // FORCE CACHE CLEAR on version mismatch - DISABLED to prevent reload loops
+      const EXPECTED_VERSION = 'v2.5.4';
+      // Commenting out aggressive cache clearing to prevent reload loops
+      /*
       caches.keys().then(keys => {
         const hasWrongVersion = keys.some(k => k.startsWith('lightdash-') && k !== `lightdash-${EXPECTED_VERSION}`);
         if (hasWrongVersion) {
@@ -520,6 +522,7 @@
           });
         }
       });
+      */
       
       if ('serviceWorker' in navigator) {
         let refreshing = false;
@@ -535,13 +538,13 @@
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
             .then((registration) => {
-              // Check for updates immediately on page load
+              // Check for updates on page load
               registration.update();
               
-              // Check for updates every 30 seconds (more frequent for critical updates)
+              // Check for updates every 5 minutes (reduced frequency to prevent reload loops)
               setInterval(() => {
                 registration.update();
-              }, 30000);
+              }, 300000);
               
               // Listen for waiting service worker
               registration.addEventListener('updatefound', () => {
