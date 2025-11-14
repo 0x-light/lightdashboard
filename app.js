@@ -2606,7 +2606,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Display version immediately (using APP_VERSION constant)
   const versionDisplay = document.getElementById('versionDisplay');
   if (versionDisplay) {
-    const buildDate = new Date('2025-11-14T15:00:00Z').toLocaleString('en-US', { 
+    const buildDate = new Date('2025-11-14T15:30:00Z').toLocaleString('en-US', { 
       month: 'short', 
       day: 'numeric', 
       hour: '2-digit', 
@@ -3510,6 +3510,12 @@ window.addEventListener('DOMContentLoaded', async () => {
         // Check if ANY positions have priceChanged flag set (from equity or wallet updates)
         const hasAnyPriceChanges = updatedPositions.some(p => p.priceChanged);
         let anyChanges = hasEquityChanges || hasChanges || hasAnyPriceChanges;
+        
+        // Debug: log positions with price changes
+        if (hasAnyPriceChanges) {
+          const changed = updatedPositions.filter(p => p.priceChanged);
+          console.log(`[Flash] ${changed.length} positions changed:`, changed.map(p => `${p.asset} (${p.exchange})`).join(', '));
+        }
         
         // Always update cachedPositions to preserve priceChanged flags
         if (anyChanges) {

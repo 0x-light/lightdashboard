@@ -261,6 +261,9 @@ export function renderPositions({ positions, containers, options }) {
     // Trigger flash animations on changed cells
     requestAnimationFrame(() => {
       const flashCells = containers.positionsBody.querySelectorAll('td[data-flash="true"]');
+      if (flashCells.length > 0) {
+        console.log(`[Flash] Triggering animation on ${flashCells.length} cells`);
+      }
       flashCells.forEach(cell => {
         cell.classList.add('cell-flash');
         cell.addEventListener('animationend', () => {
