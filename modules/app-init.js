@@ -1,5 +1,5 @@
 // ESM bootstrap: expose modules on window without altering existing app flow
-const V = '2.4.9';
+const V = '2.5.0';
 import * as Portfolio from `./domain/portfolio.js?v=${V}`;
 import * as IncrementalPortfolio from `./domain/incremental-portfolio.js?v=${V}`;
 import * as Http from `./http/client.js?v=${V}`;
