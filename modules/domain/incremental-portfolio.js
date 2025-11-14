@@ -17,6 +17,9 @@ export class IncrementalPortfolioRenderer {
     this.isLoading = true;
     this.expectedProviders = expectedProviders; // List of provider names we're waiting for
     
+    // Store reference to renderer IMMEDIATELY for external re-renders
+    window._portfolioRenderer = this;
+    
     // Show loader in greeting
     this.showGreetingLoader();
     

@@ -3552,7 +3552,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                   
                   // Re-render positions to show updated charts (don't recalculate portfolio)
                   if (successCount > 0) {
-                    if (window._portfolioRenderer) {
+                    if (window._portfolioRenderer && typeof window._portfolioRenderer.updatePositions === 'function') {
                       window._portfolioRenderer.updatePositions(cachedPositions);
                     } else if (rerenderPositions) {
                       rerenderPositions();
@@ -3570,9 +3570,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         // Recalculate portfolio ONCE if ANY changes happened (equity or wallet prices)
         if (anyChanges) {
           // Re-render positions and hero together
-          if (window._portfolioRenderer) {
+          if (window._portfolioRenderer && typeof window._portfolioRenderer.updatePositions === 'function') {
             window._portfolioRenderer.updatePositions(cachedPositions);
-          } else {
+          } else if (rerenderPositions) {
             rerenderPositions();
           }
         }
