@@ -22,11 +22,11 @@ const STATIC_ASSETS = [
 
 // API cache duration by endpoint pattern
 const API_CACHE_CONFIG = {
-  'api.coingecko.com': 30 * 1000, // 30 seconds
-  'hermes.pyth.network': 15 * 1000, // 15 seconds
-  'api.hyperliquid.xyz': 10 * 1000, // 10 seconds
-  'blockchain.info': 30 * 1000, // 30 seconds
-  'api.zcha.in': 30 * 1000 // 30 seconds
+  'api.coingecko.com': 60 * 1000, // 60 seconds (CoinGecko has strict rate limits)
+  'hermes.pyth.network': 10 * 1000, // 10 seconds (Real-time prices)
+  'api.hyperliquid.xyz': 10 * 1000, // 10 seconds (Fast updates)
+  'blockchain.info': 60 * 1000, // 60 seconds (Bitcoin blocks are slow)
+  'api.zcha.in': 60 * 1000 // 60 seconds (Zcash blocks are slow)
   // Note: api.zerion.io is not cached, always fetches fresh
 };
 
@@ -39,7 +39,7 @@ self.addEventListener('install', (event) => {
         const cacheNames = await caches.keys();
         await Promise.all(cacheNames.map(name => caches.delete(name)));
       }
-      
+
       const cache = await caches.open(CACHE_NAME);
       await cache.addAll(STATIC_ASSETS);
       await self.skipWaiting();
@@ -65,10 +65,10 @@ self.addEventListener('activate', (event) => {
 // Helper: Check if response is still fresh
 function isFresh(response, maxAge) {
   if (!response) return false;
-  
+
   const cachedTime = response.headers.get('sw-cached-time');
   if (!cachedTime) return false;
-  
+
   const age = Date.now() - parseInt(cachedTime, 10);
   return age < maxAge;
 }
@@ -79,7 +79,7 @@ async function cloneWithCacheTime(response) {
   const clone = response.clone();
   const headers = new Headers(clone.headers);
   headers.set('sw-cached-time', Date.now().toString());
-  
+
   const body = await clone.blob();
   return new Response(body, {
     status: clone.status,
@@ -102,12 +102,12 @@ function getCacheDuration(url) {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
-  
+
   // Skip non-GET requests
   if (request.method !== 'GET') {
     return;
   }
-  
+
   // Handle same-origin requests
   if (url.origin === self.location.origin) {
     // For HTML files - always network first to get updates immediately
@@ -136,7 +136,7 @@ self.addEventListener('fetch', (event) => {
       );
       return;
     }
-    
+
     // For JS/CSS files - use network-first to ensure users get latest version
     if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
       event.respondWith(
@@ -163,7 +163,7 @@ self.addEventListener('fetch', (event) => {
       );
       return;
     }
-    
+
     // For other static assets (images, fonts, etc.) - cache first
     event.respondWith(
       caches.match(request).then((cached) => {
@@ -186,10 +186,10 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
-  
+
   // Handle API requests - network first with intelligent caching
   const cacheDuration = getCacheDuration(url.href);
-  
+
   if (cacheDuration > 0) {
     event.respondWith(
       caches.open(CACHE_NAME).then((cache) => {
@@ -207,7 +207,7 @@ self.addEventListener('fetch', (event) => {
             });
             return cached.clone(); // Clone before returning
           }
-          
+
           // Fetch from network
           return fetch(request).then(async (response) => {
             if (response.ok) {
@@ -242,7 +242,7 @@ self.addEventListener('message', (event) => {
       })
     );
   }
-  
+
   if (event.data && event.data.type === 'CLEAR_API_CACHE') {
     // Clear only API responses, keep static assets
     event.waitUntil(
@@ -251,19 +251,19 @@ self.addEventListener('message', (event) => {
           const apiRequests = requests.filter((request) => {
             const url = request.url;
             return url.includes('api.coingecko.com') ||
-                   url.includes('hermes.pyth.network') ||
-                   url.includes('api.hyperliquid.xyz') ||
-                   url.includes('blockchain.info') ||
-                   url.includes('api.zcha.in') ||
-                   url.includes('api.zerion.io') ||
-                   url.includes('api/');
+              url.includes('hermes.pyth.network') ||
+              url.includes('api.hyperliquid.xyz') ||
+              url.includes('blockchain.info') ||
+              url.includes('api.zcha.in') ||
+              url.includes('api.zerion.io') ||
+              url.includes('api/');
           });
           return Promise.all(apiRequests.map((request) => cache.delete(request)));
         });
       })
     );
   }
-  
+
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }

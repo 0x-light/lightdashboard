@@ -20,6 +20,7 @@ import * as Rain from './features/rain.js';
 import * as Weather from './features/weather.js';
 import * as EntryPriceTracker from './utils/entry-price-tracker.js';
 import * as CoinGeckoBatcher from './utils/coingecko-batcher.js';
+import * as AssetMapping from './utils/asset-mapping.js';
 
 if (!window.AppModules) {
   window.AppModules = {};
@@ -46,6 +47,7 @@ window.AppModules.ui.positions = PositionsUI;
 window.AppModules.utils = window.AppModules.utils || {};
 window.AppModules.utils.entryPriceTracker = EntryPriceTracker;
 window.AppModules.utils.coinGeckoBatcher = CoinGeckoBatcher;
+window.AppModules.utils.assetMapping = AssetMapping;
 window.AppModules.core = window.AppModules.core || {};
 window.AppModules.core.settings = Settings;
 window.AppModules.core.themes = Themes;

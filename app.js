@@ -1,4 +1,6 @@
 // Minimal alpha boot for the new modular dashboard
+import * as AssetMapping from './modules/utils/asset-mapping.js';
+import * as Portfolio from './modules/domain/portfolio.js';
 
 // ============================================================================
 // VERSION CHECKING
@@ -8,53 +10,35 @@ const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
   const lastVersion = localStorage.getItem(FORCE_UPDATE_KEY);
-  
+
   if (lastVersion && lastVersion !== APP_VERSION) {
     console.log(`Version changed from ${lastVersion} to ${APP_VERSION}`);
-    
-    // Store new version and clear caches
     localStorage.setItem(FORCE_UPDATE_KEY, APP_VERSION);
-    
+
     if ('caches' in window) {
       caches.keys().then(names => {
         names.forEach(name => caches.delete(name));
       });
     }
   }
-  
-  // Store version if first time
+
   if (!lastVersion) {
     localStorage.setItem(FORCE_UPDATE_KEY, APP_VERSION);
   }
-  
+
   return true;
 }
 
 checkVersion();
 
 // ============================================================================
-// PERFORMANCE: Cache frequently accessed elements and data
+// SHARED STATE & UTILS
 // ============================================================================
-const DOMCache = {
-  _elements: new Map(),
-  
-  get(id) {
-    if (!this._elements.has(id)) {
-      const el = document.getElementById(id);
-      if (el) this._elements.set(id, el);
-    }
-    return this._elements.get(id) || null;
-  },
-  
-  clear() {
-    this._elements.clear();
-  }
-};
 
-// Memoize settings to avoid repeated localStorage reads
+// Memoize settings
 let cachedSettings = null;
 let settingsTimestamp = 0;
-const SETTINGS_CACHE_TTL = 5000; // 5 seconds
+const SETTINGS_CACHE_TTL = 5000;
 
 function getSettings() {
   const now = Date.now();
@@ -71,201 +55,9 @@ function invalidateSettingsCache() {
   settingsTimestamp = 0;
 }
 
-// ============================================================================
-// UTILITIES: Reusable functions to eliminate code duplication
-// ============================================================================
-
-// Filter positions based on hidden assets and balance threshold
-function filterPositions(positions, options = {}) {
-  const { 
-    hideHidden = true,
-    hideSmall = false, 
-    threshold = 100 
-  } = options;
-  
-  return positions.filter(p => {
-    // Always hide the synthetic account equity positions (HL and Lighter)
-    if (p.isHlAccountEquity || p.isLighterAccountEquity) return false;
-    
-    // Check hidden assets
-    if (hideHidden) {
-      const key = `${p.asset}_${p.exchange}`;
-      if (hiddenAssets.has(key)) return false;
-    }
-    
-    // Check balance threshold
-    if (hideSmall) {
-      const value = p.value || (Math.abs(p.amount || 0) * (p.price || 0));
-      if (value < threshold) return false;
-    }
-    
-    return true;
-  });
-}
-
-// Map asset symbols to CoinGecko IDs for 24h change data
-function getCoingeckoId(assetSymbol) {
-  const mapping = {
-    'BTC': 'bitcoin',
-    'ETH': 'ethereum',
-    'SOL': 'solana',
-    'ARB': 'arbitrum',
-    'AVAX': 'avalanche-2',
-    'MATIC': 'matic-network',
-    'OP': 'optimism',
-    'LINK': 'chainlink',
-    'UNI': 'uniswap',
-    'AAVE': 'aave',
-    'MKR': 'maker',
-    'SNX': 'synthetix-network-token',
-    'CRV': 'curve-dao-token',
-    'LDO': 'lido-dao',
-    'DOGE': 'dogecoin',
-    'XRP': 'ripple',
-    'ADA': 'cardano',
-    'DOT': 'polkadot',
-    'ATOM': 'cosmos',
-    'NEAR': 'near',
-    'FIL': 'filecoin',
-    'LTC': 'litecoin',
-    'BCH': 'bitcoin-cash',
-    'ETC': 'ethereum-classic',
-    'XMR': 'monero',
-    'APT': 'aptos',
-    'SUI': 'sui',
-    'SEI': 'sei-network',
-    'TIA': 'celestia',
-    'INJ': 'injective-protocol',
-    'WIF': 'dogwifcoin',
-    'BONK': 'bonk',
-    'PEPE': 'pepe',
-    'SHIB': 'shiba-inu',
-    'WLD': 'worldcoin-wld',
-    'RNDR': 'render-token',
-    'IMX': 'immutable-x',
-    'STX': 'blockstack',
-    'FTM': 'fantom',
-    'BLUR': 'blur',
-    'MINA': 'mina-protocol',
-    'SAND': 'the-sandbox',
-    'MANA': 'decentraland',
-    'AXS': 'axie-infinity',
-    'GALA': 'gala',
-    'ENJ': 'enjincoin',
-    'CHZ': 'chiliz',
-    'HBAR': 'hedera-hashgraph',
-    'ALGO': 'algorand',
-    'EOS': 'eos',
-    'XTZ': 'tezos',
-    'THETA': 'theta-token',
-    'VET': 'vechain',
-    'ICP': 'internet-computer',
-    'ZEC': 'zcash',
-    'KAVA': 'kava',
-    'COMP': 'compound-governance-token',
-    'SUSHI': 'sushi',
-    'YFI': 'yearn-finance',
-    'BAL': 'balancer',
-    '1INCH': '1inch',
-    'RUNE': 'thorchain',
-    'HYPE': 'hyperliquid',
-    'ONDO': 'ondo-finance',
-    'PENDLE': 'pendle',
-    'ENA': 'ethena',
-    'EIGEN': 'eigenlayer',
-    'TAO': 'bittensor',
-    'JUP': 'jupiter-exchange-solana',
-    'PYTH': 'pyth-network',
-    'JTO': 'jito-governance-token',
-    'TNSR': 'tensor',
-    'W': 'wormhole',
-    'STRK': 'starknet',
-    'ORDI': 'ordinals',
-    'SATS': 'sats-ordinals',
-    'TRX': 'tron',
-    'DYDX': 'dydx-chain',
-    'GMX': 'gmx',
-    'GRT': 'the-graph',
-    'LRC': 'loopring',
-    'ENS': 'ethereum-name-service',
-    'APE': 'apecoin',
-    'JASMY': 'jasmy',
-    'QNT': 'quant-network',
-    'ROSE': 'oasis-network',
-    'FLOW': 'flow',
-    'ONE': 'harmony',
-    'ZIL': 'zilliqa',
-    'BAT': 'basic-attention-token',
-    'ZRX': '0x'
-  };
-  return mapping[assetSymbol] || null;
-}
-
-// Calculate portfolio totals (value and PnL)
-// SUPER SIMPLE: Just sum the dollar values from each source
-// - Hyperliquid total equity (perps + spot)
-// - Lighter total equity
-// - Onchain wallet balances
-function calculatePortfolioTotals(positions) {
-  let totalValue = 0;
-  let totalPnL = 0;
-  const breakdown = []; // For debugging
-  
-  // Check for account equity positions (Hyperliquid and Lighter)
-  const hlEquity = positions.find(p => p.isHlAccountEquity);
-  const lighterEquity = positions.find(p => p.isLighterAccountEquity);
-  
-  let hlValue = 0;
-  let lighterValue = 0;
-  let walletValue = 0;
-  
-  // Add Hyperliquid total equity
-  if (hlEquity) {
-    hlValue = (hlEquity.value || 0);
-    totalValue += hlValue;
-    totalPnL += (hlEquity.pnl || 0);
-    breakdown.push(`Hyperliquid Equity: $${hlEquity.value?.toFixed(2)}`);
-  }
-  
-  // Add Lighter total equity
-  if (lighterEquity) {
-    lighterValue = (lighterEquity.value || 0);
-    totalValue += lighterValue;
-    totalPnL += (lighterEquity.pnl || 0);
-    breakdown.push(`Lighter Equity: $${lighterEquity.value?.toFixed(2)}`);
-  }
-  
-  // Add all wallet balances (skip synthetic equity positions and individual HL/Lighter positions)
-  let walletCount = 0;
-  for (const p of positions) {
-    // Skip the synthetic equity positions
-    if (p.isHlAccountEquity || p.isLighterAccountEquity) continue;
-    
-    // Skip individual Hyperliquid/Lighter positions (already counted in equity)
-    if (p.exchange === 'Hyperliquid' || p.exchange === 'Hyperliquid Spot' || p.exchange === 'Lighter') continue;
-    
-    // Add wallet balance
-    const value = p.value || 0;
-    if (value > 0) {
-      walletValue += value;
-      totalValue += value;
-      walletCount++;
-      breakdown.push(`${p.asset} (${p.exchange}): $${value.toFixed(2)}`);
-    }
-    
-    // Add PnL if available
-    if (p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl)) {
-      totalPnL += p.pnl;
-    }
-  }
-  
-  // Portfolio totals calculated
-  
-  const costBasis = totalValue - totalPnL;
-  const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
-  
-  return { totalValue, totalPnL, totalPnLPercent, costBasis };
-}
+// Re-export utilities for legacy compatibility if needed, or just use modules directly
+const { getCoingeckoId } = AssetMapping;
+const { calculatePortfolioTotals, filterPositions } = Portfolio;
 
 // ============================================================================
 
@@ -283,46 +75,7 @@ function get24hAgoTsSec() {
 }
 
 // Wallet asset entry price management utilities (using centralized module)
-window.walletPnLUtils = {
-  viewEntryPrices: () => {
-    const tracker = window.AppModules?.utils?.entryPriceTracker;
-    if (!tracker) {
-      console.error('Entry price tracker module not loaded');
-      return {};
-    }
-    const entryPrices = tracker.viewEntryPrices();
-    console.table(Object.entries(entryPrices).map(([key, data]) => ({
-      Asset: key,
-      EntryPrice: `$${data.price.toFixed(4)}`,
-      Date: new Date(data.date).toLocaleString(),
-      OriginalAmount: data.amount.toFixed(6)
-    })));
-    return entryPrices;
-  },
-  resetEntryPrice: (assetKey) => {
-    const tracker = window.AppModules?.utils?.entryPriceTracker;
-    return tracker ? tracker.resetEntryPrice(assetKey) : false;
-  },
-  setEntryPrice: (assetKey, price, date = null) => {
-    const tracker = window.AppModules?.utils?.entryPriceTracker;
-    return tracker ? tracker.setEntryPrice(assetKey, price, date) : false;
-  },
-  resetAll: () => {
-    if (!confirm('Are you sure you want to reset all wallet asset entry prices? This cannot be undone.')) {
-      return false;
-    }
-    const tracker = window.AppModules?.utils?.entryPriceTracker;
-    return tracker ? tracker.resetAllEntryPrices() : false;
-  },
-  export: () => {
-    const tracker = window.AppModules?.utils?.entryPriceTracker;
-    return tracker ? tracker.exportEntryPrices() : null;
-  },
-  import: (jsonString) => {
-    const tracker = window.AppModules?.utils?.entryPriceTracker;
-    return tracker ? tracker.importEntryPrices(jsonString) : false;
-  }
-};
+// Wallet PnL utilities are available at window.walletPnLUtils (initialized in modules/app-init.js)
 // Wallet PnL utilities available at window.walletPnLUtils (powered by centralized tracker)
 
 async function runHealthChecks() {
@@ -409,15 +162,15 @@ async function renderPortfolioIncremental() {
     _pendingRenderRequest = true;
     return;
   }
-  
+
   _renderInProgress = true;
   _pendingRenderRequest = false;
-  
+
   try {
     await _doRenderPortfolioIncremental();
   } finally {
     _renderInProgress = false;
-    
+
     // If another render was requested while we were running, start it now
     if (_pendingRenderRequest) {
       _pendingRenderRequest = false;
@@ -432,20 +185,20 @@ async function _doRenderPortfolioIncremental() {
   const { IncrementalPortfolioRenderer } = mods.incrementalPortfolio || {};
   const HeroUI = mods.ui?.hero;
   const PositionsUI = mods.ui?.positions;
-  
+
   if (!IncrementalPortfolioRenderer) {
     console.error('[Portfolio] Incremental renderer not loaded');
     return;
   }
-  
+
   const settings = getSettings();
   const wallets = (settings.walletAddresses || '').split(',').map(w => w.trim()).filter(Boolean);
   const solanaAddrs = (settings.solanaAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
   const bitcoinAddrs = (settings.bitcoinAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
   const zcashAddrs = (settings.zcashAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
-  
+
   const hasManualPositions = settings.cryptoPositions && Array.isArray(settings.cryptoPositions) && settings.cryptoPositions.length > 0;
-  
+
   if (wallets.length === 0 && solanaAddrs.length === 0 && bitcoinAddrs.length === 0 && zcashAddrs.length === 0 && !hasManualPositions) {
     const summaryEl = document.getElementById('newSummary');
     const positionsBody = document.getElementById('newPositionsBody');
@@ -453,7 +206,7 @@ async function _doRenderPortfolioIncremental() {
     if (positionsBody) positionsBody.innerHTML = '<tr><td colspan="8" class="loading">No wallets or positions configured</td></tr>';
     return;
   }
-  
+
   // Build list of expected providers based on configuration
   const expectedProviders = [];
   if (wallets.length > 0) {
@@ -470,21 +223,21 @@ async function _doRenderPortfolioIncremental() {
   if (hasManualPositions) {
     expectedProviders.push('Manual');
   }
-  
+
   // Fetch weather data (non-blocking, will be used in hero summary)
   (async () => {
     try {
       const weatherLat = settings.weather?.lat;
       const weatherLon = settings.weather?.lon;
       const weatherLabel = settings.weather?.label || 'your location';
-      
+
       if (weatherLat && weatherLon && mods.features?.weather?.fetchWeather) {
         const data = await mods.features.weather.fetchWeather(weatherLat, weatherLon, 5000);
         if (data?.current) {
           const temp = data.current.temperature_2m;
           const code = data.current.weather_code || 0;
           const isDay = data.current.is_day === 1;
-          
+
           // Weather icon
           let icon = '☁︎';
           if (code === 0) icon = isDay ? '☀︎' : '☾';
@@ -495,14 +248,14 @@ async function _doRenderPortfolioIncremental() {
           else if (code <= 82) icon = '⛆';
           else if (code <= 86) icon = '❆';
           else if (code <= 99) icon = '⛆';
-          
+
           // Moon phase
           const knownNewMoon = new Date('2000-01-06T00:00:00Z');
           const now = new Date();
           const days = (now - knownNewMoon) / (1000 * 60 * 60 * 24);
           const cycle = 29.53058867;
           const phase = (days % cycle) / cycle;
-          
+
           let moonIcon = '', moonName = '';
           if (phase < 0.0625) { moonIcon = '○'; moonName = 'new moon'; }
           else if (phase < 0.1875) { moonIcon = '☽'; moonName = 'waxing crescent'; }
@@ -513,13 +266,13 @@ async function _doRenderPortfolioIncremental() {
           else if (phase < 0.8125) { moonIcon = '◑'; moonName = 'last quarter'; }
           else if (phase < 0.9375) { moonIcon = '☾'; moonName = 'waning crescent'; }
           else { moonIcon = '○'; moonName = 'new moon'; }
-          
+
           const hour = now.getHours();
           const showMoon = hour >= 18 || hour < 6;
           const moonText = showMoon ? ` with a ${moonIcon} ${moonName} moon` : '';
-          
+
           const precipitation = data.daily?.precipitation_sum?.[0] || 0;
-          
+
           cachedWeather = {
             temp,
             city: weatherLabel,
@@ -528,7 +281,7 @@ async function _doRenderPortfolioIncremental() {
             precipitation
           };
           window.cachedWeather = cachedWeather; // Update global reference
-          
+
           // Trigger a hero update with the new weather data if positions are already loaded
           if (cachedPositions.length > 0) {
             const summaryEl = document.getElementById('newSummary');
@@ -555,7 +308,7 @@ async function _doRenderPortfolioIncremental() {
       console.warn('[Weather] Failed to fetch weather:', err);
     }
   })();
-  
+
   const renderer = new IncrementalPortfolioRenderer({
     providers,
     settings,
@@ -567,10 +320,10 @@ async function _doRenderPortfolioIncremental() {
     ui: { HeroUI, PositionsUI },
     expectedProviders
   });
-  
+
   // Launch all providers concurrently (non-blocking)
   // Each will call renderer.appendPositions() when done
-  
+
   // 1. Hyperliquid (fastest, ~500ms)
   if (wallets.length > 0) {
     (async () => {
@@ -580,7 +333,7 @@ async function _doRenderPortfolioIncremental() {
           providers.hyperliquid.fetchAllMids(3000),
           providers.hyperliquid.fetchSpotMeta(3000)
         ]);
-        
+
         const hlPriceMap = {};
         if (hlMarketData?.[0] && hlMarketData?.[1]) {
           for (let i = 0; i < hlMarketData[1].length; i++) {
@@ -591,7 +344,7 @@ async function _doRenderPortfolioIncremental() {
             }
           }
         }
-        
+
         // Also include allMids directly for HIP-3 and other assets not in metaAndAssetCtxs
         if (hlAllMids) {
           for (const [key, value] of Object.entries(hlAllMids)) {
@@ -600,16 +353,16 @@ async function _doRenderPortfolioIncremental() {
             }
           }
         }
-        
+
         for (const wallet of wallets) {
           const data = await providers.hyperliquid.fetchPositions(wallet, 3000);
           const rows = [];
-          
+
           let perpEquity = 0;
           if (data?.perp?.marginSummary) {
             perpEquity = parseFloat(data.perp.marginSummary.accountValue || 0);
           }
-          
+
           const spotPriceMap = providers.hyperliquid.buildSpotPriceMap(hlAllMids, hlSpotMeta);
           let spotEquity = 0;
           if (data?.spot?.balances) {
@@ -621,10 +374,10 @@ async function _doRenderPortfolioIncremental() {
               }
             }
           }
-          
+
           const hlAccountEquity = perpEquity + spotEquity;
           let totalHlPnL = 0;
-          
+
           if (data?.perp?.assetPositions) {
             for (const pos of data.perp.assetPositions) {
               const position = pos.position;
@@ -632,19 +385,19 @@ async function _doRenderPortfolioIncremental() {
               if (Math.abs(szi) > 0) {
                 const entryPrice = parseFloat(position?.entryPx || 0);
                 const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
-                
+
                 // For positions, calculate current price from position value / size
                 // This works for all markets including HIP-3 (xyz:PLTR etc)
                 let currentPrice = notionalValue / Math.abs(szi);
-                
+
                 // Fallback to price map or entry price if calculation fails
                 if (!currentPrice || isNaN(currentPrice)) {
                   currentPrice = hlPriceMap[position.coin] || entryPrice;
                 }
-                
+
                 const pnl = parseFloat(position?.unrealizedPnl || 0);
                 totalHlPnL += pnl;
-                
+
                 rows.push({
                   asset: position.coin,
                   exchange: 'Hyperliquid',
@@ -659,7 +412,7 @@ async function _doRenderPortfolioIncremental() {
               }
             }
           }
-          
+
           if (data?.spot?.balances) {
             for (const bal of data.spot.balances) {
               const available = parseFloat(bal.total || 0) - parseFloat(bal.hold || 0);
@@ -668,12 +421,12 @@ async function _doRenderPortfolioIncremental() {
                 const value = available * price;
                 const entryNtl = parseFloat(bal.entryNtl || 0);
                 const pnl = (entryNtl > 0 && value > 0) ? (value - entryNtl) : null;
-                
+
                 // Add spot position PnL to total
                 if (pnl !== null && !isNaN(pnl)) {
                   totalHlPnL += pnl;
                 }
-                
+
                 rows.push({
                   asset: bal.coin,
                   exchange: 'Hyperliquid Spot',
@@ -687,7 +440,7 @@ async function _doRenderPortfolioIncremental() {
               }
             }
           }
-          
+
           if (hlAccountEquity > 0) {
             rows.push({
               asset: 'HL_ACCOUNT_EQUITY',
@@ -700,11 +453,11 @@ async function _doRenderPortfolioIncremental() {
               isLeveraged: false
             });
           }
-          
+
           // Enrich positions with 24h change data from CoinGecko
           const uniqueAssets = [...new Set(rows.filter(r => !r.isHlAccountEquity).map(r => r.asset))];
           const coingeckoIds = uniqueAssets.map(asset => getCoingeckoId(asset)).filter(id => id !== null);
-          
+
           if (coingeckoIds.length > 0) {
             try {
               const cgData = await providers.coingecko.getSimplePrice(coingeckoIds.join(','), { timeoutMs: 3000, ttlMs: 60000 });
@@ -715,7 +468,7 @@ async function _doRenderPortfolioIncremental() {
                   const cgId = getCoingeckoId(asset);
                   if (cgId) idToAsset[cgId] = asset;
                 }
-                
+
                 // Enrich each row with 24h change
                 for (const row of rows) {
                   if (!row.isHlAccountEquity) {
@@ -730,7 +483,7 @@ async function _doRenderPortfolioIncremental() {
               // Continue without 24h change data if CoinGecko fails
             }
           }
-          
+
           renderer.appendPositions(rows, 'Hyperliquid');
         }
       } catch (e) {
@@ -738,7 +491,7 @@ async function _doRenderPortfolioIncremental() {
       }
     })();
   }
-  
+
   // 2. Lighter (fast, ~500ms)
   if (wallets.length > 0) {
     (async () => {
@@ -751,7 +504,7 @@ async function _doRenderPortfolioIncremental() {
               const account = data.accounts[0];
               const equity = parseFloat(account.equity_usd || account.total_equity || account.equity || 0);
               const pnl = parseFloat(account.unrealized_pnl || account.pnl || 0);
-              
+
               if (equity > 0) {
                 rows.push({
                   asset: 'LIGHTER_ACCOUNT_EQUITY',
@@ -769,7 +522,7 @@ async function _doRenderPortfolioIncremental() {
             console.warn(`[Lighter] Error for wallet ${wallet}:`, walletError.message);
           }
         }
-        
+
         // Report completion even if no positions found
         renderer.appendPositions(rows, 'Lighter');
       } catch (e) {
@@ -777,7 +530,7 @@ async function _doRenderPortfolioIncremental() {
       }
     })();
   }
-  
+
   // 3. Zerion (multichain, ~2-3s)
   if (settings.zerionApiKey && wallets.length > 0) {
     (async () => {
@@ -789,7 +542,7 @@ async function _doRenderPortfolioIncremental() {
           'bsc': 'BSC', 'solana': 'Solana', 'zksync-era': 'zkSync',
           'blast': 'Blast', 'hyperevm': 'HyperEVM'
         };
-        
+
         const rows = [];
         if (positionsData?.data) {
           for (const item of positionsData.data) {
@@ -810,13 +563,13 @@ async function _doRenderPortfolioIncremental() {
             }
           }
         }
-        
+
         // Enrich positions missing 24h change data with CoinGecko
         const missingChange24h = rows.filter(r => r.change24h === null);
         if (missingChange24h.length > 0) {
           const uniqueAssets = [...new Set(missingChange24h.map(r => r.asset))];
           const coingeckoIds = uniqueAssets.map(asset => getCoingeckoId(asset)).filter(id => id !== null);
-          
+
           if (coingeckoIds.length > 0) {
             try {
               const cgData = await providers.coingecko.getSimplePrice(coingeckoIds.join(','), { timeoutMs: 3000, ttlMs: 60000 });
@@ -836,7 +589,7 @@ async function _doRenderPortfolioIncremental() {
             }
           }
         }
-        
+
         renderer.appendPositions(rows, 'Zerion');
       } catch (e) {
         renderer.markProviderFailed('Zerion', e);
@@ -852,7 +605,7 @@ async function _doRenderPortfolioIncremental() {
                   ? providers.helius.getTokenBalances(solanaAddrs, settings.heliusApiKey, { timeoutMs: 5000 })
                   : Promise.resolve([])
               ]);
-              
+
               const rows = [];
               for (const token of alchemyTokens) {
                 rows.push({
@@ -876,18 +629,18 @@ async function _doRenderPortfolioIncremental() {
                   pnl: null
                 });
               }
-              
+
               // Calculate PnL for wallet assets using entry price tracking utility
               const entryPriceTracker = window.AppModules?.utils?.entryPriceTracker;
               if (entryPriceTracker) {
                 const result = entryPriceTracker.calculatePositionsPnL(rows);
                 rows = result.positions;
               }
-              
+
               // Enrich positions with 24h change data from CoinGecko
               const uniqueAssets = [...new Set(rows.map(r => r.asset))];
               const coingeckoIds = uniqueAssets.map(asset => getCoingeckoId(asset)).filter(id => id !== null);
-              
+
               if (coingeckoIds.length > 0) {
                 try {
                   const cgData = await providers.coingecko.getSimplePrice(coingeckoIds.join(','), { timeoutMs: 3000, ttlMs: 60000 });
@@ -904,7 +657,7 @@ async function _doRenderPortfolioIncremental() {
                   // Continue without 24h change data if CoinGecko fails
                 }
               }
-              
+
               renderer.appendPositions(rows, 'Alchemy/Helius');
             } catch (e2) {
               renderer.markProviderFailed('Alchemy/Helius', e2);
@@ -914,7 +667,7 @@ async function _doRenderPortfolioIncremental() {
       }
     })();
   }
-  
+
   // 4. Bitcoin + Zcash (slow, ~3-5s)
   if (bitcoinAddrs.length > 0 || zcashAddrs.length > 0) {
     (async () => {
@@ -924,11 +677,11 @@ async function _doRenderPortfolioIncremental() {
           zcashAddrs.length > 0 ? providers.zcash.getTokenBalances(zcashAddrs, { timeoutMs: 5000 }) : [],
           providers.coingecko.getSimplePrice('bitcoin,zcash', { timeoutMs: 5000, ttlMs: 60000 })
         ]);
-        
+
         const rows = [];
         const btcPrice = cryptoPrices?.bitcoin?.usd || 0;
         const zecPrice = cryptoPrices?.zcash?.usd || 0;
-        
+
         for (const btc of btcTokens) {
           rows.push({
             asset: 'BTC',
@@ -940,7 +693,7 @@ async function _doRenderPortfolioIncremental() {
             pnl: null
           });
         }
-        
+
         for (const zec of zcashTokens) {
           rows.push({
             asset: 'ZEC',
@@ -952,21 +705,21 @@ async function _doRenderPortfolioIncremental() {
             pnl: null
           });
         }
-        
+
         // Calculate PnL for BTC/ZEC wallet assets using entry price tracking utility
         const entryPriceTracker = window.AppModules?.utils?.entryPriceTracker;
         if (entryPriceTracker) {
           const result = entryPriceTracker.calculatePositionsPnL(rows);
           rows = result.positions;
         }
-        
+
         renderer.appendPositions(rows, 'Bitcoin/Zcash');
       } catch (e) {
         renderer.markProviderFailed('Bitcoin/Zcash', e);
       }
     })();
   }
-  
+
   // 5. Manual positions from settings (cryptoPositions)
   if (settings.cryptoPositions && Array.isArray(settings.cryptoPositions) && settings.cryptoPositions.length > 0) {
     (async () => {
@@ -974,21 +727,21 @@ async function _doRenderPortfolioIncremental() {
         const rows = [];
         const pythPositions = settings.cryptoPositions.filter(p => p.type === 'pyth');
         const customPositions = settings.cryptoPositions.filter(p => p.type === 'custom');
-        
+
         // Fetch prices for Pyth positions
         if (pythPositions.length > 0) {
           const feedIds = pythPositions.map(p => p.feedId).filter(Boolean);
           if (feedIds.length > 0) {
             try {
               const pythPrices = await providers.pyth.getLatestByFeedIds(feedIds, 5000);
-              
+
               for (const pos of pythPositions) {
                 const currentPrice = pythPrices[pos.feedId] || 0;
                 const amount = parseFloat(pos.amount || 0);
                 const entryPrice = parseFloat(pos.entryPrice || 0);
                 const value = amount * currentPrice;
                 const pnl = amount > 0 && entryPrice > 0 ? (amount * (currentPrice - entryPrice)) : null;
-                
+
                 rows.push({
                   asset: pos.symbol,
                   exchange: 'Manual',
@@ -1007,7 +760,7 @@ async function _doRenderPortfolioIncremental() {
             }
           }
         }
-        
+
         // Add custom positions (no price fetch needed)
         for (const pos of customPositions) {
           const value = parseFloat(pos.value || 0);
@@ -1023,12 +776,12 @@ async function _doRenderPortfolioIncremental() {
             manualType: 'custom'
           });
         }
-        
+
         // Enrich Pyth positions with 24h change data from CoinGecko
         if (pythPositions.length > 0) {
           const uniqueAssets = [...new Set(pythPositions.map(p => p.symbol))];
           const coingeckoIds = uniqueAssets.map(asset => getCoingeckoId(asset)).filter(id => id !== null);
-          
+
           if (coingeckoIds.length > 0) {
             try {
               const cgData = await providers.coingecko.getSimplePrice(coingeckoIds.join(','), { timeoutMs: 3000, ttlMs: 60000 });
@@ -1047,25 +800,19 @@ async function _doRenderPortfolioIncremental() {
             }
           }
         }
-        
+
         renderer.appendPositions(rows, 'Manual');
       } catch (e) {
         console.error('[Portfolio] Failed to load manual positions:', e);
       }
     })();
   }
-  
+
   // Initial render to show skeleton replaced by "Fetching..."
   renderer.render();
 }
 
 // OLD renderDemoSummary removed - replaced by renderPortfolioIncremental for performance
-
-// Legacy function wrapper for compatibility
-async function renderDemoSummary() {
-  // Redirect to new incremental renderer
-  return await renderPortfolioIncremental();
-}
 
 let amountsVisible = true; // Default: show values
 let compactMode = true; // Default: compact mode
@@ -1077,7 +824,7 @@ let cachedSummaryData = {};
 let cachedWeather = null; // Cache weather data globally to preserve across re-renders
 let cachedWatchlistData = null; // Cache watchlist data globally
 let watchlistEditMode = false;
-let rerenderPositions = null; // Global reference to rerender function
+
 let currentFontSize = 15; // Default font size in px
 
 // Expose to window for incremental renderer
@@ -1166,11 +913,11 @@ function applyFontSize(size) {
 
 function setupControls() {
   const settings = getSettings();
-  
+
   // Load hidden assets from settings
   const savedHidden = settings.hiddenAssets || [];
   hiddenAssets = new Set(savedHidden);
-  
+
   // Cleanup: Remove any manual positions that are in hiddenAssets
   // (users might think hiding = deleting for manual positions)
   let needsSave = false;
@@ -1186,45 +933,45 @@ function setupControls() {
       }
       return !isHidden;
     });
-    
+
     if (settings.cryptoPositions.length !== originalCount) {
       needsSave = true;
       settings.hiddenAssets = Array.from(hiddenAssets);
     }
   }
-  
+
   // Save if we cleaned up anything
   if (needsSave) {
     localStorage.setItem('myDashboardSettings.v1', JSON.stringify(settings));
     invalidateSettingsCache();
     // Cleanup completed
   }
-  
+
   // Mobile menu
   const mobileMenuBtn = document.getElementById('newMobileMenuBtn');
   const mobileMenu = document.getElementById('newMobileMenu');
   const closeMobileMenuBtn = document.getElementById('newCloseMobileMenuBtn');
-  
+
   if (mobileMenuBtn && mobileMenu) {
     mobileMenuBtn.addEventListener('click', () => {
       mobileMenu.classList.add('active');
       document.body.classList.add('mobile-menu-open');
-      
+
       // Disable scroll when mobile menu open
       document.body.classList.add('modal-open');
     });
   }
-  
+
   if (closeMobileMenuBtn && mobileMenu) {
     closeMobileMenuBtn.addEventListener('click', () => {
       mobileMenu.classList.remove('active');
       document.body.classList.remove('mobile-menu-open');
-      
+
       // Re-enable scroll when mobile menu closed
       document.body.classList.remove('modal-open');
     });
   }
-  
+
   // Sync mobile buttons with desktop
   const syncMobileButtons = (desktopId, mobileId, action) => {
     const desktop = document.getElementById(desktopId);
@@ -1239,13 +986,13 @@ function setupControls() {
       });
     }
   };
-  
+
   syncMobileButtons('newToggleAmountsBtn', 'newToggleAmountsBtnMobile');
   syncMobileButtons('newCompactModeBtn', 'newCompactModeBtnMobile');
   syncMobileButtons('newRefreshBtn', 'newRefreshBtnMobile');
   syncMobileButtons('newSettingsBtn', 'newSettingsBtnMobile');
   syncMobileButtons('newHideSmallBtn', 'newHideSmallBtnMobile');
-  
+
   // Toggle small positions
   const hideSmallBtn = document.getElementById('newHideSmallBtn');
   if (hideSmallBtn) {
@@ -1254,80 +1001,26 @@ function setupControls() {
       window.hideSmallPositions = hideSmallPositions; // Update global for incremental renderer
       const threshold = settings.minBalanceThreshold || 100;
       hideSmallBtn.textContent = hideSmallPositions ? `[SHOW <$${threshold}]` : `[HIDE <$${threshold}]`;
+
       // Also update mobile button text
       const mobileHideSmallBtn = document.getElementById('newHideSmallBtnMobile');
       if (mobileHideSmallBtn) {
         mobileHideSmallBtn.textContent = hideSmallBtn.textContent;
       }
-      // Call both renderers to support both incremental and full render modes
+
+      // Force re-render
       if (window._portfolioRenderer) {
         window._portfolioRenderer.forceRender();
-      } else {
-        rerenderPositions();
       }
     });
+
     // Sync button text with initial state
     const mobileHideSmallBtn = document.getElementById('newHideSmallBtnMobile');
     if (mobileHideSmallBtn) {
       mobileHideSmallBtn.textContent = hideSmallBtn.textContent;
     }
   }
-  
-  // Helper to re-render positions with current filters
-  rerenderPositions = function() {
-    const positionsBody = DOMCache.get('newPositionsBody');
-    const mobileContainer = DOMCache.get('newMobilePositionsContainer');
-    const PositionsUI = window.AppModules?.ui?.positions;
-    if (PositionsUI && cachedPositions.length > 0) {
-      const filtered = filterPositions(cachedPositions, { 
-        hideHidden: true, 
-        hideSmall: hideSmallPositions, 
-        threshold: settings.minBalanceThreshold || 100 
-      });
-      
-      // Pre-compute options object (avoid spreading in hot path)
-      const renderOptions = {
-        amountsVisible,
-        hideSmallPositions: false,
-        editMode,
-        settings: {
-          minBalanceThreshold: settings.minBalanceThreshold || 100,
-          showExactAmounts: settings.showExactAmounts || false,
-          useColoredPnL: settings.useColoredPnL ?? true,
-          showPriceChart: settings.showPriceChart ?? true
-        }
-      };
-      
-      const rendered = PositionsUI.renderPositions({
-        positions: filtered,
-        containers: { positionsBody, mobilePositionsContainer: mobileContainer },
-        options: renderOptions,
-        previousPositions: window._previousRenderData || []
-      });
-      window._previousRenderData = rendered; // Cache for flash detection
-      
-      // Update hero with ALL positions (not filtered - need to include hidden equity positions)
-      const { totalValue, totalPnL, totalPnLPercent } = calculatePortfolioTotals(cachedPositions);
-      const summaryEl = DOMCache.get('newSummary');
-      const HeroUI = window.AppModules?.ui?.hero;
-      if (HeroUI && summaryEl) {
-        const heroHtml = HeroUI.composeSummary({
-          portfolioValue: totalValue,
-          amountsVisible,
-          heroPnLMode: 'total',
-          totalPnL,
-          totalPnLPercent,
-          totalDailyChange: 0,
-          totalDailyChangePercent: 0,
-          useColoredPnL: true,
-          highlightsHtml: [],
-          weather: cachedWeather // Use cached weather to preserve it across re-renders
-        });
-        summaryEl.innerHTML = heroHtml;
-      }
-    }
-  };
-  
+
   // Edit list mode
   const editListBtn = document.getElementById('newEditListBtn');
   if (editListBtn) {
@@ -1335,14 +1028,12 @@ function setupControls() {
       editMode = !editMode;
       window.editMode = editMode; // Update global for incremental renderer
       editListBtn.textContent = editMode ? '[SAVE CHANGES]' : '[EDIT]';
-      
-      // Re-render with edit mode - call both renderers to support both modes
+
+      // Re-render with edit mode
       if (window._portfolioRenderer) {
         window._portfolioRenderer.forceRender();
-      } else {
-        rerenderPositions();
       }
-      
+
       // Add click handlers for hide/delete buttons if in edit mode
       if (editMode) {
         const positionsBody = document.getElementById('newPositionsBody');
@@ -1356,29 +1047,27 @@ function setupControls() {
                 hiddenAssets.add(assetKey);
               }
               window.hiddenAssets = hiddenAssets; // Update global for incremental renderer
-              
+
               // Save to localStorage
               const Settings = window.AppModules?.core?.settings;
               const s = getSettings();
               s.hiddenAssets = Array.from(hiddenAssets);
               localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
               invalidateSettingsCache();
-              
-              // Re-render - call both renderers to support both modes
+
+              // Re-render
               if (window._portfolioRenderer) {
                 window._portfolioRenderer.forceRender();
-              } else {
-                rerenderPositions();
               }
             } else if (e.target.classList.contains('position-delete-btn')) {
               // Delete manual position
               const asset = e.target.getAttribute('data-asset');
               const manualType = e.target.getAttribute('data-manual-type');
-              
+
               if (confirm(`Delete manual position "${asset}"?`)) {
                 const Settings = window.AppModules?.core?.settings;
                 const s = getSettings();
-                
+
                 if (s.cryptoPositions && Array.isArray(s.cryptoPositions)) {
                   // Remove the matching position from settings
                   if (manualType === 'custom') {
@@ -1386,33 +1075,31 @@ function setupControls() {
                   } else if (manualType === 'pyth') {
                     s.cryptoPositions = s.cryptoPositions.filter(p => !(p.type === 'pyth' && p.symbol === asset));
                   }
-                  
+
                   // Also remove from hiddenAssets if present (so it doesn't linger as hidden)
                   const assetKey = `${asset}_Manual`;
                   if (s.hiddenAssets && s.hiddenAssets.includes(assetKey)) {
                     s.hiddenAssets = s.hiddenAssets.filter(key => key !== assetKey);
                   }
-                  
+
                   // Save
                   localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
                   invalidateSettingsCache();
-                  
+
                   // Remove from cachedPositions to update portfolio value
                   if (manualType === 'custom') {
                     cachedPositions = cachedPositions.filter(p => !(p.isManual && p.manualType === 'custom' && p.asset === asset));
                   } else if (manualType === 'pyth') {
                     cachedPositions = cachedPositions.filter(p => !(p.isManual && p.manualType === 'pyth' && p.asset === asset));
                   }
-                  
+
                   // Also remove from hiddenAssets set in memory
                   hiddenAssets.delete(assetKey);
                   window.hiddenAssets = hiddenAssets; // Update global for incremental renderer
-                  
-                  // Re-render without page reload - call both renderers to support both modes
+
+                  // Re-render without page reload
                   if (window._portfolioRenderer) {
                     window._portfolioRenderer.forceRender();
-                  } else {
-                    rerenderPositions();
                   }
                 }
               }
@@ -1422,7 +1109,7 @@ function setupControls() {
       }
     });
   }
-  
+
   // Sync mobile theme select
   const themeSelect = document.getElementById('newThemeSelect');
   const themeSelectMobile = document.getElementById('newThemeSelectMobile');
@@ -1433,26 +1120,28 @@ function setupControls() {
       themeSelect.dispatchEvent(new Event('change'));
     });
   }
-  
+
   // Toggle amounts
   const amountsBtn = document.getElementById('newToggleAmountsBtn');
   if (amountsBtn) {
     amountsBtn.addEventListener('click', () => {
       amountsVisible = !amountsVisible;
       amountsBtn.textContent = amountsVisible ? '[HIDE AMOUNTS]' : '[SHOW AMOUNTS]';
-      
+
       // Re-render with new visibility
-      rerenderPositions();
+      if (window._portfolioRenderer) {
+        window._portfolioRenderer.forceRender();
+      }
     });
   }
-  
+
   // Toggle compact mode (just controls padding/styling, column order is always the same)
   const compactBtn = document.getElementById('newCompactModeBtn');
   if (compactBtn) {
     compactBtn.addEventListener('click', () => {
       compactMode = !compactMode;
       compactBtn.textContent = compactMode ? '[EXPAND]' : '[COMPACT]';
-      
+
       // Toggle compact mode class - CSS handles padding and column visibility
       document.body.classList.toggle('compact-mode', compactMode);
       document.querySelectorAll('.data-table').forEach(table => {
@@ -1460,7 +1149,7 @@ function setupControls() {
       });
     });
   }
-  
+
   // Refresh button
   const refreshBtn = document.getElementById('newRefreshBtn');
   if (refreshBtn) {
@@ -1468,7 +1157,7 @@ function setupControls() {
       location.reload();
     });
   }
-  
+
   // Settings dialog
   const settingsBtn = document.getElementById('newSettingsBtn');
   const settingsDialog = document.getElementById('newSettingsDialog');
@@ -1476,7 +1165,7 @@ function setupControls() {
   const closeBtn = document.getElementById('newCloseSettingsBtn');
   const cancelBtn = document.getElementById('newCancelSettingsBtn');
   const saveBtn = document.getElementById('newSaveSettingsBtn');
-  
+
   const openSettings = () => {
     if (settingsDialog && settingsBackdrop) {
       // Load current settings into form
@@ -1500,7 +1189,7 @@ function setupControls() {
       const showPriceChartInput = document.getElementById('newShowPriceChart');
       const minBalanceInput = document.getElementById('newMinBalanceThreshold');
       const leftAlignedInput = document.getElementById('newLeftAligned');
-      
+
       // Menu visibility controls
       const hideSnowBtnInput = document.getElementById('newHideSnowBtn');
       const hideRainBtnInput = document.getElementById('newHideRainBtn');
@@ -1509,7 +1198,7 @@ function setupControls() {
       const hideAmountsBtnInput = document.getElementById('newHideAmountsBtn');
       const showCompactBtnInput = document.getElementById('newShowCompactBtn');
       const hideDonateBtnInput = document.getElementById('newHideDonateBtn');
-      
+
       if (userNameInput) userNameInput.value = s.userName || '';
       if (walletInput) walletInput.value = s.walletAddresses || '';
       if (solanaInput) solanaInput.value = s.solanaAddresses || '';
@@ -1529,7 +1218,7 @@ function setupControls() {
       if (showPriceChartInput) showPriceChartInput.checked = s.showPriceChart ?? true;
       if (minBalanceInput) minBalanceInput.value = s.minBalanceThreshold || 100;
       if (leftAlignedInput) leftAlignedInput.checked = s.leftAligned ?? true;
-      
+
       // Menu visibility checkboxes
       if (hideSnowBtnInput) hideSnowBtnInput.checked = s.hideSnowBtn ?? false;
       if (hideRainBtnInput) hideRainBtnInput.checked = s.hideRainBtn ?? false;
@@ -1538,21 +1227,21 @@ function setupControls() {
       if (hideAmountsBtnInput) hideAmountsBtnInput.checked = s.hideAmountsBtn ?? false;
       if (showCompactBtnInput) showCompactBtnInput.checked = s.showCompactBtn ?? true;
       if (hideDonateBtnInput) hideDonateBtnInput.checked = s.hideDonateBtn ?? false;
-      
+
       settingsDialog.style.display = 'block';
       settingsBackdrop.style.display = 'block';
-      
+
       // Disable scroll on mobile when settings open
       document.body.classList.add('modal-open');
     }
   };
-  
+
   // Import/Export state
   let importMode = false;
   const exportBtn = document.getElementById('newExportSettingsBtn');
   const exportArea = document.getElementById('newSettingsExportArea');
   const importBtn = document.getElementById('newImportSettingsBtn');
-  
+
   const closeSettings = () => {
     if (settingsDialog && settingsBackdrop) {
       // Reset import mode if active
@@ -1564,17 +1253,17 @@ function setupControls() {
       }
       settingsDialog.style.display = 'none';
       settingsBackdrop.style.display = 'none';
-      
+
       // Re-enable scroll on mobile
       document.body.classList.remove('modal-open');
     }
   };
-  
+
   if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
   if (closeBtn) closeBtn.addEventListener('click', closeSettings);
   if (cancelBtn) cancelBtn.addEventListener('click', closeSettings);
   if (settingsBackdrop) settingsBackdrop.addEventListener('click', closeSettings);
-  
+
   // Export settings
   if (exportBtn && exportArea) {
     exportBtn.addEventListener('click', async () => {
@@ -1584,7 +1273,7 @@ function setupControls() {
       exportArea.style.display = 'block';
       exportArea.removeAttribute('readonly');
       exportArea.select();
-      
+
       try {
         await navigator.clipboard.writeText(exportData);
         const originalText = exportBtn.textContent;
@@ -1597,7 +1286,7 @@ function setupControls() {
       }
     });
   }
-  
+
   // Import settings
   if (importBtn && exportArea) {
     importBtn.addEventListener('click', () => {
@@ -1620,7 +1309,7 @@ function setupControls() {
       }
     });
   }
-  
+
   // Force update button - clears all caches and reloads
   const forceUpdateBtn = document.getElementById('newForceUpdateBtn');
   if (forceUpdateBtn) {
@@ -1628,14 +1317,14 @@ function setupControls() {
       const originalText = forceUpdateBtn.textContent;
       forceUpdateBtn.textContent = '[CLEARING...]';
       forceUpdateBtn.disabled = true;
-      
+
       try {
         // Clear all caches
         if ('caches' in window) {
           const cacheNames = await caches.keys();
           await Promise.all(cacheNames.map(name => caches.delete(name)));
         }
-        
+
         // Send message to service worker to clear its cache
         if ('serviceWorker' in navigator) {
           const registration = await navigator.serviceWorker.getRegistration();
@@ -1643,13 +1332,13 @@ function setupControls() {
             registration.active.postMessage({ type: 'CLEAR_CACHE' });
           }
         }
-        
+
         // Reset version to force reload on next visit
         localStorage.removeItem(FORCE_UPDATE_KEY);
-        
+
         // Wait a moment for caches to clear
         await new Promise(resolve => setTimeout(resolve, 500));
-        
+
         // Hard reload (bypass cache)
         window.location.reload(true);
       } catch (error) {
@@ -1662,14 +1351,14 @@ function setupControls() {
       }
     });
   }
-  
+
   // Rain/Snow controls
   const Rain = window.AppModules?.features?.rain;
   const toggleRainBtn = document.getElementById('newToggleRainBtn');
   const toggleSnowBtn = document.getElementById('newToggleSnowBtn');
   const toggleRainBtnMobile = document.getElementById('newToggleRainBtnMobile');
   const toggleSnowBtnMobile = document.getElementById('newToggleSnowBtnMobile');
-  
+
   if (Rain && toggleRainBtn) {
     toggleRainBtn.addEventListener('click', () => {
       const active = Rain.toggleRain();
@@ -1681,7 +1370,7 @@ function setupControls() {
         toggleSnowBtn.textContent = '[SNOW ON]';
         if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW ON]';
       }
-      
+
       // Save to localStorage
       const s = getSettings();
       s.rainEnabled = active;
@@ -1690,7 +1379,7 @@ function setupControls() {
       localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
     });
   }
-  
+
   if (Rain && toggleSnowBtn) {
     toggleSnowBtn.addEventListener('click', () => {
       const active = Rain.toggleSnow();
@@ -1702,7 +1391,7 @@ function setupControls() {
         toggleRainBtn.textContent = '[RAIN ON]';
         if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = '[RAIN ON]';
       }
-      
+
       // Save to localStorage
       const s = getSettings();
       s.snowEnabled = active;
@@ -1711,7 +1400,7 @@ function setupControls() {
       localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
     });
   }
-  
+
   if (Rain && toggleRainBtnMobile) {
     toggleRainBtnMobile.addEventListener('click', () => {
       const active = Rain.toggleRain();
@@ -1723,14 +1412,14 @@ function setupControls() {
         toggleSnowBtn.textContent = '[SNOW ON]';
         if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW ON]';
       }
-      
+
       // Close mobile menu if open
       const mobileMenu = document.getElementById('newMobileMenu');
       if (mobileMenu) {
         mobileMenu.classList.remove('active');
         document.body.classList.remove('mobile-menu-open');
       }
-      
+
       // Save to localStorage
       const s = getSettings();
       s.rainEnabled = active;
@@ -1739,7 +1428,7 @@ function setupControls() {
       localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
     });
   }
-  
+
   if (Rain && toggleSnowBtnMobile) {
     toggleSnowBtnMobile.addEventListener('click', () => {
       const active = Rain.toggleSnow();
@@ -1751,14 +1440,14 @@ function setupControls() {
         toggleRainBtn.textContent = '[RAIN ON]';
         if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = '[RAIN ON]';
       }
-      
+
       // Close mobile menu if open
       const mobileMenu = document.getElementById('newMobileMenu');
       if (mobileMenu) {
         mobileMenu.classList.remove('active');
         document.body.classList.remove('mobile-menu-open');
       }
-      
+
       // Save to localStorage
       const s = getSettings();
       s.snowEnabled = active;
@@ -1767,13 +1456,13 @@ function setupControls() {
       localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
     });
   }
-  
+
   // Font size controls
   const decreaseFontBtn = document.getElementById('newDecreaseFontBtn');
   const increaseFontBtn = document.getElementById('newIncreaseFontBtn');
   const decreaseFontBtnMobile = document.getElementById('newDecreaseFontBtnMobile');
   const increaseFontBtnMobile = document.getElementById('newIncreaseFontBtnMobile');
-  
+
   if (decreaseFontBtn) {
     decreaseFontBtn.addEventListener('click', () => {
       if (currentFontSize > 10) { // minimum 10px
@@ -1785,7 +1474,7 @@ function setupControls() {
       }
     });
   }
-  
+
   if (increaseFontBtn) {
     increaseFontBtn.addEventListener('click', () => {
       if (currentFontSize < 24) { // maximum 24px
@@ -1797,7 +1486,7 @@ function setupControls() {
       }
     });
   }
-  
+
   if (decreaseFontBtnMobile) {
     decreaseFontBtnMobile.addEventListener('click', () => {
       if (currentFontSize > 10) {
@@ -1809,7 +1498,7 @@ function setupControls() {
       }
     });
   }
-  
+
   if (increaseFontBtnMobile) {
     increaseFontBtnMobile.addEventListener('click', () => {
       if (currentFontSize < 24) {
@@ -1821,7 +1510,7 @@ function setupControls() {
       }
     });
   }
-  
+
   // Use My Location button
   const useMyLocationBtn = document.getElementById('newUseMyLocationBtn');
   if (useMyLocationBtn) {
@@ -1877,7 +1566,7 @@ function setupControls() {
       }
     });
   }
-  
+
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
       // Check if import mode is active and there's data to import
@@ -1886,17 +1575,17 @@ function setupControls() {
           const importData = exportArea.value.trim();
           const decoded = atob(importData);
           const importedSettings = JSON.parse(decoded);
-          
+
           // Save imported settings to localStorage
           localStorage.setItem('myDashboardSettings.v1', JSON.stringify(importedSettings));
           invalidateSettingsCache(); // Clear cache so next getSettings() reads fresh data
-          
+
           // Reset import mode UI
           exportArea.style.display = 'none';
           exportArea.setAttribute('readonly', 'readonly');
           importBtn.textContent = '[IMPORT]';
           importMode = false;
-          
+
           // Close settings and reload
           closeSettings();
           location.reload();
@@ -1907,7 +1596,7 @@ function setupControls() {
           return;
         }
       }
-      
+
       // Normal save flow: Collect form values and save to legacy storage (compatibility)
       const newSettings = settings || {};
       const userNameInput = document.getElementById('newUserName');
@@ -1929,7 +1618,7 @@ function setupControls() {
       const showPriceChartInput = document.getElementById('newShowPriceChart');
       const minBalanceInput = document.getElementById('newMinBalanceThreshold');
       const leftAlignedInput = document.getElementById('newLeftAligned');
-      
+
       // Menu visibility controls
       const hideSnowBtnInput = document.getElementById('newHideSnowBtn');
       const hideRainBtnInput = document.getElementById('newHideRainBtn');
@@ -1938,7 +1627,7 @@ function setupControls() {
       const hideAmountsBtnInput = document.getElementById('newHideAmountsBtn');
       const showCompactBtnInput = document.getElementById('newShowCompactBtn');
       const hideDonateBtnInput = document.getElementById('newHideDonateBtn');
-      
+
       if (userNameInput) newSettings.userName = userNameInput.value;
       if (walletInput) newSettings.walletAddresses = walletInput.value;
       if (solanaInput) newSettings.solanaAddresses = solanaInput.value;
@@ -1955,7 +1644,7 @@ function setupControls() {
       if (showPriceChartInput) newSettings.showPriceChart = showPriceChartInput.checked;
       if (minBalanceInput) newSettings.minBalanceThreshold = parseFloat(minBalanceInput.value) || 100;
       if (leftAlignedInput) newSettings.leftAligned = leftAlignedInput.checked;
-      
+
       // Save menu visibility settings
       if (hideSnowBtnInput) newSettings.hideSnowBtn = hideSnowBtnInput.checked;
       if (hideRainBtnInput) newSettings.hideRainBtn = hideRainBtnInput.checked;
@@ -1964,19 +1653,19 @@ function setupControls() {
       if (hideAmountsBtnInput) newSettings.hideAmountsBtn = hideAmountsBtnInput.checked;
       if (showCompactBtnInput) newSettings.showCompactBtn = showCompactBtnInput.checked;
       if (hideDonateBtnInput) newSettings.hideDonateBtn = hideDonateBtnInput.checked;
-      
+
       newSettings.weather = {
         label: cityInput?.value || '',
         lat: parseFloat(latInput?.value) || 0,
         lon: parseFloat(lonInput?.value) || 0
       };
-      
+
       // Save via legacy saveSettings (handles encryption)
       try {
         localStorage.setItem('myDashboardSettings.v1', JSON.stringify(newSettings));
         invalidateSettingsCache(); // Clear cache so next getSettings() reads fresh data
         closeSettings();
-        
+
         // Apply alignment immediately
         const container = document.querySelector('.container');
         if (container) {
@@ -1986,14 +1675,14 @@ function setupControls() {
             container.style.margin = '';
           }
         }
-        
+
         // Apply chart visibility class
         if (!newSettings.showPriceChart) {
           document.body.classList.add('no-charts');
         } else {
           document.body.classList.remove('no-charts');
         }
-        
+
         // Re-render watchlist with new showPriceChart setting
         const watchlistBody = document.getElementById('newWatchlistBody');
         if (watchlistBody && newSettings.watchlist && newSettings.watchlist.length > 0) {
@@ -2013,7 +1702,7 @@ function setupControls() {
             // Silently fail if watchlist re-render fails
           }
         }
-        
+
         // Apply visibility settings via body classes
         const body = document.body;
         body.classList.toggle('hide-snow-btn', newSettings.hideSnowBtn ?? false);
@@ -2024,16 +1713,15 @@ function setupControls() {
         body.classList.toggle('hide-donate-btn', newSettings.hideDonateBtn ?? false);
         body.classList.toggle('hide-watchlist', newSettings.hideWatchlist ?? false);
         body.classList.toggle('hide-comic', newSettings.hideComic ?? false);
-        
+
         // Soft reload: re-fetch positions without full page refresh (this will reload settings)
         await renderPortfolioIncremental();
-        rerenderPositions();
       } catch (e) {
         alert('Failed to save settings: ' + e.message);
       }
     });
   }
-  
+
   // Watchlist Add functionality
   // Donate Window
   const donateBtn = document.getElementById('newDonateBtn');
@@ -2041,7 +1729,7 @@ function setupControls() {
   const donateWindow = document.getElementById('newDonateWindow');
   const donateBackdrop = document.getElementById('newDonateBackdrop');
   const closeDonateBtn = document.getElementById('newCloseDonateBtn');
-  
+
   const openDonateWindow = () => {
     if (donateWindow) {
       if (donateBackdrop) donateBackdrop.style.display = 'block';
@@ -2054,14 +1742,14 @@ function setupControls() {
       document.body.classList.remove('mobile-menu-open');
     }
   };
-  
+
   const closeDonateWindow = () => {
     if (donateWindow) {
       donateWindow.style.display = 'none';
       if (donateBackdrop) donateBackdrop.style.display = 'none';
     }
   };
-  
+
   async function copyToClipboard(text, button) {
     try {
       await navigator.clipboard.writeText(text);
@@ -2077,12 +1765,12 @@ function setupControls() {
       alert('Failed to copy to clipboard');
     }
   }
-  
+
   if (donateBtn) donateBtn.addEventListener('click', openDonateWindow);
   if (donateBtnMobile) donateBtnMobile.addEventListener('click', openDonateWindow);
   if (closeDonateBtn) closeDonateBtn.addEventListener('click', closeDonateWindow);
   if (donateBackdrop) donateBackdrop.addEventListener('click', closeDonateWindow);
-  
+
   // Copy address buttons - event delegation
   document.addEventListener('click', (e) => {
     if (e.target.classList.contains('copy-address-btn')) {
@@ -2092,7 +1780,7 @@ function setupControls() {
       }
     }
   });
-  
+
   // Watchlist
   const addToWatchlistBtn = document.getElementById('newAddToWatchlistBtn');
   const watchlistSearchWindow = document.getElementById('newWatchlistSearchWindow');
@@ -2100,9 +1788,9 @@ function setupControls() {
   const closeWatchlistSearchBtn = document.getElementById('newCloseWatchlistSearchBtn');
   const watchlistSearchInput = document.getElementById('newWatchlistSearchInput');
   const watchlistSearchResults = document.getElementById('newWatchlistSearchResults');
-  
+
   let allPythFeeds = null;
-  
+
   async function loadAllPythFeeds() {
     if (allPythFeeds) return allPythFeeds;
     try {
@@ -2116,16 +1804,16 @@ function setupControls() {
       return [];
     }
   }
-  
+
   async function addToWatchlist(feedId) {
     const s = getSettings();
     if (!s.watchlist) s.watchlist = [];
-    
+
     if (!s.watchlist.includes(feedId)) {
       s.watchlist.push(feedId);
       try {
         localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
-        
+
         // Reload watchlist immediately
         const watchlistBody = document.getElementById('newWatchlistBody');
         if (watchlistBody) {
@@ -2148,7 +1836,7 @@ function setupControls() {
       }
     }
   }
-  
+
   function closeWatchlistSearch() {
     if (watchlistSearchWindow) watchlistSearchWindow.style.display = 'none';
     if (watchlistSearchBackdrop) watchlistSearchBackdrop.style.display = 'none';
@@ -2158,77 +1846,77 @@ function setupControls() {
       watchlistSearchResults.style.display = 'none';
     }
   }
-  
+
   if (addToWatchlistBtn) {
     addToWatchlistBtn.addEventListener('click', async () => {
       // Load feeds
       const feeds = await loadAllPythFeeds();
-      
+
       // Show modal
       if (watchlistSearchWindow) watchlistSearchWindow.style.display = 'block';
       if (watchlistSearchBackdrop) watchlistSearchBackdrop.style.display = 'block';
-      
+
       // Focus input
       if (watchlistSearchInput) {
         setTimeout(() => watchlistSearchInput.focus(), 100);
       }
     });
   }
-  
+
   if (closeWatchlistSearchBtn) {
     closeWatchlistSearchBtn.addEventListener('click', closeWatchlistSearch);
   }
-  
+
   if (watchlistSearchBackdrop) {
     watchlistSearchBackdrop.addEventListener('click', closeWatchlistSearch);
   }
-  
+
   if (watchlistSearchInput) {
     const addedFeeds = new Set();
-    
+
     function performSearch(query) {
       if (!watchlistSearchResults) return;
-      
+
       const feeds = allPythFeeds || [];
       const s = getSettings();
       const currentWatchlist = s.watchlist || [];
-      
+
       if (!query) {
         watchlistSearchResults.innerHTML = '<div class="help" style="padding: 16px;">Type to search tokens...</div>';
         watchlistSearchResults.style.display = 'block';
         return;
       }
-      
-      const matches = feeds.filter(f => 
+
+      const matches = feeds.filter(f =>
         f.symbol.toLowerCase().includes(query.toLowerCase())
       ).slice(0, 50);
-      
+
       if (matches.length === 0) {
         watchlistSearchResults.innerHTML = '<div class="help" style="padding: 16px;">No results found</div>';
         watchlistSearchResults.style.display = 'block';
         return;
       }
-      
+
       watchlistSearchResults.innerHTML = '';
       watchlistSearchResults.style.display = 'block';
       matches.forEach(feed => {
         const resultDiv = document.createElement('div');
         resultDiv.className = 'watchlist-search-result';
-        
+
         const isInWatchlist = currentWatchlist.includes(feed.id);
         const isAdded = addedFeeds.has(feed.id);
-        
+
         if (isInWatchlist || isAdded) {
           resultDiv.classList.add('added');
         }
-        
+
         resultDiv.innerHTML = `
           <span>${feed.symbol}</span>
           <button class="btn-text ${isInWatchlist || isAdded ? 'added' : ''}" data-feed-id="${feed.id}">
             ${isInWatchlist ? '[IN LIST]' : isAdded ? '[ADDED]' : '[ADD]'}
           </button>
         `;
-        
+
         const btn = resultDiv.querySelector('button');
         if (!isInWatchlist) {
           btn.addEventListener('click', () => {
@@ -2241,33 +1929,33 @@ function setupControls() {
             }
           });
         }
-        
+
         watchlistSearchResults.appendChild(resultDiv);
       });
     }
-    
+
     watchlistSearchInput.addEventListener('input', (e) => {
       const query = e.target.value.trim();
       performSearch(query);
     });
   }
-  
+
   // Watchlist Edit functionality
   const editWatchlistBtn = document.getElementById('newEditWatchlistBtn');
-  
+
   function removeFromWatchlist(feedId) {
     const s = getSettings();
     if (!s.watchlist) s.watchlist = [];
-    
+
     s.watchlist = s.watchlist.filter(id => id !== feedId);
     try {
       localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
-      
+
       // Update cached data and re-render
       if (cachedWatchlistData) {
         cachedWatchlistData = cachedWatchlistData.filter(item => item.feedId !== feedId);
       }
-      
+
       // Reload watchlist immediately
       const watchlistBody = document.getElementById('newWatchlistBody');
       if (watchlistBody) {
@@ -2283,10 +1971,10 @@ function setupControls() {
               editMode: watchlistEditMode,
               showPriceChart: s.showPriceChart ?? true
             });
-            
+
             // Update cache with new data
             cachedWatchlistData = prices;
-            
+
             // Re-attach event listeners for edit buttons
             if (watchlistEditMode) {
               attachWatchlistEditListeners();
@@ -2300,14 +1988,14 @@ function setupControls() {
       console.error('Failed to remove from watchlist:', e);
     }
   }
-  
+
   function attachWatchlistEditListeners() {
     const watchlistBody = document.getElementById('newWatchlistBody');
     if (watchlistBody) {
       // Remove old listeners by cloning
       const newWatchlistBody = watchlistBody.cloneNode(true);
       watchlistBody.parentNode.replaceChild(newWatchlistBody, watchlistBody);
-      
+
       // Add new listener
       newWatchlistBody.addEventListener('click', (e) => {
         if (e.target.classList.contains('watchlist-edit-btn')) {
@@ -2317,13 +2005,13 @@ function setupControls() {
       });
     }
   }
-  
+
   async function toggleWatchlistEditMode() {
     watchlistEditMode = !watchlistEditMode;
     if (editWatchlistBtn) {
       editWatchlistBtn.textContent = watchlistEditMode ? '[SAVE]' : '[EDIT]';
     }
-    
+
     // Re-render watchlist with edit mode (using cached data if available)
     const watchlistBody = document.getElementById('newWatchlistBody');
     if (watchlistBody && cachedWatchlistData) {
@@ -2339,7 +2027,7 @@ function setupControls() {
           cachedData: cachedWatchlistData, // Pass cached data to avoid refetch
           showPriceChart: s.showPriceChart ?? true
         });
-        
+
         // Attach edit button listeners
         if (watchlistEditMode) {
           attachWatchlistEditListeners();
@@ -2349,11 +2037,11 @@ function setupControls() {
       }
     }
   }
-  
+
   if (editWatchlistBtn) {
     editWatchlistBtn.addEventListener('click', toggleWatchlistEditMode);
   }
-  
+
   // Add Position functionality
   const addPositionBtn = document.getElementById('newAddPositionBtn');
   const addPositionModal = document.getElementById('newAddPositionModal');
@@ -2370,30 +2058,30 @@ function setupControls() {
   const addPositionCustomName = document.getElementById('newAddPositionCustomName');
   const addPositionCustomValue = document.getElementById('newAddPositionCustomValue');
   const savePositionBtn = document.getElementById('newSavePositionBtn');
-  
+
   let selectedPositionType = 'pyth';
   let selectedPythFeed = null;
-  
+
   function closeAddPosition() {
     if (addPositionModal) addPositionModal.style.display = 'none';
     if (addPositionBackdrop) addPositionBackdrop.style.display = 'none';
-    
+
     // Re-enable scroll on mobile
     document.body.classList.remove('modal-open');
   }
-  
+
   if (addPositionBtn) {
     addPositionBtn.addEventListener('click', async () => {
       // Load feeds
       await loadAllPythFeeds();
-      
+
       // Show modal
       if (addPositionModal) addPositionModal.style.display = 'block';
       if (addPositionBackdrop) addPositionBackdrop.style.display = 'block';
-      
+
       // Disable scroll on mobile when modal open
       document.body.classList.add('modal-open');
-      
+
       // Reset state
       selectedPositionType = 'pyth';
       selectedPythFeed = null;
@@ -2406,7 +2094,7 @@ function setupControls() {
         addPositionPythResults.innerHTML = '';
         addPositionPythResults.style.display = 'none';
       }
-      
+
       // Set initial view
       if (addPositionPythSection) addPositionPythSection.style.display = 'block';
       if (addPositionCustomSection) addPositionCustomSection.style.display = 'none';
@@ -2418,15 +2106,15 @@ function setupControls() {
       }
     });
   }
-  
+
   if (closeAddPositionBtn) {
     closeAddPositionBtn.addEventListener('click', closeAddPosition);
   }
-  
+
   if (addPositionBackdrop) {
     addPositionBackdrop.addEventListener('click', closeAddPosition);
   }
-  
+
   if (addPositionTypePyth) {
     addPositionTypePyth.addEventListener('click', () => {
       selectedPositionType = 'pyth';
@@ -2438,7 +2126,7 @@ function setupControls() {
       }
     });
   }
-  
+
   if (addPositionTypeCustom) {
     addPositionTypeCustom.addEventListener('click', () => {
       selectedPositionType = 'custom';
@@ -2450,7 +2138,7 @@ function setupControls() {
       }
     });
   }
-  
+
   if (addPositionPythSearch) {
     addPositionPythSearch.addEventListener('input', (e) => {
       const query = e.target.value.trim();
@@ -2461,12 +2149,12 @@ function setupControls() {
         }
         return;
       }
-      
+
       const feeds = allPythFeeds || [];
-      const matches = feeds.filter(f => 
+      const matches = feeds.filter(f =>
         f.symbol.toLowerCase().includes(query.toLowerCase())
       ).slice(0, 20);
-      
+
       addPositionPythResults.innerHTML = '';
       if (matches.length > 0) {
         addPositionPythResults.style.display = 'block';
@@ -2488,36 +2176,36 @@ function setupControls() {
       }
     });
   }
-  
+
   if (savePositionBtn) {
     savePositionBtn.addEventListener('click', async () => {
       const s = getSettings();
-      
+
       // Ensure cryptoPositions array exists
       if (!s.cryptoPositions) {
         s.cryptoPositions = [];
       }
-      
+
       if (selectedPositionType === 'pyth') {
         // Validate Pyth position
         if (!selectedPythFeed) {
           alert('Please select a token from the search results');
           return;
         }
-        
+
         const amount = parseFloat(addPositionPythAmount.value);
         const entryPrice = parseFloat(addPositionPythEntryPrice.value);
-        
+
         if (!amount || amount <= 0) {
           alert('Please enter a valid amount');
           return;
         }
-        
+
         if (!entryPrice || entryPrice <= 0) {
           alert('Please enter a valid entry price');
           return;
         }
-        
+
         // Add Pyth position
         s.cryptoPositions.push({
           type: 'pyth',
@@ -2530,17 +2218,17 @@ function setupControls() {
         // Validate custom position
         const name = addPositionCustomName.value.trim();
         const value = parseFloat(addPositionCustomValue.value);
-        
+
         if (!name) {
           alert('Please enter an asset name');
           return;
         }
-        
+
         if (!value || value <= 0) {
           alert('Please enter a valid value');
           return;
         }
-        
+
         // Add custom position
         s.cryptoPositions.push({
           type: 'custom',
@@ -2548,14 +2236,13 @@ function setupControls() {
           value: value
         });
       }
-      
+
       try {
         localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
         closeAddPosition();
-        
+
         // Soft reload: re-fetch positions without full page refresh
         await renderPortfolioIncremental();
-        rerenderPositions();
       } catch (e) {
         alert('Failed to save position: ' + e.message);
       }
@@ -2569,21 +2256,21 @@ window.addEventListener('DOMContentLoaded', async () => {
   const now = Date.now();
   const timeSinceLastLoad = lastLoadTime ? now - parseInt(lastLoadTime, 10) : Infinity;
   const shouldForceFresh = !lastLoadTime || timeSinceLastLoad > 60000; // 1 minute
-  
+
   // Store current load time
   localStorage.setItem('lastLoadTime', now.toString());
-  
+
   // Clear HTTP cache to ensure fresh data on page load
   const HttpClient = window.AppModules?.http?.HttpClient;
   if (HttpClient?._internal?.memoryCacheByKey) {
     HttpClient._internal.memoryCacheByKey.clear();
   }
-  
+
   // Clear in-flight requests to prevent using stale deduplicated requests
   if (HttpClient?._internal?.inFlightByKey) {
     HttpClient._internal.inFlightByKey.clear();
   }
-  
+
   // Force service worker update if outdated or stale session
   if ('serviceWorker' in navigator) {
     try {
@@ -2599,32 +2286,32 @@ window.addEventListener('DOMContentLoaded', async () => {
       // Silently ignore SW update failures
     }
   }
-  
+
   // Init loading screen
   initLoadingScreen();
   // Do not block on loading overlay; switch to skeleton UI immediately
   hideLoadingScreen();
   renderHeroSkeleton();
   renderPositionsSkeleton(7);
-  
+
   // Display version immediately (using APP_VERSION constant)
   const versionDisplay = document.getElementById('versionDisplay');
   if (versionDisplay) {
-    const buildDate = new Date('2025-11-14T22:00:00Z').toLocaleString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      hour: '2-digit', 
+    const buildDate = new Date('2025-11-14T22:00:00Z').toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
       minute: '2-digit',
       timeZone: 'UTC'
     });
     versionDisplay.textContent = `v${APP_VERSION} (${buildDate} UTC)`;
   }
-  
+
   // Init theme
   const Themes = window.AppModules?.core?.themes;
   const Settings = window.AppModules?.core?.settings;
   const settings = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
-  
+
   // Apply alignment
   const applyAlignment = () => {
     const container = document.querySelector('.container');
@@ -2637,57 +2324,57 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   };
   applyAlignment();
-  
+
   if (Themes) {
     const theme = settings.theme || Themes.getPreferredTheme();
     Themes.applyTheme(theme);
     const themeSelect = document.getElementById('newThemeSelect');
     const themeSelectMobile = document.getElementById('newThemeSelectMobile');
-    
+
     if (themeSelect) {
       themeSelect.value = theme;
       themeSelect.addEventListener('change', (e) => {
         const newTheme = e.target.value;
         Themes.applyTheme(newTheme);
-        
+
         // Save to localStorage
         const s = getSettings();
         s.theme = newTheme;
         localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
-        
+
         // Sync mobile dropdown
         if (themeSelectMobile) themeSelectMobile.value = newTheme;
       });
     }
-    
+
     if (themeSelectMobile) {
       themeSelectMobile.value = theme;
       themeSelectMobile.addEventListener('change', (e) => {
         const newTheme = e.target.value;
         Themes.applyTheme(newTheme);
-        
+
         // Save to localStorage
         const s = getSettings();
         s.theme = newTheme;
         localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
-        
+
         // Sync desktop dropdown
         if (themeSelect) themeSelect.value = newTheme;
       });
     }
   }
-  
+
   // Init font size
   let fontSize = settings?.fontSize;
   if (typeof fontSize === 'string' || !fontSize) {
     fontSize = 15; // Default if it's a string or not set
   }
   applyFontSize(fontSize);
-  
+
   // Apply visibility settings via body classes (CSS handles the rest)
   const applyVisibilityClasses = () => {
     const body = document.body;
-    
+
     // Button visibility
     body.classList.toggle('hide-snow-btn', settings.hideSnowBtn ?? false);
     body.classList.toggle('hide-rain-btn', settings.hideRainBtn ?? false);
@@ -2695,13 +2382,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     body.classList.toggle('hide-theme-btn', settings.hideThemeBtn ?? false);
     body.classList.toggle('hide-amounts-btn', settings.hideAmountsBtn ?? false);
     body.classList.toggle('hide-donate-btn', settings.hideDonateBtn ?? false);
-    
+
     // Section visibility
     body.classList.toggle('hide-watchlist', settings.hideWatchlist ?? false);
     body.classList.toggle('hide-comic', settings.hideComic ?? false);
   };
   applyVisibilityClasses();
-  
+
   // Init rain/snow from saved preferences (only one can be active)
   const Rain = window.AppModules?.features?.rain;
   if (Rain) {
@@ -2709,7 +2396,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     const toggleSnowBtn = document.getElementById('newToggleSnowBtn');
     const toggleRainBtnMobile = document.getElementById('newToggleRainBtnMobile');
     const toggleSnowBtnMobile = document.getElementById('newToggleSnowBtnMobile');
-    
+
     // Only enable one - prioritize rain if both are somehow enabled
     if (settings.rainEnabled && !settings.snowEnabled) {
       Rain.toggleRain();
@@ -2721,14 +2408,14 @@ window.addEventListener('DOMContentLoaded', async () => {
       if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW OFF]';
     }
   }
-  
+
   // Apply initial compact mode styling
   if (compactMode) {
     document.body.classList.add('compact-mode');
     const tables = document.querySelectorAll('.data-table');
     tables.forEach(table => table.classList.add('compact-mode'));
   }
-  
+
   // Update greeting
   function updateGreeting() {
     const greetingEl = document.getElementById('newGreeting');
@@ -2737,41 +2424,41 @@ window.addEventListener('DOMContentLoaded', async () => {
       let timeOfDay = 'Good morning';
       if (hour >= 12 && hour < 18) timeOfDay = 'Good afternoon';
       else if (hour >= 18) timeOfDay = 'Good evening';
-      
+
       const userName = settings.userName || 'there';
       greetingEl.textContent = `${timeOfDay}, ${userName}.`;
     }
   }
   updateGreeting();
-  
+
   // Hero click to refresh with ASCII spinner
   const heroSection = document.querySelector('.hero');
   const greetingEl = document.getElementById('newGreeting');
-  
+
   if (heroSection && greetingEl) {
     heroSection.style.cursor = 'pointer';
     heroSection.style.userSelect = 'none';
-    
+
     let spinnerInterval = null;
     let spinnerEl = null;
-    
+
     const startSpinner = () => {
       // Check if a spinner already exists (prevent duplicates)
       if (document.getElementById('greetingLoader') || greetingEl.querySelector('span[style*="marginLeft"]')) {
         return;
       }
-      
+
       // ASCII spinner frames: ◐ ◓ ◑ ◒ or ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
       const frames = ['◐', '◓', '◑', '◒'];
       let frameIndex = 0;
-      
+
       // Create spinner element
       spinnerEl = document.createElement('span');
       spinnerEl.style.marginLeft = '8px';
       spinnerEl.style.opacity = '0.6';
       spinnerEl.textContent = frames[0];
       greetingEl.appendChild(spinnerEl);
-      
+
       // Animate spinner
       spinnerInterval = setInterval(() => {
         frameIndex = (frameIndex + 1) % frames.length;
@@ -2780,7 +2467,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
       }, 150);
     };
-    
+
     const stopSpinner = () => {
       if (spinnerInterval) {
         clearInterval(spinnerInterval);
@@ -2791,36 +2478,35 @@ window.addEventListener('DOMContentLoaded', async () => {
         spinnerEl = null;
       }
     };
-    
+
     heroSection.addEventListener('click', async () => {
       if (spinnerInterval) return; // Already refreshing
-      
+
       const summaryEl = document.getElementById('newSummary');
-      
+
       try {
         startSpinner();
-        
+
         // Apply pulsing animation (like comics)
         if (summaryEl) {
           summaryEl.classList.add('fading');
         }
-        
+
         await renderPortfolioIncremental();
-        rerenderPositions();
-        
+
         // Remove pulsing animation after content is loaded
         if (summaryEl) {
           setTimeout(() => {
             summaryEl.classList.remove('fading');
           }, 100);
         }
-        
+
         // Also refresh watchlist if present and enabled in settings
         const currentSettings = getSettings();
         if (!currentSettings.hideWatchlist) {
           const watchlistModule = await import('./modules/features/watchlist.js').catch(() => null);
           if (watchlistModule && watchlistModule.refreshWatchlist) {
-            await watchlistModule.refreshWatchlist().catch(() => {});
+            await watchlistModule.refreshWatchlist().catch(() => { });
           }
         }
       } catch (error) {
@@ -2830,10 +2516,10 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
     });
   }
-  
+
   // Setup header controls (non-blocking)
   setupControls();
-  
+
   // CRITICAL PATH: Positions + Hero only (everything else lazy)
   try {
     await renderPortfolioIncremental();
@@ -2845,18 +2531,18 @@ window.addEventListener('DOMContentLoaded', async () => {
       summaryEl.innerHTML = `<span style="color: var(--red);">Error loading portfolio: ${error.message || error}</span>`;
     }
   }
-  
+
   // Hide loading screen after critical data loads (even if there was an error)
   hideLoadingScreen();
-  
+
   // NON-CRITICAL: Health checks in background
-  runHealthChecks().catch(() => {});
-  
+  runHealthChecks().catch(() => { });
+
   // NON-CRITICAL: Rain/Snow effects (lazy loaded after everything else)
   setTimeout(async () => {
     const Rain = window.AppModules?.features?.rain;
     if (!Rain) return;
-    
+
     // Only auto-enable if user hasn't manually set preference
     if (!settings.rainSnowManuallySet) {
       // Check weather and auto-enable
@@ -2878,14 +2564,14 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
     }
   }, 2000); // Wait 2 seconds after page load
-  
+
   // Lazy-load comic on intersection or idle (if enabled in settings)
   // Comic section visibility controlled by CSS via body.hide-comic class
   const comicSection = document.getElementById('comicSection');
   const comicEl = document.getElementById('newComic');
   if (!settings.hideComic && comicEl) {
     let currentComicStrip = settings.comicStrip || 'calvinandhobbes';
-    
+
     const getComicMetadata = () => {
       return {
         calvinandhobbes: {
@@ -2902,19 +2588,19 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
       };
     };
-    
+
     // Get a deterministic random date for the comic based on today's date
     // This ensures the same comic shows all day, but changes daily
     const getValidComicDate = (comicKey) => {
       const metadata = getComicMetadata();
       const comic = metadata[comicKey];
       if (!comic) return new Date();
-      
+
       // Create a seed based on the current date (YYYY-MM-DD format) AND the comic key
       // This ensures each comic gets a different strip on the same day
       const today = new Date();
       const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}-${comicKey}`;
-      
+
       // Simple hash function to create a deterministic seed from the date string
       let hash = 0;
       for (let i = 0; i < dateString.length; i++) {
@@ -2922,27 +2608,27 @@ window.addEventListener('DOMContentLoaded', async () => {
         hash = ((hash << 5) - hash) + char;
         hash = hash & hash; // Convert to 32bit integer
       }
-      
+
       // Make the hash positive and normalize to 0-1
       const seed = Math.abs(hash) / 2147483647;
-      
+
       // Calculate random date within the comic's range using the seed
       const start = comic.startDate.getTime();
       const end = comic.endDate.getTime();
       const randomTime = start + seed * (end - start);
-      
+
       return new Date(randomTime);
     };
-    
+
     let currentComicDate = getValidComicDate(currentComicStrip);
-    
+
     const loadComic = async (comicKey = currentComicStrip, date = currentComicDate) => {
       comicEl.textContent = 'Loading...';
       try {
         const mod = await import('./modules/features/comics.js');
         await mod.renderComic(comicEl, comicKey, date);
         currentComicDate = date;
-        
+
         // Update button states
         updateComicButtons(comicKey, date);
       } catch (e) {
@@ -2950,12 +2636,12 @@ window.addEventListener('DOMContentLoaded', async () => {
         comicEl.textContent = 'Loading...';
       }
     };
-    
+
     const updateComicButtons = (comicKey, date) => {
       const metadata = getComicMetadata();
       const comic = metadata[comicKey];
       if (!comic) return;
-      
+
       const prevButtons = [
         document.getElementById('newComicPrevBtn'),
         document.getElementById('newComicPrevBtnMobile')
@@ -2968,7 +2654,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('newComicRandomBtn'),
         document.getElementById('newComicRandomBtnMobile')
       ];
-      
+
       // Hide all buttons for Far Side (doesn't work due to caching)
       if (comicKey === 'farside') {
         [...prevButtons, ...nextButtons, ...randomButtons].forEach(btn => {
@@ -2976,25 +2662,25 @@ window.addEventListener('DOMContentLoaded', async () => {
         });
         return;
       }
-      
+
       // Show buttons for other comics
       [...prevButtons, ...nextButtons, ...randomButtons].forEach(btn => {
         if (btn) btn.style.display = '';
       });
-      
+
       // Disable prev if at start date
       const atStart = date <= comic.startDate;
       prevButtons.forEach(btn => {
         if (btn) btn.disabled = atStart;
       });
-      
+
       // Disable next if at end date
       const atEnd = date >= comic.endDate;
       nextButtons.forEach(btn => {
         if (btn) btn.disabled = atEnd;
       });
     };
-    
+
     // Setup prev/next/random buttons
     const prevButtons = [
       document.getElementById('newComicPrevBtn'),
@@ -3008,7 +2694,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('newComicRandomBtn'),
       document.getElementById('newComicRandomBtnMobile')
     ];
-    
+
     prevButtons.forEach(btn => {
       if (btn) {
         btn.addEventListener('click', async () => {
@@ -3018,7 +2704,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         });
       }
     });
-    
+
     nextButtons.forEach(btn => {
       if (btn) {
         btn.addEventListener('click', async () => {
@@ -3028,46 +2714,46 @@ window.addEventListener('DOMContentLoaded', async () => {
         });
       }
     });
-    
+
     randomButtons.forEach(btn => {
       if (btn) {
         btn.addEventListener('click', async () => {
           const metadata = getComicMetadata();
           const comic = metadata[currentComicStrip];
           if (!comic) return;
-          
+
           const start = comic.startDate.getTime();
           const end = comic.endDate.getTime();
           const randomTime = start + Math.random() * (end - start);
           const randomDate = new Date(randomTime);
-          
+
           await loadComic(currentComicStrip, randomDate);
         });
       }
     });
-    
+
     // Setup tab switching
     const tabCalvin = document.getElementById('newTabCalvin');
     const tabPeanuts = document.getElementById('newTabPeanuts');
     const tabFarside = document.getElementById('newTabFarside');
     const tabs = [tabCalvin, tabPeanuts, tabFarside];
-    
+
     tabs.forEach(tab => {
       if (tab) {
         tab.addEventListener('click', async () => {
           const comicKey = tab.getAttribute('data-comic');
           if (comicKey === currentComicStrip) return; // Already showing this comic
-          
+
           currentComicStrip = comicKey;
           currentComicDate = getValidComicDate(comicKey); // Get a valid date for the new comic
-          
+
           // Update active tab
           tabs.forEach(t => t?.classList.remove('active'));
           tab.classList.add('active');
-          
+
           // Load new comic
           await loadComic(comicKey, currentComicDate);
-          
+
           // Save preference
           const Settings = window.AppModules?.core?.settings;
           const s = getSettings();
@@ -3076,7 +2762,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         });
       }
     });
-    
+
     // Set initial active tab based on saved preference
     const savedComic = settings.comicStrip || 'calvinandhobbes';
     tabs.forEach(tab => {
@@ -3086,7 +2772,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         tab?.classList.remove('active');
       }
     });
-    
+
     // Hide buttons initially if Far Side is saved as preference
     if (savedComic === 'farside') {
       const allButtons = [
@@ -3098,7 +2784,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (btn) btn.style.display = 'none';
       });
     }
-    
+
     if ('IntersectionObserver' in window) {
       const io = new IntersectionObserver((entries) => {
         for (const entry of entries) {
@@ -3119,7 +2805,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       loadComic();
     }
   }
-  
+
   // Apply chart visibility class to body
   const showPriceChart = settings.showPriceChart ?? true;
   if (!showPriceChart) {
@@ -3127,12 +2813,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   } else {
     document.body.classList.remove('no-charts');
   }
-  
+
   // Lazy-load watchlist on intersection or idle (if enabled in settings)
   // Watchlist section visibility controlled by CSS via body.hide-watchlist class
   const watchlistSection = document.getElementById('watchlistSection');
   const watchlistBody = document.getElementById('newWatchlistBody');
-  
+
   if (!settings.hideWatchlist && watchlistBody) {
     const loadWatchlist = async () => {
       watchlistBody.innerHTML = `<tr><td colspan="4" class="loading">Loading...</td></tr>`;
@@ -3172,11 +2858,11 @@ window.addEventListener('DOMContentLoaded', async () => {
       loadWatchlist();
     }
   }
-  
+
   // Periodic price updates (every 5 seconds for prices, every 30 seconds for full position refresh)
   let updateInterval = null;
   let updateCount = 0;
-  
+
   async function updatePrices() {
     try {
       const providers = window.AppModules?.data?.providers;
@@ -3185,15 +2871,15 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.warn('[updatePrices] No providers found');
         return;
       }
-      
+
       updateCount++;
       // Only refresh leveraged positions every 3rd update (90s instead of 30s) to reduce load
       const doLeveragedRefresh = (updateCount % 3) === 0;
       let hasEquityChanges = false; // Track if equity positions changed
-      
+
       // Read from window.cachedPositions which is updated by the renderer
       cachedPositions = window.cachedPositions || cachedPositions || [];
-      
+
       // Update positions if they exist
       if (cachedPositions && cachedPositions.length > 0) {
         // If we have account equity positions, refresh them from APIs
@@ -3201,7 +2887,7 @@ window.addEventListener('DOMContentLoaded', async () => {
           // Refreshing account equity
           const settings = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
           const wallets = (settings.walletAddresses || '').split(',').map(w => w.trim()).filter(Boolean);
-          
+
           if (wallets.length > 0) {
             try {
               // Fetch Hyperliquid market data for current prices
@@ -3210,7 +2896,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                 providers.hyperliquid.fetchAllMids(8000),
                 providers.hyperliquid.fetchSpotMeta(8000)
               ]);
-              
+
               // Build price map from market data
               const hlPriceMap = {};
               if (hlMarketData && hlMarketData[0] && hlMarketData[1]) {
@@ -3222,7 +2908,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                   }
                 }
               }
-              
+
               // Also include allMids directly for HIP-3 and other assets not in metaAndAssetCtxs
               if (hlAllMids) {
                 for (const [key, value] of Object.entries(hlAllMids)) {
@@ -3231,7 +2917,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                   }
                 }
               }
-              
+
               // Fetch fresh Hyperliquid and Lighter positions
               const [hlResults, lighterResults] = await Promise.all([
                 // Hyperliquid
@@ -3240,13 +2926,13 @@ window.addEventListener('DOMContentLoaded', async () => {
                     const hl = providers.hyperliquid;
                     const data = await hl.fetchPositions(wallet, 8000);
                     const rows = [];
-                    
+
                     // Extract account equity (perp + spot)
                     let perpEquity = 0;
                     if (data?.perp?.marginSummary) {
                       perpEquity = parseFloat(data.perp.marginSummary.accountValue || 0);
                     }
-                    
+
                     // Spot equity from spot balances
                     const spotPriceMap = providers.hyperliquid.buildSpotPriceMap(hlAllMids, hlSpotMeta);
                     let spotEquity = 0;
@@ -3259,9 +2945,9 @@ window.addEventListener('DOMContentLoaded', async () => {
                         }
                       }
                     }
-                    
+
                     const hlAccountEquity = perpEquity + spotEquity;
-                    
+
                     // Calculate total PnL from all positions (perp + spot)
                     let totalHlPnL = 0;
                     if (data?.perp?.assetPositions) {
@@ -3271,22 +2957,22 @@ window.addEventListener('DOMContentLoaded', async () => {
                         if (Math.abs(szi) > 0) {
                           const entryPrice = parseFloat(position?.entryPx || 0);
                           const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
-                          
+
                           // Calculate current price from position value / size
                           // This works for all markets including HIP-3 (xyz:PLTR etc)
                           let currentPrice = notionalValue / Math.abs(szi);
-                          
+
                           // Fallback to price map or entry price if calculation fails
                           if (!currentPrice || isNaN(currentPrice)) {
                             currentPrice = hlPriceMap[position.coin] || entryPrice;
                           }
-                          
+
                           const leverage = parseFloat(position?.leverage?.value || 10);
                           const pnl = parseFloat(position?.unrealizedPnl || 0);
                           totalHlPnL += pnl;
                           const entryNotional = Math.abs(szi) * entryPrice;
                           const marginUsed = entryNotional / leverage;
-                          
+
                           rows.push({
                             asset: position.coin,
                             exchange: 'Hyperliquid',
@@ -3301,7 +2987,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                         }
                       }
                     }
-                    
+
                     // Add spot position PnL to total
                     if (data?.spot?.balances) {
                       for (const bal of data.spot.balances) {
@@ -3311,14 +2997,14 @@ window.addEventListener('DOMContentLoaded', async () => {
                           const value = available * price;
                           const entryNtl = parseFloat(bal.entryNtl || 0);
                           const pnl = (entryNtl > 0 && value > 0) ? (value - entryNtl) : null;
-                          
+
                           if (pnl !== null && !isNaN(pnl)) {
                             totalHlPnL += pnl;
                           }
                         }
                       }
                     }
-                    
+
                     // Add synthetic account equity position if available
                     if (hlAccountEquity !== null && hlAccountEquity > 0) {
                       rows.push({
@@ -3333,42 +3019,42 @@ window.addEventListener('DOMContentLoaded', async () => {
                         isLeveraged: false
                       });
                     }
-                    
+
                     return rows;
                   } catch (e) {
                     console.error('[Update] Failed to fetch HL positions:', e);
                     return [];
                   }
                 })),
-                
+
                 // Lighter
                 Promise.all(wallets.map(async (wallet) => {
                   try {
                     const lighter = providers.lighter;
                     const data = await lighter.fetchAccountByAddress(wallet, { timeoutMs: 8000 });
                     const rows = [];
-                    
+
                     let lighterAccountEquity = null;
                     let totalLighterPnL = 0;
-                    
+
                     if (data && data.accounts && Array.isArray(data.accounts) && data.accounts.length > 0) {
                       const account = data.accounts[0];
                       lighterAccountEquity = parseFloat(
-                        account.equity_usd || 
-                        account.total_equity || 
-                        account.equity || 
+                        account.equity_usd ||
+                        account.total_equity ||
+                        account.equity ||
                         account.balance_usd ||
                         account.total_balance ||
                         0
                       );
                       totalLighterPnL = parseFloat(
-                        account.unrealized_pnl || 
-                        account.pnl || 
-                        account.total_pnl || 
+                        account.unrealized_pnl ||
+                        account.pnl ||
+                        account.total_pnl ||
                         0
                       );
                     }
-                    
+
                     if (lighterAccountEquity !== null && lighterAccountEquity > 0) {
                       rows.push({
                         asset: 'LIGHTER_ACCOUNT_EQUITY',
@@ -3382,7 +3068,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                         isLeveraged: false
                       });
                     }
-                    
+
                     return rows;
                   } catch (e) {
                     console.error('[Update] Failed to fetch Lighter account:', e);
@@ -3390,7 +3076,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                   }
                 }))
               ]);
-              
+
               // Flatten and create a map of fresh equity positions by asset
               const freshEquityPositions = [...hlResults.flat(), ...lighterResults.flat()];
               const equityMap = new Map();
@@ -3398,7 +3084,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                 const key = `${pos.asset}_${pos.exchange}`;
                 equityMap.set(key, pos);
               }
-              
+
               // Update cachedPositions with fresh equity data
               hasEquityChanges = false;
               const updatedCachedPositions = cachedPositions.map(pos => {
@@ -3418,26 +3104,26 @@ window.addEventListener('DOMContentLoaded', async () => {
                 }
                 return pos;
               });
-              
+
               cachedPositions = updatedCachedPositions;
               window.cachedPositions = updatedCachedPositions;
-              
+
               // Don't recalculate portfolio here - will do it after ALL updates are done
             } catch (e) {
               console.error('[Update] Failed to refresh leveraged positions:', e);
             }
           }
         }
-        
+
         // Get current prices from Hyperliquid (perps + spot)
         const [marketData, allMids, spotMeta] = await Promise.all([
           providers.hyperliquid.fetchMetaAndAssetCtxs(8000),
           providers.hyperliquid.fetchAllMids(8000),
           providers.hyperliquid.fetchSpotMeta(8000)
         ]);
-        
+
         const priceMap = {};
-        
+
         // Get perp prices
         if (marketData && marketData[0] && marketData[1]) {
           for (let i = 0; i < marketData[1].length; i++) {
@@ -3448,7 +3134,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             }
           }
         }
-        
+
         // Get spot prices using proper @index mapping
         if (allMids && spotMeta && spotMeta.universe) {
           for (const spotPair of spotMeta.universe) {
@@ -3469,7 +3155,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                 pairsByTokenIndex.set(pair.tokens[0], pair);
               }
             }
-            
+
             for (const token of spotMeta.tokens) {
               if (token.name && token.index !== undefined) {
                 const spotPair = pairsByTokenIndex.get(token.index);
@@ -3483,34 +3169,34 @@ window.addEventListener('DOMContentLoaded', async () => {
             }
           }
         }
-        
+
         // Update positions with new prices
         const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD', 'FEUSD']);
         let hasChanges = false;
         const updatedPositions = cachedPositions.map(pos => {
           let newPrice = priceMap[pos.asset];
-          
+
           // Skip leveraged positions - they are refreshed from API periodically
           // Leveraged PnL includes funding payments which can't be calculated from price alone
           if (pos.isLeveraged) {
             return pos; // Keep as-is
           }
-          
+
           // Skip synthetic equity positions
           if (pos.isHlAccountEquity || pos.isLighterAccountEquity) {
             return pos; // Keep as-is
           }
-          
+
           // Stablecoins default to $1 if no price found
           if ((!newPrice || newPrice === 0) && STABLECOINS.has(pos.asset)) {
             newPrice = 1;
           }
-          
+
           if (newPrice && newPrice !== pos.price && Math.abs(newPrice - pos.price) > 0.0001) {
             hasChanges = true;
             const newValue = Math.abs(pos.amount) * newPrice;
             let newPnl = pos.pnl;
-            
+
             // Recalculate PnL if we have entry data
             if (pos.entryNtl && pos.entryNtl > 0) {
               newPnl = newValue - pos.entryNtl;
@@ -3518,7 +3204,7 @@ window.addEventListener('DOMContentLoaded', async () => {
               const costBasis = Math.abs(pos.amount) * pos.entryPrice;
               newPnl = pos.amount >= 0 ? (newValue - costBasis) : (costBasis - newValue);
             }
-            
+
             return {
               ...pos,
               price: newPrice,
@@ -3528,23 +3214,23 @@ window.addEventListener('DOMContentLoaded', async () => {
           }
           return pos;
         });
-        
+
         // Update if anything changed
         let anyChanges = hasEquityChanges || hasChanges;
-        
+
         if (anyChanges) {
           cachedPositions = updatedPositions;
           window.cachedPositions = updatedPositions;
-          
+
           // Update price history for changed positions (skip stablecoins) - ONLY if showPriceChart is enabled
           const Settings = window.AppModules?.core?.settings;
           const s = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
           const showPriceChart = s.showPriceChart ?? true;
-          
+
           if (showPriceChart) {
             const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
             const changedAssets = updatedPositions.filter(p => !STABLECOINS.has(p.asset?.toUpperCase()));
-            
+
             if (changedAssets.length > 0) {
               // Update price history in background (don't await to avoid blocking UI)
               (async () => {
@@ -3569,13 +3255,11 @@ window.addEventListener('DOMContentLoaded', async () => {
                   });
                   const results = await Promise.all(historyUpdates);
                   const successCount = results.filter(r => r).length;
-                  
+
                   // Re-render positions to show updated charts (don't recalculate portfolio)
                   if (successCount > 0) {
                     if (window._portfolioRenderer && typeof window._portfolioRenderer.updatePositions === 'function') {
                       window._portfolioRenderer.updatePositions(cachedPositions);
-                    } else if (rerenderPositions) {
-                      rerenderPositions();
                     }
                   }
                 } catch (e) {
@@ -3584,24 +3268,22 @@ window.addEventListener('DOMContentLoaded', async () => {
               })();
             }
           }
-          
+
         }
-        
+
         // Recalculate portfolio ONCE if ANY changes happened (equity or wallet prices)
         if (anyChanges) {
           // Re-render positions and hero together
           if (window._portfolioRenderer && typeof window._portfolioRenderer.updatePositions === 'function') {
             window._portfolioRenderer.updatePositions(cachedPositions);
-          } else if (rerenderPositions) {
-            rerenderPositions();
           }
         }
       }
-      
+
       // Update watchlist prices
       const s = getSettings();
       const watchlistBody = document.getElementById('newWatchlistBody');
-      
+
       if (watchlistBody && s.watchlist && s.watchlist.length > 0 && !watchlistEditMode) {
         try {
           const mod = await import('./modules/features/watchlist.js');
@@ -3622,25 +3304,24 @@ window.addEventListener('DOMContentLoaded', async () => {
       console.warn('[updatePrices] Failed:', e?.message || e);
     }
   }
-  
+
   // Start updates after 5 seconds, then every 5 seconds for live price tracking
   setTimeout(() => {
     updatePrices();
     updateInterval = setInterval(updatePrices, 5000);
   }, 5000);
-  
+
   // Cleanup on page unload (prevent memory leaks)
   window.addEventListener('beforeunload', () => {
     if (updateInterval) {
       clearInterval(updateInterval);
       updateInterval = null;
     }
-    DOMCache.clear(); // Clear DOM element cache
   });
-  
+
   // Track when tab was last hidden
   let tabHiddenAt = null;
-  
+
   // Resume updates when tab becomes visible again
   document.addEventListener('visibilitychange', async () => {
     if (document.hidden) {
@@ -3655,18 +3336,18 @@ window.addEventListener('DOMContentLoaded', async () => {
       if (!updateInterval) {
         // Check if tab was hidden for a long time (more than 1 minute)
         const wasHiddenLong = tabHiddenAt && (Date.now() - tabHiddenAt) > 60000;
-        
+
         // Clear HTTP cache to ensure fresh data
         const HttpClient = window.AppModules?.http?.HttpClient;
         if (HttpClient?._internal?.memoryCacheByKey) {
           HttpClient._internal.memoryCacheByKey.clear();
         }
-        
+
         // Clear in-flight requests
         if (HttpClient?._internal?.inFlightByKey) {
           HttpClient._internal.inFlightByKey.clear();
         }
-        
+
         // Force service worker to update and clear stale API cache if hidden long
         if ('serviceWorker' in navigator) {
           try {
@@ -3682,19 +3363,18 @@ window.addEventListener('DOMContentLoaded', async () => {
             // Silently ignore SW update failures
           }
         }
-        
+
         // Full portfolio re-fetch (not just price update)
         try {
           await renderPortfolioIncremental();
-          rerenderPositions();
         } catch (e) {
           console.warn('[Visibility] Portfolio refresh failed:', e);
         }
-        
+
         // Then start regular price updates with consistent 5s interval
         updatePrices();
         updateInterval = setInterval(updatePrices, 5000);
-        
+
         // Reset hidden time
         tabHiddenAt = null;
       }

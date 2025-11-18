@@ -130,7 +130,94 @@ export function calculateTotalPnLSummary(positions, currentPrices = undefined, k
 export default {
   calculatePortfolio24hChange,
   calculatePortfolioPnL,
-  calculateTotalPnLSummary
+  calculateTotalPnLSummary,
+  filterPositions,
+  calculatePortfolioTotals
 };
+
+/**
+ * Filter positions based on hidden assets and balance threshold
+ * @param {Array} positions 
+ * @param {Object} options 
+ * @returns {Array}
+ */
+export function filterPositions(positions, options = {}) {
+  const {
+    hideHidden = true,
+    hideSmall = false,
+    threshold = 100,
+    hiddenAssets = new Set()
+  } = options;
+
+  return positions.filter(p => {
+    // Always hide the synthetic account equity positions (HL and Lighter)
+    if (p.isHlAccountEquity || p.isLighterAccountEquity) return false;
+
+    // Check hidden assets
+    if (hideHidden) {
+      const key = `${p.asset}_${p.exchange}`;
+      if (hiddenAssets.has(key)) return false;
+    }
+
+    // Check balance threshold
+    if (hideSmall) {
+      const value = p.value || (Math.abs(p.amount || 0) * (p.price || 0));
+      if (value < threshold) return false;
+    }
+
+    return true;
+  });
+}
+
+/**
+ * Calculate portfolio totals (value and PnL)
+ * @param {Array} positions 
+ * @returns {Object} { totalValue, totalPnL, totalPnLPercent, costBasis }
+ */
+export function calculatePortfolioTotals(positions) {
+  let totalValue = 0;
+  let totalPnL = 0;
+
+  // Check for account equity positions (Hyperliquid and Lighter)
+  const hlEquity = positions.find(p => p.isHlAccountEquity);
+  const lighterEquity = positions.find(p => p.isLighterAccountEquity);
+
+  // Add Hyperliquid total equity
+  if (hlEquity) {
+    totalValue += (hlEquity.value || 0);
+    totalPnL += (hlEquity.pnl || 0);
+  }
+
+  // Add Lighter total equity
+  if (lighterEquity) {
+    totalValue += (lighterEquity.value || 0);
+    totalPnL += (lighterEquity.pnl || 0);
+  }
+
+  // Add all wallet balances (skip synthetic equity positions and individual HL/Lighter positions)
+  for (const p of positions) {
+    // Skip the synthetic equity positions
+    if (p.isHlAccountEquity || p.isLighterAccountEquity) continue;
+
+    // Skip individual Hyperliquid/Lighter positions (already counted in equity)
+    if (p.exchange === 'Hyperliquid' || p.exchange === 'Hyperliquid Spot' || p.exchange === 'Lighter') continue;
+
+    // Add wallet balance
+    const value = p.value || 0;
+    if (value > 0) {
+      totalValue += value;
+    }
+
+    // Add PnL if available
+    if (p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl)) {
+      totalPnL += p.pnl;
+    }
+  }
+
+  const costBasis = totalValue - totalPnL;
+  const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
+
+  return { totalValue, totalPnL, totalPnLPercent, costBasis };
+}
 
 
