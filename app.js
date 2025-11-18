@@ -989,7 +989,7 @@ function setupControls() {
 
   syncMobileButtons('newToggleAmountsBtn', 'newToggleAmountsBtnMobile');
   syncMobileButtons('newCompactModeBtn', 'newCompactModeBtnMobile');
-  syncMobileButtons('newRefreshBtn', 'newRefreshBtnMobile');
+
   syncMobileButtons('newSettingsBtn', 'newSettingsBtnMobile');
   syncMobileButtons('newHideSmallBtn', 'newHideSmallBtnMobile');
 
@@ -1128,6 +1128,15 @@ function setupControls() {
       amountsVisible = !amountsVisible;
       amountsBtn.textContent = amountsVisible ? '[HIDE AMOUNTS]' : '[SHOW AMOUNTS]';
 
+      // Also update mobile button text
+      const mobileAmountsBtn = document.getElementById('newToggleAmountsBtnMobile');
+      if (mobileAmountsBtn) {
+        mobileAmountsBtn.textContent = amountsBtn.textContent;
+      }
+
+      // Toggle class for renderer detection
+      document.body.classList.toggle('amounts-hidden', !amountsVisible);
+
       // Re-render with new visibility
       if (window._portfolioRenderer) {
         window._portfolioRenderer.forceRender();
@@ -1150,13 +1159,7 @@ function setupControls() {
     });
   }
 
-  // Refresh button
-  const refreshBtn = document.getElementById('newRefreshBtn');
-  if (refreshBtn) {
-    refreshBtn.addEventListener('click', () => {
-      location.reload();
-    });
-  }
+
 
   // Settings dialog
   const settingsBtn = document.getElementById('newSettingsBtn');

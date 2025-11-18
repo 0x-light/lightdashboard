@@ -3,7 +3,7 @@
 function formatCurrency(value, amountsVisible) {
   if (!amountsVisible) return '$••••';
   const abs = Math.abs(value);
-  
+
   // Format large numbers compactly
   if (abs >= 1000000) {
     const formatted = (abs / 1000000).toFixed(1);
@@ -40,7 +40,7 @@ export function composeSummary({
 }) {
   const summaryParts = [];
   // Always show portfolio value (it's a price/total, not a position size)
-  const valueText = formatCurrency(portfolioValue, true);
+  const valueText = formatCurrency(portfolioValue, amountsVisible);
 
   if (heroPnLMode === 'total') {
     if (totalPnL !== 0 && Math.abs(totalPnL) > 0.01) {

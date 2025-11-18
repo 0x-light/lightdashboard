@@ -119,7 +119,7 @@ html[data-theme="lcars"] {
   --text-bright: #FFCC99;
   --muted: #CC9966;
   --accent: #FF9900;
-  --border: rgba(255, 153, 0, 0.2);
+  --border: rgba(255, 153, 0, 0.1);
   --card-bg: #0a0500;
   --green: #9999FF;
   --red: #CC6699;
@@ -179,18 +179,24 @@ html[data-theme="lcars"] {
 }
 
 @keyframes fade-flame {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0;
   }
 }
 
 @keyframes pulse-text {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.4;
   }
+
   50% {
     opacity: 1;
   }
@@ -232,20 +238,30 @@ a {
 
 /* Flash animation for real-time updates */
 @keyframes flash-update {
-  0% { opacity: 0.3; }
-  50% { opacity: 0.5; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+
+  100% {
+    opacity: 1;
+  }
 }
 
 @keyframes cell-flash {
-  0% { 
+  0% {
     background-color: var(--flash-start);
   }
-  50% { 
+
+  50% {
     background-color: var(--flash-mid);
   }
-  100% { 
-    background-color: transparent; 
+
+  100% {
+    background-color: transparent;
   }
 }
 
@@ -258,7 +274,8 @@ a {
 }
 
 html {
-  font-size: 15px; /* Default, overridden by JS */
+  font-size: 15px;
+  /* Default, overridden by JS */
   margin: 0;
   padding: 0;
   height: 100%;
@@ -305,7 +322,12 @@ body::before {
   pointer-events: none;
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-size: inherit;
   font-weight: inherit;
   margin: 0;
@@ -530,7 +552,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .data-table .loading {
-  text-align: center!important;
+  text-align: center !important;
   color: var(--muted);
   padding: 40px;
 }
@@ -541,13 +563,27 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 @keyframes terminal-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
 }
 
 @keyframes pulse-fade {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.6; }
+
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
 }
 
 /* Hero pulsing animation (same as comics) */
@@ -612,10 +648,7 @@ body.hide-amounts-btn #newToggleAmountsBtnMobile {
   display: none !important;
 }
 
-body.hide-refresh-btn #newRefreshBtn,
-body.hide-refresh-btn #newRefreshBtnMobile {
-  display: none !important;
-}
+
 
 body.hide-donate-btn #newDonateBtn,
 body.hide-donate-btn #newDonateBtnMobile {
@@ -762,7 +795,8 @@ body.hide-comic #newComicSection {
   padding: 0 15px 15px 15px;
 }
 
-.settings-form header, .settings-actions {
+.settings-form header,
+.settings-actions {
   padding: 16px;
   border-bottom: 1px solid var(--border);
   box-sizing: border-box;
@@ -1408,9 +1442,9 @@ textarea::-moz-placeholder {
 }
 
 #toggleThemeBtnMobile,
-.theme-select-label { 
+.theme-select-label {
   line-height: unset;
-  padding: 0!important;
+  padding: 0 !important;
 }
 
 /* Remove dropdown arrow */
@@ -1422,7 +1456,7 @@ textarea::-moz-placeholder {
   outline: none;
 }
 
-.theme-select-btn:focus ~ .theme-select-label,
+.theme-select-btn:focus~.theme-select-label,
 .theme-select-wrapper:focus-within .theme-select-label {
   color: var(--text);
   opacity: 1;
@@ -1481,82 +1515,82 @@ body.mobile-menu-open {
   body {
     overflow-x: hidden;
   }
-  
+
   /* Prevent auto-zoom on input focus */
   input,
   select,
   textarea {
     font-size: 16px !important;
   }
-  
+
   .app-header {
     padding: 20px 20px 0;
   }
-  
+
   .header-actions {
     display: none;
   }
-  
+
   .mobile-menu-btn {
     display: block;
   }
-  
+
   .container {
     padding: 0 20px 48px;
     max-width: 100%;
     overflow-x: hidden;
   }
-  
+
   .hero {
     padding: 20px 0 0;
   }
-  
+
   /* Hide desktop table, show mobile cards */
   .data-table {
     display: none;
   }
-  
+
   /* Keep watchlist table visible on mobile */
   #watchlistTable {
     display: table;
   }
-  
+
   /* Show positions table on mobile in compact mode */
   .data-table.compact-mode {
     display: table;
     width: 100%;
     min-width: 100%;
   }
-  
+
   /* Make table wrapper scrollable on mobile in compact mode */
   body.compact-mode .table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
-  
+
   /* Hide exchange column on mobile in compact mode for positions table only */
   /* Exchange is now the last column (8th) in compact mode */
   #positionsTable.data-table.compact-mode th:nth-child(8),
   #positionsTable.data-table.compact-mode td:nth-child(8) {
     display: none;
   }
-  
+
   /* Prevent text wrapping in compact mode cells on mobile */
   .data-table.compact-mode th,
   .data-table.compact-mode td {
     white-space: nowrap;
   }
-  
+
   /* Hide mobile cards when compact mode is active */
   body.compact-mode .mobile-positions-container {
     display: none;
   }
-  
+
   .mobile-positions-container {
     display: block;
     max-width: 100%;
   }
-  
+
   .mobile-position-card {
     display: block;
   }
@@ -1570,56 +1604,57 @@ body.mobile-menu-open {
   #newComic img {
     max-width: unset;
   }
-  
+
   /* Comic controls on mobile */
   .calvin-controls {
     display: none !important;
   }
-  
+
   .calvin-controls-mobile {
     display: flex !important;
   }
-  
+
   .comic-header {
     margin-bottom: 12px;
   }
-  
+
   .comic-tabs {
     gap: 8px;
   }
-  
+
   .tab-desktop {
     display: none;
   }
-  
+
   .tab-mobile {
     display: inline;
   }
-  
+
   #newComic {
     margin-left: -20px;
     padding-left: 20px;
     margin-right: -20px;
     padding-right: 20px;
   }
-  
+
   /* Calvin & Hobbes and Peanuts comics on mobile - exclude Far Side */
   #newComic img:not([data-comic-type="farside"]) {
     min-height: 250px !important;
     max-height: 250px !important;
   }
-  
+
   /* Far Side comics on mobile - full width */
   #newComic img[data-comic-type="farside"] {
     width: 100%;
     height: auto;
   }
-  
+
   /* Full bleed settings dialog on mobile */
   .settings {
     width: 100vw;
     height: 100vh;
-    height: 100dvh; /* Use dynamic viewport height for mobile browsers */
+    height: 100dvh;
+    /* Use dynamic viewport height for mobile browsers */
     max-width: 100vw;
     max-height: 100vh;
     max-height: 100dvh;
@@ -1628,29 +1663,29 @@ body.mobile-menu-open {
     border-radius: 0;
     overflow-x: hidden;
   }
-  
+
   /* Compact tabs on mobile */
   .settings-tabs {
     padding: 0 8px;
     gap: 2px;
   }
-  
+
   .settings-tab {
     padding: 10px 8px;
     font-size: 1em;
     letter-spacing: 0.3px;
   }
-  
+
   fieldset {
     border: none;
     border-bottom: 1px solid var(--border);
     margin-bottom: 10px;
   }
-  
+
   legend {
     padding: 0;
   }
-  
+
   /* Fullscreen watchlist search on mobile */
   #watchlistSearchWindow {
     width: 100vw;
@@ -1666,32 +1701,33 @@ body.mobile-menu-open {
     left: 0;
     transform: none;
   }
-  
+
   .settings::backdrop {
     background: rgba(0, 0, 0, 0.8);
   }
-  
+
   .settings-form {
     height: 100vh;
-    height: 100dvh; /* Use dynamic viewport height for mobile browsers */
+    height: 100dvh;
+    /* Use dynamic viewport height for mobile browsers */
     display: flex;
     flex-direction: column;
     overflow-x: hidden;
     max-width: 100vw;
     box-sizing: border-box;
   }
-  
+
   .settings-form header {
     padding: 16px;
     overflow-x: hidden;
   }
-  
+
   .settings-form .settings-actions {
     padding: 16px;
     padding-bottom: max(16px, env(safe-area-inset-bottom));
     overflow-x: hidden;
   }
-  
+
   .settings-form section {
     flex: 1;
     overflow-y: auto;
@@ -1701,12 +1737,12 @@ body.mobile-menu-open {
     box-sizing: border-box;
     width: 100%;
   }
-  
+
   /* Improve spacing on mobile */
   fieldset {
     padding: 16px 0;
   }
-  
+
   label {
     margin-top: 12px;
   }
@@ -1714,56 +1750,57 @@ body.mobile-menu-open {
   label:first-of-type {
     margin-top: 0;
   }
-  
+
   legend {
     color: var(--accent);
     margin-bottom: 0;
   }
-  
+
   .help {
     font-size: 0.9em;
     line-height: 1.4;
   }
-  
+
   .info {
     font-size: 0.9em;
     line-height: 1.4;
   }
-  
+
   .status-info {
     font-size: 0.9em;
     line-height: 1.4;
   }
-  
+
   /* Scale inputs with user's font size on mobile */
   input:not([type="checkbox"]):not([type="range"]),
   select,
   textarea {
     font-size: 1em !important;
     padding: 10px !important;
-    touch-action: manipulation; /* Prevents double-tap zoom */
+    touch-action: manipulation;
+    /* Prevents double-tap zoom */
   }
-  
+
   /* Stack row elements vertically on mobile */
   .row {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   /* Make item-row stack vertically on mobile */
   .item-row {
     grid-template-columns: 1fr;
     gap: 12px;
   }
-  
+
   .item-row input:not([type="checkbox"]) {
     width: 100%;
   }
-  
+
   .item-row label {
     margin-top: 0;
   }
-  
+
   /* Ensure buttons fit */
   button:not([type="checkbox"]),
   .btn-text {
@@ -1771,34 +1808,34 @@ body.mobile-menu-open {
     white-space: normal;
     text-align: center;
   }
-  
+
   /* Get location button on mobile */
   #getLocationBtn {
     width: 100%;
     margin-top: 8px;
   }
-  
+
   /* Settings actions stack on mobile */
   .settings-actions {
     flex-wrap: wrap;
     justify-content: stretch;
     gap: 12px;
   }
-  
+
   .settings-actions button {
     flex: 1;
     min-width: 120px;
   }
-  
+
   /* Ensure help text wraps */
   .help {
     word-break: break-word;
   }
-  
+
   .info {
     word-break: break-word;
   }
-  
+
   .status-info {
     word-break: break-word;
   }
@@ -2079,7 +2116,7 @@ html[data-theme="as400"] {
   --text-bright: #24a148;
   --muted: #047017;
   --accent: #24a148;
-  --border: rgba(25, 128, 56, 0.3);
+  --border: rgba(25, 128, 56, 0.2);
   --card-bg: #161616;
   --green: #42ff78;
   --red: #da1e28;
@@ -2432,7 +2469,9 @@ html[data-theme="bloomberg"] {
 }
 
 /* Pixel art rain overlay */
-#rainCanvas, #newRainCanvas, .rain-canvas {
+#rainCanvas,
+#newRainCanvas,
+.rain-canvas {
   position: fixed;
   top: 0;
   left: 0;
@@ -2452,7 +2491,9 @@ html[data-theme="bloomberg"] {
   will-change: auto;
 }
 
-#rainCanvas.active, #newRainCanvas.active, .rain-canvas.active {
+#rainCanvas.active,
+#newRainCanvas.active,
+.rain-canvas.active {
   display: block;
 }
 
@@ -2631,7 +2672,7 @@ input[type="range"]:focus::-moz-range-thumb {
     opacity: 0.6;
     cursor: pointer;
   }
-  
+
   .last-update-timestamp:active {
     opacity: 1;
   }
@@ -3006,12 +3047,10 @@ input[type="range"]:focus::-moz-range-thumb {
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.05) 50%,
-    transparent 100%
-  );
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.05) 50%,
+      transparent 100%);
   animation: skeleton-shimmer 1.5s ease-in-out infinite;
 }
 
@@ -3028,9 +3067,12 @@ input[type="range"]:focus::-moz-range-thumb {
 }
 
 @keyframes skeleton-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.5;
   }
@@ -3040,6 +3082,7 @@ input[type="range"]:focus::-moz-range-thumb {
   0% {
     transform: translateX(-100%);
   }
+
   100% {
     transform: translateX(100%);
   }
