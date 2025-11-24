@@ -5,33 +5,26 @@ import * as Portfolio from './modules/domain/portfolio.js';
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.5.5';
+const APP_VERSION = '2.6.0';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
   const lastVersion = localStorage.getItem(FORCE_UPDATE_KEY);
 
   if (lastVersion && lastVersion !== APP_VERSION) {
-    console.log(`[Version] Changed from ${lastVersion} to ${APP_VERSION}, clearing caches`);
     localStorage.setItem(FORCE_UPDATE_KEY, APP_VERSION);
 
     // Clear all caches to ensure fresh content
     if ('caches' in window) {
       caches.keys().then(names => {
-        Promise.all(names.map(name => caches.delete(name))).then(() => {
-          console.log('[Version] Cleared caches:', names);
-        });
+        Promise.all(names.map(name => caches.delete(name)));
       });
     }
     
     // Force service worker to update
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(registrations => {
-        registrations.forEach(reg => {
-          reg.update().then(() => {
-            console.log('[Version] Service worker updated');
-          });
-        });
+        registrations.forEach(reg => reg.update());
       });
     }
   }
@@ -48,8 +41,6 @@ checkVersion();
 // Listen for service worker updates and auto-refresh
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    // New service worker has taken control, reload to get fresh content
-    console.log('[SW] New service worker active, reloading...');
     window.location.reload();
   });
 }
@@ -1349,7 +1340,6 @@ function setupControls() {
         if ('caches' in window) {
           const cacheNames = await caches.keys();
           await Promise.all(cacheNames.map(name => caches.delete(name)));
-          console.log('[Force Update] Cleared browser caches:', cacheNames);
         }
 
         // Step 2: Unregister ALL service workers (this is the key fix)
@@ -1357,7 +1347,6 @@ function setupControls() {
         if ('serviceWorker' in navigator) {
           const registrations = await navigator.serviceWorker.getRegistrations();
           await Promise.all(registrations.map(reg => reg.unregister()));
-          console.log('[Force Update] Unregistered service workers:', registrations.length);
         }
 
         // Step 3: Clear localStorage version to force fresh state
@@ -2105,10 +2094,7 @@ function setupControls() {
 
   if (addPositionBtn) {
     addPositionBtn.addEventListener('click', async () => {
-      // Load feeds
-      await loadAllPythFeeds();
-
-      // Show modal
+      // Show modal immediately (don't wait for feeds to load)
       if (addPositionModal) addPositionModal.style.display = 'block';
       if (addPositionBackdrop) addPositionBackdrop.style.display = 'block';
 
@@ -2137,6 +2123,9 @@ function setupControls() {
       if (addPositionTypeCustom) {
         addPositionTypeCustom.classList.remove('active');
       }
+
+      // Load feeds in background (don't block modal display)
+      loadAllPythFeeds().catch(() => {});
     });
   }
 
@@ -2330,7 +2319,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Display version immediately (using APP_VERSION constant)
   const versionDisplay = document.getElementById('versionDisplay');
   if (versionDisplay) {
-    const buildDate = new Date('2025-11-14T22:00:00Z').toLocaleString('en-US', {
+    const buildDate = new Date('2025-11-24T12:00:00Z').toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',

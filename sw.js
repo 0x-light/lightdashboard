@@ -1,6 +1,6 @@
 // Service Worker for Light Dashboard
 // Provides offline support, intelligent caching, and automatic updates
-const CACHE_VERSION = 'v2.5.5';
+const CACHE_VERSION = 'v2.6.0';
 const BUILD_TIMESTAMP = '2025-11-24T12:00:00Z';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
@@ -238,8 +238,6 @@ self.addEventListener('message', (event) => {
     event.waitUntil(
       caches.keys().then((names) => {
         return Promise.all(names.map(name => caches.delete(name)));
-      }).then(() => {
-        console.log('[SW] All caches cleared');
       })
     );
   }
