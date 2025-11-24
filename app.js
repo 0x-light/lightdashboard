@@ -3277,6 +3277,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         // Recalculate portfolio ONCE if ANY changes happened (equity or wallet prices)
         if (anyChanges) {
           // Re-render positions and hero together
+          // Note: Price history IIFE may also trigger a render when it completes,
+          // but the renderer uses debouncing to coalesce rapid updates
           if (window._portfolioRenderer && typeof window._portfolioRenderer.updatePositions === 'function') {
             window._portfolioRenderer.updatePositions(cachedPositions);
           }

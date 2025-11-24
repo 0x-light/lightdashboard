@@ -183,9 +183,8 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
     frag.appendChild(tr);
   }
   
-  // Insert into DOM first
-  container.innerHTML = '';
-  container.appendChild(frag);
+  // Atomic DOM update using replaceChildren() to prevent visual flicker
+  container.replaceChildren(frag);
   
   // Trigger flash animations on changed cells
   requestAnimationFrame(() => {

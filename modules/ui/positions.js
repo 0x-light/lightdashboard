@@ -263,8 +263,14 @@ export function renderPositions({ positions, containers, options, previousPositi
     const filtered = list.filter(p => !shouldHidePosition(p, opts));
 
     if (filtered.length === 0) {
-      containers.positionsBody.innerHTML = `<tr><td colspan="8" class="loading">No positions found</td></tr>`;
-      if (containers.mobilePositionsContainer) containers.mobilePositionsContainer.innerHTML = '';
+      const emptyRow = doc.createElement('tr');
+      const emptyCell = doc.createElement('td');
+      emptyCell.colSpan = 8;
+      emptyCell.className = 'loading';
+      emptyCell.textContent = 'No positions found';
+      emptyRow.appendChild(emptyCell);
+      containers.positionsBody.replaceChildren(emptyRow);
+      if (containers.mobilePositionsContainer) containers.mobilePositionsContainer.replaceChildren();
       return positions;
     }
 
@@ -298,12 +304,11 @@ export function renderPositions({ positions, containers, options, previousPositi
       }
     }
 
-    // Atomic DOM update - clear and replace in one operation
-    containers.positionsBody.innerHTML = '';
-    containers.positionsBody.appendChild(frag);
+    // Atomic DOM update using replaceChildren() which is truly atomic
+    // (no intermediate empty state visible to the user, unlike innerHTML = '' + appendChild)
+    containers.positionsBody.replaceChildren(frag);
     if (containers.mobilePositionsContainer) {
-      containers.mobilePositionsContainer.innerHTML = '';
-      containers.mobilePositionsContainer.appendChild(mobileFrag);
+      containers.mobilePositionsContainer.replaceChildren(mobileFrag);
     }
 
     // Trigger flash animations (like watchlist)

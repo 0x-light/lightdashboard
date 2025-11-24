@@ -4,26 +4,34 @@
  */
 
 export class IncrementalPortfolioRenderer {
-  constructor({ providers, settings, containers, ui, expectedProviders = [] }) {
+  constructor({ providers, settings, containers, ui, expectedProviders = [], initialPositions = null }) {
     this.providers = providers;
     this.settings = settings;
     this.containers = containers; // { positionsBody, mobileContainer, summaryEl }
     this.ui = ui; // { HeroUI, PositionsUI }
     
-    // Accumulated state
-    this.allPositions = [];
+    // Accumulated state - use cached positions if available to prevent flicker on refresh
+    // This allows the UI to show existing data while fresh data is being fetched
+    this.allPositions = initialPositions || window.cachedPositions || [];
     this.providerStatus = new Map(); // track which providers finished
     this.renderDebounce = null;
-    this.isLoading = true;
+    // If we have initial positions, we're not really "loading" - just refreshing in background
+    this.isLoading = this.allPositions.length === 0;
     this.expectedProviders = expectedProviders; // List of provider names we're waiting for
-    this.previousRenderData = []; // Cache for flash detection (like watchlist)
+    // Preserve previous render data from last renderer instance for smooth transitions
+    // This prevents flickering when tab visibility changes or portfolio refreshes
+    this.previousRenderData = window._previousRenderData || [];
     this.renderCount = 0; // Track render calls for performance monitoring
+    this.isRendering = false; // Lock to prevent concurrent renders
+    this.pendingRender = false; // Flag to schedule another render after current completes
     
     // Store reference to renderer IMMEDIATELY for external re-renders
     window._portfolioRenderer = this;
     
-    // Show loader in greeting
-    this.showGreetingLoader();
+    // Only show loader if we don't have initial positions
+    if (this.isLoading) {
+      this.showGreetingLoader();
+    }
     
     // Safety timeout: force hide loader after 10 seconds no matter what
     this.safetyTimeout = setTimeout(() => {
@@ -32,6 +40,11 @@ export class IncrementalPortfolioRenderer {
         this.hideGreetingLoader();
       }
     }, 10000);
+    
+    // If we have initial positions, render them immediately
+    if (this.allPositions.length > 0) {
+      this.render();
+    }
   }
   
   /**
@@ -91,12 +104,25 @@ export class IncrementalPortfolioRenderer {
 
   /**
    * Append new positions and re-render immediately
+   * When refreshing, removes old positions from the same source to prevent duplicates
    */
   appendPositions(newRows, source) {
     if (!Array.isArray(newRows) || newRows.length === 0) {
       this.providerStatus.set(source, 'completed');
       this.checkIfAllProvidersFinished();
       return;
+    }
+    
+    // If this source already reported data, remove old positions from same source first
+    // This prevents accumulating duplicates when refreshing
+    if (this.providerStatus.has(source)) {
+      // Build a set of keys from new rows for efficient lookup
+      const newKeys = new Set(newRows.map(r => r._changeDetectionKey || `${r.asset}_${r.exchange}`));
+      // Filter out positions that will be replaced by new ones
+      this.allPositions = this.allPositions.filter(p => {
+        const key = p._changeDetectionKey || `${p.asset}_${p.exchange}`;
+        return !newKeys.has(key);
+      });
     }
     
     this.allPositions.push(...newRows);
@@ -155,8 +181,16 @@ export class IncrementalPortfolioRenderer {
 
   /**
    * Re-render positions table and hero with current data
+   * Uses a render lock to prevent concurrent renders that cause flickering
    */
   render() {
+    // If a render is in progress, mark that we need another render when it completes
+    if (this.isRendering) {
+      this.pendingRender = true;
+      return;
+    }
+    
+    this.isRendering = true;
     this.renderCount++;
     const { PositionsUI, HeroUI } = this.ui;
     const { positionsBody, mobileContainer, summaryEl } = this.containers;
@@ -168,6 +202,7 @@ export class IncrementalPortfolioRenderer {
       if (summaryEl) {
         summaryEl.innerHTML = 'Loading portfolio...';
       }
+      this.isRendering = false;
       return;
     }
 
@@ -246,17 +281,30 @@ export class IncrementalPortfolioRenderer {
     
     // Store reference to renderer for external re-renders
     window._portfolioRenderer = this;
+    
+    // Release render lock
+    this.isRendering = false;
+    
+    // If another render was requested while we were rendering, do it now
+    if (this.pendingRender) {
+      this.pendingRender = false;
+      // Use requestAnimationFrame to batch the next render with the browser's paint cycle
+      requestAnimationFrame(() => this.render());
+    }
   }
   
   /**
    * Force re-render with current data (for filter toggles)
+   * Uses minimal debounce to coalesce rapid clicks
    */
   forceRender() {
-    this.render();
+    clearTimeout(this.renderDebounce);
+    this.renderDebounce = setTimeout(() => this.render(), 16); // ~1 frame
   }
   
   /**
    * Update positions with new data (e.g., from price updates)
+   * Uses debouncing to coalesce rapid consecutive updates and prevent flickering
    */
   updatePositions(newPositions) {
     if (Array.isArray(newPositions)) {
@@ -268,7 +316,11 @@ export class IncrementalPortfolioRenderer {
       }
       this.allPositions = newPositions;
     }
-    this.render();
+    
+    // Debounce renders to coalesce rapid consecutive updates (prevents flickering)
+    // Use shorter delay than appendPositions since these are price updates that should feel responsive
+    clearTimeout(this.renderDebounce);
+    this.renderDebounce = setTimeout(() => this.render(), 50);
   }
 
   /**
@@ -280,10 +332,8 @@ export class IncrementalPortfolioRenderer {
     const uniquePositions = new Map();
     for (const row of positions) {
       const key = row._changeDetectionKey || `${row.asset}_${row.exchange}`;
-      // Keep the first occurrence of each position
-      if (!uniquePositions.has(key)) {
-        uniquePositions.set(key, row);
-      }
+      // Keep the LAST occurrence of each position (newer data takes precedence)
+      uniquePositions.set(key, row);
     }
     
     const aggregated = [];
