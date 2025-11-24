@@ -1,11 +1,11 @@
 // Service Worker for Light Dashboard
 // Provides offline support, intelligent caching, and automatic updates
-const CACHE_VERSION = 'v2.5.4';
-const BUILD_TIMESTAMP = '2025-11-14T23:00:00Z';
+const CACHE_VERSION = 'v2.5.5';
+const BUILD_TIMESTAMP = '2025-11-24T12:00:00Z';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
-// Force clear all caches on install (disabled to prevent reload loops)
-const FORCE_CACHE_CLEAR = false;
+// Force clear all caches on install - enabled to ensure users get new versions
+const FORCE_CACHE_CLEAR = true;
 
 // Assets to cache immediately on install
 const STATIC_ASSETS = [
@@ -234,11 +234,12 @@ self.addEventListener('fetch', (event) => {
 // Message handler for cache control
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'CLEAR_CACHE') {
+    // Clear ALL caches completely - don't re-cache, let normal fetch handle it
     event.waitUntil(
-      caches.delete(CACHE_NAME).then(() => {
-        return caches.open(CACHE_NAME);
-      }).then((cache) => {
-        return cache.addAll(STATIC_ASSETS);
+      caches.keys().then((names) => {
+        return Promise.all(names.map(name => caches.delete(name)));
+      }).then(() => {
+        console.log('[SW] All caches cleared');
       })
     );
   }
@@ -266,6 +267,11 @@ self.addEventListener('message', (event) => {
 
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  
+  if (event.data && event.data.type === 'GET_VERSION') {
+    // Allow the app to check the SW version
+    event.ports[0].postMessage({ version: CACHE_VERSION, timestamp: BUILD_TIMESTAMP });
   }
 });
 

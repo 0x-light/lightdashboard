@@ -5,19 +5,33 @@ import * as Portfolio from './modules/domain/portfolio.js';
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.5.4';
+const APP_VERSION = '2.5.5';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
   const lastVersion = localStorage.getItem(FORCE_UPDATE_KEY);
 
   if (lastVersion && lastVersion !== APP_VERSION) {
-    console.log(`Version changed from ${lastVersion} to ${APP_VERSION}`);
+    console.log(`[Version] Changed from ${lastVersion} to ${APP_VERSION}, clearing caches`);
     localStorage.setItem(FORCE_UPDATE_KEY, APP_VERSION);
 
+    // Clear all caches to ensure fresh content
     if ('caches' in window) {
       caches.keys().then(names => {
-        names.forEach(name => caches.delete(name));
+        Promise.all(names.map(name => caches.delete(name))).then(() => {
+          console.log('[Version] Cleared caches:', names);
+        });
+      });
+    }
+    
+    // Force service worker to update
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(reg => {
+          reg.update().then(() => {
+            console.log('[Version] Service worker updated');
+          });
+        });
       });
     }
   }
@@ -30,6 +44,15 @@ function checkVersion() {
 }
 
 checkVersion();
+
+// Listen for service worker updates and auto-refresh
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // New service worker has taken control, reload to get fresh content
+    console.log('[SW] New service worker active, reloading...');
+    window.location.reload();
+  });
+}
 
 // ============================================================================
 // SHARED STATE & UTILS
@@ -1313,7 +1336,7 @@ function setupControls() {
     });
   }
 
-  // Force update button - clears all caches and reloads
+  // Force update button - clears all caches, unregisters SW, and hard reloads
   const forceUpdateBtn = document.getElementById('newForceUpdateBtn');
   if (forceUpdateBtn) {
     forceUpdateBtn.addEventListener('click', async () => {
@@ -1322,28 +1345,35 @@ function setupControls() {
       forceUpdateBtn.disabled = true;
 
       try {
-        // Clear all caches
+        // Step 1: Clear all browser caches
         if ('caches' in window) {
           const cacheNames = await caches.keys();
           await Promise.all(cacheNames.map(name => caches.delete(name)));
+          console.log('[Force Update] Cleared browser caches:', cacheNames);
         }
 
-        // Send message to service worker to clear its cache
+        // Step 2: Unregister ALL service workers (this is the key fix)
+        // This ensures no stale SW serves cached content
         if ('serviceWorker' in navigator) {
-          const registration = await navigator.serviceWorker.getRegistration();
-          if (registration?.active) {
-            registration.active.postMessage({ type: 'CLEAR_CACHE' });
-          }
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map(reg => reg.unregister()));
+          console.log('[Force Update] Unregistered service workers:', registrations.length);
         }
 
-        // Reset version to force reload on next visit
+        // Step 3: Clear localStorage version to force fresh state
         localStorage.removeItem(FORCE_UPDATE_KEY);
+        
+        // Step 4: Clear sessionStorage
+        sessionStorage.clear();
 
-        // Wait a moment for caches to clear
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Step 5: Wait for unregistration to complete
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-        // Hard reload (bypass cache)
-        window.location.reload(true);
+        // Step 6: Hard reload using cache-busting URL
+        // Adding a timestamp query param forces the browser to bypass any cached redirects
+        const url = new URL(window.location.href);
+        url.searchParams.set('_cb', Date.now().toString());
+        window.location.replace(url.toString());
       } catch (error) {
         console.error('[Force Update] Error:', error);
         forceUpdateBtn.textContent = '[ERROR - TRY AGAIN]';

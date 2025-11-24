@@ -30,12 +30,12 @@
   Pragma: no-cache
   Expires: 0
 
-# App files with version params - cache for 7 days
+# App files - short cache with revalidation to ensure updates are received
 /app.js
-  Cache-Control: public, max-age=604800, immutable
+  Cache-Control: public, max-age=300, must-revalidate
   
 /modules/*
-  Cache-Control: public, max-age=604800, immutable
+  Cache-Control: public, max-age=300, must-revalidate
 
 /styles.css
   Cache-Control: public, max-age=300, must-revalidate
