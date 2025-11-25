@@ -114,6 +114,19 @@ export class IncrementalPortfolioRenderer {
   }
 
   /**
+   * Remove positions matching a predicate
+   * @param {Function} predicate - Function that returns true for positions to remove
+   */
+  removePositions(predicate) {
+    if (typeof predicate !== 'function') return;
+    const before = this.allPositions.length;
+    this.allPositions = this.allPositions.filter(p => !predicate(p));
+    if (this.allPositions.length !== before) {
+      this.render();
+    }
+  }
+
+  /**
    * Append new positions and re-render immediately
    * When refreshing, removes old positions from the same source to prevent duplicates
    */
@@ -330,27 +343,6 @@ export class IncrementalPortfolioRenderer {
   }
 
   /**
-   * Update positions with new data (e.g., from price updates)
-   * Uses debouncing to coalesce rapid consecutive updates and prevent flickering
-   */
-  updatePositions(newPositions) {
-    if (Array.isArray(newPositions)) {
-      // CRITICAL: snapshot old data BEFORE replacing, so render() can detect changes
-      // (previousRenderData must contain the pre-update state)
-      // Don't overwrite if we don't have any previous data yet
-      if (this.allPositions && this.allPositions.length > 0) {
-        // Keep the previous snapshot (don't update it here - render() will update it AFTER comparing)
-      }
-      this.allPositions = newPositions;
-    }
-
-    // Debounce renders to coalesce rapid consecutive updates (prevents flickering)
-    // Use shorter delay than appendPositions since these are price updates that should feel responsive
-    clearTimeout(this.renderDebounce);
-    this.renderDebounce = setTimeout(() => this.render(), 50);
-  }
-
-  /**
    * Aggregate duplicate assets
    */
   aggregatePositions(positions) {
@@ -428,31 +420,32 @@ export class IncrementalPortfolioRenderer {
 
   /**
    * Calculate portfolio totals
+   * This must stay in sync with calculatePortfolioTotals in portfolio.js
    */
   calculateTotals(positions) {
     let totalValue = 0;
     let totalPnL = 0;
 
-    const hlEquity = positions.find(p => p.isHlAccountEquity);
-    const lighterEquity = positions.find(p => p.isLighterAccountEquity);
-
-    if (hlEquity) {
-      totalValue += (hlEquity.value || 0);
-      totalPnL += (hlEquity.pnl || 0);
-    }
-
-    if (lighterEquity) {
-      totalValue += (lighterEquity.value || 0);
-      totalPnL += (lighterEquity.pnl || 0);
-    }
-
+    // Sum ALL equity positions (there may be multiple per wallet)
     for (const p of positions) {
-      if (p.isHlAccountEquity || p.isLighterAccountEquity) continue;
-      if (p.exchange === 'Hyperliquid' || p.exchange === 'Hyperliquid Spot' || p.exchange === 'Lighter') continue;
-
-      totalValue += (p.value || 0);
-      if (p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl)) {
-        totalPnL += p.pnl;
+      if (p.isHlAccountEquity) {
+        totalValue += (p.value || 0);
+        totalPnL += (p.pnl || 0);
+      } else if (p.isLighterAccountEquity) {
+        totalValue += (p.value || 0);
+        totalPnL += (p.pnl || 0);
+      } else if (p.exchange === 'Hyperliquid' || p.exchange === 'Hyperliquid Spot' || p.exchange === 'Lighter') {
+        // Skip individual HL/Lighter positions (already counted in equity above)
+        continue;
+      } else {
+        // Add other positions (wallet balances, etc.)
+        const value = p.value || 0;
+        if (value > 0) {
+          totalValue += value;
+        }
+        if (p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl)) {
+          totalPnL += p.pnl;
+        }
       }
     }
 

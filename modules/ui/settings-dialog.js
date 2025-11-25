@@ -15,20 +15,21 @@ const FIELD_MAPPINGS = {
   newWeatherCity: { key: 'weather', subKey: 'label' },
   newWeatherLat: { key: 'weather', subKey: 'lat', type: 'float' },
   newWeatherLon: { key: 'weather', subKey: 'lon', type: 'float' },
-  
+
   // Wallets
   newWalletAddresses: 'walletAddresses',
   newSolanaAddresses: 'solanaAddresses',
   newBitcoinAddresses: 'bitcoinAddresses',
   newZcashAddresses: 'zcashAddresses',
-  
+
   // API Keys
   newZerionApiKey: 'zerionApiKey',
   newAlchemyApiKey: 'alchemyApiKey',
   newHeliusApiKey: 'heliusApiKey',
   newOpenSeaApiKey: 'openSeaApiKey',
-  
+
   // Display Options (checkboxes)
+  newFontSelect: 'font',
   newUseColoredPnL: { key: 'useColoredPnL', type: 'checkbox', default: true },
   newHideWatchlist: { key: 'hideWatchlist', type: 'checkbox', default: false },
   newHideComic: { key: 'hideComic', type: 'checkbox', default: false },
@@ -36,7 +37,7 @@ const FIELD_MAPPINGS = {
   newShowPriceChart: { key: 'showPriceChart', type: 'checkbox', default: true },
   newLeftAligned: { key: 'leftAligned', type: 'checkbox', default: true },
   newMinBalanceThreshold: { key: 'minBalanceThreshold', type: 'float', default: 100 },
-  
+
   // Menu visibility
   newHideSnowBtn: { key: 'hideSnowBtn', type: 'checkbox', default: false },
   newHideRainBtn: { key: 'hideRainBtn', type: 'checkbox', default: false },
@@ -66,7 +67,7 @@ function loadFormFromSettings(settings) {
   for (const [elementId, mapping] of Object.entries(FIELD_MAPPINGS)) {
     const el = document.getElementById(elementId);
     if (!el) continue;
-    
+
     let value;
     if (typeof mapping === 'string') {
       value = settings[mapping] || '';
@@ -75,7 +76,7 @@ function loadFormFromSettings(settings) {
     } else {
       value = settings[mapping.key] ?? mapping.default;
     }
-    
+
     if (mapping.type === 'checkbox') {
       el.checked = value;
     } else {
@@ -88,7 +89,7 @@ function saveFormToSettings(settings) {
   for (const [elementId, mapping] of Object.entries(FIELD_MAPPINGS)) {
     const el = document.getElementById(elementId);
     if (!el) continue;
-    
+
     let value;
     if (mapping.type === 'checkbox') {
       value = el.checked;
@@ -97,7 +98,7 @@ function saveFormToSettings(settings) {
     } else {
       value = el.value;
     }
-    
+
     if (typeof mapping === 'string') {
       settings[mapping] = value;
     } else if (mapping.subKey) {
@@ -107,7 +108,7 @@ function saveFormToSettings(settings) {
       settings[mapping.key] = value;
     }
   }
-  
+
   return settings;
 }
 
@@ -290,7 +291,7 @@ export function setupSettingsDialog({ onSave, onClose }) {
       // Normal save flow
       let settings = getSettings();
       settings = saveFormToSettings(settings);
-      
+
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
         invalidateSettingsCache();
@@ -318,6 +319,18 @@ export function applyVisibilityClasses(settings) {
   body.classList.toggle('no-charts', !(settings.showPriceChart ?? true));
 }
 
+export function applyFont(settings) {
+  const body = document.body;
+  body.classList.remove('font-commit', 'font-departure');
+
+  if (settings.font === 'commit') {
+    body.classList.add('font-commit');
+  } else if (settings.font === 'departure') {
+    body.classList.add('font-departure');
+  }
+  // Default (berkeley) has no class
+}
+
 export function applyAlignment(settings) {
   const container = document.querySelector('.container');
   if (container) {
@@ -325,6 +338,6 @@ export function applyAlignment(settings) {
   }
 }
 
-export default { setupSettingsDialog, getSettings, invalidateSettingsCache, applyVisibilityClasses, applyAlignment };
+export default { setupSettingsDialog, getSettings, invalidateSettingsCache, applyVisibilityClasses, applyAlignment, applyFont };
 
 

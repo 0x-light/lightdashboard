@@ -16,7 +16,27 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'CommitMono';
+  font-style: normal;
+  font-weight: 400;
+  src: url('./CommitMono-350-Regular.otf') format('opentype');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'DepartureMono';
+  font-style: normal;
+  font-weight: 400;
+  src: url('./DepartureMono-Regular.woff2') format('woff2'),
+    url('./DepartureMono-Regular.woff') format('woff');
+  font-display: swap;
+}
+
 :root {
+  /* Font Variables */
+  --font-main: 'Berkeley Mono', 'Courier New', monospace;
+
   /* Solarized Light - Zen palette */
   --bg: #fdf6e3;
   --bg-elev: #eee8d5;
@@ -132,7 +152,22 @@ html[data-theme="lcars"] {
 
 * {
   box-sizing: border-box;
-  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-family: var(--font-main) !important;
+}
+
+input,
+select,
+textarea,
+button {
+  font-family: var(--font-main) !important;
+}
+
+body.font-commit {
+  --font-main: 'CommitMono', monospace;
+}
+
+body.font-departure {
+  --font-main: 'DepartureMono', monospace;
 }
 
 /* ========================================
@@ -286,7 +321,7 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-family: var(--font-main) !important;
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;
@@ -361,7 +396,7 @@ h6 {
 .btn-text {
   background: transparent;
   border: none;
-  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-family: var(--font-main) !important;
   font-size: inherit;
   font-weight: 400;
   cursor: pointer;
@@ -378,7 +413,7 @@ h6 {
 .btn-text-accent {
   background: var(--accent);
   border: none;
-  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-family: var(--font-main) !important;
   font-size: inherit;
   font-weight: 400;
   cursor: pointer;
@@ -407,7 +442,7 @@ h6 {
 .btn-tab {
   background: transparent;
   border: none;
-  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-family: var(--font-main) !important;
   font-size: inherit;
   font-weight: 400;
   cursor: pointer;
@@ -448,7 +483,7 @@ h6 {
   cursor: pointer;
   font-weight: 400;
   font-size: inherit;
-  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-family: var(--font-main) !important;
 }
 
 .btn:hover {
@@ -523,7 +558,7 @@ h6 {
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-family: var(--font-main) !important;
 }
 
 .data-table thead {
@@ -767,7 +802,7 @@ body.hide-comic #newComicSection {
   padding: 0;
   color: var(--text);
   background: var(--bg);
-  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-family: var(--font-main) !important;
   overflow-x: hidden;
   box-sizing: border-box;
   position: fixed;
@@ -994,7 +1029,7 @@ button {
   color: var(--text);
   border: 1px solid var(--border);
   padding: 8px 10px;
-  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-family: var(--font-main) !important;
   font-size: inherit;
   max-width: 100%;
   box-sizing: border-box;
@@ -1402,16 +1437,13 @@ textarea::-moz-placeholder {
 
 .theme-select-label {
   pointer-events: none;
-  position: absolute;
-  top: 0;
-  left: 0;
   color: var(--muted);
   opacity: .6;
-  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-family: var(--font-main) !important;
   font-size: inherit;
   font-weight: 400;
+  line-height: 1.2;
   text-transform: uppercase;
-  padding: 6px 0;
   white-space: nowrap;
 }
 
@@ -1431,20 +1463,16 @@ textarea::-moz-placeholder {
   cursor: pointer;
   margin: 0;
   padding: 0;
-  font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+  font-family: var(--font-main) !important;
   font-size: inherit;
   font-weight: 400;
+  line-height: 1.2;
   text-transform: uppercase;
-  width: 4em;
-  margin-top: 1px;
-  display: inline-block;
-  vertical-align: middle;
-}
-
-#toggleThemeBtnMobile,
-.theme-select-label {
-  line-height: unset;
-  padding: 0 !important;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 }
 
 /* Remove dropdown arrow */

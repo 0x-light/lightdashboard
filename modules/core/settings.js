@@ -26,11 +26,11 @@ export function loadSettings() {
     if (s.hyperliquidAddress) s.hyperliquidAddress = simpleDecrypt(s.hyperliquidAddress);
     if (s.lighterAddress) s.lighterAddress = simpleDecrypt(s.lighterAddress);
     if (s.zerionApiKey) s.zerionApiKey = simpleDecrypt(s.zerionApiKey);
-    
+
     // Merge with defaults to ensure new settings are included
     const defaults = getDefaultSettings();
     const merged = { ...defaults, ...s };
-    
+
     return merged;
   } catch (_) {
     return null;
@@ -52,6 +52,7 @@ export function getDefaultSettings() {
     heliusApiKey: '',
     openSeaApiKey: '',
     zerionApiKey: '',
+    font: 'berkeley',
     fontSize: 15,
     comicStrip: 'calvinandhobbes',
     hideComic: false,

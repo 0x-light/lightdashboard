@@ -264,6 +264,14 @@
 
         <fieldset>
           <legend>Display Options</legend>
+          <label style="display: block; margin-bottom: 12px;">
+            Font
+            <select id="newFontSelect" class="settings-input" style="width: 100%; margin-top: 4px;">
+              <option value="berkeley">Berkeley Mono</option>
+              <option value="commit">Commit Mono</option>
+              <option value="departure">Departure Mono</option>
+            </select>
+          </label>
           <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
             <input id="newUseColoredPnL" type="checkbox" class="settings-input">
             Use colored P&L (green/red)
@@ -458,136 +466,136 @@
       <div class="help" style="margin-bottom: 0">Viewport is free for everyone, forever. If you'd like to support its
         development, you can contribute to the addresses below. Thank you for using Viewport &lt;3</div>
       <div style="display: flex; flex-direction: column; gap: 0;">
-            <div class="donate-address-row">
-              <div class="donate-label">Bitcoin</div>
-              <div class="donate-address">bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt</div>
-              <button class="btn-text copy-address-btn" data-address="bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt">[COPY
-                BITCOIN ADDRESS]</button>
-            </div>
-            <div class="donate-address-row">
-              <div class="donate-label">EVM</div>
-              <div class="donate-address">0x002cd0a71c10091d90A19eC98384FDe2923518F9</div>
-              <button class="btn-text copy-address-btn" data-address="0x002cd0a71c10091d90A19eC98384FDe2923518F9">[COPY
-                EVM ADDRESS]</button>
-            </div>
-            <div class="donate-address-row">
-              <div class="donate-label">ZCash</div>
-              <div class="donate-address">
-                u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h
-              </div>
-              <button class="btn-text copy-address-btn"
-                data-address="u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h">[COPY
-                ZCASH ADDRESS]</button>
-            </div>
-            <div class="donate-address-row">
-              <div class="donate-label">Solana</div>
-              <div class="donate-address">AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV</div>
-              <button class="btn-text copy-address-btn"
-                data-address="AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV">[COPY SOLANA ADDRESS]</button>
-            </div>
+        <div class="donate-address-row">
+          <div class="donate-label">Bitcoin</div>
+          <div class="donate-address">bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt</div>
+          <button class="btn-text copy-address-btn" data-address="bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt">[COPY
+            BITCOIN ADDRESS]</button>
+        </div>
+        <div class="donate-address-row">
+          <div class="donate-label">EVM</div>
+          <div class="donate-address">0x002cd0a71c10091d90A19eC98384FDe2923518F9</div>
+          <button class="btn-text copy-address-btn" data-address="0x002cd0a71c10091d90A19eC98384FDe2923518F9">[COPY
+            EVM ADDRESS]</button>
+        </div>
+        <div class="donate-address-row">
+          <div class="donate-label">ZCash</div>
+          <div class="donate-address">
+            u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h
           </div>
+          <button class="btn-text copy-address-btn"
+            data-address="u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h">[COPY
+            ZCASH ADDRESS]</button>
+        </div>
+        <div class="donate-address-row">
+          <div class="donate-label">Solana</div>
+          <div class="donate-address">AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV</div>
+          <button class="btn-text copy-address-btn" data-address="AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV">[COPY
+            SOLANA ADDRESS]</button>
+        </div>
       </div>
     </div>
+  </div>
 
-    <!-- Add Position Modal -->
-    <div id="newAddPositionBackdrop" class="settings-backdrop" style="display: none;"></div>
-    <div id="newAddPositionModal" class="sticker-window" style="display: none;">
-      <div class="sticker-window-header">
-        <span>ADD POSITION</span>
-        <button id="newCloseAddPositionBtn" class="btn-text">[CLOSE]</button>
-      </div>
-      <div class="sticker-window-content">
-        <div class="help" style="margin: 0 0 12px 0;">Add a manual position using a live price feed, or add a custom
-          asset.</div>
-
-        <!-- Type Selection -->
-        <div style="margin-bottom: 16px;">
-          <label style="display: block; margin-bottom: 8px;">Position Type</label>
-          <div class="button-row">
-            <button id="newAddPositionTypePyth" class="btn-tab active" style="flex: 1;">[LIVE PRICE]</button>
-            <button id="newAddPositionTypeCustom" class="btn-tab" style="flex: 1;">[CUSTOM ASSET]</button>
-          </div>
-        </div>
-
-        <!-- Pyth Oracle Section -->
-        <div id="newAddPositionPythSection">
-          <label style="display: block; margin-bottom: 8px;">Search Ticker</label>
-          <input type="text" id="newAddPositionPythSearch" class="settings-input" placeholder="Search for tickers..."
-            style="width: 100%; margin-bottom: 12px;">
-          <div id="newAddPositionPythResults"
-            style="max-height: 200px; overflow-y: auto; display: none; margin-bottom: 16px;">
-          </div>
-
-          <label style="display: block; margin-bottom: 8px;">Amount</label>
-          <input type="number" id="newAddPositionPythAmount" class="settings-input" placeholder="0.00"
-            style="width: 100%; margin-bottom: 16px;" step="any">
-
-          <label style="display: block; margin-bottom: 8px;">Entry Price (USD)</label>
-          <input type="number" id="newAddPositionPythEntryPrice" class="settings-input" placeholder="0.00"
-            style="width: 100%; margin-bottom: 16px;" step="any">
-        </div>
-
-        <!-- Custom Asset Section -->
-        <div id="newAddPositionCustomSection" style="display: none;">
-          <label style="display: block; margin-bottom: 8px;">Asset Name</label>
-          <input type="text" id="newAddPositionCustomName" class="settings-input"
-            placeholder="e.g., Gold bars, Real estate, etc." style="width: 100%; margin-bottom: 16px;">
-
-          <label style="display: block; margin-bottom: 8px;">Value (USD)</label>
-          <input type="number" id="newAddPositionCustomValue" class="settings-input" placeholder="5000"
-            style="width: 100%; margin-bottom: 16px;" step="any">
-        </div>
-
-        <button id="newSavePositionBtn" class="btn-text btn-primary">[SAVE POSITION]</button>
-      </div>
+  <!-- Add Position Modal -->
+  <div id="newAddPositionBackdrop" class="settings-backdrop" style="display: none;"></div>
+  <div id="newAddPositionModal" class="sticker-window" style="display: none;">
+    <div class="sticker-window-header">
+      <span>ADD POSITION</span>
+      <button id="newCloseAddPositionBtn" class="btn-text">[CLOSE]</button>
     </div>
+    <div class="sticker-window-content">
+      <div class="help" style="margin: 0 0 12px 0;">Add a manual position using a live price feed, or add a custom
+        asset.</div>
 
-    <script type="module" src="./modules/app-init.js?v=2.6.0" defer></script>
-    <script type="module" src="./app.js?v=2.6.0" defer></script>
+      <!-- Type Selection -->
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 8px;">Position Type</label>
+        <div class="button-row">
+          <button id="newAddPositionTypePyth" class="btn-tab active" style="flex: 1;">[LIVE PRICE]</button>
+          <button id="newAddPositionTypeCustom" class="btn-tab" style="flex: 1;">[CUSTOM ASSET]</button>
+        </div>
+      </div>
 
-    <!-- Service Worker Registration -->
-    <script defer>
-      const EXPECTED_VERSION = 'v2.5.4';
+      <!-- Pyth Oracle Section -->
+      <div id="newAddPositionPythSection">
+        <label style="display: block; margin-bottom: 8px;">Search Ticker</label>
+        <input type="text" id="newAddPositionPythSearch" class="settings-input" placeholder="Search for tickers..."
+          style="width: 100%; margin-bottom: 12px;">
+        <div id="newAddPositionPythResults"
+          style="max-height: 200px; overflow-y: auto; display: none; margin-bottom: 16px;">
+        </div>
 
-      if ('serviceWorker' in navigator) {
-        let refreshing = false;
+        <label style="display: block; margin-bottom: 8px;">Amount</label>
+        <input type="number" id="newAddPositionPythAmount" class="settings-input" placeholder="0.00"
+          style="width: 100%; margin-bottom: 16px;" step="any">
 
-        // Reload page when new service worker takes over
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-          if (!refreshing) {
-            refreshing = true;
-            window.location.reload();
-          }
-        });
+        <label style="display: block; margin-bottom: 8px;">Entry Price (USD)</label>
+        <input type="number" id="newAddPositionPythEntryPrice" class="settings-input" placeholder="0.00"
+          style="width: 100%; margin-bottom: 16px;" step="any">
+      </div>
 
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
-            .then((registration) => {
-              // Check for updates on page load
+      <!-- Custom Asset Section -->
+      <div id="newAddPositionCustomSection" style="display: none;">
+        <label style="display: block; margin-bottom: 8px;">Asset Name</label>
+        <input type="text" id="newAddPositionCustomName" class="settings-input"
+          placeholder="e.g., Gold bars, Real estate, etc." style="width: 100%; margin-bottom: 16px;">
+
+        <label style="display: block; margin-bottom: 8px;">Value (USD)</label>
+        <input type="number" id="newAddPositionCustomValue" class="settings-input" placeholder="5000"
+          style="width: 100%; margin-bottom: 16px;" step="any">
+      </div>
+
+      <button id="newSavePositionBtn" class="btn-text btn-primary">[SAVE POSITION]</button>
+    </div>
+  </div>
+
+  <script type="module" src="./modules/app-init.js?v=2.6.0" defer></script>
+  <script type="module" src="./app.js?v=2.6.0" defer></script>
+
+  <!-- Service Worker Registration -->
+  <script defer>
+    const EXPECTED_VERSION = 'v2.7.0';
+
+    if ('serviceWorker' in navigator) {
+      let refreshing = false;
+
+      // Reload page when new service worker takes over
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
+          .then((registration) => {
+            // Check for updates on page load
+            registration.update();
+
+            // Check for updates every 5 minutes
+            setInterval(() => {
               registration.update();
+            }, 300000);
 
-              // Check for updates every 5 minutes
-              setInterval(() => {
-                registration.update();
-              }, 300000);
-
-              // Listen for waiting service worker
-              registration.addEventListener('updatefound', () => {
-                const newWorker = registration.installing;
-                newWorker.addEventListener('statechange', () => {
-                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    // New service worker available, tell it to skip waiting
-                    newWorker.postMessage({ type: 'SKIP_WAITING' });
-                  }
-                });
+            // Listen for waiting service worker
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // New service worker available, tell it to skip waiting
+                  newWorker.postMessage({ type: 'SKIP_WAITING' });
+                }
               });
-            })
-            .catch((error) => {
-              console.warn('[SW] Registration failed:', error);
             });
-        });
-      }
-    </script>
+          })
+          .catch((error) => {
+            console.warn('[SW] Registration failed:', error);
+          });
+      });
+    }
+  </script>
 </body>
 
 </html>

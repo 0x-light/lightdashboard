@@ -178,39 +178,28 @@ export function calculatePortfolioTotals(positions) {
   let totalValue = 0;
   let totalPnL = 0;
 
-  // Check for account equity positions (Hyperliquid and Lighter)
-  const hlEquity = positions.find(p => p.isHlAccountEquity);
-  const lighterEquity = positions.find(p => p.isLighterAccountEquity);
-
-  // Add Hyperliquid total equity
-  if (hlEquity) {
-    totalValue += (hlEquity.value || 0);
-    totalPnL += (hlEquity.pnl || 0);
-  }
-
-  // Add Lighter total equity
-  if (lighterEquity) {
-    totalValue += (lighterEquity.value || 0);
-    totalPnL += (lighterEquity.pnl || 0);
-  }
-
-  // Add all wallet balances (skip synthetic equity positions and individual HL/Lighter positions)
+  // Sum ALL positions in a single pass (handles multiple wallets correctly)
   for (const p of positions) {
-    // Skip the synthetic equity positions
-    if (p.isHlAccountEquity || p.isLighterAccountEquity) continue;
-
-    // Skip individual Hyperliquid/Lighter positions (already counted in equity)
-    if (p.exchange === 'Hyperliquid' || p.exchange === 'Hyperliquid Spot' || p.exchange === 'Lighter') continue;
-
-    // Add wallet balance
-    const value = p.value || 0;
-    if (value > 0) {
-      totalValue += value;
-    }
-
-    // Add PnL if available
-    if (p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl)) {
-      totalPnL += p.pnl;
+    if (p.isHlAccountEquity) {
+      // Add Hyperliquid equity (may have multiple wallets)
+      totalValue += (p.value || 0);
+      totalPnL += (p.pnl || 0);
+    } else if (p.isLighterAccountEquity) {
+      // Add Lighter equity (may have multiple wallets)
+      totalValue += (p.value || 0);
+      totalPnL += (p.pnl || 0);
+    } else if (p.exchange === 'Hyperliquid' || p.exchange === 'Hyperliquid Spot' || p.exchange === 'Lighter') {
+      // Skip individual HL/Lighter positions (already counted in equity above)
+      continue;
+    } else {
+      // Add other positions (wallet balances, etc.)
+      const value = p.value || 0;
+      if (value > 0) {
+        totalValue += value;
+      }
+      if (p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl)) {
+        totalPnL += p.pnl;
+      }
     }
   }
 

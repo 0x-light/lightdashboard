@@ -14,12 +14,17 @@ export class HyperliquidFetcher {
             ]);
 
             const hlPriceMap = {};
+            const hlPrevDayPxMap = {};
+
             if (hlMarketData?.[0] && hlMarketData?.[1]) {
                 for (let i = 0; i < hlMarketData[1].length; i++) {
                     const ctx = hlMarketData[1][i];
                     const assetName = hlMarketData[0].universe[i]?.name;
                     if (assetName && ctx?.markPx) {
                         hlPriceMap[assetName] = parseFloat(ctx.markPx);
+                        if (ctx.prevDayPx) {
+                            hlPrevDayPxMap[assetName] = parseFloat(ctx.prevDayPx);
+                        }
                     }
                 }
             }
@@ -76,13 +81,20 @@ export class HyperliquidFetcher {
                                 const pnl = parseFloat(position?.unrealizedPnl || 0);
                                 totalHlPnL += pnl;
 
+                                // Calculate 24h change
+                                let change24h = null;
+                                const prevDayPx = hlPrevDayPxMap[position.coin];
+                                if (prevDayPx && prevDayPx > 0) {
+                                    change24h = ((currentPrice - prevDayPx) / prevDayPx) * 100;
+                                }
+
                                 rows.push({
                                     asset: position.coin,
                                     exchange: 'Hyperliquid',
                                     amount: szi,
                                     price: currentPrice,
                                     value: notionalValue,
-                                    change24h: null,
+                                    change24h,
                                     pnl,
                                     entryPrice,
                                     isLeveraged: true
@@ -111,7 +123,7 @@ export class HyperliquidFetcher {
                                     amount: available,
                                     price,
                                     value,
-                                    change24h: null,
+                                    change24h: null, // TODO: Fetch 24h change for spot
                                     pnl,
                                     entryNtl
                                 });
