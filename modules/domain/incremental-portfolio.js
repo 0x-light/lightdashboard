@@ -9,7 +9,7 @@ export class IncrementalPortfolioRenderer {
     this.settings = settings;
     this.containers = containers; // { positionsBody, mobileContainer, summaryEl }
     this.ui = ui; // { HeroUI, PositionsUI }
-    
+
     // Accumulated state - use cached positions if available to prevent flicker on refresh
     // This allows the UI to show existing data while fresh data is being fetched
     this.allPositions = initialPositions || window.cachedPositions || [];
@@ -24,15 +24,15 @@ export class IncrementalPortfolioRenderer {
     this.renderCount = 0; // Track render calls for performance monitoring
     this.isRendering = false; // Lock to prevent concurrent renders
     this.pendingRender = false; // Flag to schedule another render after current completes
-    
+
     // Store reference to renderer IMMEDIATELY for external re-renders
     window._portfolioRenderer = this;
-    
+
     // Only show loader if we don't have initial positions
     if (this.isLoading) {
       this.showGreetingLoader();
     }
-    
+
     // Safety timeout: force hide loader after 10 seconds no matter what
     this.safetyTimeout = setTimeout(() => {
       if (this.isLoading) {
@@ -40,36 +40,36 @@ export class IncrementalPortfolioRenderer {
         this.hideGreetingLoader();
       }
     }, 10000);
-    
+
     // If we have initial positions, render them immediately
     if (this.allPositions.length > 0) {
       this.render();
     }
   }
-  
+
   /**
    * Show mini loader in greeting while loading
    */
   showGreetingLoader() {
     const greeting = document.getElementById('newGreeting');
     if (!greeting) return;
-    
+
     // Check if a spinner already exists (prevent duplicates)
     if (document.getElementById('greetingLoader') || greeting.querySelector('span[style*="marginLeft"]')) {
       return;
     }
-    
+
     // ASCII spinner frames for smooth animation
     const frames = ['⢎⡰', '⢎⡡', '⢎⡑', '⢎⠱', '⠎⡱', '⢊⡱', '⢌⡱', '⢆⡱'];
     let currentFrame = 0;
-    
+
     // Create loader span
     const loader = document.createElement('span');
     loader.id = 'greetingLoader';
     loader.style.marginLeft = '8px';
     loader.style.color = 'var(--accent)';
     loader.textContent = frames[0];
-    
+
     // Animate the spinner
     this.spinnerInterval = setInterval(() => {
       currentFrame = (currentFrame + 1) % frames.length;
@@ -77,10 +77,10 @@ export class IncrementalPortfolioRenderer {
         loader.textContent = frames[currentFrame];
       }
     }, 100); // Update every 100ms for smooth rotation
-    
+
     greeting.appendChild(loader);
   }
-  
+
   /**
    * Hide loader in greeting
    */
@@ -89,12 +89,12 @@ export class IncrementalPortfolioRenderer {
       clearInterval(this.spinnerInterval);
       this.spinnerInterval = null;
     }
-    
+
     if (this.safetyTimeout) {
       clearTimeout(this.safetyTimeout);
       this.safetyTimeout = null;
     }
-    
+
     const loader = document.getElementById('greetingLoader');
     if (loader) {
       loader.remove();
@@ -103,19 +103,46 @@ export class IncrementalPortfolioRenderer {
   }
 
   /**
+   * Clear all positions and reset status (for hard refresh)
+   */
+  clearPositions() {
+    this.allPositions = [];
+    this.providerStatus.clear();
+    this.isLoading = true;
+    this.showGreetingLoader();
+    this.render(); // Clear UI immediately
+  }
+
+  /**
    * Append new positions and re-render immediately
    * When refreshing, removes old positions from the same source to prevent duplicates
    */
-  appendPositions(newRows, source) {
+  appendPositions(newRows, source, options = {}) {
     if (!Array.isArray(newRows) || newRows.length === 0) {
       this.providerStatus.set(source, 'completed');
       this.checkIfAllProvidersFinished();
       return;
     }
-    
-    // If this source already reported data, remove old positions from same source first
-    // This prevents accumulating duplicates when refreshing
-    if (this.providerStatus.has(source)) {
+
+    // If a removeFilter is provided, use it to remove specific old positions
+    // This is useful for refreshing specific wallets/providers without clearing everything
+    if (options.removeFilter && typeof options.removeFilter === 'function') {
+      try {
+        this.allPositions = this.allPositions.filter(p => {
+          try {
+            return !options.removeFilter(p);
+          } catch (e) {
+            console.warn('[Portfolio] removeFilter error:', e);
+            return true; // Keep position if filter fails
+          }
+        });
+      } catch (e) {
+        console.error('[Portfolio] Failed to apply removeFilter:', e);
+      }
+    }
+    // Fallback: If this source already reported data, remove old positions from same source
+    // This prevents accumulating duplicates when refreshing if no filter is provided
+    else if (this.providerStatus.has(source)) {
       // Build a set of keys from new rows for efficient lookup
       const newKeys = new Set(newRows.map(r => r._changeDetectionKey || `${r.asset}_${r.exchange}`));
       // Filter out positions that will be replaced by new ones
@@ -124,13 +151,13 @@ export class IncrementalPortfolioRenderer {
         return !newKeys.has(key);
       });
     }
-    
+
     this.allPositions.push(...newRows);
     this.providerStatus.set(source, 'completed');
-    
+
     // Check if all providers finished
     this.checkIfAllProvidersFinished();
-    
+
     // Intelligent debouncing: longer delay at start, shorter once data is flowing
     const debounceDelay = this.renderCount === 0 ? 50 : 250;
     clearTimeout(this.renderDebounce);
@@ -145,13 +172,13 @@ export class IncrementalPortfolioRenderer {
     this.providerStatus.set(source, 'failed');
     this.checkIfAllProvidersFinished();
   }
-  
+
   /**
    * Check if all expected providers have finished (completed or failed)
    */
   checkIfAllProvidersFinished() {
     if (!this.isLoading) return;
-    
+
     // If no expected providers specified, hide after first data
     if (this.expectedProviders.length === 0) {
       if (this.allPositions.length > 0) {
@@ -159,11 +186,11 @@ export class IncrementalPortfolioRenderer {
       }
       return;
     }
-    
+
     // Check if all expected providers have reported in
     const finished = [];
     const pending = [];
-    
+
     for (const provider of this.expectedProviders) {
       if (this.providerStatus.has(provider)) {
         finished.push(provider);
@@ -171,9 +198,9 @@ export class IncrementalPortfolioRenderer {
         pending.push(provider);
       }
     }
-    
+
     const allFinished = pending.length === 0;
-    
+
     if (allFinished) {
       this.hideGreetingLoader();
     }
@@ -189,12 +216,12 @@ export class IncrementalPortfolioRenderer {
       this.pendingRender = true;
       return;
     }
-    
+
     this.isRendering = true;
     this.renderCount++;
     const { PositionsUI, HeroUI } = this.ui;
     const { positionsBody, mobileContainer, summaryEl } = this.containers;
-    
+
     if (this.allPositions.length === 0) {
       if (positionsBody) {
         positionsBody.innerHTML = '<tr><td colspan="8" class="loading">Fetching positions...</td></tr>';
@@ -209,32 +236,32 @@ export class IncrementalPortfolioRenderer {
     // Aggregate and sort positions
     const aggregated = this.aggregatePositions(this.allPositions);
     const sorted = aggregated.sort((a, b) => (b.value || 0) - (a.value || 0));
-    
+
     // Calculate portfolio totals
     const { totalValue, totalPnL, totalPnLPercent } = this.calculateTotals(sorted);
-    
+
     // Filter for display (hide special positions + apply small balance filter)
     const hideSmallPositions = window.hideSmallPositions ?? true;
     const minThreshold = this.settings.minBalanceThreshold || 100;
     const hiddenAssets = window.hiddenAssets || new Set();
-    
+
     const visible = sorted.filter(p => {
       // Hide special tracking positions
       if (p.isHlAccountEquity || p.isLighterAccountEquity) return false;
-      
+
       // Hide manually hidden assets
       const assetKey = `${p.asset}_${p.exchange}`;
       if (hiddenAssets.has(assetKey)) return false;
-      
+
       // Apply small balance filter if enabled
       if (hideSmallPositions) {
         const value = p.value || 0;
         if (value < minThreshold) return false;
       }
-      
+
       return true;
     });
-    
+
     // Render positions table
     if (PositionsUI && positionsBody) {
       const rendered = PositionsUI.renderPositions({
@@ -257,7 +284,7 @@ export class IncrementalPortfolioRenderer {
       this.previousRenderData = rendered;
       window._previousRenderData = rendered;
     }
-    
+
     // Render hero
     if (HeroUI && summaryEl) {
       const heroHtml = HeroUI.composeSummary({
@@ -274,17 +301,17 @@ export class IncrementalPortfolioRenderer {
       });
       summaryEl.innerHTML = heroHtml;
     }
-    
+
     // Store in global cache for other functions
     window.cachedPositions = sorted;
     window.cachedSummaryData = { totalValue, totalPnL, totalPnLPercent };
-    
+
     // Store reference to renderer for external re-renders
     window._portfolioRenderer = this;
-    
+
     // Release render lock
     this.isRendering = false;
-    
+
     // If another render was requested while we were rendering, do it now
     if (this.pendingRender) {
       this.pendingRender = false;
@@ -292,7 +319,7 @@ export class IncrementalPortfolioRenderer {
       requestAnimationFrame(() => this.render());
     }
   }
-  
+
   /**
    * Force re-render with current data (for filter toggles)
    * Uses minimal debounce to coalesce rapid clicks
@@ -301,7 +328,7 @@ export class IncrementalPortfolioRenderer {
     clearTimeout(this.renderDebounce);
     this.renderDebounce = setTimeout(() => this.render(), 16); // ~1 frame
   }
-  
+
   /**
    * Update positions with new data (e.g., from price updates)
    * Uses debouncing to coalesce rapid consecutive updates and prevent flickering
@@ -316,7 +343,7 @@ export class IncrementalPortfolioRenderer {
       }
       this.allPositions = newPositions;
     }
-    
+
     // Debounce renders to coalesce rapid consecutive updates (prevents flickering)
     // Use shorter delay than appendPositions since these are price updates that should feel responsive
     clearTimeout(this.renderDebounce);
@@ -335,23 +362,23 @@ export class IncrementalPortfolioRenderer {
       // Keep the LAST occurrence of each position (newer data takes precedence)
       uniquePositions.set(key, row);
     }
-    
+
     const aggregated = [];
     const assetGroups = new Map();
-    
+
     for (const row of uniquePositions.values()) {
       // Keep special positions separate
       if (row.isLeveraged || row.isHlAccountEquity || row.isLighterAccountEquity) {
         aggregated.push(row);
         continue;
       }
-      
+
       // Keep Hyperliquid separate
       if (row.exchange === 'Hyperliquid' || row.exchange === 'Hyperliquid Spot') {
         aggregated.push(row);
         continue;
       }
-      
+
       // Group by asset
       const key = row.asset;
       if (!assetGroups.has(key)) {
@@ -359,7 +386,7 @@ export class IncrementalPortfolioRenderer {
       }
       assetGroups.get(key).push(row);
     }
-    
+
     // Combine grouped positions
     for (const [asset, items] of assetGroups) {
       if (items.length === 1) {
@@ -370,17 +397,17 @@ export class IncrementalPortfolioRenderer {
         const totalPnL = items.reduce((sum, p) => sum + (p.pnl || 0), 0);
         const weightedPrice = totalAmount !== 0 ? totalValue / Math.abs(totalAmount) : 0;
         const exchanges = [...new Set(items.map(p => p.exchange))];
-        
+
         // Use the first non-null change24h value from any of the items
         const change24h = items.find(p => p.change24h !== null && p.change24h !== undefined)?.change24h || null;
-        
+
         // Get priceHistory from first item that has it
         const priceHistory = items.find(p => p.priceHistory)?.priceHistory || null;
-        
+
         // Use consistent exchange name for aggregated positions (for change detection)
         // If multiple exchanges, use the asset name itself as the exchange for stable keying
         const exchangeKey = exchanges.length > 1 ? asset : exchanges[0];
-        
+
         aggregated.push({
           asset,
           exchange: exchanges.length > 1 ? 'Multiple' : exchanges[0],
@@ -395,7 +422,7 @@ export class IncrementalPortfolioRenderer {
         });
       }
     }
-    
+
     return aggregated;
   }
 
@@ -405,33 +432,33 @@ export class IncrementalPortfolioRenderer {
   calculateTotals(positions) {
     let totalValue = 0;
     let totalPnL = 0;
-    
+
     const hlEquity = positions.find(p => p.isHlAccountEquity);
     const lighterEquity = positions.find(p => p.isLighterAccountEquity);
-    
+
     if (hlEquity) {
       totalValue += (hlEquity.value || 0);
       totalPnL += (hlEquity.pnl || 0);
     }
-    
+
     if (lighterEquity) {
       totalValue += (lighterEquity.value || 0);
       totalPnL += (lighterEquity.pnl || 0);
     }
-    
+
     for (const p of positions) {
       if (p.isHlAccountEquity || p.isLighterAccountEquity) continue;
       if (p.exchange === 'Hyperliquid' || p.exchange === 'Hyperliquid Spot' || p.exchange === 'Lighter') continue;
-      
+
       totalValue += (p.value || 0);
       if (p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl)) {
         totalPnL += p.pnl;
       }
     }
-    
+
     const costBasis = totalValue - totalPnL;
     const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
-    
+
     return { totalValue, totalPnL, totalPnLPercent };
   }
 }

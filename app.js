@@ -20,7 +20,7 @@ function checkVersion() {
         Promise.all(names.map(name => caches.delete(name)));
       });
     }
-    
+
     // Force service worker to update
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(registrations => {
@@ -323,507 +323,54 @@ async function _doRenderPortfolioIncremental() {
     }
   })();
 
-  const renderer = new IncrementalPortfolioRenderer({
-    providers,
-    settings,
-    containers: {
-      positionsBody: document.getElementById('newPositionsBody'),
-      mobileContainer: document.getElementById('newMobilePositionsContainer'),
-      summaryEl: document.getElementById('newSummary')
-    },
-    ui: { HeroUI, PositionsUI },
-    expectedProviders
-  });
+  // Initialize Portfolio Manager and Fetchers (Singleton pattern)
+  if (!window._portfolioManager) {
+    const { PortfolioManager } = await import('./modules/domain/portfolio-manager.js');
+    const { HyperliquidFetcher } = await import('./modules/data/fetchers/hyperliquid-fetcher.js');
+    const { LighterFetcher } = await import('./modules/data/fetchers/lighter-fetcher.js');
+    const { ZerionFetcher } = await import('./modules/data/fetchers/zerion-fetcher.js');
+    const { AlchemyHeliusFetcher } = await import('./modules/data/fetchers/alchemy-helius-fetcher.js');
+    const { BitcoinZcashFetcher } = await import('./modules/data/fetchers/bitcoin-fetcher.js');
+    const { ManualFetcher } = await import('./modules/data/fetchers/manual-fetcher.js');
 
-  // Launch all providers concurrently (non-blocking)
-  // Each will call renderer.appendPositions() when done
+    const renderer = new IncrementalPortfolioRenderer({
+      providers,
+      settings,
+      containers: {
+        positionsBody: document.getElementById('newPositionsBody'),
+        mobileContainer: document.getElementById('newMobilePositionsContainer'),
+        summaryEl: document.getElementById('newSummary')
+      },
+      ui: { HeroUI, PositionsUI },
+      expectedProviders
+    });
 
-  // 1. Hyperliquid (fastest, ~500ms)
-  if (wallets.length > 0) {
-    (async () => {
-      try {
-        const [hlMarketData, hlAllMids, hlSpotMeta] = await Promise.all([
-          providers.hyperliquid.fetchMetaAndAssetCtxs(3000),
-          providers.hyperliquid.fetchAllMids(3000),
-          providers.hyperliquid.fetchSpotMeta(3000)
-        ]);
+    // Make renderer globally available for updates
+    window._portfolioRenderer = renderer;
 
-        const hlPriceMap = {};
-        if (hlMarketData?.[0] && hlMarketData?.[1]) {
-          for (let i = 0; i < hlMarketData[1].length; i++) {
-            const ctx = hlMarketData[1][i];
-            const assetName = hlMarketData[0].universe[i]?.name;
-            if (assetName && ctx?.markPx) {
-              hlPriceMap[assetName] = parseFloat(ctx.markPx);
-            }
-          }
-        }
+    const manager = new PortfolioManager(renderer, providers, settings);
+    manager.registerFetcher('Hyperliquid', new HyperliquidFetcher(providers, renderer));
+    manager.registerFetcher('Lighter', new LighterFetcher(providers, renderer));
+    manager.registerFetcher('Zerion', new ZerionFetcher(providers, renderer, settings));
+    manager.registerFetcher('AlchemyHelius', new AlchemyHeliusFetcher(providers, renderer, settings));
+    manager.registerFetcher('BitcoinZcash', new BitcoinZcashFetcher(providers, renderer));
+    manager.registerFetcher('Manual', new ManualFetcher(providers, renderer));
 
-        // Also include allMids directly for HIP-3 and other assets not in metaAndAssetCtxs
-        if (hlAllMids) {
-          for (const [key, value] of Object.entries(hlAllMids)) {
-            if (value && !key.startsWith('@')) { // Skip spot market keys (those start with @)
-              hlPriceMap[key] = parseFloat(value);
-            }
-          }
-        }
-
-        for (const wallet of wallets) {
-          const data = await providers.hyperliquid.fetchPositions(wallet, 3000);
-          const rows = [];
-
-          let perpEquity = 0;
-          if (data?.perp?.marginSummary) {
-            perpEquity = parseFloat(data.perp.marginSummary.accountValue || 0);
-          }
-
-          const spotPriceMap = providers.hyperliquid.buildSpotPriceMap(hlAllMids, hlSpotMeta);
-          let spotEquity = 0;
-          if (data?.spot?.balances) {
-            for (const bal of data.spot.balances) {
-              const total = parseFloat(bal.total || 0);
-              if (total > 0) {
-                const price = parseFloat(spotPriceMap[bal.coin] || 0);
-                spotEquity += total * price;
-              }
-            }
-          }
-
-          const hlAccountEquity = perpEquity + spotEquity;
-          let totalHlPnL = 0;
-
-          if (data?.perp?.assetPositions) {
-            for (const pos of data.perp.assetPositions) {
-              const position = pos.position;
-              const szi = parseFloat(position?.szi || 0);
-              if (Math.abs(szi) > 0) {
-                const entryPrice = parseFloat(position?.entryPx || 0);
-                const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
-
-                // For positions, calculate current price from position value / size
-                // This works for all markets including HIP-3 (xyz:PLTR etc)
-                let currentPrice = notionalValue / Math.abs(szi);
-
-                // Fallback to price map or entry price if calculation fails
-                if (!currentPrice || isNaN(currentPrice)) {
-                  currentPrice = hlPriceMap[position.coin] || entryPrice;
-                }
-
-                const pnl = parseFloat(position?.unrealizedPnl || 0);
-                totalHlPnL += pnl;
-
-                rows.push({
-                  asset: position.coin,
-                  exchange: 'Hyperliquid',
-                  amount: szi,
-                  price: currentPrice,
-                  value: notionalValue,
-                  change24h: null,
-                  pnl,
-                  entryPrice,
-                  isLeveraged: true
-                });
-              }
-            }
-          }
-
-          if (data?.spot?.balances) {
-            for (const bal of data.spot.balances) {
-              const available = parseFloat(bal.total || 0) - parseFloat(bal.hold || 0);
-              if (available > 0) {
-                const price = parseFloat(spotPriceMap[bal.coin] || 0);
-                const value = available * price;
-                const entryNtl = parseFloat(bal.entryNtl || 0);
-                const pnl = (entryNtl > 0 && value > 0) ? (value - entryNtl) : null;
-
-                // Add spot position PnL to total
-                if (pnl !== null && !isNaN(pnl)) {
-                  totalHlPnL += pnl;
-                }
-
-                rows.push({
-                  asset: bal.coin,
-                  exchange: 'Hyperliquid Spot',
-                  amount: available,
-                  price,
-                  value,
-                  change24h: null,
-                  pnl,
-                  entryNtl
-                });
-              }
-            }
-          }
-
-          if (hlAccountEquity > 0) {
-            rows.push({
-              asset: 'HL_ACCOUNT_EQUITY',
-              exchange: 'Hyperliquid',
-              amount: 1,
-              price: hlAccountEquity,
-              value: hlAccountEquity,
-              pnl: totalHlPnL,
-              isHlAccountEquity: true,
-              isLeveraged: false
-            });
-          }
-
-          // Enrich positions with 24h change data from CoinGecko
-          const uniqueAssets = [...new Set(rows.filter(r => !r.isHlAccountEquity).map(r => r.asset))];
-          const coingeckoIds = uniqueAssets.map(asset => getCoingeckoId(asset)).filter(id => id !== null);
-
-          if (coingeckoIds.length > 0) {
-            try {
-              const cgData = await providers.coingecko.getSimplePrice(coingeckoIds.join(','), { timeoutMs: 3000, ttlMs: 60000 });
-              if (cgData) {
-                // Create a reverse mapping from CoinGecko ID to asset symbol
-                const idToAsset = {};
-                for (const asset of uniqueAssets) {
-                  const cgId = getCoingeckoId(asset);
-                  if (cgId) idToAsset[cgId] = asset;
-                }
-
-                // Enrich each row with 24h change
-                for (const row of rows) {
-                  if (!row.isHlAccountEquity) {
-                    const cgId = getCoingeckoId(row.asset);
-                    if (cgId && cgData[cgId]) {
-                      row.change24h = cgData[cgId].usd_24h_change || null;
-                    }
-                  }
-                }
-              }
-            } catch (e) {
-              // Continue without 24h change data if CoinGecko fails
-            }
-          }
-
-          renderer.appendPositions(rows, 'Hyperliquid');
-        }
-      } catch (e) {
-        renderer.markProviderFailed('Hyperliquid', e);
-      }
-    })();
+    window._portfolioManager = manager;
+  } else {
+    // Update settings if needed
+    window._portfolioManager.settings = settings;
+    window._portfolioManager.renderer.settings = settings;
+    window._portfolioManager.renderer.expectedProviders = expectedProviders;
   }
 
-  // 2. Lighter (fast, ~500ms)
-  if (wallets.length > 0) {
-    (async () => {
-      try {
-        const rows = [];
-        for (const wallet of wallets) {
-          try {
-            const data = await providers.lighter.fetchAccountByAddress(wallet, { timeoutMs: 3000 });
-            if (data?.accounts?.[0]) {
-              const account = data.accounts[0];
-              const equity = parseFloat(account.equity_usd || account.total_equity || account.equity || 0);
-              const pnl = parseFloat(account.unrealized_pnl || account.pnl || 0);
+  // Trigger Fetch
+  window._portfolioManager.fetchAll(wallets, solanaAddrs, bitcoinAddrs, zcashAddrs);
 
-              if (equity > 0) {
-                rows.push({
-                  asset: 'LIGHTER_ACCOUNT_EQUITY',
-                  exchange: 'Lighter',
-                  amount: 1,
-                  price: equity,
-                  value: equity,
-                  pnl,
-                  isLighterAccountEquity: true,
-                  isLeveraged: false
-                });
-              }
-            }
-          } catch (walletError) {
-            console.warn(`[Lighter] Error for wallet ${wallet}:`, walletError.message);
-          }
-        }
 
-        // Report completion even if no positions found
-        renderer.appendPositions(rows, 'Lighter');
-      } catch (e) {
-        renderer.markProviderFailed('Lighter', e);
-      }
-    })();
-  }
-
-  // 3. Zerion (multichain, ~2-3s)
-  if (settings.zerionApiKey && wallets.length > 0) {
-    (async () => {
-      try {
-        const positionsData = await providers.zerion.getWalletPositions(wallets[0], settings.zerionApiKey, { timeoutMs: 5000 });
-        const chainMap = {
-          'ethereum': 'Ethereum', 'arbitrum': 'Arbitrum', 'optimism': 'Optimism',
-          'polygon': 'Polygon', 'base': 'Base', 'avalanche': 'Avalanche',
-          'bsc': 'BSC', 'solana': 'Solana', 'zksync-era': 'zkSync',
-          'blast': 'Blast', 'hyperevm': 'HyperEVM'
-        };
-
-        const rows = [];
-        if (positionsData?.data) {
-          for (const item of positionsData.data) {
-            const attr = item?.attributes || {};
-            const fungible = attr.fungible_info;
-            if (fungible && !attr.flags?.is_trash) {
-              const chainId = item?.relationships?.chain?.data?.id || 'unknown';
-              const chain = chainMap[chainId] || chainId;
-              rows.push({
-                asset: fungible.symbol || 'Unknown',
-                exchange: chain,
-                amount: attr.quantity?.float || 0,
-                price: attr.price || 0,
-                value: attr.value || 0,
-                change24h: attr.changes?.percent_24h ?? null,
-                pnl: null
-              });
-            }
-          }
-        }
-
-        // Enrich positions missing 24h change data with CoinGecko
-        const missingChange24h = rows.filter(r => r.change24h === null);
-        if (missingChange24h.length > 0) {
-          const uniqueAssets = [...new Set(missingChange24h.map(r => r.asset))];
-          const coingeckoIds = uniqueAssets.map(asset => getCoingeckoId(asset)).filter(id => id !== null);
-
-          if (coingeckoIds.length > 0) {
-            try {
-              const cgData = await providers.coingecko.getSimplePrice(coingeckoIds.join(','), { timeoutMs: 3000, ttlMs: 60000 });
-              if (cgData) {
-                // Enrich rows that are missing change24h
-                for (const row of rows) {
-                  if (row.change24h === null) {
-                    const cgId = getCoingeckoId(row.asset);
-                    if (cgId && cgData[cgId]) {
-                      row.change24h = cgData[cgId].usd_24h_change || null;
-                    }
-                  }
-                }
-              }
-            } catch (e) {
-              // Continue without 24h change data if CoinGecko fails
-            }
-          }
-        }
-
-        renderer.appendPositions(rows, 'Zerion');
-      } catch (e) {
-        renderer.markProviderFailed('Zerion', e);
-        // Fallback to Alchemy/Helius if Zerion fails
-        if (settings.alchemyApiKey || settings.heliusApiKey) {
-          (async () => {
-            try {
-              const [alchemyTokens, heliusTokens] = await Promise.all([
-                settings.alchemyApiKey && wallets.length > 0
-                  ? providers.alchemy.getTokenBalances(wallets, settings.alchemyApiKey, { timeoutMs: 5000 })
-                  : Promise.resolve([]),
-                settings.heliusApiKey && solanaAddrs.length > 0
-                  ? providers.helius.getTokenBalances(solanaAddrs, settings.heliusApiKey, { timeoutMs: 5000 })
-                  : Promise.resolve([])
-              ]);
-
-              const rows = [];
-              for (const token of alchemyTokens) {
-                rows.push({
-                  asset: token.tokenSymbol,
-                  exchange: token.blockchain,
-                  amount: token.balance,
-                  price: token.tokenPrice || 0,
-                  value: token.balanceUsd || 0,
-                  change24h: null,
-                  pnl: null
-                });
-              }
-              for (const token of heliusTokens) {
-                rows.push({
-                  asset: token.tokenSymbol,
-                  exchange: token.blockchain,
-                  amount: token.balance,
-                  price: token.tokenPrice || 0,
-                  value: token.balanceUsd || 0,
-                  change24h: null,
-                  pnl: null
-                });
-              }
-
-              // Calculate PnL for wallet assets using entry price tracking utility
-              const entryPriceTracker = window.AppModules?.utils?.entryPriceTracker;
-              if (entryPriceTracker) {
-                const result = entryPriceTracker.calculatePositionsPnL(rows);
-                rows = result.positions;
-              }
-
-              // Enrich positions with 24h change data from CoinGecko
-              const uniqueAssets = [...new Set(rows.map(r => r.asset))];
-              const coingeckoIds = uniqueAssets.map(asset => getCoingeckoId(asset)).filter(id => id !== null);
-
-              if (coingeckoIds.length > 0) {
-                try {
-                  const cgData = await providers.coingecko.getSimplePrice(coingeckoIds.join(','), { timeoutMs: 3000, ttlMs: 60000 });
-                  if (cgData) {
-                    // Enrich each row with 24h change
-                    for (const row of rows) {
-                      const cgId = getCoingeckoId(row.asset);
-                      if (cgId && cgData[cgId]) {
-                        row.change24h = cgData[cgId].usd_24h_change || null;
-                      }
-                    }
-                  }
-                } catch (e) {
-                  // Continue without 24h change data if CoinGecko fails
-                }
-              }
-
-              renderer.appendPositions(rows, 'Alchemy/Helius');
-            } catch (e2) {
-              renderer.markProviderFailed('Alchemy/Helius', e2);
-            }
-          })();
-        }
-      }
-    })();
-  }
-
-  // 4. Bitcoin + Zcash (slow, ~3-5s)
-  if (bitcoinAddrs.length > 0 || zcashAddrs.length > 0) {
-    (async () => {
-      try {
-        const [btcTokens, zcashTokens, cryptoPrices] = await Promise.all([
-          bitcoinAddrs.length > 0 ? providers.bitcoin.getTokenBalances(bitcoinAddrs, { timeoutMs: 5000 }) : [],
-          zcashAddrs.length > 0 ? providers.zcash.getTokenBalances(zcashAddrs, { timeoutMs: 5000 }) : [],
-          providers.coingecko.getSimplePrice('bitcoin,zcash', { timeoutMs: 5000, ttlMs: 60000 })
-        ]);
-
-        const rows = [];
-        const btcPrice = cryptoPrices?.bitcoin?.usd || 0;
-        const zecPrice = cryptoPrices?.zcash?.usd || 0;
-
-        for (const btc of btcTokens) {
-          rows.push({
-            asset: 'BTC',
-            exchange: 'Bitcoin',
-            amount: btc.balance,
-            price: btcPrice,
-            value: btc.balance * btcPrice,
-            change24h: cryptoPrices?.bitcoin?.usd_24h_change,
-            pnl: null
-          });
-        }
-
-        for (const zec of zcashTokens) {
-          rows.push({
-            asset: 'ZEC',
-            exchange: 'Zcash',
-            amount: zec.balance,
-            price: zecPrice,
-            value: zec.balance * zecPrice,
-            change24h: cryptoPrices?.zcash?.usd_24h_change,
-            pnl: null
-          });
-        }
-
-        // Calculate PnL for BTC/ZEC wallet assets using entry price tracking utility
-        const entryPriceTracker = window.AppModules?.utils?.entryPriceTracker;
-        if (entryPriceTracker) {
-          const result = entryPriceTracker.calculatePositionsPnL(rows);
-          rows = result.positions;
-        }
-
-        renderer.appendPositions(rows, 'Bitcoin/Zcash');
-      } catch (e) {
-        renderer.markProviderFailed('Bitcoin/Zcash', e);
-      }
-    })();
-  }
-
-  // 5. Manual positions from settings (cryptoPositions)
-  if (settings.cryptoPositions && Array.isArray(settings.cryptoPositions) && settings.cryptoPositions.length > 0) {
-    (async () => {
-      try {
-        const rows = [];
-        const pythPositions = settings.cryptoPositions.filter(p => p.type === 'pyth');
-        const customPositions = settings.cryptoPositions.filter(p => p.type === 'custom');
-
-        // Fetch prices for Pyth positions
-        if (pythPositions.length > 0) {
-          const feedIds = pythPositions.map(p => p.feedId).filter(Boolean);
-          if (feedIds.length > 0) {
-            try {
-              const pythPrices = await providers.pyth.getLatestByFeedIds(feedIds, 5000);
-
-              for (const pos of pythPositions) {
-                const currentPrice = pythPrices[pos.feedId] || 0;
-                const amount = parseFloat(pos.amount || 0);
-                const entryPrice = parseFloat(pos.entryPrice || 0);
-                const value = amount * currentPrice;
-                const pnl = amount > 0 && entryPrice > 0 ? (amount * (currentPrice - entryPrice)) : null;
-
-                rows.push({
-                  asset: pos.symbol,
-                  exchange: 'Manual',
-                  amount: amount,
-                  price: currentPrice,
-                  value: value,
-                  change24h: null,
-                  pnl: pnl,
-                  entryPrice: entryPrice,
-                  isManual: true,
-                  manualType: 'pyth'
-                });
-              }
-            } catch (e) {
-              console.warn('[Portfolio] Failed to fetch Pyth prices for manual positions:', e);
-            }
-          }
-        }
-
-        // Add custom positions (no price fetch needed)
-        for (const pos of customPositions) {
-          const value = parseFloat(pos.value || 0);
-          rows.push({
-            asset: pos.name,
-            exchange: 'Manual',
-            amount: 1,
-            price: value,
-            value: value,
-            change24h: null,
-            pnl: null,
-            isManual: true,
-            manualType: 'custom'
-          });
-        }
-
-        // Enrich Pyth positions with 24h change data from CoinGecko
-        if (pythPositions.length > 0) {
-          const uniqueAssets = [...new Set(pythPositions.map(p => p.symbol))];
-          const coingeckoIds = uniqueAssets.map(asset => getCoingeckoId(asset)).filter(id => id !== null);
-
-          if (coingeckoIds.length > 0) {
-            try {
-              const cgData = await providers.coingecko.getSimplePrice(coingeckoIds.join(','), { timeoutMs: 3000, ttlMs: 60000 });
-              if (cgData) {
-                for (const row of rows) {
-                  if (row.manualType === 'pyth') {
-                    const cgId = getCoingeckoId(row.asset);
-                    if (cgId && cgData[cgId]) {
-                      row.change24h = cgData[cgId].usd_24h_change || null;
-                    }
-                  }
-                }
-              }
-            } catch (e) {
-              // Continue without 24h change data if CoinGecko fails
-            }
-          }
-        }
-
-        renderer.appendPositions(rows, 'Manual');
-      } catch (e) {
-        console.error('[Portfolio] Failed to load manual positions:', e);
-      }
-    })();
-  }
 
   // Initial render to show skeleton replaced by "Fetching..."
-  renderer.render();
+  window._portfolioRenderer.render();
 }
 
 // OLD renderDemoSummary removed - replaced by renderPortfolioIncremental for performance
@@ -1351,7 +898,7 @@ function setupControls() {
 
         // Step 3: Clear localStorage version to force fresh state
         localStorage.removeItem(FORCE_UPDATE_KEY);
-        
+
         // Step 4: Clear sessionStorage
         sessionStorage.clear();
 
@@ -2125,7 +1672,7 @@ function setupControls() {
       }
 
       // Load feeds in background (don't block modal display)
-      loadAllPythFeeds().catch(() => {});
+      loadAllPythFeeds().catch(() => { });
     });
   }
 
@@ -2512,6 +2059,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         // Apply pulsing animation (like comics)
         if (summaryEl) {
           summaryEl.classList.add('fading');
+        }
+
+        // Clear existing positions to prevent duplication
+        if (window._portfolioRenderer) {
+          window._portfolioRenderer.clearPositions();
         }
 
         await renderPortfolioIncremental();

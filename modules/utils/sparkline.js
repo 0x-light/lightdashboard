@@ -38,3 +38,4 @@ export function createSparkline(priceData, width = 60, height = 24, currentChang
   return `<svg width="${width}" height="${height}" class="sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
 }
 
+
