@@ -17,7 +17,7 @@ function isEVMAddress(address) {
 
 async function fetchNativeBalance(wallet, network, apiKey, timeoutMs = 15000) {
   const url = `https://${network.id}.g.alchemy.com/v2/${apiKey}`;
-  
+
   try {
     const response = await HttpClient.fetchWithTimeout(url, {
       method: 'POST',
@@ -29,13 +29,13 @@ async function fetchNativeBalance(wallet, network, apiKey, timeoutMs = 15000) {
         id: 1
       })
     }, timeoutMs);
-    
+
     if (!response.ok) return null;
-    
+
     const data = await response.json();
     if (data.result) {
       const balance = parseInt(data.result, 16) / 1e18; // Convert from Wei
-      
+
       if (balance > 0.00001) {
         return {
           address: wallet,
@@ -53,14 +53,14 @@ async function fetchNativeBalance(wallet, network, apiKey, timeoutMs = 15000) {
   } catch (err) {
     console.warn(`[Alchemy] Native balance failed for ${network.name}:`, err.message);
   }
-  
+
   return null;
 }
 
 async function fetchERC20Balances(wallet, network, apiKey, timeoutMs = 20000) {
   const url = `https://${network.id}.g.alchemy.com/v2/${apiKey}`;
   const tokens = [];
-  
+
   try {
     // Get token balances
     const response = await HttpClient.fetchWithTimeout(url, {
@@ -73,11 +73,11 @@ async function fetchERC20Balances(wallet, network, apiKey, timeoutMs = 20000) {
         id: 1
       })
     }, timeoutMs);
-    
+
     if (!response.ok) return tokens;
-    
+
     const data = await response.json();
-    
+
     if (data.result && data.result.tokenBalances) {
       // Fetch metadata for each token with balance
       const metadataPromises = data.result.tokenBalances
@@ -88,7 +88,7 @@ async function fetchERC20Balances(wallet, network, apiKey, timeoutMs = 20000) {
         .map(async (token) => {
           try {
             const balance = parseInt(token.tokenBalance, 16);
-            
+
             // Get token metadata
             const metaResp = await HttpClient.fetchWithTimeout(url, {
               method: 'POST',
@@ -100,16 +100,16 @@ async function fetchERC20Balances(wallet, network, apiKey, timeoutMs = 20000) {
                 id: 1
               })
             }, timeoutMs);
-            
+
             if (!metaResp.ok) return null;
-            
+
             const meta = await metaResp.json();
             if (meta.result) {
               const decimals = meta.result.decimals || 18;
               const balanceFormatted = balance / Math.pow(10, decimals);
-              
+
               if (balanceFormatted < 0.000001) return null;
-              
+
               return {
                 address: wallet,
                 blockchain: network.name,
@@ -126,14 +126,14 @@ async function fetchERC20Balances(wallet, network, apiKey, timeoutMs = 20000) {
             return null;
           }
         });
-      
+
       const results = await Promise.all(metadataPromises);
       tokens.push(...results.filter(t => t !== null));
     }
   } catch (err) {
     console.warn(`[Alchemy] ERC20 balances failed for ${network.name}:`, err.message);
   }
-  
+
   return tokens;
 }
 
@@ -142,15 +142,15 @@ export async function getTokenBalances(wallets, apiKey, { timeoutMs = 30000 } = 
     console.warn('[Alchemy] No API key provided');
     return [];
   }
-  
+
   // Filter to only EVM addresses
   const evmWallets = wallets.filter(wallet => isEVMAddress(wallet));
-  
+
   if (evmWallets.length === 0) {
     console.warn('[Alchemy] No valid EVM addresses');
     return [];
   }
-  
+
   // Parallelize all wallet×network combinations
   const fetchTasks = [];
   for (const wallet of evmWallets) {
@@ -164,10 +164,10 @@ export async function getTokenBalances(wallets, apiKey, { timeoutMs = 30000 } = 
       })());
     }
   }
-  
+
   const results = await Promise.all(fetchTasks);
   const allTokens = results.flat();
-  
+
   return allTokens;
 }
 

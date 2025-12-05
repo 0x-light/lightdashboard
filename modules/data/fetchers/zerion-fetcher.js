@@ -1,14 +1,10 @@
+import { getChainDisplayName } from '../../utils/chain-mapping.js';
+
 export class ZerionFetcher {
     constructor(providers, renderer, settings) {
         this.providers = providers;
         this.renderer = renderer;
         this.settings = settings;
-        this.chainMap = {
-            'ethereum': 'Ethereum', 'arbitrum': 'Arbitrum', 'optimism': 'Optimism',
-            'polygon': 'Polygon', 'base': 'Base', 'avalanche': 'Avalanche',
-            'bsc': 'BSC', 'solana': 'Solana', 'zksync-era': 'zkSync',
-            'blast': 'Blast', 'hyperevm': 'HyperEVM'
-        };
         this.historyCache = new Map(); // key: asset, value: { priceHistory, change24h, timestamp }
     }
 
@@ -25,7 +21,7 @@ export class ZerionFetcher {
                             const fungible = attr.fungible_info;
                             if (fungible && !attr.flags?.is_trash) {
                                 const chainId = item?.relationships?.chain?.data?.id || 'unknown';
-                                const chain = this.chainMap[chainId] || chainId;
+                                const chain = getChainDisplayName(chainId);
                                 const row = {
                                     asset: fungible.symbol || 'Unknown',
                                     exchange: chain,

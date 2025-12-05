@@ -5,7 +5,7 @@ import * as Portfolio from './modules/domain/portfolio.js';
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.7.0';
+const APP_VERSION = '2.7.1';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
