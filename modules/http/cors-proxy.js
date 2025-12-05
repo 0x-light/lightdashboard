@@ -12,34 +12,16 @@ const PUBLIC_PROXIES = [
 
 /**
  * Attempt to fetch a URL with automatic CORS proxy fallback
- * Strategy: Race all proxies in PARALLEL and use the first success
+ * In PRODUCTION: Only use Cloudflare proxy (no public proxies - they violate CSP)
+ * In LOCALHOST: Race all proxies in parallel for best speed
  */
 export async function fetchWithCorsProxy(url, options = {}) {
     const {
         cloudflareProxy = null,
-        timeoutMs = 8000, // Reduced default timeout
-        usePublicProxies = true
+        timeoutMs = 8000
     } = options;
 
     const isProduction = HttpClient.isProductionHost();
-    const attempts = [];
-
-    // Build list of URLs to try
-    if (isProduction && cloudflareProxy) {
-        const urlObj = new URL(url);
-        const path = urlObj.pathname + urlObj.search;
-        attempts.push(cloudflareProxy + encodeURIComponent(path));
-    }
-
-    // Direct URL (may work if CORS headers are present)
-    attempts.push(url);
-
-    // Public proxies as fallback
-    if (usePublicProxies) {
-        for (const proxyFn of PUBLIC_PROXIES) {
-            attempts.push(proxyFn(url));
-        }
-    }
 
     // Helper to fetch and parse JSON
     const tryFetch = async (attemptUrl) => {
@@ -57,15 +39,32 @@ export async function fetchWithCorsProxy(url, options = {}) {
             return await response.json();
         }
         const text = await response.text();
-        return JSON.parse(text); // Will throw if not valid JSON
+        return JSON.parse(text);
     };
 
-    // RACE all attempts in parallel - first success wins
+    // PRODUCTION: Only use Cloudflare proxy - no fallbacks (CSP blocks public proxies)
+    if (isProduction && cloudflareProxy) {
+        const urlObj = new URL(url);
+        const path = urlObj.pathname + urlObj.search;
+        const proxyUrl = cloudflareProxy + encodeURIComponent(path);
+        return await tryFetch(proxyUrl);
+    }
+
+    // LOCALHOST: Race all available options in parallel
+    const attempts = [];
+
+    // Direct URL (may work if CORS headers are present)
+    attempts.push(url);
+
+    // Public proxies as fallback for localhost only
+    for (const proxyFn of PUBLIC_PROXIES) {
+        attempts.push(proxyFn(url));
+    }
+
     try {
         return await Promise.any(attempts.map(attemptUrl => tryFetch(attemptUrl)));
     } catch (aggregateError) {
-        // All attempts failed
-        console.error('[CORS Proxy] All attempts failed:', aggregateError.errors?.map(e => e.message));
+        // All attempts failed - silent on localhost to avoid spam
         throw new Error('All CORS proxy attempts failed');
     }
 }

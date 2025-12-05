@@ -2381,7 +2381,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       }, { rootMargin: '400px' });
       io.observe(comicEl);
       if ('requestIdleCallback' in window) {
-        requestIdleCallback(loadComic, { timeout: 10000 });
+        requestIdleCallback(() => loadComic(), { timeout: 10000 });
       } else {
         setTimeout(loadComic, 10000);
       }
