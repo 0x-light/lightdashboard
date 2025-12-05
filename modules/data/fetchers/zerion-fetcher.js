@@ -14,7 +14,7 @@ export class ZerionFetcher {
 
     async fetch(wallets) {
         try {
-            for (const wallet of wallets) {
+            await Promise.all(wallets.map(async (wallet) => {
                 const walletRows = [];
                 try {
                     const positionsData = await this.providers.zerion.getWalletPositions(wallet, this.settings.zerionApiKey, { timeoutMs: 5000 });
@@ -64,7 +64,10 @@ export class ZerionFetcher {
 
                 // Enrich with Pyth History for Charts
                 this.enrichWithPythHistory(walletRows, wallet);
-            }
+            }));
+
+            // Mark the main 'Zerion' provider as completed
+            this.renderer.appendPositions([], 'Zerion');
         } catch (e) {
             this.renderer.markProviderFailed('Zerion', e);
         }
@@ -97,7 +100,19 @@ export class ZerionFetcher {
                         }
                     }
 
-                    const feedId = symbolToId[row.asset.toUpperCase()];
+                    let feedId = symbolToId[row.asset.toUpperCase()];
+
+                    // Fallback for known assets if missing from dynamic map
+                    if (!feedId) {
+                        const FALLBACK_IDS = {
+                            'ETH': 'ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
+                            'WETH': 'ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace', // Map WETH to ETH
+                            'MON': '31491744e2dbf6df7fcf4ac0820d18a609b49076d45066d3568424e62f686cd1',
+                            'USDC': 'eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a'
+                        };
+                        feedId = FALLBACK_IDS[row.asset.toUpperCase()];
+                    }
+
                     if (feedId) {
                         itemsToFetch.push({ row, feedId });
                     } else {

@@ -8,16 +8,33 @@ export class HyperliquidFetcher {
     async fetch(wallets) {
         try {
             // ... (existing fetch logic) ...
-            const [hlMarketData, hlAllMids, hlSpotMeta] = await Promise.all([
+            const [hlMarketData, hlAllMids, hlSpotData] = await Promise.all([
                 this.providers.hyperliquid.fetchMetaAndAssetCtxs(3000),
                 this.providers.hyperliquid.fetchAllMids(3000),
-                this.providers.hyperliquid.fetchSpotMeta(3000)
+                this.providers.hyperliquid.fetchSpotMetaAndAssetCtxs(3000)
             ]);
 
             // Store spotMeta for enrichment
+            // hlSpotData is [meta, ctxs]
+            let hlSpotMeta = null;
+            let hlSpotCtxs = null;
+            if (Array.isArray(hlSpotData) && hlSpotData.length >= 2) {
+                hlSpotMeta = hlSpotData[0];
+                hlSpotCtxs = hlSpotData[1];
+            } else {
+                hlSpotMeta = hlSpotData; // Fallback if old format (unlikely)
+            }
             this.spotMeta = hlSpotMeta;
 
-            // ... (existing price map logic) ...
+            // Build Spot prevDayPx Map
+            const spotPrevDayPxMap = {};
+            if (hlSpotCtxs) {
+                for (const ctx of hlSpotCtxs) {
+                    if (ctx.coin && ctx.prevDayPx) {
+                        spotPrevDayPxMap[ctx.coin] = parseFloat(ctx.prevDayPx);
+                    }
+                }
+            }
 
             // ... (existing price map logic) ...
             const hlPriceMap = {};
@@ -46,7 +63,8 @@ export class HyperliquidFetcher {
 
             const spotPriceMap = this.providers.hyperliquid.buildSpotPriceMap(hlAllMids, hlSpotMeta);
 
-            for (const wallet of wallets) {
+            // Fetch all wallets in parallel
+            await Promise.all(wallets.map(async (wallet) => {
                 try {
                     const data = await this.providers.hyperliquid.fetchPositions(wallet, 3000);
                     const rows = [];
@@ -129,13 +147,40 @@ export class HyperliquidFetcher {
                                     totalHlPnL += pnl;
                                 }
 
+                                // Calculate Spot 24h Change
+                                let change24h = null;
+                                // Need to find the spot identifier (e.g. @248) for this coin name
+                                let spotPrevDayPx = null;
+
+                                // Try to find by name in tokens list to get index
+                                if (hlSpotMeta && hlSpotMeta.tokens) {
+                                    const token = hlSpotMeta.tokens.find(t => t.name === bal.coin);
+                                    if (token) {
+                                        // Find pair with this token as base
+                                        const pair = hlSpotMeta.universe.find(p => p.tokens[0] === token.index && p.tokens[1] === 0);
+                                        if (pair) {
+                                            // The context uses the pair name (e.g. @248) or sometimes the coin name?
+                                            // Debug script showed context coin is @232 (index-based?)
+                                            // Actually debug script showed context coin field is like '@232'.
+                                            // Wait, debug script showed BZEC pair is @248.
+                                            // But context coin was @232? No, that was my confusion.
+                                            // If pair name is @248, we should look for @248 in spotPrevDayPxMap.
+                                            spotPrevDayPx = spotPrevDayPxMap[pair.name];
+                                        }
+                                    }
+                                }
+
+                                if (spotPrevDayPx && spotPrevDayPx > 0) {
+                                    change24h = ((price - spotPrevDayPx) / spotPrevDayPx) * 100;
+                                }
+
                                 rows.push({
                                     asset: bal.coin,
                                     exchange: 'Hyperliquid Spot',
                                     amount: available,
                                     price,
                                     value,
-                                    change24h: null, // TODO: Fetch 24h change for spot
+                                    change24h,
                                     pnl,
                                     entryNtl
                                 });
@@ -190,7 +235,10 @@ export class HyperliquidFetcher {
                 } catch (e) {
                     console.warn(`[Hyperliquid] Failed for wallet ${wallet}:`, e);
                 }
-            }
+            }));
+
+            // Mark the main 'Hyperliquid' provider as completed
+            this.renderer.appendPositions([], 'Hyperliquid');
         } catch (e) {
             this.renderer.markProviderFailed('Hyperliquid', e);
         }
@@ -231,7 +279,7 @@ export class HyperliquidFetcher {
                 // API expects ms timestamps
 
                 // For Spot assets, the coin name in candleSnapshot must be the exact pair name from universe
-                // e.g. "PURR/USDC", "HYPE", or "@248"
+                // e.g. "@248". The API errors with 500 if we send "BZEC" or "BZEC/USDC".
                 let coin = item.asset;
                 if (item.exchange === 'Hyperliquid Spot') {
                     let foundPair = false;
@@ -249,7 +297,7 @@ export class HyperliquidFetcher {
                                 foundPair = true;
                             }
                         } else {
-                            // Fallback: try to find by name in universe directly
+                            // Fallback: try to find by name in universe directly (unlikely for spot but possible)
                             const spotPair = this.spotMeta.universe.find(p => p.name === item.asset);
                             if (spotPair) {
                                 coin = spotPair.name;
@@ -258,10 +306,11 @@ export class HyperliquidFetcher {
                         }
                     }
 
-                    // Only append /USDC if we didn't find a canonical pair name
-                    // and it doesn't look like a pair or special identifier
-                    if (!foundPair && !coin.includes('/') && !coin.startsWith('@')) {
-                        coin = `${coin}/USDC`;
+                    // If we couldn't find the canonical pair name (e.g. @248), SKIP fetching candles.
+                    // Sending "BZEC" or "BZEC/USDC" causes 500 errors.
+                    if (!foundPair && !coin.startsWith('@')) {
+                        // console.warn(`[Hyperliquid] Could not find spot pair for ${item.asset}, skipping candles.`);
+                        return false;
                     }
                 }
 
@@ -280,9 +329,9 @@ export class HyperliquidFetcher {
                     const priceHistory = candles.map(c => ({ price: c.c, timestamp: c.t }));
                     item.priceHistory = priceHistory;
 
-                    // Update 24h change if we have better data from candles
+                    // Update 24h change if missing (e.g. for special assets like xyz:GOOGL that don't have prevDayPx)
                     let change24h = item.change24h;
-                    if (candles.length >= 2) {
+                    if (change24h === null && candles.length >= 2) {
                         const first = candles[0].c;
                         const last = candles[candles.length - 1].c;
                         if (first > 0) {

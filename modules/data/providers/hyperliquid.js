@@ -107,6 +107,10 @@ export async function fetchSpotMeta(timeoutMs = 10000) {
   return await post({ type: 'spotMeta' }, timeoutMs).catch(() => null);
 }
 
+export async function fetchSpotMetaAndAssetCtxs(timeoutMs = 10000) {
+  return await post({ type: 'spotMetaAndAssetCtxs' }, timeoutMs).catch(() => null);
+}
+
 export async function fetchHistoricalPrice(asset, timestamp, timeoutMs = 10000) {
   try {
     const data = await post({

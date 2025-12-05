@@ -6,7 +6,7 @@ export class LighterFetcher {
 
     async fetch(wallets) {
         try {
-            for (const wallet of wallets) {
+            await Promise.all(wallets.map(async (wallet) => {
                 const walletRows = [];
                 try {
                     const data = await this.providers.lighter.fetchAccountByAddress(wallet, { timeoutMs: 3000 });
@@ -30,11 +30,17 @@ export class LighterFetcher {
                         }
                     }
                 } catch (walletError) {
-                    console.warn(`[Lighter] Error for wallet ${wallet}:`, walletError.message);
+                    // Suppress 400/404 errors which likely mean account doesn't exist
+                    if (!walletError.message?.includes('400') && !walletError.message?.includes('404')) {
+                        console.warn(`[Lighter] Error for wallet ${wallet}:`, walletError.message);
+                    }
                 }
 
                 this.renderer.appendPositions(walletRows, `Lighter_${wallet}`);
-            }
+            }));
+
+            // Mark the main 'Lighter' provider as completed
+            this.renderer.appendPositions([], 'Lighter');
         } catch (e) {
             this.renderer.markProviderFailed('Lighter', e);
         }

@@ -381,34 +381,7 @@ window.cachedPositions = cachedPositions;
 window.cachedWeather = cachedWeather;
 window.cachedSummaryData = cachedSummaryData;
 
-function initLoadingScreen() {
-  const dotGrid = document.getElementById('newDotGrid');
-  if (!dotGrid) return;
-  const gridSize = 8;
-  for (let row = 0; row < gridSize; row++) {
-    for (let col = 0; col < gridSize; col++) {
-      const dot = document.createElement('div');
-      dot.className = 'dot';
-      const verticalProgress = row / gridSize;
-      const horizontalWave = (col / gridSize) * 0.4;
-      const randomOffset = Math.random() * 0.8;
-      const verticalDelay = verticalProgress * 0.6;
-      const totalDelay = horizontalWave + randomOffset + verticalDelay;
-      const duration = 1.5 + verticalProgress * 0.8;
-      dot.style.setProperty('--delay', `${totalDelay}s`);
-      dot.style.setProperty('--duration', `${duration}s`);
-      dotGrid.appendChild(dot);
-    }
-  }
-}
 
-function hideLoadingScreen() {
-  const loadingScreen = document.getElementById('newLoadingScreen');
-  if (loadingScreen) {
-    loadingScreen.classList.add('hidden');
-    setTimeout(() => { loadingScreen.style.display = 'none'; }, 300);
-  }
-}
 
 // Render lightweight skeletons so the app feels instant
 function renderHeroSkeleton() {
@@ -1871,10 +1844,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Init loading screen
-  initLoadingScreen();
   // Do not block on loading overlay; switch to skeleton UI immediately
-  hideLoadingScreen();
   renderHeroSkeleton();
   renderPositionsSkeleton(7);
 
@@ -2121,8 +2091,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Hide loading screen after critical data loads (even if there was an error)
-  hideLoadingScreen();
+
 
   // NON-CRITICAL: Health checks in background
   runHealthChecks().catch(() => { });
