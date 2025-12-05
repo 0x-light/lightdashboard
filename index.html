@@ -24,17 +24,18 @@
   <!-- iOS/Apple -->
   <link rel="apple-touch-icon" href="/favicon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Viewport">
 
   <!-- PWA Manifest -->
-  <link rel="manifest" href="/manifest.json?v=2.5.2">
+  <link rel="manifest" href="/manifest.json?v=2.7.5">
 
   <!-- Cache busting: update version number on each deployment -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <link rel="stylesheet" href="./styles.css?v=2.5.2">
+  <link rel="stylesheet" href="./styles.css?v=2.7.5">
 </head>
 
 <body>
@@ -546,12 +547,12 @@
     </div>
   </div>
 
-  <script type="module" src="./modules/app-init.js?v=2.7.4" defer></script>
-  <script type="module" src="./app.js?v=2.7.4" defer></script>
+  <script type="module" src="./modules/app-init.js?v=2.7.5" defer></script>
+  <script type="module" src="./app.js?v=2.7.5" defer></script>
 
   <!-- Service Worker Registration -->
   <script defer>
-    const EXPECTED_VERSION = 'v2.7.3';
+    const EXPECTED_VERSION = 'v2.7.5';
 
     if ('serviceWorker' in navigator) {
       let refreshing = false;

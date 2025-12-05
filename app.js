@@ -6,7 +6,7 @@ import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.7.2';
+const APP_VERSION = '2.7.5';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
@@ -1877,7 +1877,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Display version immediately (using APP_VERSION constant)
   const versionDisplay = document.getElementById('versionDisplay');
   if (versionDisplay) {
-    const buildDate = new Date('2025-12-05T14:45:00Z').toLocaleString('en-US', {
+    const buildDate = new Date('2025-12-05T23:40:00Z').toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
