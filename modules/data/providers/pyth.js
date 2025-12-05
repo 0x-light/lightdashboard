@@ -57,53 +57,86 @@ export async function getAtTimestampByFeedIds(feedIds, timestampSeconds, timeout
   return prices;
 }
 
-export async function get24hPriceHistory(feedId, timeoutMs = 10000) {
-  if (!feedId) return [];
-  const normalizedId = feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`;
+export async function getBatch24hPriceHistory(feedIds, points = 48) {
+  if (!feedIds || feedIds.length === 0) return {};
+
+  // Deduplicate feedIds and normalize them
+  const uniqueFeedIds = [...new Set(feedIds)].map(id => id.toLowerCase().startsWith('0x') ? id.toLowerCase() : `0x${id.toLowerCase()}`);
+
   const now = Math.floor(Date.now() / 1000);
   const day = 24 * 60 * 60;
   const startTime = now - day;
-  
-  // Fetch 12 data points (one every 2 hours) for better performance
-  const points = 12;
   const interval = day / points;
+
   const timestamps = [];
   for (let i = 0; i < points; i++) {
     timestamps.push(Math.floor(startTime + (i * interval)));
   }
-  
-  // Fetch all prices in parallel for better performance
-  // Increased individual timeout from 2000ms to 5000ms to handle slow networks
-  const fetchPromises = timestamps.map(async (ts) => {
-    try {
-      const url = `${HERMES}/updates/price/${ts}?ids[]=${normalizedId}&parsed=true`;
-      // Increased timeout and added retry logic for better reliability
-      const data = await HttpClient.getJson(url, { timeoutMs: 5000, retries: 1 }).catch(() => null);
-      const parsed = data?.parsed?.[0];
-      if (parsed) {
-        const price = parseFloat(parsed?.price?.price) * Math.pow(10, parsed?.price?.expo || 0);
-        if (Number.isFinite(price) && price > 0) {
-          return { timestamp: ts, price };
-        }
-      }
-    } catch (e) {
-      // Skip failed fetches
-    }
-    return null;
+
+  // Initialize results map
+  const results = {};
+  uniqueFeedIds.forEach(id => {
+    results[id] = [];
   });
-  
-  const results = await Promise.all(fetchPromises);
-  const priceData = results.filter(r => r !== null);
-  
-  // Only return data if we have at least 4 valid data points (33% success rate)
-  // This ensures charts are only shown when we have enough data for a meaningful visualization
-  if (priceData.length < 4) {
-    return [];
+
+  // Helper to process a batch of timestamps
+  const processBatch = async (timestampBatch) => {
+    const promises = timestampBatch.map(async (ts) => {
+      try {
+        // Construct URL with all feedIds
+        const idsParam = uniqueFeedIds.map(id => `ids[]=${id}`).join('&');
+        const url = `${HERMES}/updates/price/${ts}?${idsParam}&parsed=true`;
+
+        const data = await HttpClient.getJson(url, { timeoutMs: 10000 }).catch(() => null);
+
+        if (data && data.parsed && Array.isArray(data.parsed)) {
+          data.parsed.forEach(update => {
+            const id = update.id.startsWith('0x') ? update.id.toLowerCase() : `0x${update.id.toLowerCase()}`;
+            // Find matching target ID
+            const targetId = uniqueFeedIds.find(fid => fid === id);
+
+            if (targetId && update.price) {
+              const price = parseFloat(update.price.price) * Math.pow(10, update.price.expo);
+              if (Number.isFinite(price) && price > 0) {
+                results[targetId].push({
+                  timestamp: ts,
+                  price: price
+                });
+              }
+            }
+          });
+        }
+      } catch (e) {
+        console.warn(`[Pyth] Failed to fetch batch for ts ${ts}:`, e);
+      }
+    });
+
+    await Promise.all(promises);
+  };
+
+  // Process timestamps in chunks to avoid hitting rate limits too hard
+  // Reduced chunk size and added more delay to prevent 429s
+  const chunkSize = 4;
+  for (let i = 0; i < timestamps.length; i += chunkSize) {
+    const batch = timestamps.slice(i, i + chunkSize);
+    await processBatch(batch);
+    // Increased delay between chunks to 500ms
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
-  
-  return priceData;
+
+  // Sort results by timestamp
+  Object.keys(results).forEach(id => {
+    results[id].sort((a, b) => a.timestamp - b.timestamp);
+  });
+
+  return results;
 }
 
-export default { getPriceFeeds, getLatestByFeedIds, getAtTimestampByFeedIds, get24hPriceHistory };
+export async function get24hPriceHistory(feedId, timeoutMs = 10000) {
+  const result = await getBatch24hPriceHistory([feedId], 48);
+  return result[feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`] || [];
+}
+
+export default { getPriceFeeds, getLatestByFeedIds, getAtTimestampByFeedIds, get24hPriceHistory, getBatch24hPriceHistory };
 
 

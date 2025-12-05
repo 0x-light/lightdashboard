@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Debug Charts</title>
+</head>
+
+<body>
+    <h1>Debug Charts</h1>
+    <div id="output">Running tests...</div>
+    <script type="module">
+        import { fetchCandles } from './modules/data/providers/hyperliquid.js';
+        import { getPriceFeeds, get24hPriceHistory } from './modules/data/providers/pyth.js';
+
+        const output = document.getElementById('output');
+        function log(msg) {
+            output.innerHTML += `<div>${msg}</div>`;
+            console.log(msg);
+        }
+
+        async function run() {
+            try {
+                // Test 1: Hyperliquid Perp Candle (ETH)
+                log('Testing Hyperliquid Perp Candle (ETH)...');
+                const now = Date.now();
+                const startTime = now - 24 * 60 * 60 * 1000;
+                const ethCandles = await fetchCandles('ETH', '15m', startTime, now);
+                log(`ETH Candles: ${ethCandles.length}`);
+
+                // Test 2: Hyperliquid Spot Candle (HYPE)
+                // Note: HYPE is a spot asset.
+                log('Testing Hyperliquid Spot Candle (HYPE)...');
+                const hypeCandles = await fetchCandles('HYPE', '15m', startTime, now);
+                log(`HYPE Candles: ${hypeCandles.length}`);
+
+                // Test 3: Hyperliquid Spot Candle (PURR)
+                log('Testing Hyperliquid Spot Candle (PURR)...');
+                const purrCandles = await fetchCandles('PURR', '15m', startTime, now);
+                log(`PURR Candles: ${purrCandles.length}`);
+
+                // Test 4: Pyth Feeds
+                log('Testing Pyth Feeds...');
+                const feeds = await getPriceFeeds();
+                log(`Pyth Feeds found: ${Object.keys(feeds).length}`);
+
+                if (feeds['ETH']) {
+                    log(`ETH Feed ID: ${feeds['ETH']}`);
+                    const history = await get24hPriceHistory(feeds['ETH']);
+                    log(`ETH History points: ${history.length}`);
+                } else {
+                    log('ETH Feed not found in Pyth map');
+                }
+
+            } catch (e) {
+                log(`Error: ${e.message}`);
+                console.error(e);
+            }
+        }
+
+        run();
+    </script>
+</body>
+
+</html>

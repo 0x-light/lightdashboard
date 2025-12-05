@@ -14,10 +14,10 @@ async function post(body, timeoutMs) {
 
 export async function fetchPositions(address, timeoutMs = 10000) {
   if (!address) return null;
-  
+
   // First get meta to find all vaults
   const meta = await post({ type: 'meta' }, timeoutMs).catch(() => null);
-  
+
   const queries = [
     // Standard dex (main Hyperliquid)
     post({ type: 'clearinghouseState', user: address }, timeoutMs).catch(() => null),
@@ -25,45 +25,45 @@ export async function fetchPositions(address, timeoutMs = 10000) {
     // Query xyz dex (trade.xyz HIP-3 markets)
     post({ type: 'clearinghouseState', user: address, dex: 'xyz' }, timeoutMs).catch(() => null)
   ];
-  
+
   // Query additional HIP-3 vaults if discovered in meta
   if (meta?.vaults && Array.isArray(meta.vaults)) {
     for (const vault of meta.vaults) {
       queries.push(
-        post({ 
-          type: 'clearinghouseState', 
+        post({
+          type: 'clearinghouseState',
           user: address,
           vaultAddress: vault.vaultAddress || vault.address || vault
         }, timeoutMs).catch(() => null)
       );
     }
   }
-  
+
   const results = await Promise.all(queries);
   const [perp, spot, xyzDex, ...vaultResults] = results;
-  
+
   // Merge xyz dex and vault positions into main perp response
   // Track which coins we've already seen to avoid duplicates
   const existingCoins = new Set(perp?.assetPositions?.map(p => p.position?.coin) || []);
-  
+
   // Combine perp equity from main dex and xyz dex (spot will be added in app)
   let mainPerpEquity = 0;
   let xyzEquity = 0;
-  
+
   if (perp?.marginSummary) {
     mainPerpEquity = parseFloat(perp.marginSummary.accountValue || 0);
   }
-  
+
   if (xyzDex?.marginSummary) {
     xyzEquity = parseFloat(xyzDex.marginSummary.accountValue || 0);
   }
-  
+
   const combinedPerpEquity = mainPerpEquity + xyzEquity;
-  
+
   if (perp && perp.marginSummary) {
     perp.marginSummary.accountValue = combinedPerpEquity.toString();
   }
-  
+
   // Add xyz dex positions (trade.xyz equity perps)
   if (xyzDex?.assetPositions) {
     for (const pos of xyzDex.assetPositions) {
@@ -76,7 +76,7 @@ export async function fetchPositions(address, timeoutMs = 10000) {
       }
     }
   }
-  
+
   // Add positions from other HIP-3 vaults (if any discovered)
   for (const vaultData of vaultResults) {
     if (vaultData?.assetPositions) {
@@ -91,7 +91,7 @@ export async function fetchPositions(address, timeoutMs = 10000) {
       }
     }
   }
-  
+
   return { perp, spot };
 }
 
@@ -129,6 +129,41 @@ export async function fetchHistoricalPrice(asset, timestamp, timeoutMs = 10000) 
   }
 }
 
+export async function fetchCandles(coin, interval, startTime, endTime, timeoutMs = 10000) {
+  try {
+    const data = await post({
+      type: 'candleSnapshot',
+      req: {
+        coin,
+        interval,
+        startTime,
+        endTime
+      }
+    }, timeoutMs);
+
+    if (Array.isArray(data)) {
+      return data.map(c => ({
+        t: c.t,
+        o: parseFloat(c.o),
+        h: parseFloat(c.h),
+        l: parseFloat(c.l),
+        c: parseFloat(c.c),
+        v: parseFloat(c.v)
+      }));
+    }
+    return [];
+  } catch (e) {
+    // 500 errors are common for assets without history or invalid requests
+    // We shouldn't spam the console for expected failures on obscure assets
+    if (e.message && e.message.includes('500')) {
+      // console.debug(`[Hyperliquid] No candles found for ${coin} (500)`);
+    } else {
+      console.warn(`[Hyperliquid] Failed to fetch candles for ${coin}:`, e);
+    }
+    return [];
+  }
+}
+
 /**
  * Build a price map that properly handles spot tokens.
  * Spot tokens are indexed as @{spotIndex} in allMids, but balances use token names.
@@ -142,9 +177,9 @@ export function buildSpotPriceMap(allMids, spotMeta) {
   if (!allMids || !spotMeta || !spotMeta.universe) {
     return allMids || {};
   }
-  
+
   const priceMap = { ...allMids };
-  
+
   // Build mapping from token name to spot index
   // spotMeta.universe is an array where each entry is { name, tokens, index, isCanonical }
   // tokens is [baseTokenIndex, quoteTokenIndex] and we want pairs with USDC (token 0) as quote
@@ -153,19 +188,19 @@ export function buildSpotPriceMap(allMids, spotMeta) {
       const spotIndex = spotPair.index;
       const spotKey = `@${spotIndex}`;
       const tokenName = spotPair.name; // This is like "HYPE", "BZEC", etc.
-      
+
       if (allMids[spotKey]) {
         priceMap[tokenName] = allMids[spotKey];
       }
     }
   }
-  
+
   // Also check for tokens field which contains the name mapping
   if (spotMeta.tokens) {
     for (const token of spotMeta.tokens) {
       if (token.name && token.index !== undefined) {
         // Find the spot pair for this token paired with USDC
-        const spotPair = spotMeta.universe.find(pair => 
+        const spotPair = spotMeta.universe.find(pair =>
           pair.tokens && pair.tokens[0] === token.index && pair.tokens[1] === 0
         );
         if (spotPair) {
@@ -177,7 +212,7 @@ export function buildSpotPriceMap(allMids, spotMeta) {
       }
     }
   }
-  
+
   return priceMap;
 }
 
@@ -187,7 +222,8 @@ export default {
   fetchMetaAndAssetCtxs,
   fetchSpotMeta,
   fetchHistoricalPrice,
-  buildSpotPriceMap
+  buildSpotPriceMap,
+  fetchCandles
 };
 
 

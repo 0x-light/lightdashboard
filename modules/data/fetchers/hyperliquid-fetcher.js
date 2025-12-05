@@ -2,20 +2,27 @@ export class HyperliquidFetcher {
     constructor(providers, renderer) {
         this.providers = providers;
         this.renderer = renderer;
+        this.historyCache = new Map(); // key: asset, value: { priceHistory, change24h, timestamp }
     }
 
     async fetch(wallets) {
         try {
-            // 1. Fetch Market Data (Prices)
+            // ... (existing fetch logic) ...
             const [hlMarketData, hlAllMids, hlSpotMeta] = await Promise.all([
                 this.providers.hyperliquid.fetchMetaAndAssetCtxs(3000),
                 this.providers.hyperliquid.fetchAllMids(3000),
                 this.providers.hyperliquid.fetchSpotMeta(3000)
             ]);
 
+            // Store spotMeta for enrichment
+            this.spotMeta = hlSpotMeta;
+
+            // ... (existing price map logic) ...
+
+            // ... (existing price map logic) ...
             const hlPriceMap = {};
             const hlPrevDayPxMap = {};
-
+            // ... (populate maps) ...
             if (hlMarketData?.[0] && hlMarketData?.[1]) {
                 for (let i = 0; i < hlMarketData[1].length; i++) {
                     const ctx = hlMarketData[1][i];
@@ -39,12 +46,17 @@ export class HyperliquidFetcher {
 
             const spotPriceMap = this.providers.hyperliquid.buildSpotPriceMap(hlAllMids, hlSpotMeta);
 
-            // 2. Fetch Positions per Wallet
             for (const wallet of wallets) {
                 try {
                     const data = await this.providers.hyperliquid.fetchPositions(wallet, 3000);
                     const rows = [];
 
+                    // ... (existing position processing) ...
+                    // We need to copy the logic for processing perps and spot
+                    // Since I cannot match the entire file easily with replace_file_content for just the middle,
+                    // I will assume the user wants me to inject the cache application logic.
+
+                    // I will target the end of the loop where rows are ready.
                     let perpEquity = 0;
                     if (data?.perp?.marginSummary) {
                         perpEquity = parseFloat(data.perp.marginSummary.accountValue || 0);
@@ -154,10 +166,26 @@ export class HyperliquidFetcher {
                         if (!row._changeDetectionKey) {
                             row._changeDetectionKey = `${row.asset}_${row.exchange}_${wallet}`;
                         }
+
+                        // Apply cached history if available
+                        if (this.historyCache.has(row.asset)) {
+                            const cached = this.historyCache.get(row.asset);
+                            // Use cache if less than 15 minutes old
+                            if (Date.now() - cached.timestamp < 15 * 60 * 1000) {
+                                row.priceHistory = cached.priceHistory;
+                                if (cached.change24h !== null) {
+                                    row.change24h = cached.change24h;
+                                }
+                            }
+                        }
                     }
 
                     // Append to Renderer
                     this.renderer.appendPositions(rows, `Hyperliquid_${wallet}`);
+
+                    // 3. Fetch History for Charts (Async enrichment)
+                    // We do this after initial render to keep UI snappy
+                    this.enrichWithHistory(rows, wallet);
 
                 } catch (e) {
                     console.warn(`[Hyperliquid] Failed for wallet ${wallet}:`, e);
@@ -166,5 +194,127 @@ export class HyperliquidFetcher {
         } catch (e) {
             this.renderer.markProviderFailed('Hyperliquid', e);
         }
+    }
+
+    async enrichWithHistory(rows, wallet) {
+        if (!rows || rows.length === 0) return;
+
+        const now = Date.now();
+        const startTime = now - 24 * 60 * 60 * 1000;
+
+        // Filter out items that don't need history or already have it
+        const itemsToFetch = rows.filter(r =>
+            !r.isHlAccountEquity &&
+            !r.priceHistory &&
+            r.asset !== 'USDC' // Skip stablecoins if needed, though HL usually trades against USDC
+        );
+
+        // console.log(`[Hyperliquid] Enriching ${itemsToFetch.length} items with history. Assets: ${itemsToFetch.map(r => r.asset).join(', ')}`);
+
+        if (itemsToFetch.length === 0) return;
+
+        // Fetch in parallel with concurrency limit if needed, but for now Promise.all is fine for typical portfolio size
+        const historyPromises = itemsToFetch.map(async (item) => {
+            try {
+                // Check cache again (though we checked before render, maybe another fetch updated it)
+                if (this.historyCache.has(item.asset)) {
+                    const cached = this.historyCache.get(item.asset);
+                    if (now - cached.timestamp < 15 * 60 * 1000) {
+                        item.priceHistory = cached.priceHistory;
+                        if (cached.change24h !== null) item.change24h = cached.change24h;
+                        return true;
+                    }
+                }
+
+                // Use 1h candles for 24h chart (24 points) - efficient and sufficient for sparkline
+                // Or 15m (96 points) for more detail. Let's go with 15m.
+                // API expects ms timestamps
+
+                // For Spot assets, the coin name in candleSnapshot must be the exact pair name from universe
+                // e.g. "PURR/USDC", "HYPE", or "@248"
+                let coin = item.asset;
+                if (item.exchange === 'Hyperliquid Spot') {
+                    let foundPair = false;
+                    // Robust lookup: Token Name -> Token Index -> Spot Pair -> Pair Name
+                    if (this.spotMeta && this.spotMeta.tokens && this.spotMeta.universe) {
+                        // 1. Find token index
+                        const token = this.spotMeta.tokens.find(t => t.name === item.asset);
+                        if (token) {
+                            // 2. Find pair with this token as base and USDC (0) as quote
+                            const spotPair = this.spotMeta.universe.find(p =>
+                                p.tokens && p.tokens[0] === token.index && p.tokens[1] === 0
+                            );
+                            if (spotPair) {
+                                coin = spotPair.name;
+                                foundPair = true;
+                            }
+                        } else {
+                            // Fallback: try to find by name in universe directly
+                            const spotPair = this.spotMeta.universe.find(p => p.name === item.asset);
+                            if (spotPair) {
+                                coin = spotPair.name;
+                                foundPair = true;
+                            }
+                        }
+                    }
+
+                    // Only append /USDC if we didn't find a canonical pair name
+                    // and it doesn't look like a pair or special identifier
+                    if (!foundPair && !coin.includes('/') && !coin.startsWith('@')) {
+                        coin = `${coin}/USDC`;
+                    }
+                }
+
+                const candles = await this.providers.hyperliquid.fetchCandles(
+                    coin,
+                    '15m',
+                    startTime,
+                    now,
+                    5000 // Short timeout for enrichment
+                );
+
+                if (candles && candles.length > 0) {
+                    // console.log(`[Hyperliquid] Got ${candles.length} candles for ${item.asset}`);
+                    // Format for sparkline: array of { price, timestamp } or just objects with price
+                    // The sparkline component expects { price } objects
+                    const priceHistory = candles.map(c => ({ price: c.c, timestamp: c.t }));
+                    item.priceHistory = priceHistory;
+
+                    // Update 24h change if we have better data from candles
+                    let change24h = item.change24h;
+                    if (candles.length >= 2) {
+                        const first = candles[0].c;
+                        const last = candles[candles.length - 1].c;
+                        if (first > 0) {
+                            change24h = ((last - first) / first) * 100;
+                            item.change24h = change24h;
+                        }
+                    }
+
+                    // Update cache
+                    this.historyCache.set(item.asset, {
+                        priceHistory,
+                        change24h,
+                        timestamp: Date.now()
+                    });
+
+                    return true;
+                } else {
+                    // console.log(`[Hyperliquid] No candles returned for ${item.asset}`);
+                }
+            } catch (e) {
+                // Silent fail for enrichment
+            }
+            return false;
+        });
+
+        await Promise.all(historyPromises);
+
+        // Re-render with history
+        // We need to trigger an update. Since we modified the rows in place (which are references),
+        // we can just call appendPositions again or a specific update method.
+        // However, the renderer might dedupe based on keys.
+        // Let's force update by calling appendPositions again.
+        this.renderer.appendPositions(rows, `Hyperliquid_${wallet}`);
     }
 }
