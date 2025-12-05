@@ -148,17 +148,82 @@ async function enrichWithHistory(prices, pythProvider) {
   }
 }
 
+function renderRows(container, data, options) {
+  const { useColoredPnL, editMode, showPriceChart, prevPriceMap } = options;
+
+  if (!data || data.length === 0) {
+    container.innerHTML = '<tr><td colspan="4" class="text-center dimmed">Watchlist is empty</td></tr>';
+    return;
+  }
+
+  const html = data.map(item => {
+    const symbol = item.symbol;
+    const price = item.price;
+    const change24h = item.change24h;
+    const feedId = item.feedId;
+
+    // Formatting
+    const priceFormatted = price < 1
+      ? price.toPrecision(4)
+      : price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // Change Color
+    let changeColor = '';
+    let changeText = '-';
+    if (change24h !== null && change24h !== undefined) {
+      const isPos = change24h >= 0;
+      changeColor = useColoredPnL ? (isPos ? 'var(--green)' : 'var(--red)') : '';
+      changeText = `${isPos ? '+' : ''}${change24h.toFixed(2)}%`;
+    }
+
+    // Sparkline
+    let chartHtml = '';
+    if (showPriceChart && item.priceHistory && item.priceHistory.length > 1) {
+      chartHtml = createSparkline(item.priceHistory, 80, 24, change24h) || '';
+    }
+
+    // Flash effect
+    const prevPrice = prevPriceMap[feedId];
+    let flashClass = '';
+    if (prevPrice && price !== prevPrice) {
+      flashClass = price > prevPrice ? 'flash-green' : 'flash-red';
+    }
+
+    // Edit Mode Action
+    let actionHtml = '';
+    if (editMode) {
+      actionHtml = `<button class="btn-text watchlist-edit-btn" data-feed-id="${feedId}" style="color: var(--red);">[X]</button>`;
+    }
+
+    return `
+      <tr class="${flashClass}">
+        <td>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            ${editMode ? actionHtml : ''}
+            <span class="symbol">${symbol}</span>
+          </div>
+        </td>
+        <td class="text-right font-mono">${priceFormatted}</td>
+        <td class="text-center">${chartHtml}</td>
+        <td class="text-right font-mono" style="color: ${changeColor}">${changeText}</td>
+      </tr>
+    `;
+  }).join('');
+
+  container.innerHTML = html;
+}
+
 export async function render(container, { feedIds, pythProvider, useColoredPnL = true, editMode = false, cachedData = null, previousData = null, showPriceChart = true }) {
   if (!container) return;
-
-  // Render context helper
-  const updateUI = (data) => renderRows(container, data, { useColoredPnL, editMode, showPriceChart, prevPriceMap: prevPriceMap || {} });
 
   let prices = cachedData;
   const prevPriceMap = {};
   if (previousData) {
     previousData.forEach(p => prevPriceMap[p.feedId] = p.price);
   }
+
+  // Render context helper (must be after prevPriceMap is defined)
+  const updateUI = (data) => renderRows(container, data, { useColoredPnL, editMode, showPriceChart, prevPriceMap });
 
   // Stage 1: Basic Prices (Immediate)
   if (!prices) {
