@@ -371,6 +371,12 @@ export class IncrementalPortfolioRenderer {
         continue;
       }
 
+      // Keep Manual positions separate (to allow deletion)
+      if (row.exchange && typeof row.exchange === 'string' && row.exchange.startsWith('Manual')) {
+        aggregated.push(row);
+        continue;
+      }
+
       // Group by asset
       const key = row.asset;
       if (!assetGroups.has(key)) {

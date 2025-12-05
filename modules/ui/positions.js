@@ -13,26 +13,26 @@ function createSparkline(priceData, width = 60, height = 24, currentChange24h = 
   if (!Array.isArray(priceData) || priceData.length < 2) {
     return null;
   }
-  
+
   const prices = priceData.map(d => d.price);
   const min = Math.min(...prices);
   const max = Math.max(...prices);
   const range = max - min;
-  
+
   if (range === 0) {
     // Flat line
     const y = height / 2;
     const points = priceData.map((_, i) => `${(i / (priceData.length - 1)) * width},${y}`).join(' ');
     return `<svg width="${width}" height="${height}" class="sparkline"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
   }
-  
+
   // Normalize prices to chart height
   const points = priceData.map((d, i) => {
     const x = (i / (priceData.length - 1)) * width;
     const y = height - ((d.price - min) / range) * height;
     return `${x},${y}`;
   }).join(' ');
-  
+
   // Determine color: use 24h change if provided (for consistency with 24h% column),
   // otherwise fall back to first vs last price comparison
   let color;
@@ -43,7 +43,7 @@ function createSparkline(priceData, width = 60, height = 24, currentChange24h = 
     const lastPrice = prices[prices.length - 1];
     color = lastPrice >= firstPrice ? 'var(--green)' : 'var(--red)';
   }
-  
+
   return `<svg width="${width}" height="${height}" class="sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
 }
 
@@ -51,11 +51,11 @@ function formatAmount(num, visible, showExact = false) {
   if (!visible) return '••••';
   const n = Number(num || 0);
   if (!Number.isFinite(n)) return '—';
-  
+
   if (showExact) {
     return n.toLocaleString(undefined, { maximumFractionDigits: 8 });
   }
-  
+
   // Round to reasonable precision
   const abs = Math.abs(n);
   if (abs >= 1000000) {
@@ -77,10 +77,10 @@ function formatUsd(num, visible, showPlusSign = false) {
   if (!visible) return '$••••';
   const n = Number(num || 0);
   if (!Number.isFinite(n)) return '—';
-  
+
   const abs = Math.abs(n);
   const sign = n < 0 ? '−' : (showPlusSign && n > 0 ? '+' : '');
-  
+
   // Format large numbers compactly
   if (abs >= 1000000) {
     const formatted = (abs / 1000000).toFixed(1);
@@ -130,7 +130,7 @@ function createTableRow(doc, pos, opts, prevDataMap) {
   const assetKey = `${pos.asset}_${pos.exchange}`;
   const showExactAmounts = opts.settings?.showExactAmounts ?? false;
   const showPriceChart = opts.settings?.showPriceChart ?? true;
-  
+
   // Check if values changed (simple comparison like watchlist)
   const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
   const prev = prevDataMap[key];
@@ -138,16 +138,16 @@ function createTableRow(doc, pos, opts, prevDataMap) {
   const valueChanged = prev && Math.abs(value - (prev.value || 0)) > 0.01;
   const pnlChanged = prev && Math.abs((pos.pnl || 0) - (prev.pnl || 0)) > 0.01;
   const change24hChanged = prev && Math.abs((pos.change24h || 0) - (prev.change24h || 0)) > 0.01;
-  
+
   // Change detection for flash animations
-  
+
   // Create sparkline chart (skip for stablecoins)
   let chartCell = '<span class="chart-loading">—</span>';
   if (!isStablecoin(pos.asset)) {
     const chartSvg = pos.priceHistory ? createSparkline(pos.priceHistory, 60, 24, pos.change24h) : null;
     chartCell = chartSvg || '<span class="chart-loading">—</span>';
   }
-  
+
   // Use compact column order (only order)
   // Order: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
   const cells = [
@@ -160,19 +160,19 @@ function createTableRow(doc, pos, opts, prevDataMap) {
     formatAmount(pos.amount, amountVisible, showExactAmounts),
     pos.exchange || '—'
   ];
-  
+
   const useColoredPnL = opts.settings?.useColoredPnL ?? true;
-  
+
   for (let i = 0; i < cells.length; i++) {
     const td = doc.createElement('td');
-    
+
     // Column indices: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
     const isPrice = (i === 1);
     const isChart = (i === 2);
     const isValue = (i === 3);
     const isPnL = (i === 4);
     const isChange24h = (i === 5);
-    
+
     // Add color classes for PnL and 24H%
     if (useColoredPnL) {
       if (isPnL && pos.pnl != null) {
@@ -181,24 +181,33 @@ function createTableRow(doc, pos, opts, prevDataMap) {
         td.className = pos.change24h >= 0 ? 'positive-pnl' : 'negative-pnl';
       }
     }
-    
+
     // Mark cells that should flash on price changes (like watchlist)
-    const shouldFlash = 
+    const shouldFlash =
       (isPrice && priceChanged) ||
       (isValue && valueChanged) ||
       (isPnL && pnlChanged) ||
       (isChart && (priceChanged || change24hChanged)) ||
       (isChange24h && change24hChanged);
-    
+
     if (shouldFlash) {
       td.setAttribute('data-flash', 'true');
     }
-    
+
     if (i === 0 && opts.editMode) {
       // Add hide/show button to asset cell in edit mode
       // For manual positions, add a DELETE button instead
-      if (pos.isManual) {
-        td.innerHTML = `${String(cells[i])} <button class="position-delete-btn" data-asset="${pos.asset}" data-manual-type="${pos.manualType}">[DELETE]</button>`;
+      // Robust check: look for flag OR exchange name string (fallback)
+      const isManual = pos.isManual || (pos.exchange && typeof pos.exchange === 'string' && pos.exchange.startsWith('Manual'));
+
+      if (isManual) {
+        // Infer type if missing
+        let manualType = pos.manualType;
+        if (!manualType && pos.exchange) {
+          manualType = pos.exchange.includes('Pyth') ? 'pyth' : 'custom';
+        }
+
+        td.innerHTML = `${String(cells[i])} <button class="position-delete-btn" data-asset="${pos.asset}" data-manual-type="${manualType}">[DELETE]</button>`;
       } else {
         td.innerHTML = `${String(cells[i])} <button class="position-edit-btn" data-asset-key="${assetKey}">[HIDE]</button>`;
       }
@@ -221,7 +230,7 @@ function createMobileCard(doc, pos, opts) {
   const value = computeValue(pos);
   const useColoredPnL = opts.settings?.useColoredPnL ?? true;
   const showExactAmounts = opts.settings?.showExactAmounts ?? false;
-  
+
   // Compute change flags for mobile flash animations (mirrors table logic)
   const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
   const prevGlobal = (typeof window !== 'undefined' && Array.isArray(window._previousRenderData))
@@ -232,11 +241,11 @@ function createMobileCard(doc, pos, opts) {
   const valueChanged = prevGlobal && Math.abs(value - (prevValue || 0)) > 0.01;
   const pnlChanged = prevGlobal && Math.abs((pos.pnl || 0) - (prevGlobal.pnl || 0)) > 0.01;
   const change24hChanged = prevGlobal && Math.abs((pos.change24h || 0) - (prevGlobal.change24h || 0)) > 0.01;
-  
+
   // Color classes for PnL and 24H%
   const pnlClass = useColoredPnL && pos.pnl != null ? (pos.pnl >= 0 ? 'positive-pnl' : 'negative-pnl') : '';
   const changeClass = useColoredPnL && pos.change24h != null ? (pos.change24h >= 0 ? 'positive-pnl' : 'negative-pnl') : '';
-  
+
   card.innerHTML = `
     <div class="card-row"><span class="card-label">Asset</span><span class="card-asset">${pos.asset || '—'}</span></div>
     <div class="card-row"><span class="card-label">Exchange</span><span class="card-value">${pos.exchange || '—'}</span></div>
@@ -321,7 +330,7 @@ export function renderPositions({ positions, containers, options, previousPositi
           cell.removeAttribute('data-flash');
         }, { once: true });
       });
-      
+
       // Trigger flash animations in mobile cards
       if (containers.mobilePositionsContainer) {
         const mobileFlashNodes = containers.mobilePositionsContainer.querySelectorAll('[data-flash="true"]');

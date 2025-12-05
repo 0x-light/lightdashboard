@@ -37,6 +37,8 @@ export class ManualFetcher {
                                 change24h: null, // Could fetch if needed
                                 pnl: pnl,
                                 feedId: pos.feedId,
+                                isManual: true,
+                                manualType: 'pyth',
                                 _changeDetectionKey: `MANUAL_PYTH_${pos.symbol}_${pos.feedId}`
                             });
                         }
@@ -60,6 +62,8 @@ export class ManualFetcher {
                     value: value,
                     change24h: null,
                     pnl: null,
+                    isManual: true,
+                    manualType: 'custom',
                     _changeDetectionKey: `MANUAL_CUSTOM_${pos.symbol}`
                 });
             }

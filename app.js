@@ -5,7 +5,7 @@ import * as Portfolio from './modules/domain/portfolio.js';
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.7.1';
+const APP_VERSION = '2.7.2';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
@@ -600,7 +600,8 @@ function setupControls() {
               const asset = e.target.getAttribute('data-asset');
               const manualType = e.target.getAttribute('data-manual-type');
 
-              if (confirm(`Delete manual position "${asset}"?`)) {
+              // Direct delete without confirmation
+              {
                 const Settings = window.AppModules?.core?.settings;
                 const s = getSettings();
 
@@ -1358,7 +1359,18 @@ function setupControls() {
       return allPythFeeds;
     } catch (e) {
       console.error('Failed to load Pyth feeds:', e);
-      return [];
+      // Fallback for when API fails so search isn't totally broken
+      allPythFeeds = [
+        { symbol: 'Crypto.BTC/USD', id: '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43' },
+        { symbol: 'Crypto.ETH/USD', id: '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace' },
+        { symbol: 'Crypto.SOL/USD', id: '0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d' },
+        { symbol: 'Crypto.BNB/USD', id: '0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d11bed02' },
+        { symbol: 'Crypto.DOGE/USD', id: '0xdcef50dd0a4cd2dcc17e45df1676dcb336a11a61c69df7a0299b0150c672d25c' },
+        { symbol: 'Crypto.AVAX/USD', id: '0x93da3352f9ee7d82e5b72c88f15ec963795d9038e9dc8564c974003cb3e97029' },
+        { symbol: 'Crypto.MATIC/USD', id: '0x5de33a9112c2b700b8d30b8a3402c10363715bbc5aadd63a35d8e12a2aa7d863' },
+        { symbol: 'Crypto.DOT/USD', id: '0x59c3d0f04ec60d70928e1005bbf2f7ee628290f0ca93ee4f03975550302d7e9e' }
+      ].map(f => ({ symbol: f.symbol.replace('Crypto.', '').replace('/USD', ''), id: f.id }));
+      return allPythFeeds;
     }
   }
 
@@ -1851,7 +1863,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Display version immediately (using APP_VERSION constant)
   const versionDisplay = document.getElementById('versionDisplay');
   if (versionDisplay) {
-    const buildDate = new Date('2025-11-24T12:00:00Z').toLocaleString('en-US', {
+    const buildDate = new Date('2025-12-05T14:45:00Z').toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
