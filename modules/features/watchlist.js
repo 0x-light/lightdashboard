@@ -45,165 +45,190 @@ function createSparkline(priceData, width = 60, height = 24, currentChange24h = 
 }
 
 export async function fetchPrices(feedIds, pythProvider, includePriceHistory = false) {
+  // Legacy wrapper for compatibility if used elsewhere, but we recommend using granular fetches
+  const prices = await fetchBasicWith24h(feedIds, pythProvider);
+  if (includePriceHistory && pythProvider.getBatch24hPriceHistory) {
+    await enrichWithHistory(prices, pythProvider);
+  }
+  return prices;
+}
+
+// 1. Minimum Viable Data: Current Prices (Symbols loaded async)
+async function fetchBasicPrices(feedIds, pythProvider) {
   if (!Array.isArray(feedIds) || feedIds.length === 0 || !pythProvider) return [];
 
-  const get24hAgoTsSec = () => {
-    const nowMs = Date.now();
-    return Math.floor((nowMs - 24 * 60 * 60 * 1000) / 1000);
-  };
-
   try {
-    // Fetch feed metadata to map IDs to symbols
-    const feedMap = await pythProvider.getPriceFeeds(10000);
-    const idToSymbol = {};
-    for (const [symbol, id] of Object.entries(feedMap)) {
-      idToSymbol[id.toLowerCase()] = symbol;
-    }
+    // Get prices FIRST (fast, critical)
+    const current = await pythProvider.getLatestByFeedIds(feedIds, 5000);
 
-    const [current, historical] = await Promise.all([
-      pythProvider.getLatestByFeedIds(feedIds, 10000),
-      pythProvider.getAtTimestampByFeedIds(feedIds, get24hAgoTsSec(), 10000)
-    ]);
+    // Try to get symbol map from cache (non-blocking, best effort)
+    // getPriceFeeds will return instantly from cache if available
+    let idToSymbol = {};
+    try {
+      const feedMap = await Promise.race([
+        pythProvider.getPriceFeeds(500), // Very short timeout - only use if cached
+        new Promise(resolve => setTimeout(() => resolve({}), 100)) // Fallback to empty after 100ms
+      ]);
+      for (const [symbol, id] of Object.entries(feedMap)) {
+        idToSymbol[id.toLowerCase()] = symbol;
+      }
+    } catch (e) {
+      // Ignore - symbols will just be feed IDs initially
+    }
 
     const results = [];
     for (const feedId of feedIds) {
       const normalizedId = feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`;
       const curr = current[normalizedId];
-      const hist = historical[normalizedId];
-      const symbol = idToSymbol[normalizedId] || normalizedId.slice(0, 10);
-      if (curr && curr > 0) {
-        const change24h = (hist && hist > 0) ? ((curr - hist) / hist) * 100 : null;
-        results.push({ feedId: normalizedId, symbol, price: curr, change24h, priceHistory: null });
+      // Use symbol if available, otherwise show a short version of the feed ID
+      const symbol = idToSymbol[normalizedId] || `...${normalizedId.slice(-6)}`;
+
+      if (curr !== undefined) {
+        results.push({
+          feedId: normalizedId,
+          symbol,
+          price: curr,
+          change24h: null,
+          priceHistory: null
+        });
       }
     }
-
-    // Fetch price history if requested (skip stablecoins)
-    // Force to true by default for better UX
-    const shouldFetchHistory = includePriceHistory !== false;
-    if (shouldFetchHistory && pythProvider.getBatch24hPriceHistory) {
-      const itemsToFetch = results.filter(item => !isStablecoin(item.symbol));
-      const feedIdsToFetch = itemsToFetch.map(item => item.feedId);
-
-      if (feedIdsToFetch.length > 0) {
-        try {
-          // Use 24 points (1h) to avoid rate limits
-          const batchResults = await pythProvider.getBatch24hPriceHistory(feedIdsToFetch, 24);
-
-          for (const item of itemsToFetch) {
-            const normalizedId = item.feedId.toLowerCase().startsWith('0x') ? item.feedId.toLowerCase() : `0x${item.feedId.toLowerCase()}`;
-            const history = batchResults[normalizedId];
-
-            if (history && history.length > 0) {
-              item.priceHistory = history;
-            } else {
-              // console.warn(`[Watchlist] No history for ${item.symbol}`);
-              item.priceHistory = null;
-            }
-          }
-        } catch (e) {
-          console.warn(`[Watchlist] Failed to fetch batch history:`, e);
-        }
-      }
-    }
-
     return results;
   } catch (e) {
-    console.error('Watchlist fetchPrices error:', e);
+    console.error('[Watchlist] Basic fetch failed', e);
     return [];
+  }
+}
+
+// 2. Secondary Data: 24h Change
+async function enrichWith24hChange(prices, pythProvider) {
+  if (!prices || prices.length === 0) return;
+
+  const get24hAgoTsSec = () => Math.floor((Date.now() - 24 * 60 * 60 * 1000) / 1000);
+  const feedIds = prices.map(p => p.feedId);
+
+  try {
+    const historical = await pythProvider.getAtTimestampByFeedIds(feedIds, get24hAgoTsSec(), 10000);
+
+    for (const item of prices) {
+      const hist = historical[item.feedId];
+      if (hist && hist > 0 && item.price > 0) {
+        item.change24h = ((item.price - hist) / hist) * 100;
+      }
+    }
+  } catch (e) {
+    console.warn('[Watchlist] 24h change fetch failed', e);
+  }
+}
+
+async function fetchBasicWith24h(feedIds, pythProvider) {
+  const prices = await fetchBasicPrices(feedIds, pythProvider);
+  await enrichWith24hChange(prices, pythProvider);
+  return prices;
+}
+
+// 3. Tertiary Data: Charts
+async function enrichWithHistory(prices, pythProvider) {
+  // Filter logic specific to chart fetching (thresholds etc should be handled by caller or here)
+  const itemsToFetch = prices.filter(item => !isStablecoin(item.symbol) && !item.priceHistory);
+  if (itemsToFetch.length === 0) return;
+
+  try {
+    const feedIds = itemsToFetch.map(i => i.feedId);
+    const batchResults = await pythProvider.getBatch24hPriceHistory(feedIds, 24);
+
+    for (const item of itemsToFetch) {
+      const history = batchResults[item.feedId];
+      if (history && history.length > 0) {
+        item.priceHistory = history;
+      }
+    }
+  } catch (e) {
+    console.warn('[Watchlist] History fetch failed', e);
   }
 }
 
 export async function render(container, { feedIds, pythProvider, useColoredPnL = true, editMode = false, cachedData = null, previousData = null, showPriceChart = true }) {
   if (!container) return;
 
-  // Use cached data if available, otherwise fetch fresh (with price history if chart enabled)
-  const prices = cachedData || await fetchPrices(feedIds, pythProvider, showPriceChart);
-  if (prices.length === 0) {
-    container.innerHTML = `<tr><td colspan="4" class="loading">No assets in watchlist</td></tr>`;
-    return prices; // Return empty array for caching
-  }
+  // Render context helper
+  const updateUI = (data) => renderRows(container, data, { useColoredPnL, editMode, showPriceChart, prevPriceMap: prevPriceMap || {} });
 
-  // Create a map of previous prices for comparison
+  let prices = cachedData;
   const prevPriceMap = {};
-  if (previousData && Array.isArray(previousData)) {
-    for (const item of previousData) {
-      prevPriceMap[item.feedId] = item.price;
-    }
+  if (previousData) {
+    previousData.forEach(p => prevPriceMap[p.feedId] = p.price);
   }
 
-  const frag = container.ownerDocument.createDocumentFragment();
-  for (const item of prices) {
-    const tr = container.ownerDocument.createElement('tr');
-    const hasChange = item.change24h !== null && item.change24h !== undefined;
-    const cls = useColoredPnL
-      ? (hasChange ? (item.change24h >= 0 ? 'positive-pnl' : 'negative-pnl') : 'neutral-value')
-      : (hasChange ? (item.change24h >= 0 ? 'positive-neutral' : 'negative-neutral') : 'neutral-value');
-    const sign = hasChange ? (item.change24h >= 0 ? '+' : '') : '';
-    const changeDisplay = hasChange ? `${sign}${item.change24h.toFixed(2)}%` : '—';
+  // Stage 1: Basic Prices (Immediate)
+  if (!prices) {
+    prices = await fetchBasicPrices(feedIds, pythProvider);
 
-    // Check if price changed since last update
-    const prevPrice = prevPriceMap[item.feedId];
-    const priceChanged = prevPrice && Math.abs(item.price - prevPrice) > 0.0001;
-
-    // Create cells
-    const td1 = container.ownerDocument.createElement('td');
-    const td2 = container.ownerDocument.createElement('td');
-    const td3 = container.ownerDocument.createElement('td');
-    const td4 = container.ownerDocument.createElement('td');
-
-    // Set cell contents
-    if (editMode) {
-      td1.innerHTML = `${item.symbol || '—'} <button class="watchlist-edit-btn btn-text" data-feed-id="${item.feedId}">[REMOVE]</button>`;
-    } else {
-      td1.textContent = item.symbol || '—';
+    if (prices.length === 0) {
+      container.innerHTML = `<tr><td colspan="4" class="loading">No data available</td></tr>`;
+      return [];
     }
 
-    td2.textContent = `$${item.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+    // Render immediately with what we have (Prices only)
+    updateUI(prices);
 
-    // Chart cell - always render, CSS will hide if needed
-    let chartCell = '<span class="chart-loading">—</span>';
-    if (!isStablecoin(item.symbol)) {
-      const chartSvg = item.priceHistory ? createSparkline(item.priceHistory, 60, 24, item.change24h) : null;
-      chartCell = chartSvg || '<span class="chart-loading">—</span>';
-    }
-    td3.innerHTML = chartCell;
-    td3.className = 'chart-cell chart';
+    // Trigger Stage 2 & 3 in background
 
-    td4.textContent = changeDisplay;
-    td4.className = cls;
-
-    // Mark cells for flash animation when price changes
-    if (priceChanged) {
-      td2.setAttribute('data-flash', 'true');
-      if (showPriceChart) {
-        td3.setAttribute('data-flash', 'true');
+    // Stage 1.5: Resolve Symbols (if we showed feed IDs initially)
+    // Stage 2: 24h Change
+    (async () => {
+      // Check if any item has placeholder symbol (starts with "...")
+      const needsSymbols = prices.some(p => p.symbol.startsWith('...'));
+      if (needsSymbols) {
+        try {
+          const feedMap = await pythProvider.getPriceFeeds(30000); // Full timeout now
+          const idToSymbol = {};
+          for (const [symbol, id] of Object.entries(feedMap)) {
+            idToSymbol[id.toLowerCase()] = symbol;
+          }
+          let updated = false;
+          for (const item of prices) {
+            if (item.symbol.startsWith('...') && idToSymbol[item.feedId]) {
+              item.symbol = idToSymbol[item.feedId];
+              updated = true;
+            }
+          }
+          if (updated) updateUI(prices);
+        } catch (e) {
+          console.warn('[Watchlist] Symbol resolution failed', e);
+        }
       }
-      td4.setAttribute('data-flash', 'true');
-    }
 
-    tr.appendChild(td1);
-    tr.appendChild(td2);
-    tr.appendChild(td3); // Always append, CSS will hide if needed
-    tr.appendChild(td4);
-    frag.appendChild(tr);
+      await enrichWith24hChange(prices, pythProvider);
+      updateUI(prices); // Re-render with % changes
+
+      // Stage 3: Charts
+      if (showPriceChart) {
+        await enrichWithHistory(prices, pythProvider);
+        updateUI(prices); // Re-render with Charts
+      }
+    })();
+
+  } else {
+    // Cached data case
+    updateUI(prices);
+
+    // Refresh background data if needed? 
+    // For now assume cached data is good enough to start, but we might want to refresh.
+    // Current design assumes 'cachedData' is fresh from a recent fetch if generated by app.js?
+    // Actually usually cachedData is from localStorage and might be stale.
+    // But let's stick to the requested scope: "Fast Load".
+
+    // Check if we are missing history
+    if (showPriceChart) {
+      (async () => {
+        await enrichWithHistory(prices, pythProvider);
+        updateUI(prices);
+      })();
+    }
   }
 
-  // Atomic DOM update using replaceChildren() to prevent visual flicker
-  container.replaceChildren(frag);
-
-  // Trigger flash animations on changed cells
-  requestAnimationFrame(() => {
-    const flashCells = container.querySelectorAll('td[data-flash="true"]');
-    flashCells.forEach(cell => {
-      cell.classList.add('cell-flash');
-      cell.addEventListener('animationend', () => {
-        cell.classList.remove('cell-flash');
-        cell.removeAttribute('data-flash');
-      }, { once: true });
-    });
-  });
-
-  return prices; // Return prices for caching
+  return prices;
 }
 
 export default { fetchPrices, render };

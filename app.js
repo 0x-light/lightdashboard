@@ -1,6 +1,7 @@
 // Minimal alpha boot for the new modular dashboard
 import * as AssetMapping from './modules/utils/asset-mapping.js';
 import * as Portfolio from './modules/domain/portfolio.js';
+import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
 
 // ============================================================================
 // VERSION CHECKING
@@ -334,12 +335,12 @@ async function _doRenderPortfolioIncremental() {
     window._portfolioRenderer = renderer;
 
     const manager = new PortfolioManager(renderer, providers, settings);
-    manager.registerFetcher('Hyperliquid', new HyperliquidFetcher(providers, renderer));
+    manager.registerFetcher('Hyperliquid', new HyperliquidFetcher(providers, renderer, settings));
     manager.registerFetcher('Lighter', new LighterFetcher(providers, renderer));
     manager.registerFetcher('Zerion', new ZerionFetcher(providers, renderer, settings));
     manager.registerFetcher('AlchemyHelius', new AlchemyHeliusFetcher(providers, renderer, settings));
     manager.registerFetcher('BitcoinZcash', new BitcoinZcashFetcher(providers, renderer));
-    manager.registerFetcher('Manual', new ManualFetcher(providers, renderer));
+    manager.registerFetcher('Manual', new ManualFetcher(providers, renderer, settings));
 
     window._portfolioManager = manager;
   } else {
@@ -966,12 +967,8 @@ function setupControls() {
         if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW ON]';
       }
 
-      // Close mobile menu if open
-      const mobileMenu = document.getElementById('newMobileMenu');
-      if (mobileMenu) {
-        mobileMenu.classList.remove('active');
-        document.body.classList.remove('mobile-menu-open');
-      }
+      // Close mobile menu if open (with scroll restoration)
+      closeMobileMenuWithScroll();
 
       // Save to localStorage
       const s = getSettings();
@@ -994,12 +991,8 @@ function setupControls() {
         if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = '[RAIN ON]';
       }
 
-      // Close mobile menu if open
-      const mobileMenu = document.getElementById('newMobileMenu');
-      if (mobileMenu) {
-        mobileMenu.classList.remove('active');
-        document.body.classList.remove('mobile-menu-open');
-      }
+      // Close mobile menu if open (with scroll restoration)
+      closeMobileMenuWithScroll();
 
       // Save to localStorage
       const s = getSettings();
@@ -1293,12 +1286,8 @@ function setupControls() {
       if (donateBackdrop) donateBackdrop.style.display = 'block';
       donateWindow.style.display = 'flex';
     }
-    // Close mobile menu if open
-    const mobileMenu = document.getElementById('newMobileMenu');
-    if (mobileMenu) {
-      mobileMenu.classList.remove('active');
-      document.body.classList.remove('mobile-menu-open');
-    }
+    // Close mobile menu if open (with scroll restoration)
+    closeMobileMenuWithScroll();
   };
 
   const closeDonateWindow = () => {
@@ -1351,25 +1340,50 @@ function setupControls() {
 
   async function loadAllPythFeeds() {
     if (allPythFeeds) return allPythFeeds;
+
+    // Fallback data for when API fails or returns empty (CORS issues, etc.)
+    const FALLBACK_FEEDS = [
+      { symbol: 'BTC', id: '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43' },
+      { symbol: 'ETH', id: '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace' },
+      { symbol: 'SOL', id: '0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d' },
+      { symbol: 'BNB', id: '0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d11bed02' },
+      { symbol: 'DOGE', id: '0xdcef50dd0a4cd2dcc17e45df1676dcb336a11a61c69df7a0299b0150c672d25c' },
+      { symbol: 'AVAX', id: '0x93da3352f9ee7d82e5b72c88f15ec963795d9038e9dc8564c974003cb3e97029' },
+      { symbol: 'MATIC', id: '0x5de33a9112c2b700b8d30b8a3402c10363715bbc5aadd63a35d8e12a2aa7d863' },
+      { symbol: 'DOT', id: '0x59c3d0f04ec60d70928e1005bbf2f7ee628290f0ca93ee4f03975550302d7e9e' },
+      { symbol: 'LINK', id: '0x8ac0c70fff57e9aefdf5edf44b51d62c2d433653cbb2cf5cc06bb115af04d221' },
+      { symbol: 'UNI', id: '0x78d185a741d07edb3412b09008b7c5cfb9bbbd7d568bf00ba737b456ba171501' },
+      { symbol: 'XRP', id: '0xec5d399846a9209f3fe5881d70aae9268c94339ff9817e8d18ff19fa05eea1c8' },
+      { symbol: 'ADA', id: '0x2a01deaec9e51a579277b34b122399984d0bbf57e2458a7e42fecd2829867a0d' },
+      { symbol: 'ATOM', id: '0xb00b60f88b03a6a625a8d1c048c3f66653edf217439cb4d1c21c60c4b4b0fce0' },
+      { symbol: 'LTC', id: '0x6e3f3fa8253588df9326580180233eb791e03b5cd0a3b7c25afc30c9c42bc8a9' },
+      { symbol: 'NEAR', id: '0xc415de8d2eba7db216527dff4b60e8f3a5311c740daee748c31d8cc844ef0807' },
+      { symbol: 'SHIB', id: '0xf0d57deca57b3da2fe63a493f4c25925c4c4c1f1d64c7f98c7c7a0eb3b4c0a44' },
+      { symbol: 'ARB', id: '0x3fa4252848f9f0a1480be62745a4629d9eb1322aebab8a791e344b3b9c1adcf5' },
+      { symbol: 'OP', id: '0x385f64d993f7b77d8182ed5003d97c60aa3361f3cecfe711544d2d59165e9bdf' },
+      { symbol: 'APT', id: '0x03ae4db29ed4ae33d323568895aa00337e658e348b37509f5372ae51f0af00d5' },
+      { symbol: 'SUI', id: '0x23d7315113f5b1d3ba7a83604c44b94d79f4fd69af77f804fc7f920a6dc65744' }
+    ];
+
     try {
       const mods = window.AppModules || {};
       const providers = mods.data?.providers || {};
       const feeds = await providers.pyth.getPriceFeeds(15000);
-      allPythFeeds = Object.entries(feeds).map(([symbol, id]) => ({ symbol, id }));
+
+      // Check if we got valid results
+      if (feeds && typeof feeds === 'object' && Object.keys(feeds).length > 0) {
+        allPythFeeds = Object.entries(feeds).map(([symbol, id]) => ({ symbol, id }));
+        console.log(`[Search] Loaded ${allPythFeeds.length} Pyth feeds from API`);
+        return allPythFeeds;
+      }
+
+      // API returned empty - use fallback
+      console.warn('[Search] Pyth API returned empty, using fallback feeds');
+      allPythFeeds = FALLBACK_FEEDS;
       return allPythFeeds;
     } catch (e) {
       console.error('Failed to load Pyth feeds:', e);
-      // Fallback for when API fails so search isn't totally broken
-      allPythFeeds = [
-        { symbol: 'Crypto.BTC/USD', id: '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43' },
-        { symbol: 'Crypto.ETH/USD', id: '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace' },
-        { symbol: 'Crypto.SOL/USD', id: '0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d' },
-        { symbol: 'Crypto.BNB/USD', id: '0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d11bed02' },
-        { symbol: 'Crypto.DOGE/USD', id: '0xdcef50dd0a4cd2dcc17e45df1676dcb336a11a61c69df7a0299b0150c672d25c' },
-        { symbol: 'Crypto.AVAX/USD', id: '0x93da3352f9ee7d82e5b72c88f15ec963795d9038e9dc8564c974003cb3e97029' },
-        { symbol: 'Crypto.MATIC/USD', id: '0x5de33a9112c2b700b8d30b8a3402c10363715bbc5aadd63a35d8e12a2aa7d863' },
-        { symbol: 'Crypto.DOT/USD', id: '0x59c3d0f04ec60d70928e1005bbf2f7ee628290f0ca93ee4f03975550302d7e9e' }
-      ].map(f => ({ symbol: f.symbol.replace('Crypto.', '').replace('/USD', ''), id: f.id }));
+      allPythFeeds = FALLBACK_FEEDS;
       return allPythFeeds;
     }
   }

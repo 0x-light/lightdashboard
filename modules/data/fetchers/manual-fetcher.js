@@ -1,7 +1,8 @@
 export class ManualFetcher {
-    constructor(providers, renderer) {
+    constructor(providers, renderer, settings) {
         this.providers = providers;
         this.renderer = renderer;
+        this.settings = settings;
     }
 
     async fetch(cryptoPositions) {
@@ -82,9 +83,11 @@ export class ManualFetcher {
 
     async enrichWithPythHistory(rows) {
         if (!rows || rows.length === 0) return;
+        if (this.settings && this.settings.showPriceChart === false) return;
+
 
         const pythRows = rows.filter(r => r.exchange === 'Manual (Pyth)' && !r.priceHistory);
-        console.log(`[Manual] Enriching ${pythRows.length} Pyth positions with history.`);
+        // console.log(`[Manual] Enriching ${pythRows.length} Pyth positions with history.`);
         if (pythRows.length === 0) return;
 
         // We need to find the feedId again or store it in the row.
@@ -108,9 +111,18 @@ export class ManualFetcher {
                     return false;
                 }
 
-                const history = await this.providers.pyth.get24hPriceHistory(row.feedId, 6000);
+                // Check threshold and hidden status
+                // Manual positions are usually important, but respect global settings if user wants
+                const isHidden = this.settings.hiddenAssets && this.settings.hiddenAssets.includes(`${row.asset}_Manual (Pyth)`);
+                const threshold = this.settings.minBalanceThreshold || 0;
+                if (isHidden || row.value < threshold) {
+                    return false;
+                }
+
+                const history = await this.providers.pyth.get24hPriceHistory(row.feedId, 6000, 96);
+
                 if (history && history.length > 0) {
-                    console.log(`[Manual] Got ${history.length} history points for ${row.asset}`);
+                    // console.log(`[Manual] Got ${history.length} history points for ${row.asset}`);
                     row.priceHistory = history;
 
                     if (row.change24h === null && history.length >= 2) {

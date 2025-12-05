@@ -98,6 +98,18 @@ function formatUsd(num, visible, showPlusSign = false) {
   }
 }
 
+// Format price with full precision (no compact notation) - like watchlist
+function formatPrice(num, visible) {
+  if (!visible) return '$••••';
+  const n = Number(num || 0);
+  if (!Number.isFinite(n)) return '—';
+  if (n === 0) return '$0';
+
+  const abs = Math.abs(n);
+  // Use full precision with comma separators
+  return `$${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function formatPct(num) {
   if (num === null || num === undefined || Number.isNaN(num)) return '—';
   const n = Number(num);
@@ -152,7 +164,7 @@ function createTableRow(doc, pos, opts, prevDataMap) {
   // Order: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
   const cells = [
     pos.asset || '—',
-    formatUsd(pos.price, true),
+    formatPrice(pos.price, true),
     chartCell,
     formatUsd(value, amountVisible),
     formatUsd(pos.pnl, amountVisible, true),
@@ -250,7 +262,7 @@ function createMobileCard(doc, pos, opts) {
     <div class="card-row"><span class="card-label">Asset</span><span class="card-asset">${pos.asset || '—'}</span></div>
     <div class="card-row"><span class="card-label">Exchange</span><span class="card-value">${pos.exchange || '—'}</span></div>
     <div class="card-row"><span class="card-label">Amount</span><span class="card-value">${formatAmount(pos.amount, amountVisible, showExactAmounts)}</span></div>
-    <div class="card-row"><span class="card-label">Price</span><span class="card-value"${priceChanged ? ' data-flash="true"' : ''}>${formatUsd(pos.price, true)}</span></div>
+    <div class="card-row"><span class="card-label">Price</span><span class="card-value"${priceChanged ? ' data-flash="true"' : ''}>${formatPrice(pos.price, true)}</span></div>
     <div class="card-row"><span class="card-label">Value</span><span class="card-value"${valueChanged ? ' data-flash="true"' : ''}>${formatUsd(value, amountVisible)}</span></div>
     <div class="card-row"><span class="card-label">24H%</span><span class="card-value ${changeClass}"${change24hChanged ? ' data-flash="true"' : ''}>${formatPct(pos.change24h)}</span></div>
     <div class="card-row"><span class="card-label">P&L</span><span class="card-value ${pnlClass}"${pnlChanged ? ' data-flash="true"' : ''}>${formatUsd(pos.pnl, amountVisible, true)}</span></div>

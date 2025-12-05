@@ -1,6 +1,6 @@
 // Service Worker for Light Dashboard
 // Provides offline support, intelligent caching, and automatic updates
-const CACHE_VERSION = 'v2.7.0';
+const CACHE_VERSION = 'v2.7.3';
 const BUILD_TIMESTAMP = '2025-11-25T20:25:34Z';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
@@ -29,6 +29,15 @@ const API_CACHE_CONFIG = {
   'api.zcha.in': 60 * 1000 // 60 seconds (Zcash blocks are slow)
   // Note: api.zerion.io is not cached, always fetches fresh
 };
+
+// Domains that may have CORS issues - don't intercept these in SW
+// Let the browser handle them directly
+const BYPASS_DOMAINS = [
+  'hermes.pyth.network',
+  'api.allorigins.win',
+  'corsproxy.io',
+  'cors-anywhere.herokuapp.com'
+];
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
@@ -106,6 +115,14 @@ self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (request.method !== 'GET') {
     return;
+  }
+
+  // Skip domains that may have CORS issues - let browser handle directly
+  // This prevents SW from triggering CORS errors
+  for (const domain of BYPASS_DOMAINS) {
+    if (url.hostname.includes(domain) || url.href.includes(domain)) {
+      return; // Don't call event.respondWith - let browser handle it
+    }
   }
 
   // Handle same-origin requests
@@ -226,8 +243,13 @@ self.addEventListener('fetch', (event) => {
       })
     );
   } else {
-    // Default behavior - network only
-    event.respondWith(fetch(request));
+    // Default behavior - network only with error handling
+    event.respondWith(
+      fetch(request).catch(() => {
+        // Return empty response for failed requests (likely CORS)
+        return new Response(null, { status: 0, statusText: '' });
+      })
+    );
   }
 });
 
@@ -266,7 +288,7 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
-  
+
   if (event.data && event.data.type === 'GET_VERSION') {
     // Allow the app to check the SW version
     event.ports[0].postMessage({ version: CACHE_VERSION, timestamp: BUILD_TIMESTAMP });

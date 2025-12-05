@@ -37,21 +37,24 @@ export async function fetchComicImage(comicKey, date = new Date()) {
   if (!comic) return null;
   const dateStr = formatDate(date);
   const url = `${comic.baseUrl}/${dateStr}`;
-  
+
   // Add cache-busting timestamp to prevent proxy caching
   const cacheBuster = Date.now();
   const urlWithCacheBuster = `${url}?_=${cacheBuster}`;
-  
+
   // Try multiple CORS proxies in order
   const proxies = [
-    `/api/proxy?url=${encodeURIComponent(urlWithCacheBuster)}`, // Cloudflare Functions (production)
+    // Cloudflare Functions (production only) - skip on localhost to avoid 404s
+    ...(window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+      ? [`/api/proxy?url=${encodeURIComponent(urlWithCacheBuster)}`]
+      : []),
     `https://api.allorigins.win/raw?url=${encodeURIComponent(urlWithCacheBuster)}`, // Public CORS proxy
     `https://corsproxy.io/?${encodeURIComponent(urlWithCacheBuster)}` // Alternative public CORS proxy
   ];
-  
+
   for (const proxyUrl of proxies) {
     try {
-      const response = await fetch(proxyUrl, { 
+      const response = await fetch(proxyUrl, {
         signal: AbortSignal.timeout(10000),
         cache: 'no-store'
       });
@@ -60,16 +63,16 @@ export async function fetchComicImage(comicKey, date = new Date()) {
         if (html && html.length > 100) {
           const parser = new DOMParser();
           const doc = parser.parseFromString(html, 'text/html');
-          
+
           let imgSrc = null;
           let caption = null;
-          
+
           // Special handling for The Far Side
           if (comicKey === 'farside') {
             // Method 1: Look for images from amuniversal CDN in all img tag attributes
             const allImages = doc.querySelectorAll('img');
             const attributes = ['src', 'data-src', 'data-lazy-src', 'srcset', 'data-srcset'];
-            
+
             for (const img of allImages) {
               for (const attr of attributes) {
                 const value = img.getAttribute(attr);
@@ -81,7 +84,7 @@ export async function fetchComicImage(comicKey, date = new Date()) {
               }
               if (imgSrc) break;
             }
-            
+
             // Method 2: Search raw HTML for amuniversal URLs (fallback)
             if (!imgSrc) {
               const match = html.match(/https?:\/\/featureassets\.amuniversal\.com\/[^\s"'<>]+/);
@@ -89,7 +92,7 @@ export async function fetchComicImage(comicKey, date = new Date()) {
                 imgSrc = match[0];
               }
             }
-            
+
             // Try to get caption
             const farsideCaption = doc.querySelector('.figure-caption, figcaption');
             if (farsideCaption) {
@@ -101,7 +104,7 @@ export async function fetchComicImage(comicKey, date = new Date()) {
             if (ogImage) {
               imgSrc = ogImage.getAttribute('content');
             }
-            
+
             // Method 2: Try multiple image selectors
             if (!imgSrc) {
               const selectors = [
@@ -111,7 +114,7 @@ export async function fetchComicImage(comicKey, date = new Date()) {
                 comic.imageSelector,
                 'img[alt*="comic" i]'
               ];
-              
+
               for (const selector of selectors) {
                 const img = doc.querySelector(selector);
                 if (img) {
@@ -123,7 +126,7 @@ export async function fetchComicImage(comicKey, date = new Date()) {
               }
             }
           }
-          
+
           if (imgSrc) {
             // Handle relative URLs
             if (imgSrc.startsWith('//')) {
@@ -143,33 +146,33 @@ export async function fetchComicImage(comicKey, date = new Date()) {
       continue;
     }
   }
-  
+
   return null;
 }
 
 export async function renderComic(container, comicKey = 'calvinandhobbes', date = new Date()) {
   if (!container) return;
-  
+
   const comic = METADATA[comicKey];
   if (!comic) {
     console.error(`[Comics] Invalid comic key: ${comicKey}`);
     container.textContent = 'Error: Invalid comic';
     return;
   }
-  
+
   const dateStr = formatDate(date);
   const url = `${comic.baseUrl}/${dateStr}`;
-  
+
   // Show loading message and add fading animation
   container.innerHTML = '<div style="text-align: center; padding: 10px 0;">Loading...</div>';
   container.classList.add('fading');
-  
+
   const result = await fetchComicImage(comicKey, date);
-  
+
   if (result && result.src) {
     const isFarSide = comicKey === 'farside';
     const isMobile = window.innerWidth <= 768;
-    
+
     // Mobile only: set horizontal scroll on container for non-Far Side comics
     if (!isFarSide && isMobile) {
       container.style.overflowX = 'auto';
@@ -179,17 +182,17 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
       container.style.overflowX = '';
       container.style.overflowY = '';
     }
-    
+
     // Successfully fetched comic image
     let html = `<img src="${result.src}" alt="${comic.name}" data-comic-type="${comicKey}">`;
-    
+
     // Add caption if available (for The Far Side)
     if (result.caption) {
       html += `<div style="font-style: italic; text-align: center; opacity: 0.8; margin-top: 8px;">${result.caption}</div>`;
     }
-    
+
     container.innerHTML = html;
-    
+
     // Remove fading animation after new image is inserted
     setTimeout(() => {
       container.classList.remove('fading');
@@ -204,10 +207,10 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
         </p>
       </div>
     `;
-    
+
     // Remove fading animation
     container.classList.remove('fading');
-    
+
     // Add retry click event listener
     const retryText = document.getElementById('retryComicText');
     if (retryText) {
@@ -219,7 +222,7 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
 export function getRandomDate(comicKey) {
   const comic = METADATA[comicKey];
   if (!comic) return new Date();
-  
+
   const start = comic.startDate.getTime();
   const end = comic.endDate.getTime();
   const randomTime = start + Math.random() * (end - start);

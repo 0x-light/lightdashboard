@@ -1,4 +1,5 @@
 // UI Controls module - handles button interactions
+import { closeMobileMenuWithScroll } from './mobile-menu.js';
 
 const STORAGE_KEY = 'myDashboardSettings.v1';
 
@@ -48,36 +49,27 @@ export function setupRainSnowControls(Rain, getSettings) {
 
   if (toggleRainBtn) toggleRainBtn.addEventListener('click', handleRainToggle);
   if (toggleSnowBtn) toggleSnowBtn.addEventListener('click', handleSnowToggle);
-  
+
   if (toggleRainBtnMobile) {
     toggleRainBtnMobile.addEventListener('click', () => {
       handleRainToggle();
-      closeMobileMenu();
+      closeMobileMenuWithScroll();
     });
   }
-  
+
   if (toggleSnowBtnMobile) {
     toggleSnowBtnMobile.addEventListener('click', () => {
       handleSnowToggle();
-      closeMobileMenu();
+      closeMobileMenuWithScroll();
     });
   }
 
   return { updateRainButtons, updateSnowButtons };
 }
 
-function closeMobileMenu() {
-  const mobileMenu = document.getElementById('newMobileMenu');
-  if (mobileMenu) {
-    mobileMenu.classList.remove('active');
-    document.body.classList.remove('mobile-menu-open');
-    document.body.classList.remove('modal-open');
-  }
-}
-
 export function setupFontSizeControls(getSettings, invalidateCache) {
   let currentFontSize = 15;
-  
+
   const applyFontSize = (size) => {
     document.documentElement.style.fontSize = size + 'px';
     currentFontSize = size;
@@ -125,7 +117,7 @@ export function setupFontSizeControls(getSettings, invalidateCache) {
 
 export function setupAmountsToggle(onToggle) {
   let amountsVisible = true;
-  
+
   const amountsBtn = document.getElementById('newToggleAmountsBtn');
   const mobileAmountsBtn = document.getElementById('newToggleAmountsBtnMobile');
 
@@ -149,7 +141,7 @@ export function setupAmountsToggle(onToggle) {
 
 export function setupHideSmallToggle(getSettings, onToggle) {
   let hideSmallPositions = true;
-  
+
   const hideSmallBtn = document.getElementById('newHideSmallBtn');
   const mobileHideSmallBtn = document.getElementById('newHideSmallBtnMobile');
 
@@ -177,7 +169,7 @@ export function setupHideSmallToggle(getSettings, onToggle) {
 export function setupEditModeToggle(getSettings, onToggle, invalidateCache) {
   let editMode = false;
   let hiddenAssets = new Set();
-  
+
   const editListBtn = document.getElementById('newEditListBtn');
   const positionsBody = document.getElementById('newPositionsBody');
 
@@ -195,7 +187,7 @@ export function setupEditModeToggle(getSettings, onToggle, invalidateCache) {
 
   const handlePositionEdit = (e) => {
     if (!editMode) return;
-    
+
     if (e.target.classList.contains('position-edit-btn')) {
       const assetKey = e.target.getAttribute('data-asset-key');
       if (hiddenAssets.has(assetKey)) {
@@ -259,7 +251,7 @@ export function setupThemeControls(getSettings, invalidateCache) {
   const themeSelectMobile = document.getElementById('newThemeSelectMobile');
   const settings = getSettings();
   const theme = settings.theme || Themes.getPreferredTheme();
-  
+
   Themes.applyTheme(theme);
 
   const handleThemeChange = (newTheme) => {
@@ -287,9 +279,9 @@ export function setupThemeControls(getSettings, invalidateCache) {
   }
 }
 
-export default { 
-  setupRainSnowControls, 
-  setupFontSizeControls, 
+export default {
+  setupRainSnowControls,
+  setupFontSizeControls,
   setupAmountsToggle,
   setupHideSmallToggle,
   setupEditModeToggle,

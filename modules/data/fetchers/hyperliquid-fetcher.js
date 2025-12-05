@@ -1,7 +1,8 @@
 export class HyperliquidFetcher {
-    constructor(providers, renderer) {
+    constructor(providers, renderer, settings) {
         this.providers = providers;
         this.renderer = renderer;
+        this.settings = settings;
         this.historyCache = new Map(); // key: asset, value: { priceHistory, change24h, timestamp }
     }
 
@@ -246,6 +247,7 @@ export class HyperliquidFetcher {
 
     async enrichWithHistory(rows, wallet) {
         if (!rows || rows.length === 0) return;
+        if (this.settings && this.settings.showPriceChart === false) return;
 
         const now = Date.now();
         const startTime = now - 24 * 60 * 60 * 1000;

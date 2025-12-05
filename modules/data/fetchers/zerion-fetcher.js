@@ -71,6 +71,8 @@ export class ZerionFetcher {
 
     async enrichWithPythHistory(rows, wallet) {
         if (!rows || rows.length === 0) return;
+        if (this.settings.showPriceChart === false) return;
+
 
         try {
             // 1. Get Feed IDs map
@@ -86,6 +88,15 @@ export class ZerionFetcher {
             const itemsToFetch = [];
             for (const row of rows) {
                 if (!row.priceHistory && row.asset) {
+                    // Check threshold and hidden status
+                    const isHidden = this.settings.hiddenAssets && this.settings.hiddenAssets.includes(`${row.asset}_${row.exchange}`);
+                    // Use generous threshold check (defaults to 0 if not set)
+                    const threshold = this.settings.minBalanceThreshold || 0;
+                    if (isHidden || row.value < threshold) {
+                        // Skip history for small/hidden assets
+                        continue;
+                    }
+
                     // Check cache first
                     if (this.historyCache.has(row.asset)) {
                         const cached = this.historyCache.get(row.asset);
@@ -118,22 +129,22 @@ export class ZerionFetcher {
                 }
             }
 
-            console.log(`[Zerion] Enriching ${itemsToFetch.length} items with Pyth history. Assets: ${itemsToFetch.map(i => i.row.asset).join(', ')}`);
+            // console.log(`[Zerion] Enriching ${itemsToFetch.length} items with Pyth history. Assets: ${itemsToFetch.map(i => i.row.asset).join(', ')}`);
 
             if (itemsToFetch.length === 0) return;
 
             // 3. Fetch history in batch
             const feedIds = itemsToFetch.map(i => i.feedId);
             try {
-                console.log(`[Zerion] Batch fetching history for ${feedIds.length} feeds`);
-                const batchResults = await this.providers.pyth.getBatch24hPriceHistory(feedIds, 24); // Use 24 points (1h) to avoid rate limits
+                // console.log(`[Zerion] Batch fetching history for ${feedIds.length} feeds`);
+                const batchResults = await this.providers.pyth.getBatch24hPriceHistory(feedIds, 96); // Use 96 points (15m resolution) to match Hyperliquid
 
                 for (const { row, feedId } of itemsToFetch) {
                     const normalizedId = feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`;
                     const history = batchResults[normalizedId];
 
                     if (history && history.length > 0) {
-                        console.log(`[Zerion] Got ${history.length} points for ${row.asset}`);
+                        // console.log(`[Zerion] Got ${history.length} points for ${row.asset}`);
                         row.priceHistory = history;
 
                         // Update 24h change if missing or we want to be more accurate
