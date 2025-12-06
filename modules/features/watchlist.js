@@ -204,7 +204,7 @@ function renderRows(container, data, options) {
           </div>
         </td>
         <td class="text-right font-mono">${priceFormatted}</td>
-        <td class="text-center">${chartHtml}</td>
+        <td class="text-center chart">${chartHtml}</td>
         <td class="text-right font-mono" style="color: ${changeColor}">${changeText}</td>
       </tr>
     `;
