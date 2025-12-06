@@ -192,26 +192,78 @@ export function setupSettingsDialog({ onSave, onClose }) {
     });
   }
 
-  // Force update
+  // Force update - aggressive cache clearing while preserving user settings
   if (forceUpdateBtn) {
     forceUpdateBtn.addEventListener('click', async () => {
       const originalText = forceUpdateBtn.textContent;
       forceUpdateBtn.textContent = '[CLEARING...]';
       forceUpdateBtn.disabled = true;
       try {
+        // 1. Save user settings BEFORE clearing anything
+        const savedSettings = localStorage.getItem(STORAGE_KEY);
+        const savedTheme = localStorage.getItem('theme');
+
+        // 2. Clear all caches (Service Worker cache)
         if ('caches' in window) {
           const cacheNames = await caches.keys();
           await Promise.all(cacheNames.map(name => caches.delete(name)));
+          console.log('[Force Update] Cleared', cacheNames.length, 'caches');
         }
+
+        // 3. Unregister ALL service workers and force them to stop
         if ('serviceWorker' in navigator) {
           const registrations = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(registrations.map(reg => reg.unregister()));
+          for (const reg of registrations) {
+            // Tell SW to skip waiting if there's an update
+            if (reg.waiting) {
+              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+            await reg.unregister();
+          }
+          console.log('[Force Update] Unregistered', registrations.length, 'service workers');
         }
-        localStorage.removeItem(FORCE_UPDATE_KEY);
+
+        // 4. Clear IndexedDB databases
+        if ('indexedDB' in window && indexedDB.databases) {
+          try {
+            const dbs = await indexedDB.databases();
+            await Promise.all(dbs.map(db => {
+              return new Promise((resolve) => {
+                const req = indexedDB.deleteDatabase(db.name);
+                req.onsuccess = resolve;
+                req.onerror = resolve;
+                req.onblocked = resolve;
+              });
+            }));
+            console.log('[Force Update] Cleared', dbs.length, 'IndexedDB databases');
+          } catch (e) { /* IndexedDB clearing is best-effort */ }
+        }
+
+        // 5. Clear sessionStorage completely
         sessionStorage.clear();
-        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // 6. Clear localStorage EXCEPT user settings
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key !== STORAGE_KEY && key !== 'theme') {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+        console.log('[Force Update] Cleared', keysToRemove.length, 'localStorage items (preserved settings)');
+
+        // 7. Restore settings (in case they got cleared somehow)
+        if (savedSettings) localStorage.setItem(STORAGE_KEY, savedSettings);
+        if (savedTheme) localStorage.setItem('theme', savedTheme);
+
+        // 8. Small delay to ensure cleanup completes
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // 9. Force hard reload bypassing all caches
         const url = new URL(window.location.href);
-        url.searchParams.set('_cb', Date.now().toString());
+        url.searchParams.set('_bust', Date.now().toString());
+        // Use replace to prevent back button issues, and force reload
         window.location.replace(url.toString());
       } catch (error) {
         console.error('[Force Update] Error:', error);
