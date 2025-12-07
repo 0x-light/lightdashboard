@@ -511,47 +511,54 @@ function setupPullToRefresh() {
   }, { passive: true });
 
   document.addEventListener('touchend', () => {
-    if (!isMobile() || !isPulling) return;
+    if (!isMobile()) return;
 
-    const pullDistance = currentY - startY;
-    const translateY = Math.min(pullDistance * 0.5, maxPull);
+    // Check if we should trigger refresh - either isPulling is set or indicator is visible
+    const wasActuallyPulling = isPulling || pullToRefreshEl.classList.contains('visible');
 
-    // If pulled enough, trigger refresh
-    if (translateY >= pullThreshold) {
-      // Trigger refresh
-      if (window._portfolioRenderer) {
-        // Show loading spinner and clear positions for fresh fetch
-        window._portfolioRenderer.clearPositions();
+    if (wasActuallyPulling) {
+      const pullDistance = currentY - startY;
+      const translateY = Math.min(Math.max(pullDistance * 0.5, 0), maxPull);
 
-        // Force re-fetch all data
-        const settings = getSettings();
-        const wallets = (settings.walletAddresses || '').split(',').map(w => w.trim()).filter(Boolean);
-        const solanaAddrs = (settings.solanaAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
-        const bitcoinAddrs = (settings.bitcoinAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
-        const zcashAddrs = (settings.zcashAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+      // If pulled enough, trigger refresh
+      if (translateY >= pullThreshold) {
+        // Trigger refresh
+        if (window._portfolioRenderer && window._portfolioManager) {
+          // Show loading spinner and clear positions for fresh fetch
+          window._portfolioRenderer.clearPositions();
 
-        window._portfolioManager.fetchAll(wallets, solanaAddrs, bitcoinAddrs, zcashAddrs);
+          // Force re-fetch all data
+          const settings = getSettings();
+          const wallets = (settings.walletAddresses || '').split(',').map(w => w.trim()).filter(Boolean);
+          const solanaAddrs = (settings.solanaAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+          const bitcoinAddrs = (settings.bitcoinAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+          const zcashAddrs = (settings.zcashAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+
+          window._portfolioManager.fetchAll(wallets, solanaAddrs, bitcoinAddrs, zcashAddrs);
+        }
       }
+
+      // Animate content back to original position smoothly
+      mainContent.classList.remove('pulling-active');
+      mainContent.classList.add('snapping-back');
+
+      // Use requestAnimationFrame to ensure transition is registered before changing transform
+      requestAnimationFrame(() => {
+        mainContent.style.transform = 'translateY(0)';
+
+        // Clean up after animation completes
+        setTimeout(() => {
+          pullToRefreshEl.classList.remove('visible');
+          mainContent.style.transform = '';
+          mainContent.classList.remove('snapping-back');
+        }, 100); // Match the CSS transition duration
+      });
     }
-
-    // Animate content back to original position smoothly
-    mainContent.classList.remove('pulling-active');
-    mainContent.classList.add('snapping-back');
-
-    // Use requestAnimationFrame to ensure transition is registered before changing transform
-    requestAnimationFrame(() => {
-      mainContent.style.transform = 'translateY(0)';
-
-      // Clean up after animation completes
-      setTimeout(() => {
-        pullToRefreshEl.classList.remove('visible');
-        mainContent.style.transform = '';
-        mainContent.classList.remove('snapping-back');
-      }, 100); // Match the CSS transition duration
-    });
 
     // Reset state
     isPulling = false;
+    isLocked = false;
+    startX = 0;
     startY = 0;
     currentY = 0;
   }, { passive: true });
