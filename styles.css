@@ -2640,11 +2640,15 @@ input[type="range"]:focus::-moz-range-thumb {
     left: 0;
     top: auto;
     transform: none;
-    max-height: 60vh;
     width: auto;
     max-width: none;
     border: none;
     border-top: 1px solid var(--border);
+  }
+
+  /* Only limit height for sticker modal, not other modals */
+  #stickerWindow {
+    max-height: 60vh;
   }
 
   .sticker-help-desktop {
@@ -2903,11 +2907,12 @@ input[type="range"]:focus::-moz-range-thumb {
     width: 20%;
   }
 
-  /* Scale down sparklines on mobile */
+  /* Scale sparklines to fill container on mobile */
   #newWatchlistTable .sparkline {
     display: block;
-    width: 50px;
-    height: 20px;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
   }
 }
 
@@ -3086,7 +3091,7 @@ input[type="range"]:focus::-moz-range-thumb {
   gap: 1rem;
   padding: 0.75rem 0;
   border-bottom: 1px solid var(--border);
-  animation: skeleton-pulse 1.5s ease-in-out infinite;
+  /* No animation - instant feel */
 }
 
 .skeleton-text {
@@ -3097,19 +3102,7 @@ input[type="range"]:focus::-moz-range-thumb {
   overflow: hidden;
 }
 
-.skeleton-text::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.05) 50%,
-      transparent 100%);
-  animation: skeleton-shimmer 1.5s ease-in-out infinite;
-}
+/* Removed shimmer animation - instant feel */
 
 .skeleton-text-short {
   flex: 0 0 20%;
@@ -3123,27 +3116,7 @@ input[type="range"]:focus::-moz-range-thumb {
   flex: 1;
 }
 
-@keyframes skeleton-pulse {
-
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.5;
-  }
-}
-
-@keyframes skeleton-shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-
-  100% {
-    transform: translateX(100%);
-  }
-}
+/* Removed skeleton keyframe animations - instant feel */
 
 .loading {
   opacity: 0.6;
@@ -3161,5 +3134,54 @@ input[type="range"]:focus::-moz-range-thumb {
   top: 0.5rem;
   right: 0.5rem;
   font-size: 0.9rem;
-  animation: skeleton-pulse 1s ease-in-out infinite;
+  /* No animation - instant feel */
+}
+
+/* === PULL TO REFRESH (Mobile Only) === */
+.pull-to-refresh {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .pull-to-refresh {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 80px;
+    background: var(--text);
+    color: var(--bg);
+    z-index: 997;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .pull-to-refresh.visible {
+    opacity: 1;
+  }
+
+  .pull-to-refresh-text {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 500;
+  }
+
+  /* Main content wrapper slides down when pulling */
+  .main-content {
+    background: var(--bg);
+    min-height: 100vh;
+    position: relative;
+    z-index: 998;
+    transform: translateY(0);
+    transition: transform 0.15s ease-out;
+    will-change: transform;
+  }
+
+  .main-content.pulling-active {
+    transition: none;
+  }
 }

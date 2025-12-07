@@ -99,6 +99,13 @@ export class IncrementalPortfolioRenderer {
     if (loader) {
       loader.remove();
     }
+
+    // Also remove hero loading animation
+    const summaryEl = document.getElementById('newSummary');
+    if (summaryEl) {
+      summaryEl.classList.remove('fading');
+    }
+
     this.isLoading = false;
   }
 

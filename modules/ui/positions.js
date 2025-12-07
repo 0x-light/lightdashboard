@@ -23,7 +23,7 @@ function createSparkline(priceData, width = 60, height = 24, currentChange24h = 
     // Flat line
     const y = height / 2;
     const points = priceData.map((_, i) => `${(i / (priceData.length - 1)) * width},${y}`).join(' ');
-    return `<svg width="${width}" height="${height}" class="sparkline"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
+    return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="sparkline"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
   }
 
   // Normalize prices to chart height
@@ -44,7 +44,7 @@ function createSparkline(priceData, width = 60, height = 24, currentChange24h = 
     color = lastPrice >= firstPrice ? 'var(--green)' : 'var(--red)';
   }
 
-  return `<svg width="${width}" height="${height}" class="sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
 }
 
 function formatAmount(num, visible, showExact = false) {

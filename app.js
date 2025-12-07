@@ -442,6 +442,98 @@ function applyFont(fontName) {
   }
 }
 
+// ============================================================================
+// PULL TO REFRESH (Mobile Only)
+// ============================================================================
+function setupPullToRefresh() {
+  const pullToRefreshEl = document.getElementById('pullToRefresh');
+  const mainContent = document.getElementById('mainContent');
+  if (!pullToRefreshEl || !mainContent) return;
+
+  // Only enable on mobile (768px breakpoint matches CSS)
+  const isMobile = () => window.innerWidth <= 768;
+
+  let startY = 0;
+  let currentY = 0;
+  let isPulling = false;
+  const pullThreshold = 60; // pixels to pull before triggering refresh
+  const maxPull = 80; // max translation
+
+  document.addEventListener('touchstart', (e) => {
+    if (!isMobile()) return;
+
+    // Only trigger if at top of page
+    if (window.scrollY === 0) {
+      startY = e.touches[0].clientY;
+      isPulling = true;
+      mainContent.classList.add('pulling-active');
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!isMobile() || !isPulling) return;
+
+    currentY = e.touches[0].clientY;
+    const pullDistance = currentY - startY;
+
+    // Only translate content when pulling down and at top of page
+    if (pullDistance > 0 && window.scrollY === 0) {
+      const translateY = Math.min(pullDistance * 0.5, maxPull);
+      mainContent.style.transform = `translateY(${translateY}px)`;
+
+      // Show the pull indicator when pulling enough
+      if (translateY > 10) {
+        pullToRefreshEl.classList.add('visible');
+      }
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', () => {
+    if (!isMobile() || !isPulling) return;
+
+    const pullDistance = currentY - startY;
+    const translateY = Math.min(pullDistance * 0.5, maxPull);
+
+    // If pulled enough, trigger refresh
+    if (translateY >= pullThreshold) {
+      // Trigger refresh
+      if (window._portfolioRenderer) {
+        // Show loading spinner and clear positions for fresh fetch
+        window._portfolioRenderer.clearPositions();
+
+        // Force re-fetch all data
+        const settings = getSettings();
+        const wallets = (settings.walletAddresses || '').split(',').map(w => w.trim()).filter(Boolean);
+        const solanaAddrs = (settings.solanaAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+        const bitcoinAddrs = (settings.bitcoinAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+        const zcashAddrs = (settings.zcashAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+
+        window._portfolioManager.fetchAll(wallets, solanaAddrs, bitcoinAddrs, zcashAddrs);
+      }
+    }
+
+    // Animate content back to original position smoothly
+    // First remove pulling-active to re-enable transitions
+    mainContent.classList.remove('pulling-active');
+
+    // Use requestAnimationFrame to ensure transition is registered before changing transform
+    requestAnimationFrame(() => {
+      mainContent.style.transform = 'translateY(0)';
+
+      // Hide the pull indicator and clean up after animation completes
+      setTimeout(() => {
+        pullToRefreshEl.classList.remove('visible');
+        mainContent.style.transform = '';
+      }, 150); // Match the CSS transition duration
+    });
+
+    // Reset state
+    isPulling = false;
+    startY = 0;
+    currentY = 0;
+  }, { passive: true });
+}
+
 
 function setupControls() {
   const settings = getSettings();
@@ -2151,6 +2243,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Setup header controls (non-blocking)
   setupControls();
 
+  // Setup pull-to-refresh for mobile
+  setupPullToRefresh();
+
   // CRITICAL PATH: Positions + Hero only (everything else lazy)
   try {
     await renderPortfolioIncremental();
@@ -2415,24 +2510,32 @@ window.addEventListener('DOMContentLoaded', async () => {
       });
     }
 
+    // Flag to prevent double-loading from both IntersectionObserver and idle callback
+    let comicLoaded = false;
+    const loadComicOnce = () => {
+      if (comicLoaded) return;
+      comicLoaded = true;
+      loadComic();
+    };
+
     if ('IntersectionObserver' in window) {
       const io = new IntersectionObserver((entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
             io.disconnect();
-            loadComic();
+            loadComicOnce();
             break;
           }
         }
       }, { rootMargin: '400px' });
       io.observe(comicEl);
       if ('requestIdleCallback' in window) {
-        requestIdleCallback(() => loadComic(), { timeout: 10000 });
+        requestIdleCallback(() => loadComicOnce(), { timeout: 10000 });
       } else {
-        setTimeout(loadComic, 10000);
+        setTimeout(loadComicOnce, 10000);
       }
     } else {
-      loadComic();
+      loadComicOnce();
     }
   }
 
@@ -2468,24 +2571,32 @@ window.addEventListener('DOMContentLoaded', async () => {
         watchlistBody.innerHTML = `<tr><td colspan="4" class="loading">Watchlist unavailable</td></tr>`;
       }
     };
+    // Flag to prevent double-loading from both IntersectionObserver and idle callback
+    let watchlistLoaded = false;
+    const loadWatchlistOnce = () => {
+      if (watchlistLoaded) return;
+      watchlistLoaded = true;
+      loadWatchlist();
+    };
+
     if ('IntersectionObserver' in window) {
       const io = new IntersectionObserver((entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
             io.disconnect();
-            loadWatchlist();
+            loadWatchlistOnce();
             break;
           }
         }
       }, { rootMargin: '300px' });
       io.observe(watchlistBody);
       if ('requestIdleCallback' in window) {
-        requestIdleCallback(loadWatchlist, { timeout: 7000 });
+        requestIdleCallback(loadWatchlistOnce, { timeout: 7000 });
       } else {
-        setTimeout(loadWatchlist, 7000);
+        setTimeout(loadWatchlistOnce, 7000);
       }
     } else {
-      loadWatchlist();
+      loadWatchlistOnce();
     }
   }
 
