@@ -3145,18 +3145,21 @@ input[type="range"]:focus::-moz-range-thumb {
 @media (max-width: 768px) {
   .pull-to-refresh {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    height: 80px;
+    bottom: 0;
+    height: 100vh;
+    height: 100dvh;
     background: var(--text);
     color: var(--bg);
     z-index: 997;
     opacity: 0;
     pointer-events: none;
+    padding-top: max(env(safe-area-inset-top, 20px), 20px);
   }
 
   .pull-to-refresh.visible {
@@ -3164,21 +3167,25 @@ input[type="range"]:focus::-moz-range-thumb {
   }
 
   .pull-to-refresh-text {
-    font-size: 14px;
+    font-size: 13px;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 2px;
     font-weight: 500;
+    padding: 16px 0;
   }
 
   /* Main content wrapper slides down when pulling */
   .main-content {
     background: var(--bg);
     min-height: 100vh;
+    min-height: 100dvh;
     position: relative;
     z-index: 998;
     transform: translateY(0);
-    transition: transform 0.15s ease-out;
+    transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     will-change: transform;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
   }
 
   .main-content.pulling-active {
