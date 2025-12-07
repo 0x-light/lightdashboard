@@ -27,6 +27,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Viewport">
+  <meta name="theme-color" content="#000000" id="themeColorMeta">
 
   <!-- PWA Manifest -->
   <link rel="manifest" href="/manifest.json?v=2.7.8">
@@ -43,6 +44,38 @@
         var settings = JSON.parse(localStorage.getItem('dashboardSettings') || '{}');
         var theme = settings.theme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         document.documentElement.dataset.theme = theme;
+
+        // Theme background colors for status bar (must match CSS)
+        var themeColors = {
+          'light': '#fdf6e3',
+          'dark': '#002b36',
+          'matrix': '#000000',
+          'ft': '#fff1e5',
+          'bloomberg': '#000000',
+          'daily': '#f5f1eb',
+          'eva01': '#000000',
+          'lcars': '#000000',
+          'astronomy': '#000000',
+          'halloween': '#1a0a00',
+          'christmas': '#0d1a0d',
+          'cyberpunk': '#0a0014',
+          'retro': '#1e1e2e',
+          'cozy-wooden': '#2a1810',
+          'ntsc-bw': '#0a0a0a',
+          'amber-low': '#1a0f00',
+          'vga-white': '#000000',
+          'paper-white': '#1a1a1a',
+          'vga-amber': '#000000',
+          'p7-phosphor': '#000000',
+          'yellow-terminal': '#000000',
+          'as400': '#000000',
+          'bioluminescence': '#000a14',
+          'safe-blue': '#001428'
+        };
+        var themeColorMeta = document.getElementById('themeColorMeta');
+        if (themeColorMeta && themeColors[theme]) {
+          themeColorMeta.setAttribute('content', themeColors[theme]);
+        }
       } catch (e) {
         document.documentElement.dataset.theme = 'dark';
       }

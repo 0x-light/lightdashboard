@@ -524,7 +524,7 @@ function setupPullToRefresh() {
       setTimeout(() => {
         pullToRefreshEl.classList.remove('visible');
         mainContent.style.transform = '';
-      }, 200); // Match the CSS transition duration
+      }, 100); // Match the CSS transition duration
     });
 
     // Reset state
