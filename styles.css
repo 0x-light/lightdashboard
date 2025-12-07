@@ -3183,14 +3183,17 @@ input[type="range"]:focus::-moz-range-thumb {
     min-height: 100dvh;
     position: relative;
     z-index: 998;
-    transform: translateY(0);
-    transition: transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  /* Only apply transform-related properties when actively pulling */
+  .main-content.pulling-active {
     will-change: transform;
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
   }
 
-  .main-content.pulling-active {
-    transition: none;
+  /* Snap-back transition - only active when NOT pulling */
+  .main-content.snapping-back {
+    transition: transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   }
 }

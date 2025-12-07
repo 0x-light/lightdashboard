@@ -152,18 +152,23 @@ function setupGridInteraction() {
             dropX < windowRect.left || dropX > windowRect.right ||
             dropY < windowRect.top || dropY > windowRect.bottom;
 
-        // Also place if just tapped (for mobile - small movement threshold)
+        // Check if user moved enough to count as a drag
         const moved = Math.abs(dropX - startX) > 20 || Math.abs(dropY - startY) > 20;
 
-        if (droppedOutside || !moved) {
+        // On mobile: tap to place at center, or drag outside to place at drop point
+        // On desktop: only drag outside to place (no tap-to-place)
+        const isMobile = window.innerWidth < 768;
+        const shouldPlace = droppedOutside || (isMobile && !moved);
+
+        if (shouldPlace) {
             // Place sticker - if tapped (not dragged much), place at center
             const placeX = moved ? dropX - 100 : (window.innerWidth / 2) - 100;
             const placeY = moved ? dropY - 100 : (window.innerHeight / 2) - 100;
 
             createStickySticker(imageSrc, placeX, placeY);
 
-            // Close sticker window on mobile after placing
-            if (!moved && window.innerWidth < 768) {
+            // Close sticker window on mobile after tap-to-place
+            if (!moved && isMobile) {
                 closeStickerWindow();
             }
         }

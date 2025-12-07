@@ -30,13 +30,13 @@
   <meta name="theme-color" content="#000000" id="themeColorMeta">
 
   <!-- PWA Manifest -->
-  <link rel="manifest" href="/manifest.json?v=2.7.8">
+  <link rel="manifest" href="/manifest.json?v=2.8.0">
 
   <!-- Cache busting: update version number on each deployment -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <link rel="stylesheet" href="./styles.css?v=2.7.8">
+  <link rel="stylesheet" href="./styles.css?v=2.8.0">
   <!-- Apply theme synchronously to prevent flash of wrong theme -->
   <script>
     (function () {
@@ -500,137 +500,137 @@
         </div>
       </section>
     </main>
-
-    <!-- Watchlist Search Modal -->
-    <div id="newWatchlistSearchBackdrop" class="settings-backdrop" style="display: none;"></div>
-    <div id="newWatchlistSearchWindow" class="sticker-window" style="display: none;">
-      <div class="sticker-window-header">
-        <span>ADD TO WATCHLIST</span>
-        <button id="newCloseWatchlistSearchBtn" class="btn-text">[CLOSE]</button>
-      </div>
-      <div class="sticker-window-content">
-        <div class="info" style="margin: 0 0 12px 0;">Search for tokens</div>
-        <input type="text" id="newWatchlistSearchInput" class="settings-input" placeholder="Search tokens..."
-          style="width: 100%; margin-bottom: 12px;">
-        <div id="newWatchlistSearchResults" style="display: none;">
-        </div>
-      </div>
-    </div>
-
-    <!-- Donate Modal -->
-    <div id="newDonateBackdrop" class="settings-backdrop" style="display: none;"></div>
-    <div id="newDonateWindow" class="sticker-window" style="display: none;">
-      <div class="sticker-window-header">
-        <span>DONATE</span>
-        <button id="newCloseDonateBtn" class="btn-text">[CLOSE]</button>
-      </div>
-      <div class="sticker-window-content">
-        <div class="help" style="margin-bottom: 0">Viewport is free for everyone, forever. If you'd like to support its
-          development, you can contribute to the addresses below. Thank you for using Viewport &lt;3</div>
-        <div style="display: flex; flex-direction: column; gap: 0;">
-          <div class="donate-address-row">
-            <div class="donate-label">Bitcoin</div>
-            <div class="donate-address">bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt</div>
-            <button class="btn-text copy-address-btn" data-address="bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt">[COPY
-              BITCOIN ADDRESS]</button>
-          </div>
-          <div class="donate-address-row">
-            <div class="donate-label">EVM</div>
-            <div class="donate-address">0x002cd0a71c10091d90A19eC98384FDe2923518F9</div>
-            <button class="btn-text copy-address-btn" data-address="0x002cd0a71c10091d90A19eC98384FDe2923518F9">[COPY
-              EVM ADDRESS]</button>
-          </div>
-          <div class="donate-address-row">
-            <div class="donate-label">ZCash</div>
-            <div class="donate-address">
-              u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h
-            </div>
-            <button class="btn-text copy-address-btn"
-              data-address="u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h">[COPY
-              ZCASH ADDRESS]</button>
-          </div>
-          <div class="donate-address-row">
-            <div class="donate-label">Solana</div>
-            <div class="donate-address">AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV</div>
-            <button class="btn-text copy-address-btn" data-address="AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV">[COPY
-              SOLANA ADDRESS]</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Add Position Modal -->
-    <div id="newAddPositionBackdrop" class="settings-backdrop" style="display: none;"></div>
-    <div id="newAddPositionModal" class="sticker-window" style="display: none;">
-      <div class="sticker-window-header">
-        <span>ADD POSITION</span>
-        <button id="newCloseAddPositionBtn" class="btn-text">[CLOSE]</button>
-      </div>
-      <div class="sticker-window-content">
-        <div class="help" style="margin: 0 0 12px 0;">Add a manual position using a live price feed, or add a custom
-          asset.</div>
-
-        <!-- Type Selection -->
-        <div style="margin-bottom: 16px;">
-          <label style="display: block; margin-bottom: 8px;">Position Type</label>
-          <div class="button-row">
-            <button id="newAddPositionTypePyth" class="btn-tab active" style="flex: 1;">[LIVE PRICE]</button>
-            <button id="newAddPositionTypeCustom" class="btn-tab" style="flex: 1;">[CUSTOM ASSET]</button>
-          </div>
-        </div>
-
-        <!-- Pyth Oracle Section -->
-        <div id="newAddPositionPythSection">
-          <label style="display: block; margin-bottom: 8px;">Search Ticker</label>
-          <input type="text" id="newAddPositionPythSearch" class="settings-input" placeholder="Search for tickers..."
-            style="width: 100%; margin-bottom: 12px;">
-          <div id="newAddPositionPythResults"
-            style="max-height: 200px; overflow-y: auto; display: none; margin-bottom: 16px;">
-          </div>
-
-          <label style="display: block; margin-bottom: 8px;">Amount</label>
-          <input type="number" id="newAddPositionPythAmount" class="settings-input" placeholder="0.00"
-            style="width: 100%; margin-bottom: 16px;" step="any">
-
-          <label style="display: block; margin-bottom: 8px;">Entry Price (USD)</label>
-          <input type="number" id="newAddPositionPythEntryPrice" class="settings-input" placeholder="0.00"
-            style="width: 100%; margin-bottom: 16px;" step="any">
-        </div>
-
-        <!-- Custom Asset Section -->
-        <div id="newAddPositionCustomSection" style="display: none;">
-          <label style="display: block; margin-bottom: 8px;">Asset Name</label>
-          <input type="text" id="newAddPositionCustomName" class="settings-input"
-            placeholder="e.g., Gold bars, Real estate, etc." style="width: 100%; margin-bottom: 16px;">
-
-          <label style="display: block; margin-bottom: 8px;">Value (USD)</label>
-          <input type="number" id="newAddPositionCustomValue" class="settings-input" placeholder="5000"
-            style="width: 100%; margin-bottom: 16px;" step="any">
-        </div>
-        <button id="newSavePositionBtn" class="btn-text btn-primary">[SAVE POSITION]</button>
-      </div>
-    </div>
-
-    <!-- Sticker Window Modal -->
-    <div id="stickerBackdrop" class="settings-backdrop" style="display: none;"></div>
-    <div id="stickerWindow" class="sticker-window" style="display: none;">
-      <div class="sticker-window-header">
-        <span>STICKERS</span>
-        <button id="closeStickerWindowBtn" class="btn-text">[CLOSE]</button>
-      </div>
-      <div class="sticker-window-content">
-        <div class="help sticker-help-desktop" style="margin-bottom: 8px;">Drag stickers onto the page to place them.
-        </div>
-        <div class="help sticker-help-mobile" style="margin-bottom: 8px;">Tap a sticker to place it on the page.</div>
-        <div id="stickerGrid"
-          style="display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; max-height: 400px; overflow-y: auto; padding: 8px; background: var(--bg-elev); border: 1px solid var(--border);">
-        </div>
-      </div>
-    </div>
   </div> <!-- Close main-content wrapper -->
 
-  <script type="module" src="./modules/app-init.js?v=2.7.8" defer></script>
-  <script type="module" src="./app.js?v=2.7.8" defer></script>
+  <!-- Watchlist Search Modal -->
+  <div id="newWatchlistSearchBackdrop" class="settings-backdrop" style="display: none;"></div>
+  <div id="newWatchlistSearchWindow" class="sticker-window" style="display: none;">
+    <div class="sticker-window-header">
+      <span>ADD TO WATCHLIST</span>
+      <button id="newCloseWatchlistSearchBtn" class="btn-text">[CLOSE]</button>
+    </div>
+    <div class="sticker-window-content">
+      <div class="info" style="margin: 0 0 12px 0;">Search for tokens</div>
+      <input type="text" id="newWatchlistSearchInput" class="settings-input" placeholder="Search tokens..."
+        style="width: 100%; margin-bottom: 12px;">
+      <div id="newWatchlistSearchResults" style="display: none;">
+      </div>
+    </div>
+  </div>
+
+  <!-- Donate Modal -->
+  <div id="newDonateBackdrop" class="settings-backdrop" style="display: none;"></div>
+  <div id="newDonateWindow" class="sticker-window" style="display: none;">
+    <div class="sticker-window-header">
+      <span>DONATE</span>
+      <button id="newCloseDonateBtn" class="btn-text">[CLOSE]</button>
+    </div>
+    <div class="sticker-window-content">
+      <div class="help" style="margin-bottom: 0">Viewport is free for everyone, forever. If you'd like to support its
+        development, you can contribute to the addresses below. Thank you for using Viewport &lt;3</div>
+      <div style="display: flex; flex-direction: column; gap: 0;">
+        <div class="donate-address-row">
+          <div class="donate-label">Bitcoin</div>
+          <div class="donate-address">bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt</div>
+          <button class="btn-text copy-address-btn" data-address="bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt">[COPY
+            BITCOIN ADDRESS]</button>
+        </div>
+        <div class="donate-address-row">
+          <div class="donate-label">EVM</div>
+          <div class="donate-address">0x002cd0a71c10091d90A19eC98384FDe2923518F9</div>
+          <button class="btn-text copy-address-btn" data-address="0x002cd0a71c10091d90A19eC98384FDe2923518F9">[COPY
+            EVM ADDRESS]</button>
+        </div>
+        <div class="donate-address-row">
+          <div class="donate-label">ZCash</div>
+          <div class="donate-address">
+            u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h
+          </div>
+          <button class="btn-text copy-address-btn"
+            data-address="u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h">[COPY
+            ZCASH ADDRESS]</button>
+        </div>
+        <div class="donate-address-row">
+          <div class="donate-label">Solana</div>
+          <div class="donate-address">AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV</div>
+          <button class="btn-text copy-address-btn" data-address="AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV">[COPY
+            SOLANA ADDRESS]</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Position Modal -->
+  <div id="newAddPositionBackdrop" class="settings-backdrop" style="display: none;"></div>
+  <div id="newAddPositionModal" class="sticker-window" style="display: none;">
+    <div class="sticker-window-header">
+      <span>ADD POSITION</span>
+      <button id="newCloseAddPositionBtn" class="btn-text">[CLOSE]</button>
+    </div>
+    <div class="sticker-window-content">
+      <div class="help" style="margin: 0 0 12px 0;">Add a manual position using a live price feed, or add a custom
+        asset.</div>
+
+      <!-- Type Selection -->
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 8px;">Position Type</label>
+        <div class="button-row">
+          <button id="newAddPositionTypePyth" class="btn-tab active" style="flex: 1;">[LIVE PRICE]</button>
+          <button id="newAddPositionTypeCustom" class="btn-tab" style="flex: 1;">[CUSTOM ASSET]</button>
+        </div>
+      </div>
+
+      <!-- Pyth Oracle Section -->
+      <div id="newAddPositionPythSection">
+        <label style="display: block; margin-bottom: 8px;">Search Ticker</label>
+        <input type="text" id="newAddPositionPythSearch" class="settings-input" placeholder="Search for tickers..."
+          style="width: 100%; margin-bottom: 12px;">
+        <div id="newAddPositionPythResults"
+          style="max-height: 200px; overflow-y: auto; display: none; margin-bottom: 16px;">
+        </div>
+
+        <label style="display: block; margin-bottom: 8px;">Amount</label>
+        <input type="number" id="newAddPositionPythAmount" class="settings-input" placeholder="0.00"
+          style="width: 100%; margin-bottom: 16px;" step="any">
+
+        <label style="display: block; margin-bottom: 8px;">Entry Price (USD)</label>
+        <input type="number" id="newAddPositionPythEntryPrice" class="settings-input" placeholder="0.00"
+          style="width: 100%; margin-bottom: 16px;" step="any">
+      </div>
+
+      <!-- Custom Asset Section -->
+      <div id="newAddPositionCustomSection" style="display: none;">
+        <label style="display: block; margin-bottom: 8px;">Asset Name</label>
+        <input type="text" id="newAddPositionCustomName" class="settings-input"
+          placeholder="e.g., Gold bars, Real estate, etc." style="width: 100%; margin-bottom: 16px;">
+
+        <label style="display: block; margin-bottom: 8px;">Value (USD)</label>
+        <input type="number" id="newAddPositionCustomValue" class="settings-input" placeholder="5000"
+          style="width: 100%; margin-bottom: 16px;" step="any">
+      </div>
+      <button id="newSavePositionBtn" class="btn-text btn-primary">[SAVE POSITION]</button>
+    </div>
+  </div>
+
+  <!-- Sticker Window Modal -->
+  <div id="stickerBackdrop" class="settings-backdrop" style="display: none;"></div>
+  <div id="stickerWindow" class="sticker-window" style="display: none;">
+    <div class="sticker-window-header">
+      <span>STICKERS</span>
+      <button id="closeStickerWindowBtn" class="btn-text">[CLOSE]</button>
+    </div>
+    <div class="sticker-window-content">
+      <div class="help sticker-help-desktop" style="margin-bottom: 8px;">Drag stickers onto the page to place them.
+      </div>
+      <div class="help sticker-help-mobile" style="margin-bottom: 8px;">Tap a sticker to place it on the page.</div>
+      <div id="stickerGrid"
+        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; max-height: 400px; overflow-y: auto; padding: 8px; background: var(--bg-elev); border: 1px solid var(--border);">
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./modules/app-init.js?v=2.8.0" defer></script>
+  <script type="module" src="./app.js?v=2.8.0" defer></script>
 
   <!-- Service Worker Registration -->
   <script defer>

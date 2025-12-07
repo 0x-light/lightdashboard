@@ -453,31 +453,53 @@ function setupPullToRefresh() {
   // Only enable on mobile (768px breakpoint matches CSS)
   const isMobile = () => window.innerWidth <= 768;
 
+  let startX = 0;
   let startY = 0;
   let currentY = 0;
   let isPulling = false;
+  let isLocked = false; // Lock direction once determined
   const pullThreshold = 60; // pixels to pull before triggering refresh
   const maxPull = 80; // max translation
+  const directionLockThreshold = 10; // pixels before locking direction
 
   document.addEventListener('touchstart', (e) => {
     if (!isMobile()) return;
 
     // Only trigger if at top of page
     if (window.scrollY === 0) {
+      startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
-      isPulling = true;
-      mainContent.classList.add('pulling-active');
+      currentY = startY;
+      isLocked = false;
+      isPulling = false;
     }
   }, { passive: true });
 
   document.addEventListener('touchmove', (e) => {
-    if (!isMobile() || !isPulling) return;
+    if (!isMobile() || window.scrollY !== 0) return;
 
-    currentY = e.touches[0].clientY;
-    const pullDistance = currentY - startY;
+    const touchX = e.touches[0].clientX;
+    const touchY = e.touches[0].clientY;
+    const deltaX = Math.abs(touchX - startX);
+    const deltaY = touchY - startY;
 
-    // Only translate content when pulling down and at top of page
-    if (pullDistance > 0 && window.scrollY === 0) {
+    // Determine direction if not locked yet
+    if (!isLocked && (deltaX > directionLockThreshold || deltaY > directionLockThreshold)) {
+      // Only activate pull if primarily vertical and pulling down
+      if (deltaY > deltaX && deltaY > 0) {
+        isPulling = true;
+        mainContent.classList.add('pulling-active');
+      }
+      isLocked = true;
+    }
+
+    if (!isPulling) return;
+
+    currentY = touchY;
+    const pullDistance = deltaY;
+
+    // Only translate content when pulling down
+    if (pullDistance > 0) {
       const translateY = Math.min(pullDistance * 0.5, maxPull);
       mainContent.style.transform = `translateY(${translateY}px)`;
 
@@ -513,17 +535,18 @@ function setupPullToRefresh() {
     }
 
     // Animate content back to original position smoothly
-    // First remove pulling-active to re-enable transitions
     mainContent.classList.remove('pulling-active');
+    mainContent.classList.add('snapping-back');
 
     // Use requestAnimationFrame to ensure transition is registered before changing transform
     requestAnimationFrame(() => {
       mainContent.style.transform = 'translateY(0)';
 
-      // Hide the pull indicator and clean up after animation completes
+      // Clean up after animation completes
       setTimeout(() => {
         pullToRefreshEl.classList.remove('visible');
         mainContent.style.transform = '';
+        mainContent.classList.remove('snapping-back');
       }, 100); // Match the CSS transition duration
     });
 
