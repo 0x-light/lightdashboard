@@ -42,6 +42,8 @@
   <!-- Rain/Snow Canvas -->
   <canvas id="newRainCanvas" class="rain-canvas"></canvas>
 
+  <!-- Sticky Stickers Container -->
+  <div id="stickyStickers"></div>
 
 
   <header class="app-header">
@@ -87,7 +89,7 @@
         <span class="theme-select-label">[THEME]</span>
       </span>
       <button id="newToggleAmountsBtn" class="btn-text">[HIDE AMOUNTS]</button>
-
+      <button id="newStickersBtn" class="btn-text">[STICKERS]</button>
       <button id="newDonateBtn" class="btn-text">[DONATE]</button>
       <button id="newSettingsBtn" class="btn-text">[SETTINGS]</button>
     </div>
@@ -137,8 +139,8 @@
         <span class="theme-select-label">[THEME]</span>
       </span>
       <button id="newToggleAmountsBtnMobile" class="btn-text">[HIDE AMOUNTS]</button>
-      <button id="newHideSmallBtnMobile" class="btn-text">[SHOW &lt;$100]</button>
 
+      <button id="newStickersBtnMobile" class="btn-text">[STICKERS]</button>
       <button id="newDonateBtnMobile" class="btn-text">[DONATE]</button>
       <button id="newSettingsBtnMobile" class="btn-text">[SETTINGS]</button>
     </div>
@@ -163,6 +165,10 @@
       </header>
 
       <section>
+        <!-- Privacy Notice -->
+        <div class="info" style="margin-bottom: 16px;">All settings are stored locally in your browser. Nothing is sent
+          to any server.</div>
+
         <!-- Backup & Restore Section -->
         <div class="help">
           <div style="margin-bottom: 8px;">Import/export your settings as text to backup or transfer between devices
@@ -198,6 +204,7 @@
           </div>
           <button id="newUseMyLocationBtn" type="button" class="btn-text" style="margin-top: 8px;">[USE MY
             LOCATION]</button>
+          <div class="info" style="margin-top: 8px;">Location is used for weather display (optional)</div>
         </fieldset>
 
         <fieldset>
@@ -327,6 +334,10 @@
           <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
             <input id="newHideDonateBtn" type="checkbox" class="settings-input">
             Hide Donate button
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <input id="newHideStickersBtn" type="checkbox" class="settings-input">
+            Hide Stickers button
           </label>
         </fieldset>
 
@@ -544,6 +555,23 @@
           style="width: 100%; margin-bottom: 16px;" step="any">
       </div>
       <button id="newSavePositionBtn" class="btn-text btn-primary">[SAVE POSITION]</button>
+    </div>
+  </div>
+
+  <!-- Sticker Window Modal -->
+  <div id="stickerBackdrop" class="settings-backdrop" style="display: none;"></div>
+  <div id="stickerWindow" class="sticker-window" style="display: none;">
+    <div class="sticker-window-header">
+      <span>STICKERS</span>
+      <button id="closeStickerWindowBtn" class="btn-text">[CLOSE]</button>
+    </div>
+    <div class="sticker-window-content">
+      <div class="help sticker-help-desktop" style="margin-bottom: 8px;">Drag stickers onto the page to place them.
+      </div>
+      <div class="help sticker-help-mobile" style="margin-bottom: 8px;">Tap a sticker to place it on the page.</div>
+      <div id="stickerGrid"
+        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; max-height: 400px; overflow-y: auto; padding: 8px; background: var(--bg-elev); border: 1px solid var(--border);">
+      </div>
     </div>
   </div>
 

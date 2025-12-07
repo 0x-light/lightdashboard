@@ -570,6 +570,8 @@ h6 {
 .sparkline {
   display: inline-block;
   vertical-align: middle;
+  width: 60px;
+  height: 24px;
   shape-rendering: geometricPrecision;
 }
 
@@ -642,6 +644,11 @@ body.hide-amounts-btn #newToggleAmountsBtnMobile {
 
 body.hide-donate-btn #newDonateBtn,
 body.hide-donate-btn #newDonateBtnMobile {
+  display: none !important;
+}
+
+body.hide-stickers-btn #newStickersBtn,
+body.hide-stickers-btn #newStickersBtnMobile {
   display: none !important;
 }
 
@@ -2396,13 +2403,13 @@ html[data-theme="bloomberg"] {
   right: 2px;
   padding: 2px 4px;
   background: var(--bg);
-  border: 1px solid var(--fg);
+  border: 1px solid var(--border);
   cursor: nwse-resize;
   opacity: 0;
   z-index: 2;
-  font-size: 8px;
+  font-size: 0.75em;
   line-height: 1;
-  font-family: 'Berkeley Mono', monospace;
+  font-family: inherit;
   pointer-events: auto;
 }
 
@@ -2412,13 +2419,13 @@ html[data-theme="bloomberg"] {
   left: 2px;
   padding: 2px 4px;
   background: var(--bg);
-  border: 1px solid var(--fg);
+  border: 1px solid var(--border);
   cursor: grab;
   opacity: 0;
   z-index: 2;
-  font-size: 8px;
+  font-size: 0.75em;
   line-height: 1;
-  font-family: 'Berkeley Mono', monospace;
+  font-family: inherit;
   pointer-events: auto;
 }
 
@@ -2437,13 +2444,13 @@ html[data-theme="bloomberg"] {
   right: 2px;
   padding: 2px 4px;
   background: var(--bg);
-  border: 1px solid var(--fg);
-  color: var(--fg);
+  border: 1px solid var(--border);
+  color: var(--text);
   cursor: pointer;
-  font-size: 8px;
+  font-size: 0.75em;
   line-height: 1;
   opacity: 0;
-  font-family: 'Berkeley Mono', monospace;
+  font-family: inherit;
   pointer-events: auto;
 }
 
@@ -2617,17 +2624,35 @@ input[type="range"]:focus::-moz-range-thumb {
   opacity: 0.9;
 }
 
+/* Sticker help messages - show desktop by default, swap on mobile */
+.sticker-help-mobile {
+  display: none;
+}
+
+.sticker-help-desktop {
+  display: block;
+}
+
 @media (max-width: 768px) {
   .sticker-window {
     bottom: 0;
     right: 0;
     left: 0;
-    top: 0;
+    top: auto;
     transform: none;
-    max-height: 100vh;
+    max-height: 60vh;
     width: auto;
     max-width: none;
     border: none;
+    border-top: 1px solid var(--border);
+  }
+
+  .sticker-help-desktop {
+    display: none;
+  }
+
+  .sticker-help-mobile {
+    display: block;
   }
 }
 
@@ -2842,6 +2867,48 @@ input[type="range"]:focus::-moz-range-thumb {
   vertical-align: middle;
   max-width: 100%;
   height: auto;
+}
+
+/* Mobile styles for watchlist table */
+@media (max-width: 768px) {
+
+  /* Keep watchlist table visible on mobile */
+  #newWatchlistTable {
+    display: table !important;
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  /* Adjust column widths on mobile */
+  #newWatchlistTable th:nth-child(1),
+  #newWatchlistTable td:nth-child(1) {
+    width: 30%;
+  }
+
+  #newWatchlistTable th:nth-child(2),
+  #newWatchlistTable td:nth-child(2) {
+    width: 25%;
+  }
+
+  #newWatchlistTable th.chart,
+  #newWatchlistTable td.chart {
+    width: 55px;
+    min-width: 55px;
+    max-width: 55px;
+    padding: 0 2px !important;
+  }
+
+  #newWatchlistTable th:last-child,
+  #newWatchlistTable td:last-child {
+    width: 20%;
+  }
+
+  /* Scale down sparklines on mobile */
+  #newWatchlistTable .sparkline {
+    display: block;
+    width: 50px;
+    height: 20px;
+  }
 }
 
 /* Compact list mode - inspired by sacred.computer terminal tables */

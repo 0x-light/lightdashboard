@@ -737,6 +737,7 @@ function setupControls() {
       const hideAmountsBtnInput = document.getElementById('newHideAmountsBtn');
       const showCompactBtnInput = document.getElementById('newShowCompactBtn');
       const hideDonateBtnInput = document.getElementById('newHideDonateBtn');
+      const hideStickersBtnInput = document.getElementById('newHideStickersBtn');
 
       if (userNameInput) userNameInput.value = s.userName || '';
       if (walletInput) walletInput.value = s.walletAddresses || '';
@@ -768,6 +769,7 @@ function setupControls() {
       if (hideAmountsBtnInput) hideAmountsBtnInput.checked = s.hideAmountsBtn ?? false;
       if (showCompactBtnInput) showCompactBtnInput.checked = s.showCompactBtn ?? true;
       if (hideDonateBtnInput) hideDonateBtnInput.checked = s.hideDonateBtn ?? false;
+      if (hideStickersBtnInput) hideStickersBtnInput.checked = s.hideStickersBtn ?? false;
 
       settingsDialog.style.display = 'block';
       settingsBackdrop.style.display = 'block';
@@ -1174,6 +1176,7 @@ function setupControls() {
       const hideAmountsBtnInput = document.getElementById('newHideAmountsBtn');
       const showCompactBtnInput = document.getElementById('newShowCompactBtn');
       const hideDonateBtnInput = document.getElementById('newHideDonateBtn');
+      const hideStickersBtnInput = document.getElementById('newHideStickersBtn');
 
       if (userNameInput) newSettings.userName = userNameInput.value;
       if (walletInput) newSettings.walletAddresses = walletInput.value;
@@ -1201,6 +1204,7 @@ function setupControls() {
       if (hideAmountsBtnInput) newSettings.hideAmountsBtn = hideAmountsBtnInput.checked;
       if (showCompactBtnInput) newSettings.showCompactBtn = showCompactBtnInput.checked;
       if (hideDonateBtnInput) newSettings.hideDonateBtn = hideDonateBtnInput.checked;
+      if (hideStickersBtnInput) newSettings.hideStickersBtn = hideStickersBtnInput.checked;
 
       newSettings.weather = {
         label: cityInput?.value || '',
@@ -1259,6 +1263,7 @@ function setupControls() {
         body.classList.toggle('hide-theme-btn', newSettings.hideThemeBtn ?? false);
         body.classList.toggle('hide-amounts-btn', newSettings.hideAmountsBtn ?? false);
         body.classList.toggle('hide-donate-btn', newSettings.hideDonateBtn ?? false);
+        body.classList.toggle('hide-stickers-btn', newSettings.hideStickersBtn ?? false);
         body.classList.toggle('hide-watchlist', newSettings.hideWatchlist ?? false);
         body.classList.toggle('hide-comic', newSettings.hideComic ?? false);
 
@@ -1327,6 +1332,38 @@ function setupControls() {
       }
     }
   });
+
+  // Stickers functionality
+  const stickersBtn = document.getElementById('newStickersBtn');
+  const stickersBtnMobile = document.getElementById('newStickersBtnMobile');
+  const closeStickerWindowBtn = document.getElementById('closeStickerWindowBtn');
+  const stickerBackdrop = document.getElementById('stickerBackdrop');
+
+  const openStickerWindow = async () => {
+    // Lazy load stickers module
+    try {
+      const stickersModule = await import('./modules/features/stickers.js');
+      stickersModule.openStickerWindow();
+    } catch (e) {
+      console.error('[Stickers] Failed to load module:', e);
+    }
+    // Close mobile menu if open
+    closeMobileMenuWithScroll();
+  };
+
+  const closeStickerWindowHandler = async () => {
+    try {
+      const stickersModule = await import('./modules/features/stickers.js');
+      stickersModule.closeStickerWindow();
+    } catch (e) {
+      console.error('[Stickers] Failed to close:', e);
+    }
+  };
+
+  if (stickersBtn) stickersBtn.addEventListener('click', openStickerWindow);
+  if (stickersBtnMobile) stickersBtnMobile.addEventListener('click', openStickerWindow);
+  if (closeStickerWindowBtn) closeStickerWindowBtn.addEventListener('click', closeStickerWindowHandler);
+  if (stickerBackdrop) stickerBackdrop.addEventListener('click', closeStickerWindowHandler);
 
   // Watchlist
   const addToWatchlistBtn = document.getElementById('newAddToWatchlistBtn');
@@ -1962,6 +1999,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     body.classList.toggle('hide-theme-btn', settings.hideThemeBtn ?? false);
     body.classList.toggle('hide-amounts-btn', settings.hideAmountsBtn ?? false);
     body.classList.toggle('hide-donate-btn', settings.hideDonateBtn ?? false);
+    body.classList.toggle('hide-stickers-btn', settings.hideStickersBtn ?? false);
 
     // Section visibility
     body.classList.toggle('hide-watchlist', settings.hideWatchlist ?? false);
@@ -1987,6 +2025,14 @@ window.addEventListener('DOMContentLoaded', async () => {
       if (toggleSnowBtn) toggleSnowBtn.textContent = '[SNOW OFF]';
       if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW OFF]';
     }
+  }
+
+  // Restore saved sticky stickers (lazy load module only if stickers exist)
+  const savedStickers = localStorage.getItem('stickyStickers.v1');
+  if (savedStickers && savedStickers !== '[]') {
+    import('./modules/features/stickers.js')
+      .then(mod => mod.restoreStickyStickers())
+      .catch(e => console.warn('[Stickers] Failed to restore:', e));
   }
 
   // Apply initial compact mode styling

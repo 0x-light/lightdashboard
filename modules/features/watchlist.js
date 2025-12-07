@@ -20,7 +20,7 @@ function createSparkline(priceData, width = 60, height = 24, currentChange24h = 
     // Flat line
     const y = height / 2;
     const points = priceData.map((_, i) => `${(i / (priceData.length - 1)) * width},${y}`).join(' ');
-    return `<svg width="${width}" height="${height}" class="sparkline"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
+    return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="sparkline"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
   }
 
   // Normalize prices to chart height
@@ -41,7 +41,7 @@ function createSparkline(priceData, width = 60, height = 24, currentChange24h = 
     color = lastPrice >= firstPrice ? 'var(--green)' : 'var(--red)';
   }
 
-  return `<svg width="${width}" height="${height}" class="sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
 }
 
 export async function fetchPrices(feedIds, pythProvider, includePriceHistory = false) {
@@ -135,7 +135,7 @@ async function enrichWithHistory(prices, pythProvider) {
 
   try {
     const feedIds = itemsToFetch.map(i => i.feedId);
-    const batchResults = await pythProvider.getBatch24hPriceHistory(feedIds, 24);
+    const batchResults = await pythProvider.getBatch24hPriceHistory(feedIds, 96); // Match positions resolution
 
     for (const item of itemsToFetch) {
       const history = batchResults[item.feedId];
@@ -203,7 +203,7 @@ function renderRows(container, data, options) {
             <span class="symbol">${symbol}</span>
           </div>
         </td>
-        <td class="text-right font-mono">${priceFormatted}</td>
+        <td class="text-right font-mono">$${priceFormatted}</td>
         <td class="text-center chart">${chartHtml}</td>
         <td class="text-right font-mono" style="color: ${changeColor}">${changeText}</td>
       </tr>
