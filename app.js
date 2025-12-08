@@ -450,27 +450,40 @@ function setupPullToRefresh() {
   const mainContent = document.getElementById('mainContent');
   if (!pullToRefreshEl || !mainContent) return;
 
-  // Only enable on mobile (768px breakpoint matches CSS)
-  const isMobile = () => window.innerWidth <= 768;
+  // Only enable on mobile (870px breakpoint matches CSS)
+  const isMobile = () => window.innerWidth <= 870;
 
   let startX = 0;
   let startY = 0;
   let currentY = 0;
   let isPulling = false;
   let isLocked = false; // Lock direction once determined
-  const pullThreshold = 40; // pixels to trigger refresh (lowered for better feel)
+  const pullThreshold = 40; // pixels of SCREEN movement to trigger refresh
   const maxPull = 80; // max translation
-  const directionLockThreshold = 8; // pixels before locking direction (lowered)
+  const directionLockThreshold = 8; // pixels before locking direction
 
-  // Rubber-band resistance - starts easy, gets very hard
-  // Uses exponential decay: fast at first, then dramatically slows
+  // Two-phase rubber-band: smooth start, then hits a wall
+  // This creates the "it got harder" feeling more dramatically
   const easeOutPull = (distance) => {
-    // After ~60px of finger movement, you hit about 50px of translation
-    // After ~120px of finger movement, you hit about 70px of translation  
-    // It becomes very hard to reach maxPull
-    const dampening = 0.4; // Lower = more resistance
-    const result = maxPull * (1 - Math.exp(-distance * dampening / maxPull));
-    return Math.min(result, maxPull);
+    if (distance <= 0) return 0;
+
+    // Phase 1: First 50px of finger = relatively easy (up to ~35px screen)
+    // Phase 2: After that = extreme resistance
+    const phase1Distance = 50;
+    const phase1Output = 35;
+
+    if (distance <= phase1Distance) {
+      // Gentle curve for initial pull
+      return (distance / phase1Distance) * phase1Output;
+    } else {
+      // Very strong resistance after phase 1
+      // Additional finger movement barely moves screen
+      const extraDistance = distance - phase1Distance;
+      const remaining = maxPull - phase1Output; // 45px left
+      // Logarithmic scaling - each doubling of distance gives less return
+      const extraOutput = remaining * (1 - 1 / (1 + extraDistance / 80));
+      return phase1Output + extraOutput;
+    }
   };
 
   document.addEventListener('touchstart', (e) => {
