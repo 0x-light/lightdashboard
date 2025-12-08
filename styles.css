@@ -3196,6 +3196,20 @@ input[type="range"]:focus::-moz-range-thumb {
     z-index: 998;
   }
 
+  /* iOS status bar cover - stays fixed and covers the safe area with theme bg */
+  /* This ensures the status bar never shows the pull-to-refresh color */
+  .main-content::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top, 0px);
+    background: var(--bg);
+    z-index: 9999;
+    pointer-events: none;
+  }
+
   /* Only apply transform-related properties when actively pulling */
   .main-content.pulling-active {
     will-change: transform;

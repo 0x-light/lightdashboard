@@ -6,7 +6,7 @@ import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.9.2';
+const APP_VERSION = '2.9.3';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
@@ -462,28 +462,22 @@ function setupPullToRefresh() {
   const maxPull = 120; // max translation - extended to allow more pulling
   const directionLockThreshold = 15; // pixels before locking direction (prevents accidental pulls)
 
-  // Two-phase rubber-band with resistance from the start
-  // Creates premium feel - always some resistance, then progressively harder
+  // Apple-style rubber band physics using log10
+  // This mimics iOS native pull-to-refresh resistance
+  // Based on: y = 1 + log10(1 + x/coefficient) * damping
   const easeOutPull = (distance) => {
     if (distance <= 0) return 0;
 
-    // Phase 1: First 80px of finger = 44px screen (0.55x ratio - noticeable resistance)
-    // Phase 2: After that = increasingly hard (logarithmic scaling)
-    const phase1Distance = 80;
-    const phase1Ratio = 0.55; // More resistance - feels premium
-    const phase1Output = phase1Distance * phase1Ratio; // 44px
+    // Apple-like logarithmic resistance
+    // coefficient: lower = MORE resistance (harder to pull)
+    // damping: lower = less screen movement per pull
+    const coefficient = 100; // Tune this: lower = harder pull
+    const damping = 45; // Max output multiplier
 
-    if (distance <= phase1Distance) {
-      // Constant 0.7x ratio - premium feel with slight resistance
-      return distance * phase1Ratio;
-    } else {
-      // Increasingly hard - logarithmic so each additional pull gives less
-      const extraDistance = distance - phase1Distance;
-      const remaining = maxPull - phase1Output; // 64px left
-      // Log curve - can keep pulling but gets progressively harder
-      const extraOutput = remaining * Math.log(1 + extraDistance / 50) / Math.log(1 + 300 / 50);
-      return phase1Output + Math.min(extraOutput, remaining);
-    }
+    // log10(1 + x/c) gives smooth curve that starts fast, slows down
+    const output = Math.log10(1 + distance / coefficient) * damping;
+
+    return Math.min(output, maxPull);
   };
 
   document.addEventListener('touchstart', (e) => {
