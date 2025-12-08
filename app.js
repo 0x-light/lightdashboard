@@ -458,9 +458,16 @@ function setupPullToRefresh() {
   let currentY = 0;
   let isPulling = false;
   let isLocked = false; // Lock direction once determined
-  const pullThreshold = 60; // pixels to pull before triggering refresh
+  const pullThreshold = 40; // pixels to trigger refresh (lowered for better feel)
   const maxPull = 80; // max translation
-  const directionLockThreshold = 10; // pixels before locking direction
+  const directionLockThreshold = 8; // pixels before locking direction (lowered)
+
+  // Easing function for resistance feel - gets harder as you pull more
+  const easeOutPull = (distance) => {
+    const normalized = Math.min(distance / 150, 1);
+    // Quadratic ease-out gives natural resistance
+    return maxPull * (1 - Math.pow(1 - normalized, 2));
+  };
 
   document.addEventListener('touchstart', (e) => {
     if (!isMobile()) return;
@@ -476,7 +483,18 @@ function setupPullToRefresh() {
   }, { passive: true });
 
   document.addEventListener('touchmove', (e) => {
-    if (!isMobile() || window.scrollY !== 0) return;
+    if (!isMobile()) return;
+
+    // If we've scrolled away from top, cancel pulling
+    if (window.scrollY > 0) {
+      if (isPulling) {
+        isPulling = false;
+        mainContent.classList.remove('pulling-active');
+        mainContent.style.transform = '';
+        pullToRefreshEl.classList.remove('visible');
+      }
+      return;
+    }
 
     const touchX = e.touches[0].clientX;
     const touchY = e.touches[0].clientY;
@@ -500,7 +518,8 @@ function setupPullToRefresh() {
 
     // Only translate content when pulling down
     if (pullDistance > 0) {
-      const translateY = Math.min(pullDistance * 0.5, maxPull);
+      // Use easing for natural resistance feel
+      const translateY = easeOutPull(pullDistance);
       mainContent.style.transform = `translateY(${translateY}px)`;
 
       // Show the pull indicator when pulling enough
@@ -517,8 +536,8 @@ function setupPullToRefresh() {
     const wasActuallyPulling = isPulling || pullToRefreshEl.classList.contains('visible');
 
     if (wasActuallyPulling) {
-      const pullDistance = currentY - startY;
-      const translateY = Math.min(Math.max(pullDistance * 0.5, 0), maxPull);
+      const pullDistance = Math.max(currentY - startY, 0);
+      const translateY = easeOutPull(pullDistance);
 
       // If pulled enough, trigger refresh
       if (translateY >= pullThreshold) {
