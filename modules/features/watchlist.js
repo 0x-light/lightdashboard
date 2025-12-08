@@ -179,7 +179,7 @@ function renderRows(container, data, options) {
     // Sparkline
     let chartHtml = '';
     if (showPriceChart && item.priceHistory && item.priceHistory.length > 1) {
-      chartHtml = createSparkline(item.priceHistory, 80, 24, change24h) || '';
+      chartHtml = createSparkline(item.priceHistory, 60, 24, change24h) || '';
     }
 
     // Flash effect

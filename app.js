@@ -478,6 +478,22 @@ function setupPullToRefresh() {
     return Math.min(pull, MAX_PULL);
   };
 
+  // Check if touch is inside a modal or interactive element that shouldn't trigger PTR
+  const shouldIgnorePTR = (target) => {
+    // Check if any modal/dialog is visible
+    const modals = document.querySelectorAll('.settings, .sticker-window, .mobile-menu');
+    for (const modal of modals) {
+      if (modal.style.display !== 'none' && modal.offsetParent !== null) {
+        return true;
+      }
+    }
+    // Check if touching sticker controls or stickers
+    if (target.closest('.sticker-controls, .placed-sticker, #stickerGrid, .settings-backdrop')) {
+      return true;
+    }
+    return false;
+  };
+
   document.addEventListener('touchstart', (e) => {
     if (!isMobile()) return;
     startX = e.touches[0].clientX;
@@ -489,6 +505,9 @@ function setupPullToRefresh() {
 
   document.addEventListener('touchmove', (e) => {
     if (!isMobile()) return;
+
+    // Don't interfere with modals or sticker interactions
+    if (shouldIgnorePTR(e.target)) return;
 
     const currentX = e.touches[0].clientX;
     const currentY = e.touches[0].clientY;

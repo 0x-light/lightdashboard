@@ -2849,23 +2849,28 @@ input[type="range"]:focus::-moz-range-thumb {
 /* Watchlist table layout */
 #newWatchlistTable {
   width: 100%;
-  table-layout: auto;
+  table-layout: fixed;
 }
 
+/* Watchlist column widths - tighter spacing */
 #newWatchlistTable th:nth-child(1),
 #newWatchlistTable td:nth-child(1) {
   text-align: left;
+  width: 25%;
 }
 
 #newWatchlistTable th:nth-child(2),
 #newWatchlistTable td:nth-child(2) {
   text-align: left;
+  width: 25%;
+  padding-left: 0;
 }
 
 #newWatchlistTable th.chart,
 #newWatchlistTable td.chart {
   text-align: center;
-  width: 100px;
+  width: 70px;
+  padding: 0 4px;
 }
 
 #newWatchlistTable th:last-child,
@@ -2873,6 +2878,7 @@ input[type="range"]:focus::-moz-range-thumb {
   text-align: right;
   padding-right: 0;
   white-space: nowrap;
+  width: 18%;
 }
 
 /* Ensure sparkline SVGs have explicit sizing for cross-browser compatibility */
@@ -2880,8 +2886,9 @@ input[type="range"]:focus::-moz-range-thumb {
 .data-table .sparkline {
   display: inline-block;
   vertical-align: middle;
+  width: 60px;
+  height: 24px;
   max-width: 100%;
-  height: auto;
 }
 
 /* Mobile styles for watchlist table */
@@ -2897,32 +2904,32 @@ input[type="range"]:focus::-moz-range-thumb {
   /* Adjust column widths on mobile */
   #newWatchlistTable th:nth-child(1),
   #newWatchlistTable td:nth-child(1) {
-    width: 30%;
+    width: 22%;
   }
 
   #newWatchlistTable th:nth-child(2),
   #newWatchlistTable td:nth-child(2) {
-    width: 25%;
+    width: 28%;
   }
 
   #newWatchlistTable th.chart,
   #newWatchlistTable td.chart {
-    width: 55px;
-    min-width: 55px;
-    max-width: 55px;
+    width: 60px;
+    min-width: 60px;
+    max-width: 60px;
     padding: 0 2px !important;
   }
 
   #newWatchlistTable th:last-child,
   #newWatchlistTable td:last-child {
-    width: 20%;
+    width: 18%;
   }
 
-  /* Scale sparklines to fill container on mobile */
+  /* Fixed sparkline size on mobile - match positions table */
   #newWatchlistTable .sparkline {
-    display: block;
-    width: 100%;
-    height: 100%;
+    display: inline-block;
+    width: 55px;
+    height: 20px;
     max-width: 100%;
   }
 }
