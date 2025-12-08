@@ -6,7 +6,7 @@ import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.7.5';
+const APP_VERSION = '2.9.0';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
@@ -2056,17 +2056,29 @@ window.addEventListener('DOMContentLoaded', async () => {
   renderHeroSkeleton();
   renderPositionsSkeleton(7);
 
-  // Display version immediately (using APP_VERSION constant)
+  // Display version dynamically from service worker
   const versionDisplay = document.getElementById('versionDisplay');
   if (versionDisplay) {
-    const buildDate = new Date('2025-12-05T23:40:00Z').toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'UTC'
-    });
-    versionDisplay.textContent = `v${APP_VERSION} (${buildDate} UTC)`;
+    // Try to get version from service worker
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      const messageChannel = new MessageChannel();
+      messageChannel.port1.onmessage = (event) => {
+        if (event.data?.version && event.data?.timestamp) {
+          const buildDate = new Date(event.data.timestamp).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'UTC'
+          });
+          versionDisplay.textContent = `${event.data.version} (${buildDate} UTC)`;
+        }
+      };
+      navigator.serviceWorker.controller.postMessage({ type: 'GET_VERSION' }, [messageChannel.port2]);
+    } else {
+      // Fallback to APP_VERSION if no service worker
+      versionDisplay.textContent = `v${APP_VERSION}`;
+    }
   }
 
   // Init theme
