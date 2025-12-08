@@ -6,7 +6,7 @@ import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.9.0';
+const APP_VERSION = '2.9.1';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
@@ -467,9 +467,9 @@ function setupPullToRefresh() {
   const easeOutPull = (distance) => {
     if (distance <= 0) return 0;
 
-    // Phase 1: First 50px of finger = relatively easy (up to ~35px screen)
+    // Phase 1: First 65px of finger = relatively easy (up to ~35px screen)
     // Phase 2: After that = extreme resistance
-    const phase1Distance = 50;
+    const phase1Distance = 65;
     const phase1Output = 35;
 
     if (distance <= phase1Distance) {
@@ -499,6 +499,8 @@ function setupPullToRefresh() {
     }
   }, { passive: true });
 
+  // Use non-passive listener to allow preventDefault on iOS
+  // This overrides Safari's native rubber-band scrolling
   document.addEventListener('touchmove', (e) => {
     if (!isMobile()) return;
 
@@ -528,6 +530,11 @@ function setupPullToRefresh() {
       isLocked = true;
     }
 
+    // CRITICAL: Prevent iOS native rubber-band when we're actively pulling
+    if (isPulling && deltaY > 0) {
+      e.preventDefault();
+    }
+
     if (!isPulling) return;
 
     currentY = touchY;
@@ -544,7 +551,7 @@ function setupPullToRefresh() {
         pullToRefreshEl.classList.add('visible');
       }
     }
-  }, { passive: true });
+  }, { passive: false }); // NON-PASSIVE to allow preventDefault
 
   document.addEventListener('touchend', () => {
     if (!isMobile()) return;
