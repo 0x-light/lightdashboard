@@ -223,8 +223,73 @@ export class IncrementalPortfolioRenderer {
 
     if (allFinished) {
       this.hideGreetingLoader();
+      // Trigger Pyth enrichment for positions missing 24h change
+      this.enrichMissing24hWithPyth();
     }
   }
+
+  /**
+   * Enrich positions missing 24h change using Pyth historical prices
+   */
+  async enrichMissing24hWithPyth() {
+    // Find positions missing 24h change
+    const needsEnrichment = this.allPositions.filter(p =>
+      p.change24h === null || p.change24h === undefined
+    );
+
+    if (needsEnrichment.length === 0) return;
+
+    try {
+      // Get Pyth feed map
+      const feedMap = await this.providers?.pyth?.getPriceFeeds?.();
+      if (!feedMap) return;
+
+      // Map asset symbols to feed IDs
+      const symbolToFeedId = {};
+      for (const [symbol, id] of Object.entries(feedMap)) {
+        symbolToFeedId[symbol.toUpperCase()] = id;
+      }
+
+      // Find positions that have matching Pyth feeds
+      const positionsWithFeeds = [];
+      for (const pos of needsEnrichment) {
+        const feedId = symbolToFeedId[pos.asset?.toUpperCase()];
+        if (feedId) {
+          positionsWithFeeds.push({ pos, feedId });
+        }
+      }
+
+      if (positionsWithFeeds.length === 0) return;
+
+      // Get 24h ago timestamp
+      const ts24hAgo = Math.floor((Date.now() - 24 * 60 * 60 * 1000) / 1000);
+
+      // Fetch historical prices from Pyth
+      const feedIds = positionsWithFeeds.map(p => p.feedId);
+      const historicalPrices = await this.providers?.pyth?.getAtTimestampByFeedIds?.(feedIds, ts24hAgo, 10000);
+
+      if (!historicalPrices) return;
+
+      let updated = false;
+      for (const { pos, feedId } of positionsWithFeeds) {
+        const normalizedFeedId = feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`;
+        const price24hAgo = historicalPrices[normalizedFeedId];
+
+        if (price24hAgo && price24hAgo > 0 && pos.price && pos.price > 0) {
+          pos.change24h = ((pos.price - price24hAgo) / price24hAgo) * 100;
+          updated = true;
+        }
+      }
+
+      // Re-render if we updated any positions
+      if (updated) {
+        this.render();
+      }
+    } catch (e) {
+      console.warn('[Portfolio] Pyth 24h enrichment failed:', e);
+    }
+  }
+
 
   /**
    * Re-render positions table and hero with current data

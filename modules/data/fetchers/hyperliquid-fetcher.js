@@ -60,13 +60,19 @@ export class HyperliquidFetcher {
                 }
             }
 
-            // Add xyz dex funding rates (for xyz:GOOGL, xyz:AAPL, etc.)
+            // Add xyz dex funding rates and prevDayPx (for xyz:GOOGL, xyz:AAPL, etc.)
             if (xyzMarketData?.[0] && xyzMarketData?.[1]) {
                 for (let i = 0; i < xyzMarketData[1].length; i++) {
                     const ctx = xyzMarketData[1][i];
                     const assetName = xyzMarketData[0].universe[i]?.name;
-                    if (assetName && ctx?.funding !== undefined) {
-                        hlFundingRateMap[assetName] = parseFloat(ctx.funding);
+                    if (assetName) {
+                        if (ctx?.funding !== undefined) {
+                            hlFundingRateMap[assetName] = parseFloat(ctx.funding);
+                        }
+                        // Also extract prevDayPx for 24h change calculation
+                        if (ctx?.prevDayPx) {
+                            hlPrevDayPxMap[assetName] = parseFloat(ctx.prevDayPx);
+                        }
                     }
                 }
             }
