@@ -459,29 +459,30 @@ function setupPullToRefresh() {
   let isPulling = false;
   let isLocked = false; // Lock direction once determined
   const pullThreshold = 40; // pixels of SCREEN movement to trigger refresh
-  const maxPull = 80; // max translation
-  const directionLockThreshold = 8; // pixels before locking direction
+  const maxPull = 120; // max translation - extended to allow more pulling
+  const directionLockThreshold = 15; // pixels before locking direction (prevents accidental pulls)
 
-  // Two-phase rubber-band: smooth start, then strong resistance
-  // This creates a natural pull feel - almost 1:1 at first, then much harder
+  // Two-phase rubber-band with resistance from the start
+  // Creates premium feel - always some resistance, then progressively harder
   const easeOutPull = (distance) => {
     if (distance <= 0) return 0;
 
-    // Phase 1: First 60px of finger = 60px screen (1:1 ratio)
-    // Phase 2: After that = strong resistance (can still pull but hard)
-    const phase1Distance = 60;
-    const phase1Output = 60;
+    // Phase 1: First 80px of finger = 56px screen (0.7x ratio - slight resistance from start)
+    // Phase 2: After that = increasingly hard (logarithmic scaling)
+    const phase1Distance = 80;
+    const phase1Ratio = 0.7; // Always some resistance, not 1:1
+    const phase1Output = phase1Distance * phase1Ratio; // 56px
 
     if (distance <= phase1Distance) {
-      // 1:1 for initial pull - feels responsive and direct
-      return (distance / phase1Distance) * phase1Output;
+      // Constant 0.7x ratio - premium feel with slight resistance
+      return distance * phase1Ratio;
     } else {
-      // Strong resistance after cutoff - can keep pulling but it's hard
+      // Increasingly hard - logarithmic so each additional pull gives less
       const extraDistance = distance - phase1Distance;
-      const remaining = maxPull - phase1Output; // 20px left
-      // Tight curve - resistance kicks in fast but still allows progress
-      const extraOutput = remaining * (1 - Math.exp(-extraDistance / 30));
-      return phase1Output + extraOutput;
+      const remaining = maxPull - phase1Output; // 64px left
+      // Log curve - can keep pulling but gets progressively harder
+      const extraOutput = remaining * Math.log(1 + extraDistance / 50) / Math.log(1 + 300 / 50);
+      return phase1Output + Math.min(extraOutput, remaining);
     }
   };
 
@@ -593,7 +594,7 @@ function setupPullToRefresh() {
           pullToRefreshEl.classList.remove('visible');
           mainContent.style.transform = '';
           mainContent.classList.remove('snapping-back');
-        }, 300); // Match the CSS transition duration (0.3s)
+        }, 450); // Match the CSS transition duration (0.45s)
       });
     }
 
