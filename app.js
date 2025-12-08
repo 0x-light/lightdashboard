@@ -6,7 +6,7 @@ import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.9.3';
+const APP_VERSION = '2.9.4';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
@@ -453,152 +453,113 @@ function setupPullToRefresh() {
   // Only enable on mobile (870px breakpoint matches CSS)
   const isMobile = () => window.innerWidth <= 870;
 
-  let startX = 0;
+  // State
   let startY = 0;
-  let currentY = 0;
-  let isPulling = false;
-  let isLocked = false; // Lock direction once determined
-  const pullThreshold = 40; // pixels of SCREEN movement to trigger refresh
-  const maxPull = 120; // max translation - extended to allow more pulling
-  const directionLockThreshold = 15; // pixels before locking direction (prevents accidental pulls)
+  let pulling = false;
 
-  // Apple-style rubber band physics using log10
-  // This mimics iOS native pull-to-refresh resistance
-  // Based on: y = 1 + log10(1 + x/coefficient) * damping
-  const easeOutPull = (distance) => {
-    if (distance <= 0) return 0;
+  // Config
+  const PULL_THRESHOLD = 50; // Screen px needed to trigger refresh
+  const MAX_PULL = 100; // Max screen translation
+  const RESISTANCE = 0.4; // Lower = harder to pull (0.4 means 40% of finger movement)
 
-    // Apple-like logarithmic resistance
-    // coefficient: lower = MORE resistance (harder to pull)
-    // damping: lower = less screen movement per pull
-    const coefficient = 100; // Tune this: lower = harder pull
-    const damping = 45; // Max output multiplier
-
-    // log10(1 + x/c) gives smooth curve that starts fast, slows down
-    const output = Math.log10(1 + distance / coefficient) * damping;
-
-    return Math.min(output, maxPull);
+  // Simple resistance: constant ratio with slight curve at the end
+  const calcPull = (fingerDistance) => {
+    if (fingerDistance <= 0) return 0;
+    const pull = fingerDistance * RESISTANCE;
+    // Add slight extra resistance as we approach max
+    if (pull > MAX_PULL * 0.7) {
+      const overage = pull - MAX_PULL * 0.7;
+      return MAX_PULL * 0.7 + overage * 0.3;
+    }
+    return Math.min(pull, MAX_PULL);
   };
 
   document.addEventListener('touchstart', (e) => {
     if (!isMobile()) return;
-
-    // Only trigger if at top of page
-    if (window.scrollY === 0) {
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      currentY = startY;
-      isLocked = false;
-      isPulling = false;
-    }
+    startY = e.touches[0].clientY;
+    pulling = false;
   }, { passive: true });
 
-  // Use non-passive listener to allow preventDefault on iOS
-  // This overrides Safari's native rubber-band scrolling
   document.addEventListener('touchmove', (e) => {
     if (!isMobile()) return;
 
-    // If we've scrolled away from top, cancel pulling
-    if (window.scrollY > 0) {
-      if (isPulling) {
-        isPulling = false;
-        mainContent.classList.remove('pulling-active');
-        mainContent.style.transform = '';
-        pullToRefreshEl.classList.remove('visible');
-      }
-      return;
-    }
+    const currentY = e.touches[0].clientY;
+    const fingerDistance = currentY - startY;
 
-    const touchX = e.touches[0].clientX;
-    const touchY = e.touches[0].clientY;
-    const deltaX = Math.abs(touchX - startX);
-    const deltaY = touchY - startY;
-
-    // Determine direction if not locked yet
-    if (!isLocked && (deltaX > directionLockThreshold || deltaY > directionLockThreshold)) {
-      // Only activate pull if primarily vertical and pulling down
-      if (deltaY > deltaX && deltaY > 0) {
-        isPulling = true;
-        mainContent.classList.add('pulling-active');
-      }
-      isLocked = true;
-    }
-
-    // CRITICAL: Prevent iOS native rubber-band when we're actively pulling
-    if (isPulling && deltaY > 0) {
+    // Only activate pull-to-refresh when:
+    // 1. At top of page (scrollY === 0)
+    // 2. Pulling DOWN (fingerDistance > 0)
+    // 3. Have moved at least 10px (prevents accidental activation)
+    if (window.scrollY === 0 && fingerDistance > 10) {
+      // Prevent native iOS bounce
       e.preventDefault();
-    }
 
-    if (!isPulling) return;
+      pulling = true;
+      const translateY = calcPull(fingerDistance);
 
-    currentY = touchY;
-    const pullDistance = deltaY;
-
-    // Only translate content when pulling down
-    if (pullDistance > 0) {
-      // Use easing for natural resistance feel
-      const translateY = easeOutPull(pullDistance);
+      mainContent.classList.add('pulling-active');
       mainContent.style.transform = `translateY(${translateY}px)`;
 
-      // Show the pull indicator when pulling enough
-      if (translateY > 10) {
+      // Show indicator when past a small threshold
+      if (translateY > 15) {
         pullToRefreshEl.classList.add('visible');
       }
+    } else if (pulling && window.scrollY > 0) {
+      // If we started pulling but user scrolled up, cancel
+      cancelPull();
     }
-  }, { passive: false }); // NON-PASSIVE to allow preventDefault
+  }, { passive: false });
 
   document.addEventListener('touchend', () => {
-    if (!isMobile()) return;
+    if (!isMobile() || !pulling) return;
 
-    // Check if we should trigger refresh - either isPulling is set or indicator is visible
-    const wasActuallyPulling = isPulling || pullToRefreshEl.classList.contains('visible');
+    const finalPullY = parseFloat(mainContent.style.transform.replace(/[^0-9.-]/g, '')) || 0;
 
-    if (wasActuallyPulling) {
-      const pullDistance = Math.max(currentY - startY, 0);
-      const translateY = easeOutPull(pullDistance);
-
-      // If pulled enough, trigger refresh
-      if (translateY >= pullThreshold) {
-        // Trigger refresh
-        if (window._portfolioRenderer && window._portfolioManager) {
-          // Show loading spinner and clear positions for fresh fetch
-          window._portfolioRenderer.clearPositions();
-
-          // Force re-fetch all data
-          const settings = getSettings();
-          const wallets = (settings.walletAddresses || '').split(',').map(w => w.trim()).filter(Boolean);
-          const solanaAddrs = (settings.solanaAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
-          const bitcoinAddrs = (settings.bitcoinAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
-          const zcashAddrs = (settings.zcashAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
-
-          window._portfolioManager.fetchAll(wallets, solanaAddrs, bitcoinAddrs, zcashAddrs);
-        }
-      }
-
-      // Animate content back to original position smoothly
-      mainContent.classList.remove('pulling-active');
-      mainContent.classList.add('snapping-back');
-
-      // Use requestAnimationFrame to ensure transition is registered before changing transform
-      requestAnimationFrame(() => {
-        mainContent.style.transform = 'translateY(0)';
-
-        // Clean up after animation completes
-        setTimeout(() => {
-          pullToRefreshEl.classList.remove('visible');
-          mainContent.style.transform = '';
-          mainContent.classList.remove('snapping-back');
-        }, 450); // Match the CSS transition duration (0.45s)
-      });
+    // Trigger refresh if pulled enough
+    if (finalPullY >= PULL_THRESHOLD) {
+      triggerRefresh();
     }
 
-    // Reset state
-    isPulling = false;
-    isLocked = false;
-    startX = 0;
-    startY = 0;
-    currentY = 0;
+    // Always animate back
+    snapBack();
   }, { passive: true });
+
+  function cancelPull() {
+    pulling = false;
+    mainContent.classList.remove('pulling-active');
+    mainContent.style.transform = '';
+    pullToRefreshEl.classList.remove('visible');
+  }
+
+  function snapBack() {
+    mainContent.classList.remove('pulling-active');
+    mainContent.classList.add('snapping-back');
+
+    requestAnimationFrame(() => {
+      mainContent.style.transform = 'translateY(0)';
+
+      setTimeout(() => {
+        pullToRefreshEl.classList.remove('visible');
+        mainContent.style.transform = '';
+        mainContent.classList.remove('snapping-back');
+        pulling = false;
+      }, 450);
+    });
+  }
+
+  function triggerRefresh() {
+    if (window._portfolioRenderer && window._portfolioManager) {
+      window._portfolioRenderer.clearPositions();
+
+      const settings = getSettings();
+      const wallets = (settings.walletAddresses || '').split(',').map(w => w.trim()).filter(Boolean);
+      const solanaAddrs = (settings.solanaAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+      const bitcoinAddrs = (settings.bitcoinAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+      const zcashAddrs = (settings.zcashAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
+
+      window._portfolioManager.fetchAll(wallets, solanaAddrs, bitcoinAddrs, zcashAddrs);
+    }
+  }
 }
 
 
