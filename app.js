@@ -467,10 +467,10 @@ function setupPullToRefresh() {
   const easeOutPull = (distance) => {
     if (distance <= 0) return 0;
 
-    // Phase 1: First 65px of finger = relatively easy (up to ~35px screen)
+    // Phase 1: First 65px of finger = easy (up to 50px screen)
     // Phase 2: After that = extreme resistance
     const phase1Distance = 65;
-    const phase1Output = 35;
+    const phase1Output = 50;
 
     if (distance <= phase1Distance) {
       // Gentle curve for initial pull
@@ -479,7 +479,7 @@ function setupPullToRefresh() {
       // Very strong resistance after phase 1
       // Additional finger movement barely moves screen
       const extraDistance = distance - phase1Distance;
-      const remaining = maxPull - phase1Output; // 45px left
+      const remaining = maxPull - phase1Output; // 30px left
       // Logarithmic scaling - each doubling of distance gives less return
       const extraOutput = remaining * (1 - 1 / (1 + extraDistance / 80));
       return phase1Output + extraOutput;
