@@ -467,11 +467,11 @@ function setupPullToRefresh() {
   const easeOutPull = (distance) => {
     if (distance <= 0) return 0;
 
-    // Phase 1: First 80px of finger = 56px screen (0.7x ratio - slight resistance from start)
+    // Phase 1: First 80px of finger = 44px screen (0.55x ratio - noticeable resistance)
     // Phase 2: After that = increasingly hard (logarithmic scaling)
     const phase1Distance = 80;
-    const phase1Ratio = 0.7; // Always some resistance, not 1:1
-    const phase1Output = phase1Distance * phase1Ratio; // 56px
+    const phase1Ratio = 0.55; // More resistance - feels premium
+    const phase1Output = phase1Distance * phase1Ratio; // 44px
 
     if (distance <= phase1Distance) {
       // Constant 0.7x ratio - premium feel with slight resistance

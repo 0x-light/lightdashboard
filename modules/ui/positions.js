@@ -9,18 +9,32 @@ function isStablecoin(asset) {
 
 // Custom mouse-tracking tooltip for funding rates
 let fundingTooltipEl = null;
+let activeTooltipCell = null; // Track which cell has active tooltip
 
 function initFundingTooltip() {
   if (fundingTooltipEl) return;
   fundingTooltipEl = document.createElement('div');
   fundingTooltipEl.className = 'funding-rate-tooltip';
   document.body.appendChild(fundingTooltipEl);
+
+  // Click anywhere to dismiss tooltip (for mobile)
+  document.addEventListener('click', (e) => {
+    // If clicking on the active tooltip cell, toggle off
+    // If clicking elsewhere, hide tooltip
+    if (activeTooltipCell && !activeTooltipCell.contains(e.target)) {
+      hideFundingTooltip();
+    }
+  }, true);
+
+  // Also hide on scroll
+  document.addEventListener('scroll', hideFundingTooltip, true);
 }
 
 function showFundingTooltip(e, text) {
   if (!fundingTooltipEl) initFundingTooltip();
   fundingTooltipEl.textContent = text;
   fundingTooltipEl.classList.add('visible');
+  activeTooltipCell = e.currentTarget;
   updateTooltipPosition(e);
 }
 
@@ -28,6 +42,7 @@ function hideFundingTooltip() {
   if (fundingTooltipEl) {
     fundingTooltipEl.classList.remove('visible');
   }
+  activeTooltipCell = null;
 }
 
 function updateTooltipPosition(e) {
