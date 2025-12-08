@@ -3203,9 +3203,9 @@ input[type="range"]:focus::-moz-range-thumb {
     -webkit-backface-visibility: hidden;
   }
 
-  /* Snap-back transition - Apple-like spring physics */
+  /* Snap-back transition - Apple-like spring physics, faster */
   .main-content.snapping-back {
-    transition: transform 0.45s cubic-bezier(0.25, 0.1, 0.25, 1);
+    transition: transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
   }
 }
 

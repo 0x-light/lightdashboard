@@ -454,13 +454,17 @@ function setupPullToRefresh() {
   const isMobile = () => window.innerWidth <= 870;
 
   // State
+  let startX = 0;
   let startY = 0;
   let pulling = false;
+  let directionLocked = false;
+  let isHorizontalScroll = false;
 
   // Config
   const PULL_THRESHOLD = 50; // Screen px needed to trigger refresh
   const MAX_PULL = 100; // Max screen translation
   const RESISTANCE = 0.4; // Lower = harder to pull (0.4 means 40% of finger movement)
+  const DIRECTION_LOCK_THRESHOLD = 10; // px before locking direction
 
   // Simple resistance: constant ratio with slight curve at the end
   const calcPull = (fingerDistance) => {
@@ -476,26 +480,42 @@ function setupPullToRefresh() {
 
   document.addEventListener('touchstart', (e) => {
     if (!isMobile()) return;
+    startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     pulling = false;
+    directionLocked = false;
+    isHorizontalScroll = false;
   }, { passive: true });
 
   document.addEventListener('touchmove', (e) => {
     if (!isMobile()) return;
 
+    const currentX = e.touches[0].clientX;
     const currentY = e.touches[0].clientY;
-    const fingerDistance = currentY - startY;
+    const deltaX = Math.abs(currentX - startX);
+    const deltaY = currentY - startY;
+
+    // Determine scroll direction if not locked yet
+    if (!directionLocked && (deltaX > DIRECTION_LOCK_THRESHOLD || Math.abs(deltaY) > DIRECTION_LOCK_THRESHOLD)) {
+      // If horizontal movement is greater, this is a horizontal scroll
+      isHorizontalScroll = deltaX > Math.abs(deltaY);
+      directionLocked = true;
+    }
+
+    // Don't activate pull-to-refresh during horizontal scrolling
+    if (isHorizontalScroll) return;
 
     // Only activate pull-to-refresh when:
     // 1. At top of page (scrollY === 0)
-    // 2. Pulling DOWN (fingerDistance > 0)
-    // 3. Have moved at least 10px (prevents accidental activation)
-    if (window.scrollY === 0 && fingerDistance > 10) {
+    // 2. Pulling DOWN (deltaY > 0)
+    // 3. Have moved at least 10px vertically
+    // 4. Not horizontal scrolling
+    if (window.scrollY === 0 && deltaY > 10 && !isHorizontalScroll) {
       // Prevent native iOS bounce
       e.preventDefault();
 
       pulling = true;
-      const translateY = calcPull(fingerDistance);
+      const translateY = calcPull(deltaY);
 
       mainContent.classList.add('pulling-active');
       mainContent.style.transform = `translateY(${translateY}px)`;
@@ -543,7 +563,7 @@ function setupPullToRefresh() {
         mainContent.style.transform = '';
         mainContent.classList.remove('snapping-back');
         pulling = false;
-      }, 450);
+      }, 300);
     });
   }
 
