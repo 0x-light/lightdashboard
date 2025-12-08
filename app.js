@@ -6,7 +6,7 @@ import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.9.4';
+const APP_VERSION = '2.9.5';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {

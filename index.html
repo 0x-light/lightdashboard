@@ -30,13 +30,13 @@
     <meta name="theme-color" content="#000000" id="themeColorMeta">
 
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json?v=2.9.4">
+    <link rel="manifest" href="/manifest.json?v=2.9.5">
 
     <!-- Cache busting: update version number on each deployment -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="./styles.css?v=2.9.4">
+    <link rel="stylesheet" href="./styles.css?v=2.9.5">
     <!-- Apply theme synchronously to prevent flash of wrong theme -->
     <script>
         (function () {
@@ -84,6 +84,9 @@
 </head>
 
 <body>
+    <!-- iOS Status Bar Cover - completely independent, never transforms -->
+    <div id="statusBarCover" class="status-bar-cover"></div>
+
     <!-- Pull to Refresh (Mobile Only) - stays fixed at top -->
     <div id="pullToRefresh" class="pull-to-refresh">
         <span class="pull-to-refresh-text">Release to refresh data</span>
@@ -649,12 +652,12 @@
         </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.9.4" defer></script>
-    <script type="module" src="./app.js?v=2.9.4" defer></script>
+    <script type="module" src="./modules/app-init.js?v=2.9.5" defer></script>
+    <script type="module" src="./app.js?v=2.9.5" defer></script>
 
     <!-- Service Worker Registration -->
     <script defer>
-        const EXPECTED_VERSION = 'v2.9.4';
+        const EXPECTED_VERSION = 'v2.9.5';
 
         if ('serviceWorker' in navigator) {
             let refreshing = false;

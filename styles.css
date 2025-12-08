@@ -3196,20 +3196,6 @@ input[type="range"]:focus::-moz-range-thumb {
     z-index: 998;
   }
 
-  /* iOS status bar cover - stays fixed and covers the safe area with theme bg */
-  /* This ensures the status bar never shows the pull-to-refresh color */
-  .main-content::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: env(safe-area-inset-top, 0px);
-    background: var(--bg);
-    z-index: 9999;
-    pointer-events: none;
-  }
-
   /* Only apply transform-related properties when actively pulling */
   .main-content.pulling-active {
     will-change: transform;
@@ -3220,6 +3206,27 @@ input[type="range"]:focus::-moz-range-thumb {
   /* Snap-back transition - Apple-like spring physics */
   .main-content.snapping-back {
     transition: transform 0.45s cubic-bezier(0.25, 0.1, 0.25, 1);
+  }
+}
+
+/* iOS Status Bar Cover - completely independent element */
+/* This is OUTSIDE mainContent so it never transforms */
+.status-bar-cover {
+  display: none;
+}
+
+@media (max-width: 870px) {
+  .status-bar-cover {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top, 0px);
+    background: var(--bg);
+    z-index: 10000;
+    /* Above everything */
+    pointer-events: none;
   }
 }
 
