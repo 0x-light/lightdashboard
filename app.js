@@ -462,26 +462,25 @@ function setupPullToRefresh() {
   const maxPull = 80; // max translation
   const directionLockThreshold = 8; // pixels before locking direction
 
-  // Two-phase rubber-band: smooth start, then hits a wall
-  // This creates the "it got harder" feeling more dramatically
+  // Two-phase rubber-band: smooth start, then strong resistance
+  // This creates a natural pull feel - almost 1:1 at first, then much harder
   const easeOutPull = (distance) => {
     if (distance <= 0) return 0;
 
-    // Phase 1: First 65px of finger = easy (up to 50px screen)
-    // Phase 2: After that = extreme resistance
-    const phase1Distance = 65;
-    const phase1Output = 50;
+    // Phase 1: First 60px of finger = 60px screen (1:1 ratio)
+    // Phase 2: After that = strong resistance (can still pull but hard)
+    const phase1Distance = 60;
+    const phase1Output = 60;
 
     if (distance <= phase1Distance) {
-      // Gentle curve for initial pull
+      // 1:1 for initial pull - feels responsive and direct
       return (distance / phase1Distance) * phase1Output;
     } else {
-      // Very strong resistance after phase 1
-      // Additional finger movement barely moves screen
+      // Strong resistance after cutoff - can keep pulling but it's hard
       const extraDistance = distance - phase1Distance;
-      const remaining = maxPull - phase1Output; // 30px left
-      // Logarithmic scaling - each doubling of distance gives less return
-      const extraOutput = remaining * (1 - 1 / (1 + extraDistance / 80));
+      const remaining = maxPull - phase1Output; // 20px left
+      // Tight curve - resistance kicks in fast but still allows progress
+      const extraOutput = remaining * (1 - Math.exp(-extraDistance / 30));
       return phase1Output + extraOutput;
     }
   };
@@ -594,7 +593,7 @@ function setupPullToRefresh() {
           pullToRefreshEl.classList.remove('visible');
           mainContent.style.transform = '';
           mainContent.classList.remove('snapping-back');
-        }, 100); // Match the CSS transition duration
+        }, 300); // Match the CSS transition duration (0.3s)
       });
     }
 
