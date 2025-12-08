@@ -8,11 +8,12 @@ export class HyperliquidFetcher {
 
     async fetch(wallets) {
         try {
-            // ... (existing fetch logic) ...
-            const [hlMarketData, hlAllMids, hlSpotData] = await Promise.all([
+            // Fetch main dex and xyz dex metadata in parallel
+            const [hlMarketData, hlAllMids, hlSpotData, xyzMarketData] = await Promise.all([
                 this.providers.hyperliquid.fetchMetaAndAssetCtxs(3000),
                 this.providers.hyperliquid.fetchAllMids(3000),
-                this.providers.hyperliquid.fetchSpotMetaAndAssetCtxs(3000)
+                this.providers.hyperliquid.fetchSpotMetaAndAssetCtxs(3000),
+                this.providers.hyperliquid.fetchXyzDexMetaAndAssetCtxs?.(3000).catch(() => null) // xyz dex metadata
             ]);
 
             // Store spotMeta for enrichment
@@ -40,6 +41,7 @@ export class HyperliquidFetcher {
             // ... (existing price map logic) ...
             const hlPriceMap = {};
             const hlPrevDayPxMap = {};
+            const hlFundingRateMap = {}; // Map of asset name to current funding rate
             // ... (populate maps) ...
             if (hlMarketData?.[0] && hlMarketData?.[1]) {
                 for (let i = 0; i < hlMarketData[1].length; i++) {
@@ -50,6 +52,21 @@ export class HyperliquidFetcher {
                         if (ctx.prevDayPx) {
                             hlPrevDayPxMap[assetName] = parseFloat(ctx.prevDayPx);
                         }
+                        // Store current funding rate (funding is per-hour rate as decimal)
+                        if (ctx.funding !== undefined) {
+                            hlFundingRateMap[assetName] = parseFloat(ctx.funding);
+                        }
+                    }
+                }
+            }
+
+            // Add xyz dex funding rates (for xyz:GOOGL, xyz:AAPL, etc.)
+            if (xyzMarketData?.[0] && xyzMarketData?.[1]) {
+                for (let i = 0; i < xyzMarketData[1].length; i++) {
+                    const ctx = xyzMarketData[1][i];
+                    const assetName = xyzMarketData[0].universe[i]?.name;
+                    if (assetName && ctx?.funding !== undefined) {
+                        hlFundingRateMap[assetName] = parseFloat(ctx.funding);
                     }
                 }
             }
@@ -119,6 +136,17 @@ export class HyperliquidFetcher {
                                     change24h = ((currentPrice - prevDayPx) / prevDayPx) * 100;
                                 }
 
+                                // Extract funding since position opened (positive = received, negative = paid)
+                                // Use sinceOpen (not allTime) to show funding for the CURRENT position only
+                                // Negate the value: Hyperliquid returns negative when you RECEIVE funding
+                                let funding = null;
+                                if (position?.cumFunding?.sinceOpen !== undefined) {
+                                    funding = -parseFloat(position.cumFunding.sinceOpen);
+                                }
+
+                                // Get current funding rate for this asset
+                                const fundingRate = hlFundingRateMap[position.coin] ?? null;
+
                                 rows.push({
                                     asset: position.coin,
                                     exchange: 'Hyperliquid',
@@ -128,7 +156,9 @@ export class HyperliquidFetcher {
                                     change24h,
                                     pnl,
                                     entryPrice,
-                                    isLeveraged: true
+                                    isLeveraged: true,
+                                    funding,
+                                    fundingRate
                                 });
                             }
                         }

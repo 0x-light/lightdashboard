@@ -200,7 +200,7 @@ a {
 }
 
 /* Mobile adjustments for mini loader */
-@media (max-width: 768px) {
+@media (max-width: 870px) {
   .greeting-container {
     gap: 8px;
   }
@@ -270,7 +270,7 @@ body {
 }
 
 /* Disable scroll when modal or settings is open (mobile) */
-@media (max-width: 768px) {
+@media (max-width: 870px) {
   body.modal-open {
     overflow: hidden;
     position: fixed;
@@ -442,7 +442,7 @@ h6 {
 }
 
 .container {
-  max-width: 800px;
+  max-width: 870px;
   padding: 0 32px 60px;
 }
 
@@ -1501,7 +1501,18 @@ body.mobile-menu-open {
   align-items: center;
 }
 
-@media (max-width: 768px) {
+/* Tablet breakpoint - switch to mobile menu to prevent nav wrapping */
+@media (max-width: 1020px) {
+  .header-actions {
+    display: none;
+  }
+
+  .mobile-menu-btn {
+    display: block;
+  }
+}
+
+@media (max-width: 870px) {
   body {
     overflow-x: hidden;
   }
@@ -2633,7 +2644,7 @@ input[type="range"]:focus::-moz-range-thumb {
   display: block;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 870px) {
   .sticker-window {
     bottom: 0;
     right: 0;
@@ -2676,7 +2687,7 @@ input[type="range"]:focus::-moz-range-thumb {
   opacity: 1;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 870px) {
   .last-update-timestamp {
     position: static;
     margin: 24px auto;
@@ -2758,7 +2769,7 @@ input[type="range"]:focus::-moz-range-thumb {
   overflow-y: auto;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 870px) {
   #newWatchlistSearchResults:not(:empty) {
     max-height: calc(100vh - 150px);
   }
@@ -2874,7 +2885,7 @@ input[type="range"]:focus::-moz-range-thumb {
 }
 
 /* Mobile styles for watchlist table */
-@media (max-width: 768px) {
+@media (max-width: 870px) {
 
   /* Keep watchlist table visible on mobile */
   #newWatchlistTable {
@@ -3021,7 +3032,7 @@ input[type="range"]:focus::-moz-range-thumb {
   pointer-events: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 870px) {
   .wallet-breakdown-tooltip {
     min-width: 240px;
     max-width: calc(100vw - 32px);
@@ -3142,7 +3153,7 @@ input[type="range"]:focus::-moz-range-thumb {
   display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 870px) {
   .pull-to-refresh {
     display: flex;
     align-items: flex-start;
@@ -3196,4 +3207,44 @@ input[type="range"]:focus::-moz-range-thumb {
   .main-content.snapping-back {
     transition: transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   }
+}
+
+/* === FUNDING COLUMN STYLES === */
+
+/* Funding cell - hoverable but no special cursor */
+.funding-cell {
+  position: relative;
+  cursor: help;
+}
+
+/* Custom mouse-tracking tooltip (created via JS) */
+.funding-rate-tooltip {
+  position: fixed;
+  z-index: 10001;
+  background: var(--bg);
+  border: 1px solid var(--text);
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: inherit;
+  pointer-events: none;
+  white-space: pre-line;
+  line-height: 1.4;
+  opacity: 0;
+  transition: opacity 0s;
+}
+
+.funding-rate-tooltip.visible {
+  opacity: 1;
+}
+
+/* Funding rate inline display for mobile cards */
+.funding-rate-inline {
+  color: var(--muted);
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+/* Funding column header */
+.th-funding {
+  white-space: nowrap;
 }

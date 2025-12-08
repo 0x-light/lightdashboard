@@ -7,6 +7,38 @@ function isStablecoin(asset) {
   return STABLECOINS.has(asset?.toUpperCase());
 }
 
+// Custom mouse-tracking tooltip for funding rates
+let fundingTooltipEl = null;
+
+function initFundingTooltip() {
+  if (fundingTooltipEl) return;
+  fundingTooltipEl = document.createElement('div');
+  fundingTooltipEl.className = 'funding-rate-tooltip';
+  document.body.appendChild(fundingTooltipEl);
+}
+
+function showFundingTooltip(e, text) {
+  if (!fundingTooltipEl) initFundingTooltip();
+  fundingTooltipEl.textContent = text;
+  fundingTooltipEl.classList.add('visible');
+  updateTooltipPosition(e);
+}
+
+function hideFundingTooltip() {
+  if (fundingTooltipEl) {
+    fundingTooltipEl.classList.remove('visible');
+  }
+}
+
+function updateTooltipPosition(e) {
+  if (!fundingTooltipEl) return;
+  // Position tooltip to follow mouse with offset
+  const x = e.clientX + 12;
+  const y = e.clientY + 12;
+  fundingTooltipEl.style.left = `${x}px`;
+  fundingTooltipEl.style.top = `${y}px`;
+}
+
 // No header templates needed - CSS handles chart visibility via .chart class
 
 function createSparkline(priceData, width = 60, height = 24, currentChange24h = null) {
@@ -118,6 +150,56 @@ function formatPct(num) {
   return `${sign}${Math.abs(n).toFixed(2)}%`;
 }
 
+function formatFunding(num, visible) {
+  if (!visible) return '$••••';
+  if (num === null || num === undefined || Number.isNaN(num)) return '—';
+  const n = Number(num);
+  if (!Number.isFinite(n)) return '—';
+  if (n === 0) return '$0';
+
+  const abs = Math.abs(n);
+  const sign = n > 0 ? '+' : '−';
+
+  // Format with appropriate precision
+  if (abs >= 1000) {
+    const formatted = (abs / 1000).toFixed(1);
+    return `${sign}$${formatted.replace(/\.0$/, '')}k`;
+  } else if (abs >= 1) {
+    return `${sign}$${abs.toFixed(2)}`;
+  } else {
+    return `${sign}$${abs.toFixed(4)}`;
+  }
+}
+
+function formatFundingRate(rate) {
+  if (rate === null || rate === undefined || Number.isNaN(rate)) return null;
+  const n = Number(rate);
+  if (!Number.isFinite(n)) return null;
+  // Convert to percentage and format (rate is per hour, e.g. 0.0000125 = 0.00125%)
+  const pct = n * 100;
+  const sign = pct > 0 ? '+' : (pct < 0 ? '−' : '');
+  return `${sign}${Math.abs(pct).toFixed(4)}%/hr`;
+}
+
+function formatFundingRateExtended(rate) {
+  if (rate === null || rate === undefined || Number.isNaN(rate)) return null;
+  const n = Number(rate);
+  if (!Number.isFinite(n)) return null;
+
+  // rate is per hour as decimal
+  const hourlyPct = n * 100;
+  const monthlyPct = n * 100 * 24 * 30;  // 720 hours/month
+  const yearlyPct = n * 100 * 24 * 365;  // 8760 hours/year
+
+  const sign = (v) => v > 0 ? '+' : (v < 0 ? '−' : '');
+
+  return {
+    hourly: `${sign(hourlyPct)}${Math.abs(hourlyPct).toFixed(4)}%`,
+    monthly: `${sign(monthlyPct)}${Math.abs(monthlyPct).toFixed(2)}%`,
+    yearly: `${sign(yearlyPct)}${Math.abs(yearlyPct).toFixed(1)}%`
+  };
+}
+
 function computeValue(pos) {
   if (typeof pos.value === 'number') return pos.value;
   const amount = Number(pos.amount || 0);
@@ -150,6 +232,7 @@ function createTableRow(doc, pos, opts, prevDataMap) {
   const valueChanged = prev && Math.abs(value - (prev.value || 0)) > 0.01;
   const pnlChanged = prev && Math.abs((pos.pnl || 0) - (prev.pnl || 0)) > 0.01;
   const change24hChanged = prev && Math.abs((pos.change24h || 0) - (prev.change24h || 0)) > 0.01;
+  const fundingChanged = prev && Math.abs((pos.funding || 0) - (prev.funding || 0)) > 0.01;
 
   // Change detection for flash animations
 
@@ -160,35 +243,45 @@ function createTableRow(doc, pos, opts, prevDataMap) {
     chartCell = chartSvg || '<span class="chart-loading">—</span>';
   }
 
-  // Use compact column order (only order)
-  // Order: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
+  // Use compact column order
+  // Order: Asset, Price, Chart, Value, P&L, Funding, 24H%, Amount, Exchange
   const cells = [
     pos.asset || '—',
     formatPrice(pos.price, true),
     chartCell,
     formatUsd(value, amountVisible),
     formatUsd(pos.pnl, amountVisible, true),
+    formatFunding(pos.funding, amountVisible),
     formatPct(pos.change24h),
     formatAmount(pos.amount, amountVisible, showExactAmounts),
     pos.exchange || '—'
   ];
 
   const useColoredPnL = opts.settings?.useColoredPnL ?? true;
+  const fundingRateTooltip = formatFundingRate(pos.fundingRate);
+  const fundingRateExt = formatFundingRateExtended(pos.fundingRate);
+  // Build extended tooltip text with hourly, monthly, yearly extrapolations
+  const fundingTooltipText = fundingRateExt
+    ? `Hourly: ${fundingRateExt.hourly}\nMonthly: ${fundingRateExt.monthly}\nYearly: ${fundingRateExt.yearly}`
+    : null;
 
   for (let i = 0; i < cells.length; i++) {
     const td = doc.createElement('td');
 
-    // Column indices: Asset, Price, Chart, Value, P&L, 24H%, Amount, Exchange
+    // Column indices: Asset, Price, Chart, Value, P&L, Funding, 24H%, Amount, Exchange
     const isPrice = (i === 1);
     const isChart = (i === 2);
     const isValue = (i === 3);
     const isPnL = (i === 4);
-    const isChange24h = (i === 5);
+    const isFunding = (i === 5);
+    const isChange24h = (i === 6);
 
-    // Add color classes for PnL and 24H%
+    // Add color classes for PnL, Funding, and 24H%
     if (useColoredPnL) {
       if (isPnL && pos.pnl != null) {
         td.className = pos.pnl >= 0 ? 'positive-pnl' : 'negative-pnl';
+      } else if (isFunding && pos.funding != null) {
+        td.className = pos.funding >= 0 ? 'positive-pnl' : 'negative-pnl';
       } else if (isChange24h && pos.change24h != null) {
         td.className = pos.change24h >= 0 ? 'positive-pnl' : 'negative-pnl';
       }
@@ -199,6 +292,7 @@ function createTableRow(doc, pos, opts, prevDataMap) {
       (isPrice && priceChanged) ||
       (isValue && valueChanged) ||
       (isPnL && pnlChanged) ||
+      (isFunding && fundingChanged) ||
       (isChart && (priceChanged || change24hChanged)) ||
       (isChange24h && change24hChanged);
 
@@ -227,6 +321,15 @@ function createTableRow(doc, pos, opts, prevDataMap) {
       // Chart column uses innerHTML
       td.innerHTML = cells[i];
       td.className = 'chart-cell chart';
+    } else if (isFunding && fundingTooltipText) {
+      // Funding column with custom mouse-tracking tooltip for current rate
+      td.textContent = String(cells[i]);
+      td.classList.add('funding-cell');
+      td.setAttribute('data-funding-rate', fundingTooltipText);
+      // Attach tooltip event listeners
+      td.addEventListener('mouseenter', (e) => showFundingTooltip(e, fundingTooltipText));
+      td.addEventListener('mousemove', updateTooltipPosition);
+      td.addEventListener('mouseleave', hideFundingTooltip);
     } else {
       td.textContent = String(cells[i]);
     }
@@ -253,10 +356,16 @@ function createMobileCard(doc, pos, opts) {
   const valueChanged = prevGlobal && Math.abs(value - (prevValue || 0)) > 0.01;
   const pnlChanged = prevGlobal && Math.abs((pos.pnl || 0) - (prevGlobal.pnl || 0)) > 0.01;
   const change24hChanged = prevGlobal && Math.abs((pos.change24h || 0) - (prevGlobal.change24h || 0)) > 0.01;
+  const fundingChanged = prevGlobal && Math.abs((pos.funding || 0) - (prevGlobal.funding || 0)) > 0.01;
 
-  // Color classes for PnL and 24H%
+  // Color classes for PnL, Funding, and 24H%
   const pnlClass = useColoredPnL && pos.pnl != null ? (pos.pnl >= 0 ? 'positive-pnl' : 'negative-pnl') : '';
   const changeClass = useColoredPnL && pos.change24h != null ? (pos.change24h >= 0 ? 'positive-pnl' : 'negative-pnl') : '';
+  const fundingClass = useColoredPnL && pos.funding != null ? (pos.funding >= 0 ? 'positive-pnl' : 'negative-pnl') : '';
+
+  // Format funding rate for display (shown inline on mobile)
+  const fundingRateText = formatFundingRate(pos.fundingRate);
+  const fundingRateDisplay = fundingRateText ? ` <span class="funding-rate-inline">(${fundingRateText})</span>` : '';
 
   card.innerHTML = `
     <div class="card-row"><span class="card-label">Asset</span><span class="card-asset">${pos.asset || '—'}</span></div>
@@ -266,6 +375,7 @@ function createMobileCard(doc, pos, opts) {
     <div class="card-row"><span class="card-label">Value</span><span class="card-value"${valueChanged ? ' data-flash="true"' : ''}>${formatUsd(value, amountVisible)}</span></div>
     <div class="card-row"><span class="card-label">24H%</span><span class="card-value ${changeClass}"${change24hChanged ? ' data-flash="true"' : ''}>${formatPct(pos.change24h)}</span></div>
     <div class="card-row"><span class="card-label">P&L</span><span class="card-value ${pnlClass}"${pnlChanged ? ' data-flash="true"' : ''}>${formatUsd(pos.pnl, amountVisible, true)}</span></div>
+    <div class="card-row"><span class="card-label">Funding</span><span class="card-value ${fundingClass}"${fundingChanged ? ' data-flash="true"' : ''}>${formatFunding(pos.funding, amountVisible)}${fundingRateDisplay}</span></div>
   `;
   return card;
 }
@@ -286,7 +396,7 @@ export function renderPositions({ positions, containers, options, previousPositi
     if (filtered.length === 0) {
       const emptyRow = doc.createElement('tr');
       const emptyCell = doc.createElement('td');
-      emptyCell.colSpan = 8;
+      emptyCell.colSpan = 9;
       emptyCell.className = 'loading';
       emptyCell.textContent = 'No positions found';
       emptyRow.appendChild(emptyCell);
@@ -306,7 +416,8 @@ export function renderPositions({ positions, containers, options, previousPositi
             price: pos.price,
             value: computeValue(pos), // Compute value dynamically
             pnl: pos.pnl,
-            change24h: pos.change24h
+            change24h: pos.change24h,
+            funding: pos.funding
           };
         } catch (e) {
           // Skip this position if there's an error computing value

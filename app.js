@@ -402,7 +402,7 @@ function renderPositionsSkeleton(rows = 6) {
   const tbody = document.getElementById('newPositionsBody');
   const mobile = document.getElementById('newMobilePositionsContainer');
   if (!tbody) return;
-  const cells = 8; // Asset, Price, Chart, Value, P&L, 24H %, Amount, Exchange
+  const cells = 9; // Asset, Price, Chart, Value, P&L, Funding, 24H %, Amount, Exchange
   let html = '';
   for (let r = 0; r < rows; r++) {
     html += '<tr>';
@@ -462,11 +462,15 @@ function setupPullToRefresh() {
   const maxPull = 80; // max translation
   const directionLockThreshold = 8; // pixels before locking direction (lowered)
 
-  // Easing function for resistance feel - gets harder as you pull more
+  // Rubber-band resistance - starts easy, gets very hard
+  // Uses exponential decay: fast at first, then dramatically slows
   const easeOutPull = (distance) => {
-    const normalized = Math.min(distance / 150, 1);
-    // Quadratic ease-out gives natural resistance
-    return maxPull * (1 - Math.pow(1 - normalized, 2));
+    // After ~60px of finger movement, you hit about 50px of translation
+    // After ~120px of finger movement, you hit about 70px of translation  
+    // It becomes very hard to reach maxPull
+    const dampening = 0.4; // Lower = more resistance
+    const result = maxPull * (1 - Math.exp(-distance * dampening / maxPull));
+    return Math.min(result, maxPull);
   };
 
   document.addEventListener('touchstart', (e) => {

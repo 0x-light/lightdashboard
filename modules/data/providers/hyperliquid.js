@@ -103,6 +103,10 @@ export async function fetchMetaAndAssetCtxs(timeoutMs = 10000) {
   return await post({ type: 'metaAndAssetCtxs' }, timeoutMs).catch(() => null);
 }
 
+export async function fetchXyzDexMetaAndAssetCtxs(timeoutMs = 10000) {
+  return await post({ type: 'metaAndAssetCtxs', dex: 'xyz' }, timeoutMs).catch(() => null);
+}
+
 export async function fetchSpotMeta(timeoutMs = 10000) {
   return await post({ type: 'spotMeta' }, timeoutMs).catch(() => null);
 }
@@ -224,6 +228,7 @@ export default {
   fetchPositions,
   fetchAllMids,
   fetchMetaAndAssetCtxs,
+  fetchXyzDexMetaAndAssetCtxs,
   fetchSpotMeta,
   fetchHistoricalPrice,
   buildSpotPriceMap,
