@@ -1563,8 +1563,8 @@ body.mobile-menu-open {
     min-width: 100%;
   }
 
-  /* Make table wrapper scrollable on mobile in compact mode */
-  body.compact-mode .table-wrapper {
+  /* Make table wrapper scrollable on mobile */
+  .table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
@@ -2846,31 +2846,59 @@ input[type="range"]:focus::-moz-range-thumb {
   color: var(--text);
 }
 
-/* Watchlist table layout */
+/* === ALIGNED TABLE COLUMNS (Positions + Watchlist) === */
+/* Set matching widths for Asset, Price, Chart columns */
+
+/* Positions table column widths */
+#newPositionsTable {
+  width: 100%;
+  min-width: 800px;
+  /* Ensure horizontal scroll on mobile */
+  table-layout: fixed;
+}
+
+#newPositionsTable th:nth-child(1),
+#newPositionsTable td:nth-child(1) {
+  width: 90px;
+  text-align: left;
+}
+
+#newPositionsTable th:nth-child(2),
+#newPositionsTable td:nth-child(2) {
+  width: 90px;
+  text-align: left;
+}
+
+#newPositionsTable th:nth-child(3),
+#newPositionsTable td:nth-child(3) {
+  width: 70px;
+  text-align: center;
+}
+
+/* Watchlist table column widths - align Chart with positions Value column */
 #newWatchlistTable {
   width: 100%;
   table-layout: fixed;
 }
 
-/* Watchlist column widths - tighter spacing */
 #newWatchlistTable th:nth-child(1),
 #newWatchlistTable td:nth-child(1) {
+  width: 90px;
   text-align: left;
-  width: 25%;
 }
 
+/* Price column wider to push Chart to align with positions Value column */
 #newWatchlistTable th:nth-child(2),
 #newWatchlistTable td:nth-child(2) {
+  width: 160px;
   text-align: left;
-  width: 25%;
-  padding-left: 0;
 }
 
 #newWatchlistTable th.chart,
 #newWatchlistTable td.chart {
-  text-align: center;
   width: 70px;
-  padding: 0 4px;
+  text-align: center;
+  padding: 0 8px;
 }
 
 #newWatchlistTable th:last-child,
@@ -2878,7 +2906,6 @@ input[type="range"]:focus::-moz-range-thumb {
   text-align: right;
   padding-right: 0;
   white-space: nowrap;
-  width: 18%;
 }
 
 /* Ensure sparkline SVGs have explicit sizing for cross-browser compatibility */
@@ -2901,28 +2928,24 @@ input[type="range"]:focus::-moz-range-thumb {
     table-layout: fixed;
   }
 
-  /* Adjust column widths on mobile */
+  /* Mobile column widths - more room before chart */
   #newWatchlistTable th:nth-child(1),
   #newWatchlistTable td:nth-child(1) {
-    width: 22%;
+    width: 70px;
   }
 
+  /* Wider price column for spacing before chart */
   #newWatchlistTable th:nth-child(2),
   #newWatchlistTable td:nth-child(2) {
-    width: 28%;
+    width: 110px;
   }
 
   #newWatchlistTable th.chart,
   #newWatchlistTable td.chart {
-    width: 60px;
-    min-width: 60px;
-    max-width: 60px;
-    padding: 0 2px !important;
-  }
-
-  #newWatchlistTable th:last-child,
-  #newWatchlistTable td:last-child {
-    width: 18%;
+    width: 70px;
+    min-width: 70px;
+    max-width: 70px;
+    padding: 0 8px !important;
   }
 
   /* Fixed sparkline size on mobile - match positions table */

@@ -8,7 +8,7 @@ import { STABLECOINS } from '../utils/format.js';
  */
 export async function fetchHyperliquidPositions(wallets, providers) {
   const rows = [];
-  
+
   try {
     const [hlMarketData, hlAllMids, hlSpotMeta] = await Promise.all([
       providers.hyperliquid.fetchMetaAndAssetCtxs(3000),
@@ -26,7 +26,7 @@ export async function fetchHyperliquidPositions(wallets, providers) {
         }
       }
     }
-    
+
     if (hlAllMids) {
       for (const [key, value] of Object.entries(hlAllMids)) {
         if (value && !key.startsWith('@')) {
@@ -37,7 +37,7 @@ export async function fetchHyperliquidPositions(wallets, providers) {
 
     for (const wallet of wallets) {
       const data = await providers.hyperliquid.fetchPositions(wallet, 3000);
-      
+
       let perpEquity = 0;
       if (data?.perp?.marginSummary) {
         perpEquity = parseFloat(data.perp.marginSummary.accountValue || 0);
@@ -75,7 +75,7 @@ export async function fetchHyperliquidPositions(wallets, providers) {
 
             rows.push({
               asset: position.coin,
-              exchange: 'Hyperliquid',
+              exchange: 'HL Perps',
               amount: szi,
               price: currentPrice,
               value: notionalValue,
@@ -103,7 +103,7 @@ export async function fetchHyperliquidPositions(wallets, providers) {
 
             rows.push({
               asset: bal.coin,
-              exchange: 'Hyperliquid Spot',
+              exchange: 'HL Spot',
               amount: available,
               price,
               value,
@@ -119,7 +119,7 @@ export async function fetchHyperliquidPositions(wallets, providers) {
       if (hlAccountEquity > 0) {
         rows.push({
           asset: 'HL_ACCOUNT_EQUITY',
-          exchange: 'Hyperliquid',
+          exchange: 'HL Perps',
           amount: 1,
           price: hlAccountEquity,
           value: hlAccountEquity,
@@ -135,7 +135,7 @@ export async function fetchHyperliquidPositions(wallets, providers) {
   } catch (e) {
     console.error('[Portfolio] Hyperliquid fetch failed:', e);
   }
-  
+
   return rows;
 }
 
@@ -144,7 +144,7 @@ export async function fetchHyperliquidPositions(wallets, providers) {
  */
 export async function fetchLighterPositions(wallets, providers) {
   const rows = [];
-  
+
   try {
     for (const wallet of wallets) {
       const data = await providers.lighter.fetchAccountByAddress(wallet, { timeoutMs: 3000 });
@@ -170,7 +170,7 @@ export async function fetchLighterPositions(wallets, providers) {
   } catch (e) {
     console.error('[Portfolio] Lighter fetch failed:', e);
   }
-  
+
   return rows;
 }
 
@@ -188,8 +188,8 @@ export async function fetchZerionPositions(wallets, settings, providers) {
 
   try {
     const positionsData = await providers.zerion.getWalletPositions(
-      wallets[0], 
-      settings.zerionApiKey, 
+      wallets[0],
+      settings.zerionApiKey,
       { timeoutMs: 5000 }
     );
 
@@ -400,7 +400,7 @@ export async function updatePositionPrices(positions, providers) {
         }
       }
     }
-    
+
     if (spotMeta.tokens) {
       const pairsByTokenIndex = new Map();
       for (const pair of spotMeta.universe) {
@@ -431,7 +431,7 @@ export async function updatePositionPrices(positions, providers) {
     }
 
     let newPrice = priceMap[pos.asset];
-    
+
     // Stablecoins default to $1
     if ((!newPrice || newPrice === 0) && STABLECOINS.has(pos.asset)) {
       newPrice = 1;
@@ -451,7 +451,7 @@ export async function updatePositionPrices(positions, providers) {
 
       return { ...pos, price: newPrice, value: newValue, pnl: newPnl };
     }
-    
+
     return pos;
   });
 

@@ -155,7 +155,7 @@ export class HyperliquidFetcher {
 
                                 rows.push({
                                     asset: position.coin,
-                                    exchange: 'Hyperliquid',
+                                    exchange: 'HL Perps',
                                     amount: szi,
                                     price: currentPrice,
                                     value: notionalValue,
@@ -213,7 +213,7 @@ export class HyperliquidFetcher {
 
                                 rows.push({
                                     asset: bal.coin,
-                                    exchange: 'Hyperliquid Spot',
+                                    exchange: 'HL Spot',
                                     amount: available,
                                     price,
                                     value,
@@ -229,7 +229,7 @@ export class HyperliquidFetcher {
                     if (hlAccountEquity > 0) {
                         rows.push({
                             asset: 'HL_ACCOUNT_EQUITY',
-                            exchange: 'Hyperliquid',
+                            exchange: 'HL Perps',
                             amount: 1,
                             price: hlAccountEquity,
                             value: hlAccountEquity,
@@ -319,7 +319,7 @@ export class HyperliquidFetcher {
                 // For Spot assets, the coin name in candleSnapshot must be the exact pair name from universe
                 // e.g. "@248". The API errors with 500 if we send "BZEC" or "BZEC/USDC".
                 let coin = item.asset;
-                if (item.exchange === 'Hyperliquid Spot') {
+                if (item.exchange === 'HL Spot') {
                     let foundPair = false;
                     // Robust lookup: Token Name -> Token Index -> Spot Pair -> Pair Name
                     if (this.spotMeta && this.spotMeta.tokens && this.spotMeta.universe) {

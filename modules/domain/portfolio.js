@@ -188,7 +188,7 @@ export function calculatePortfolioTotals(positions) {
       // Add Lighter equity (may have multiple wallets)
       totalValue += (p.value || 0);
       totalPnL += (p.pnl || 0);
-    } else if (p.exchange === 'Hyperliquid' || p.exchange === 'Hyperliquid Spot' || p.exchange === 'Lighter') {
+    } else if (p.exchange === 'HL Perps' || p.exchange === 'HL Spot' || p.exchange === 'Lighter') {
       // Skip individual HL/Lighter positions (already counted in equity above)
       continue;
     } else {

@@ -437,8 +437,8 @@ export class IncrementalPortfolioRenderer {
         continue;
       }
 
-      // Keep Hyperliquid separate
-      if (row.exchange === 'Hyperliquid' || row.exchange === 'Hyperliquid Spot') {
+      // Keep HL Perps/Spot separate
+      if (row.exchange === 'HL Perps' || row.exchange === 'HL Spot') {
         aggregated.push(row);
         continue;
       }
@@ -512,7 +512,7 @@ export class IncrementalPortfolioRenderer {
       } else if (p.isLighterAccountEquity) {
         totalValue += (p.value || 0);
         totalPnL += (p.pnl || 0);
-      } else if (p.exchange === 'Hyperliquid' || p.exchange === 'Hyperliquid Spot' || p.exchange === 'Lighter') {
+      } else if (p.exchange === 'HL Perps' || p.exchange === 'HL Spot' || p.exchange === 'Lighter') {
         // Skip individual HL/Lighter positions (already counted in equity above)
         continue;
       } else {
