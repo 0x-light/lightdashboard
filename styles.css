@@ -596,24 +596,27 @@ body.no-charts .chart {
   display: none !important;
 }
 
-/* Watchlist table 3-column layout when charts are hidden */
+/* Watchlist table 3-column layout when charts are hidden - align with positions */
 body.no-charts #newWatchlistTable {
   table-layout: fixed;
 }
 
+/* Match positions Asset column width */
 body.no-charts #newWatchlistTable th:nth-child(1),
 body.no-charts #newWatchlistTable td:nth-child(1) {
-  width: 40%;
+  width: 90px;
 }
 
+/* Match positions Price column width */
 body.no-charts #newWatchlistTable th:nth-child(2),
 body.no-charts #newWatchlistTable td:nth-child(2) {
-  width: 40%;
+  width: 90px;
 }
 
+/* 24H% takes remaining space */
 body.no-charts #newWatchlistTable th:last-child,
 body.no-charts #newWatchlistTable td:last-child {
-  width: 20%;
+  width: auto;
 }
 
 /* Button visibility controls */
