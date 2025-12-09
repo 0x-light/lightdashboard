@@ -28,6 +28,7 @@ export class PortfolioManager {
 
             // 2. Lighter
             if (this.fetchers['Lighter'] && wallets.length > 0) {
+                console.log('[PortfolioManager] Calling Lighter with wallets:', wallets);
                 fetchPromises.push(this.fetchers['Lighter'].fetch(wallets));
             }
 

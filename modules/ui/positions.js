@@ -157,17 +157,21 @@ function formatPrice(num, visible) {
   return `$${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function formatPct(num) {
-  if (num === null || num === undefined || Number.isNaN(num)) return '—';
+function formatPct(num, isLoading = false) {
+  if (num === null || num === undefined || Number.isNaN(num)) {
+    return isLoading ? '<span class="cell-loading">—</span>' : '—';
+  }
   const n = Number(num);
   if (!Number.isFinite(n)) return '—';
   const sign = n > 0 ? '+' : (n < 0 ? '−' : '');
   return `${sign}${Math.abs(n).toFixed(2)}%`;
 }
 
-function formatFunding(num, visible) {
+function formatFunding(num, visible, isLoading = false) {
   if (!visible) return '$••••';
-  if (num === null || num === undefined || Number.isNaN(num)) return '—';
+  if (num === null || num === undefined || Number.isNaN(num)) {
+    return isLoading ? '<span class="cell-loading">—</span>' : '—';
+  }
   const n = Number(num);
   if (!Number.isFinite(n)) return '—';
   if (n === 0) return '$0';
@@ -264,6 +268,12 @@ function createTableRow(doc, pos, opts, prevDataMap) {
     chartCell = '<span class="chart-loading">—</span>';
   }
 
+  // Determine loading states:
+  // - 24H% is loading if null and not a stablecoin
+  // - Funding is loading if null and position is leveraged (perps have funding)
+  const is24hLoading = pos.change24h == null && !isStablecoin(pos.asset);
+  const isFundingLoading = pos.funding == null && pos.isLeveraged;
+
   // Use compact column order
   // Order: Asset, Price, Chart, Value, P&L, Funding, 24H%, Amount, Exchange
   const cells = [
@@ -272,8 +282,8 @@ function createTableRow(doc, pos, opts, prevDataMap) {
     chartCell,
     formatUsd(value, amountVisible),
     formatUsd(pos.pnl, amountVisible, true),
-    formatFunding(pos.funding, amountVisible),
-    formatPct(pos.change24h),
+    formatFunding(pos.funding, amountVisible, isFundingLoading),
+    formatPct(pos.change24h, is24hLoading),
     formatAmount(pos.amount, amountVisible, showExactAmounts),
     pos.exchange || '—'
   ];
@@ -344,7 +354,13 @@ function createTableRow(doc, pos, opts, prevDataMap) {
       td.className = 'chart-cell chart';
     } else if (isFunding && fundingTooltipText) {
       // Funding column with custom mouse-tracking tooltip for current rate
-      td.textContent = String(cells[i]);
+      // Use innerHTML if content contains HTML (loading indicator)
+      const cellContent = String(cells[i]);
+      if (cellContent.includes('<span')) {
+        td.innerHTML = cellContent;
+      } else {
+        td.textContent = cellContent;
+      }
       td.classList.add('funding-cell');
       td.setAttribute('data-funding-rate', fundingTooltipText);
       // Attach tooltip event listeners
@@ -352,7 +368,13 @@ function createTableRow(doc, pos, opts, prevDataMap) {
       td.addEventListener('mousemove', updateTooltipPosition);
       td.addEventListener('mouseleave', hideFundingTooltip);
     } else {
-      td.textContent = String(cells[i]);
+      // Use innerHTML if content contains HTML (loading indicator), otherwise textContent
+      const cellContent = String(cells[i]);
+      if (cellContent.includes('<span')) {
+        td.innerHTML = cellContent;
+      } else {
+        td.textContent = cellContent;
+      }
     }
     tr.appendChild(td);
   }

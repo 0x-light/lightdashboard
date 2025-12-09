@@ -1,7 +1,7 @@
 // Service Worker for Light Dashboard
 // Provides offline support, intelligent caching, and automatic updates
-const CACHE_VERSION = 'v2.9.5';
-const BUILD_TIMESTAMP = '2025-12-08T20:54:00Z';
+const CACHE_VERSION = 'v2.9.6';
+const BUILD_TIMESTAMP = '2025-12-09T20:10:00Z';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
 // Force clear all caches on install - enabled to ensure users get new versions
@@ -36,7 +36,9 @@ const BYPASS_DOMAINS = [
   'hermes.pyth.network',
   'api.allorigins.win',
   'corsproxy.io',
-  'cors-anywhere.herokuapp.com'
+  'cors-anywhere.herokuapp.com',
+  'mainnet.zklighter.elliot.ai',
+  'testnet.zklighter.elliot.ai'
 ];
 
 // Install event - cache static assets
@@ -243,13 +245,10 @@ self.addEventListener('fetch', (event) => {
       })
     );
   } else {
-    // Default behavior - network only with error handling
-    event.respondWith(
-      fetch(request).catch(() => {
-        // Return empty response for failed requests (likely CORS)
-        return new Response(null, { status: 0, statusText: '' });
-      })
-    );
+    // Default behavior - network only (no caching)
+    // Don't call respondWith - let browser handle it directly
+    // This avoids the invalid status 0 Response bug
+    return;
   }
 });
 

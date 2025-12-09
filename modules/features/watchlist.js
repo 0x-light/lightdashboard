@@ -175,17 +175,20 @@ function renderRows(container, data, options) {
       ? price.toPrecision(4)
       : price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-    // Change Color
+    // Change Color - show pulsing loading indicator if data is still being fetched
     let changeColor = '';
-    let changeText = '-';
+    let changeText = '—'; // Default static dash
     if (change24h !== null && change24h !== undefined) {
       const isPos = change24h >= 0;
       changeColor = useColoredPnL ? (isPos ? 'var(--green)' : 'var(--red)') : '';
       changeText = `${isPos ? '+' : ''}${change24h.toFixed(2)}%`;
+    } else if (!isStablecoin(symbol)) {
+      // Loading - show pulsing indicator (stablecoins get static dash)
+      changeText = '<span class="cell-loading">—</span>';
     }
 
     // Sparkline - determine chart content based on asset type and data availability
-    let chartHtml = '';
+    let chartHtml;
     if (!showPriceChart) {
       // Charts disabled - show nothing
       chartHtml = '';
@@ -194,10 +197,11 @@ function renderRows(container, data, options) {
       chartHtml = '—';
     } else if (item.priceHistory && item.priceHistory.length > 1) {
       // Has chart data - render sparkline
-      chartHtml = createSparkline(item.priceHistory, 60, 24, change24h) || '<span class="chart-loading">—</span>';
+      const sparkline = createSparkline(item.priceHistory, 60, 24, change24h);
+      chartHtml = sparkline || '<span class="cell-loading">—</span>';
     } else {
       // Loading chart data - show pulsing placeholder
-      chartHtml = '<span class="chart-loading">—</span>';
+      chartHtml = '<span class="cell-loading">—</span>';
     }
 
     // Flash effect

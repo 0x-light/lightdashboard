@@ -163,9 +163,16 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
   const dateStr = formatDate(date);
   const url = `${comic.baseUrl}/${dateStr}`;
 
-  // Show loading message and add fading animation
-  container.innerHTML = '<div style="text-align: center; padding: 10px 0;">Loading...</div>';
+  // Check if there's existing content to preserve during loading
+  const hasExistingContent = container.querySelector('img') !== null;
+
+  // Start pulsing animation (current comic pulses while loading new one)
   container.classList.add('fading');
+
+  // If no existing content, show loading message
+  if (!hasExistingContent) {
+    container.innerHTML = '<div style="text-align: center; padding: 10px 0;">Loading...</div>';
+  }
 
   const result = await fetchComicImage(comicKey, date);
 
@@ -183,7 +190,16 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
       container.style.overflowY = '';
     }
 
-    // Successfully fetched comic image
+    // Preload the new image before swapping
+    const newImg = new Image();
+
+    await new Promise((resolve) => {
+      newImg.onload = resolve;
+      newImg.onerror = resolve; // Still swap even on error (will show broken image)
+      newImg.src = result.src;
+    });
+
+    // Build new content HTML
     let html = `<img src="${result.src}" alt="${comic.name}" data-comic-type="${comicKey}">`;
 
     // Add caption if available (for The Far Side)
@@ -191,12 +207,11 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
       html += `<div style="font-style: italic; text-align: center; opacity: 0.8; margin-top: 8px;">${result.caption}</div>`;
     }
 
+    // Now swap the content (image is fully loaded)
     container.innerHTML = html;
 
-    // Remove fading animation after new image is inserted
-    setTimeout(() => {
-      container.classList.remove('fading');
-    }, 100);
+    // Remove fading animation after new image is swapped in
+    container.classList.remove('fading');
   } else {
     // Fallback: link to view online with retry option
     container.innerHTML = `

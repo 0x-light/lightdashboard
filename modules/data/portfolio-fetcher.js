@@ -150,8 +150,18 @@ export async function fetchLighterPositions(wallets, providers) {
       const data = await providers.lighter.fetchAccountByAddress(wallet, { timeoutMs: 3000 });
       if (data?.accounts?.[0]) {
         const account = data.accounts[0];
-        const equity = parseFloat(account.equity_usd || account.total_equity || account.equity || 0);
-        const pnl = parseFloat(account.unrealized_pnl || account.pnl || 0);
+
+        // Lighter API returns: total_asset_value for total equity, 
+        // positions array with unrealized_pnl per position
+        const equity = parseFloat(account.total_asset_value || account.collateral || account.available_balance || 0);
+
+        // Sum unrealized PnL from all positions
+        let totalPnl = 0;
+        if (account.positions && Array.isArray(account.positions)) {
+          for (const pos of account.positions) {
+            totalPnl += parseFloat(pos.unrealized_pnl || 0);
+          }
+        }
 
         if (equity > 0) {
           rows.push({
@@ -160,7 +170,7 @@ export async function fetchLighterPositions(wallets, providers) {
             amount: 1,
             price: equity,
             value: equity,
-            pnl,
+            pnl: totalPnl,
             isLighterAccountEquity: true,
             isLeveraged: false
           });

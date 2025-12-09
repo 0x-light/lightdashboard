@@ -652,14 +652,17 @@
         </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.9.5" defer></script>
-    <script type="module" src="./app.js?v=2.9.5" defer></script>
+    <script type="module" src="./modules/app-init.js?v=2.9.6" defer></script>
+    <script type="module" src="./app.js?v=2.9.6" defer></script>
 
     <!-- Service Worker Registration -->
     <script defer>
-        const EXPECTED_VERSION = 'v2.9.5';
+        const EXPECTED_VERSION = 'v2.9.6';
 
-        if ('serviceWorker' in navigator) {
+        // Skip service worker on localhost for easier development/debugging
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+        if ('serviceWorker' in navigator && !isLocalhost) {
             let refreshing = false;
 
             // Reload page when new service worker takes over
@@ -695,6 +698,14 @@
                     .catch((error) => {
                         console.warn('[SW] Registration failed:', error);
                     });
+            });
+        } else if (isLocalhost && 'serviceWorker' in navigator) {
+            // On localhost, unregister any existing service workers
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+                for (const registration of registrations) {
+                    registration.unregister();
+                    console.log('[SW] Unregistered service worker for localhost debugging');
+                }
             });
         }
     </script>

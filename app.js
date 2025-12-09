@@ -311,9 +311,9 @@ async function _doRenderPortfolioIncremental() {
 
   // Initialize Portfolio Manager and Fetchers (Singleton pattern)
   if (!window._portfolioManager) {
-    const { PortfolioManager } = await import('./modules/domain/portfolio-manager.js');
+    const { PortfolioManager } = await import('./modules/domain/portfolio-manager.js?v=2.9.6');
     const { HyperliquidFetcher } = await import('./modules/data/fetchers/hyperliquid-fetcher.js');
-    const { LighterFetcher } = await import('./modules/data/fetchers/lighter-fetcher.js');
+    const { LighterFetcher } = await import('./modules/data/fetchers/lighter-fetcher.js?v=2.9.6');
     const { ZerionFetcher } = await import('./modules/data/fetchers/zerion-fetcher.js');
     const { AlchemyHeliusFetcher } = await import('./modules/data/fetchers/alchemy-helius-fetcher.js');
     const { BitcoinZcashFetcher } = await import('./modules/data/fetchers/bitcoin-fetcher.js');
@@ -384,40 +384,6 @@ window.cachedSummaryData = cachedSummaryData;
 
 
 
-// Render lightweight skeletons so the app feels instant
-function renderHeroSkeleton() {
-  const summaryEl = document.getElementById('newSummary');
-  if (!summaryEl) return;
-  summaryEl.innerHTML = `
-    <div class="skeleton-row" style="gap: 8px;">
-      <div class="skeleton-text skeleton-text-long"></div>
-    </div>
-    <div class="skeleton-row" style="gap: 8px;">
-      <div class="skeleton-text skeleton-text-medium"></div>
-    </div>
-  `;
-}
-
-function renderPositionsSkeleton(rows = 6) {
-  const tbody = document.getElementById('newPositionsBody');
-  const mobile = document.getElementById('newMobilePositionsContainer');
-  if (!tbody) return;
-  const cells = 9; // Asset, Price, Chart, Value, P&L, Funding, 24H %, Amount, Exchange
-  let html = '';
-  for (let r = 0; r < rows; r++) {
-    html += '<tr>';
-    for (let c = 0; c < cells; c++) {
-      const widthClass = c === 0 ? 'skeleton-text-medium' : (c === 3 ? 'skeleton-text-long' : 'skeleton-text-short');
-      html += `<td><div class="skeleton-text ${widthClass}"></div></td>`;
-    }
-    html += '</tr>';
-  }
-  tbody.innerHTML = html;
-  if (mobile) {
-    // Keep mobile container empty; table skeleton covers initial paint. Mobile shows cards later.
-    mobile.innerHTML = '';
-  }
-}
 
 function applyFontSize(size) {
   document.documentElement.style.fontSize = size + 'px';
@@ -2087,9 +2053,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Do not block on loading overlay; switch to skeleton UI immediately
-  renderHeroSkeleton();
-  renderPositionsSkeleton(7);
+
 
   // Display version dynamically from service worker
   const versionDisplay = document.getElementById('versionDisplay');
@@ -2249,13 +2213,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
   updateGreeting();
 
-  // Hero click to refresh with ASCII spinner
-  const heroSection = document.querySelector('.hero');
+  // Greeting container click to refresh with ASCII spinner
+  const greetingContainer = document.querySelector('.greeting-container');
   const greetingEl = document.getElementById('newGreeting');
 
-  if (heroSection && greetingEl) {
-    heroSection.style.cursor = 'pointer';
-    heroSection.style.userSelect = 'none';
+  if (greetingContainer && greetingEl) {
+    greetingContainer.style.cursor = 'pointer';
+    greetingContainer.style.userSelect = 'none';
 
     let spinnerInterval = null;
     let spinnerEl = null;
@@ -2297,7 +2261,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
     };
 
-    heroSection.addEventListener('click', async () => {
+    greetingContainer.addEventListener('click', async () => {
       if (spinnerInterval) return; // Already refreshing
 
       const summaryEl = document.getElementById('newSummary');
