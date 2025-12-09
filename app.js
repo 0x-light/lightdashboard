@@ -464,13 +464,8 @@ function setupPullToRefresh() {
     // Check if mobile menu is open
     if (mobileMenu && mobileMenu.classList.contains('open')) return true;
 
-    // Check if touching any interactive elements
+    // Check if touching any interactive elements (stickers, modal contents)
     if (target.closest('.sticker-controls, .placed-sticker, #stickerGrid, .settings, .sticker-window, .mobile-menu, .settings-backdrop')) {
-      return true;
-    }
-
-    // Check if inside a horizontally scrollable table wrapper
-    if (target.closest('.table-wrapper')) {
       return true;
     }
 
