@@ -134,14 +134,37 @@ export class ZerionFetcher {
             if (itemsToFetch.length === 0) return;
 
             // 3. Fetch history in batch
+            // 3. Fetch history in batch
             const feedIds = itemsToFetch.map(i => i.feedId);
+            const now = Date.now(); // Anchor time for consistent grid alignment
+
             try {
-                // console.log(`[Zerion] Batch fetching history for ${feedIds.length} feeds`);
-                const batchResults = await this.providers.pyth.getBatch24hPriceHistory(feedIds, 96); // Use 96 points (15m resolution) to match Hyperliquid
+                // Pass 1: Low resolution (24 points / 1h) for FAST load
+                const fastResults = await this.providers.pyth.getBatch24hPriceHistory(feedIds, 24, now);
+
+                // Update items with fast data first
+                let hasFastData = false;
+                for (const { row, feedId } of itemsToFetch) {
+                    const normalizedId = feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`;
+                    const history = fastResults[normalizedId];
+
+                    if (history && history.length > 0) {
+                        row.priceHistory = history;
+                        hasFastData = true;
+                    }
+                }
+
+                // Trigger intermediate render if we found data
+                if (hasFastData) {
+                    this.renderer.appendPositions(rows, `Zerion_${wallet}`);
+                }
+
+                // Pass 2: High resolution (96 points / 15m) for FINAL quality
+                const fullResults = await this.providers.pyth.getBatch24hPriceHistory(feedIds, 96, now);
 
                 for (const { row, feedId } of itemsToFetch) {
                     const normalizedId = feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`;
-                    const history = batchResults[normalizedId];
+                    const history = fullResults[normalizedId];
 
                     if (history && history.length > 0) {
                         // console.log(`[Zerion] Got ${history.length} points for ${row.asset}`);
@@ -164,8 +187,6 @@ export class ZerionFetcher {
                             change24h,
                             timestamp: Date.now()
                         });
-                    } else {
-                        console.warn(`[Zerion] No history returned for ${row.asset}`);
                     }
                 }
             } catch (e) {

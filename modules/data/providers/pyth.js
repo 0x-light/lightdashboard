@@ -114,7 +114,7 @@ export async function getAtTimestampByFeedIds(feedIds, timestampSeconds, timeout
 }
 
 // Global Concurrency Queue
-const MAX_CONCURRENCY = 3;
+const MAX_CONCURRENCY = 6;
 const globalQueue = []; // Array of functions returning promises
 let activeRequests = 0;
 
@@ -149,13 +149,13 @@ const enqueue = (task) => {
   });
 };
 
-export async function getBatch24hPriceHistory(feedIds, points = 48) {
+export async function getBatch24hPriceHistory(feedIds, points = 48, endTime = Date.now()) {
   if (!feedIds || feedIds.length === 0) return {};
 
   // Deduplicate feedIds and normalize them
   const uniqueFeedIds = [...new Set(feedIds)].map(id => id.toLowerCase().startsWith('0x') ? id.toLowerCase() : `0x${id.toLowerCase()}`);
 
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(endTime / 1000);
   const day = 24 * 60 * 60;
   const startTime = now - day;
   const interval = day / points;

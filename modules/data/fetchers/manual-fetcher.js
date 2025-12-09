@@ -96,33 +96,68 @@ export class ManualFetcher {
         // Wait, I can see in the fetch method: `_changeDetectionKey: MANUAL_PYTH_${pos.symbol}_${pos.feedId}`
         // So I can extract it from there.
 
-        const historyPromises = pythRows.map(async (row) => {
-            try {
+        const itemsToFetch = [];
+        for (const row of pythRows) {
+            // Extract feedId from _changeDetectionKey if not on row
+            // Key format: MANUAL_PYTH_${symbol}_${feedId} or MANUAL_PYTH_${symbol} if feedId missing?
+            // Actually manual fetcher stored it as `feedId: pos.feedId` in lines 40
+            let feedId = row.feedId;
+
+            // Fallback to extraction if missing (legacy support)
+            if (!feedId && row._changeDetectionKey) {
                 const parts = row._changeDetectionKey.split('_');
-                // Key format: MANUAL_PYTH_${symbol}_${feedId}
-                // But symbol might contain underscores? Hopefully not.
-                // Actually, let's look at how it's constructed: `MANUAL_PYTH_${pos.symbol}_${pos.feedId}`
-                // If symbol has underscores, this is risky.
-                // Better to add feedId to the row object in the fetch method first.
+                // This is brittle if symbol has underscores. 
+                // But better to rely on row.feedId which we set in fetch()
+            }
 
-                // Let's assume I'll fix the fetch method to add feedId to the row.
-                if (!row.feedId) {
-                    console.warn(`[Manual] No feedId for ${row.asset}`);
-                    return false;
+            if (!feedId) {
+                console.warn(`[Manual] No feedId for ${row.asset}`);
+                continue;
+            }
+
+            // Check threshold and hidden status
+            const isHidden = this.settings.hiddenAssets && this.settings.hiddenAssets.includes(`${row.asset}_Manual (Pyth)`);
+            const threshold = this.settings.minBalanceThreshold || 0;
+            if (isHidden || row.value < threshold) {
+                continue;
+            }
+
+            itemsToFetch.push({ row, feedId });
+        }
+
+        if (itemsToFetch.length === 0) return;
+
+        const feedIds = itemsToFetch.map(i => i.feedId);
+        const now = Date.now();
+
+        try {
+            // Pass 1: Low resolution (24 points / 1h)
+            const fastResults = await this.providers.pyth.getBatch24hPriceHistory(feedIds, 24, now);
+
+            let hasFastData = false;
+            for (const { row, feedId } of itemsToFetch) {
+                const normalizedId = feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`;
+                const history = fastResults[normalizedId];
+                if (history && history.length > 0) {
+                    row.priceHistory = history;
+                    hasFastData = true;
                 }
+            }
 
-                // Check threshold and hidden status
-                // Manual positions are usually important, but respect global settings if user wants
-                const isHidden = this.settings.hiddenAssets && this.settings.hiddenAssets.includes(`${row.asset}_Manual (Pyth)`);
-                const threshold = this.settings.minBalanceThreshold || 0;
-                if (isHidden || row.value < threshold) {
-                    return false;
-                }
+            if (hasFastData) {
+                this.renderer.appendPositions(rows, 'Manual', {
+                    removeFilter: (p) => p.exchange && p.exchange.startsWith('Manual')
+                });
+            }
 
-                const history = await this.providers.pyth.get24hPriceHistory(row.feedId, 6000, 96);
+            // Pass 2: High resolution (96 points / 15m)
+            const fullResults = await this.providers.pyth.getBatch24hPriceHistory(feedIds, 96, now);
+
+            for (const { row, feedId } of itemsToFetch) {
+                const normalizedId = feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`;
+                const history = fullResults[normalizedId];
 
                 if (history && history.length > 0) {
-                    // console.log(`[Manual] Got ${history.length} history points for ${row.asset}`);
                     row.priceHistory = history;
 
                     if (row.change24h === null && history.length >= 2) {
@@ -132,17 +167,12 @@ export class ManualFetcher {
                             row.change24h = ((last - first) / first) * 100;
                         }
                     }
-                    return true;
-                } else {
-                    console.warn(`[Manual] No history found for ${row.asset} (Feed: ${row.feedId})`);
                 }
-            } catch (e) {
-                console.error(`[Manual] Error fetching history for ${row.asset}:`, e);
             }
-            return false;
-        });
 
-        await Promise.all(historyPromises);
+        } catch (e) {
+            console.error(`[Manual] Error batch fetching history:`, e);
+        }
 
         this.renderer.appendPositions(rows, 'Manual', {
             removeFilter: (p) => p.exchange && p.exchange.startsWith('Manual')

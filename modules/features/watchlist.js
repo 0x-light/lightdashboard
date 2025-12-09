@@ -136,23 +136,50 @@ async function fetchBasicWith24h(feedIds, pythProvider) {
 }
 
 // 3. Tertiary Data: Charts
-async function enrichWithHistory(prices, pythProvider) {
+async function enrichWithHistory(prices, pythProvider, onProgress = null) {
   // Filter logic specific to chart fetching (thresholds etc should be handled by caller or here)
-  const itemsToFetch = prices.filter(item => !isStablecoin(item.symbol) && !item.priceHistory);
+  const itemsToFetch = prices.filter(item => !isStablecoin(item.symbol));
   if (itemsToFetch.length === 0) return;
 
+  const feedIds = itemsToFetch.map(i => i.feedId);
+  const now = Date.now(); // Anchor time for consistent grid alignment between passes
+
   try {
-    const feedIds = itemsToFetch.map(i => i.feedId);
-    const batchResults = await pythProvider.getBatch24hPriceHistory(feedIds, 96); // Match positions resolution
+    // Pass 1: Low resolution (24 points / 1h) for FAST load
+    // This gives the user something to see almost immediately (~4x faster)
+    const fastResults = await pythProvider.getBatch24hPriceHistory(feedIds, 24, now);
+
+    // Update items with fast data first
+    let hasFastData = false;
+    for (const item of itemsToFetch) {
+      const history = fastResults[item.feedId];
+      if (history && history.length > 0) {
+        item.priceHistory = history;
+        hasFastData = true;
+      }
+    }
+
+    // Trigger intermediate render if we found data
+    if (hasFastData && onProgress) {
+      onProgress();
+    }
+  } catch (e) {
+    console.warn('[Watchlist] Fast history fetch failed', e);
+  }
+
+  // Pass 2: High resolution (96 points / 15m) for FINAL quality
+  // This will leverage the cache from Pass 1 and only fetch the missing points
+  try {
+    const fullResults = await pythProvider.getBatch24hPriceHistory(feedIds, 96, now);
 
     for (const item of itemsToFetch) {
-      const history = batchResults[item.feedId];
+      const history = fullResults[item.feedId];
       if (history && history.length > 0) {
         item.priceHistory = history;
       }
     }
   } catch (e) {
-    console.warn('[Watchlist] History fetch failed', e);
+    console.warn('[Watchlist] Full history fetch failed', e);
   }
 }
 
@@ -291,8 +318,9 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
 
       // Stage 3: Charts
       if (showPriceChart) {
-        await enrichWithHistory(prices, pythProvider);
-        updateUI(prices); // Re-render with Charts
+        // Pass callback to update UI after "fast preview" loaded
+        await enrichWithHistory(prices, pythProvider, () => updateUI(prices));
+        updateUI(prices); // Re-render with Final Charts
       }
     })();
 
