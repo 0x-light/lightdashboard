@@ -480,19 +480,38 @@ function setupPullToRefresh() {
 
   // Check if touch is inside a modal or interactive element that shouldn't trigger PTR
   const shouldIgnorePTR = (target) => {
-    // Check if any modal/dialog is visible
-    const modals = document.querySelectorAll('.settings, .sticker-window, .mobile-menu');
-    for (const modal of modals) {
-      if (modal.style.display !== 'none' && modal.offsetParent !== null) {
-        return true;
-      }
-    }
-    // Check if touching sticker controls or stickers
-    if (target.closest('.sticker-controls, .placed-sticker, #stickerGrid, .settings-backdrop')) {
+    // Check if any modal/dialog/backdrop is visible
+    const settingsDialog = document.getElementById('newSettingsDialog');
+    const stickerWindow = document.getElementById('stickerWindow');
+    const mobileMenu = document.getElementById('newMobileMenu');
+    const settingsBackdrop = document.getElementById('newSettingsBackdrop');
+    const stickerBackdrop = document.getElementById('stickerBackdrop');
+
+    // Check if settings is open
+    if (settingsDialog && settingsDialog.style.display !== 'none') return true;
+    if (settingsBackdrop && settingsBackdrop.style.display !== 'none') return true;
+
+    // Check if sticker window is open
+    if (stickerWindow && stickerWindow.style.display !== 'none') return true;
+    if (stickerBackdrop && stickerBackdrop.style.display !== 'none') return true;
+
+    // Check if mobile menu is open
+    if (mobileMenu && mobileMenu.classList.contains('open')) return true;
+
+    // Check if touching any interactive elements
+    if (target.closest('.sticker-controls, .placed-sticker, #stickerGrid, .settings, .sticker-window, .mobile-menu, .settings-backdrop')) {
       return true;
     }
+
+    // Check if inside a horizontally scrollable table wrapper
+    if (target.closest('.table-wrapper')) {
+      return true;
+    }
+
     return false;
   };
+
+  let ptrBlocked = false; // Flag set at touchstart if we should ignore this gesture
 
   document.addEventListener('touchstart', (e) => {
     if (!isMobile()) return;
@@ -501,13 +520,15 @@ function setupPullToRefresh() {
     pulling = false;
     directionLocked = false;
     isHorizontalScroll = false;
+    // Block PTR for entire gesture if starting on an excluded element
+    ptrBlocked = shouldIgnorePTR(e.target);
   }, { passive: true });
 
   document.addEventListener('touchmove', (e) => {
     if (!isMobile()) return;
 
-    // Don't interfere with modals or sticker interactions
-    if (shouldIgnorePTR(e.target)) return;
+    // Don't interfere with modals or sticker interactions - check flag AND current target
+    if (ptrBlocked || shouldIgnorePTR(e.target)) return;
 
     const currentX = e.touches[0].clientX;
     const currentY = e.touches[0].clientY;

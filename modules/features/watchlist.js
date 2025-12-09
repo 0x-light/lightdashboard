@@ -2,8 +2,16 @@
 
 const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
 
-function isStablecoin(asset) {
-  return STABLECOINS.has(asset?.toUpperCase());
+function isStablecoin(symbol) {
+  if (!symbol) return false;
+  const upper = symbol.toUpperCase();
+  // Check exact match first
+  if (STABLECOINS.has(upper)) return true;
+  // Check if symbol contains a stablecoin (e.g., "Crypto.USDC/USD")
+  for (const stable of STABLECOINS) {
+    if (upper.includes(stable)) return true;
+  }
+  return false;
 }
 
 function createSparkline(priceData, width = 60, height = 24, currentChange24h = null) {
@@ -176,10 +184,20 @@ function renderRows(container, data, options) {
       changeText = `${isPos ? '+' : ''}${change24h.toFixed(2)}%`;
     }
 
-    // Sparkline
+    // Sparkline - determine chart content based on asset type and data availability
     let chartHtml = '';
-    if (showPriceChart && item.priceHistory && item.priceHistory.length > 1) {
-      chartHtml = createSparkline(item.priceHistory, 60, 24, change24h) || '';
+    if (!showPriceChart) {
+      // Charts disabled - show nothing
+      chartHtml = '';
+    } else if (isStablecoin(symbol)) {
+      // Stablecoins don't have price charts - show static dash (no loading animation)
+      chartHtml = '—';
+    } else if (item.priceHistory && item.priceHistory.length > 1) {
+      // Has chart data - render sparkline
+      chartHtml = createSparkline(item.priceHistory, 60, 24, change24h) || '<span class="chart-loading">—</span>';
+    } else {
+      // Loading chart data - show pulsing placeholder
+      chartHtml = '<span class="chart-loading">—</span>';
     }
 
     // Flash effect

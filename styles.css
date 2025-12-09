@@ -582,6 +582,7 @@ h6 {
 .chart-loading {
   color: var(--muted);
   font-size: 0.9em;
+  animation: pulse-fade 1s ease-in-out infinite;
 }
 
 /* Ensure chart header is never orphaned */

@@ -251,11 +251,17 @@ function createTableRow(doc, pos, opts, prevDataMap) {
 
   // Change detection for flash animations
 
-  // Create sparkline chart (skip for stablecoins)
-  let chartCell = '<span class="chart-loading">—</span>';
-  if (!isStablecoin(pos.asset)) {
-    const chartSvg = pos.priceHistory ? createSparkline(pos.priceHistory, 60, 24, pos.change24h) : null;
-    chartCell = chartSvg || '<span class="chart-loading">—</span>';
+  // Create sparkline chart - stablecoins get static dash, others get pulsing loading indicator
+  let chartCell;
+  if (isStablecoin(pos.asset)) {
+    // Stablecoins don't have charts - static dash (no animation)
+    chartCell = '—';
+  } else if (pos.priceHistory) {
+    // Has chart data - render sparkline
+    chartCell = createSparkline(pos.priceHistory, 60, 24, pos.change24h) || '<span class="chart-loading">—</span>';
+  } else {
+    // Loading chart data - pulsing placeholder
+    chartCell = '<span class="chart-loading">—</span>';
   }
 
   // Use compact column order
