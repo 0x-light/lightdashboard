@@ -154,8 +154,13 @@ async function enrichWithHistory(prices, pythProvider, onProgress = null) {
     for (const item of itemsToFetch) {
       const history = fastResults[item.feedId];
       if (history && history.length > 0) {
-        item.priceHistory = history;
-        hasFastData = true;
+        // Only overwrite if we don't have better data already (e.g. from previous render)
+        const shouldUpdate = !item.priceHistory || item.priceHistory.length <= history.length;
+
+        if (shouldUpdate) {
+          item.priceHistory = history;
+          hasFastData = true;
+        }
       }
     }
 
@@ -284,6 +289,32 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
     }
 
     // Render immediately with what we have (Prices only)
+    // Merge with previous data to prevent flickering
+    if (previousData) {
+      for (const item of prices) {
+        // Find matching item in previous data
+        // Check both direct feedId match and potential normalized versions
+        const prevItem = previousData.find(p =>
+          p.feedId === item.feedId ||
+          p.feedId.toLowerCase() === item.feedId.toLowerCase()
+        );
+
+        if (prevItem) {
+          // Preserve existing data if present
+          if (!item.change24h && prevItem.change24h) {
+            item.change24h = prevItem.change24h;
+          }
+          if ((!item.priceHistory || item.priceHistory.length === 0) && prevItem.priceHistory) {
+            item.priceHistory = prevItem.priceHistory;
+          }
+          // Also preserve resolved symbol if we currently have a placeholder
+          if (item.symbol.startsWith('...') && !prevItem.symbol.startsWith('...')) {
+            item.symbol = prevItem.symbol;
+          }
+        }
+      }
+    }
+
     updateUI(prices);
 
     // Trigger Stage 2 & 3 in background

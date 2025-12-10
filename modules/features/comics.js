@@ -163,8 +163,8 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
   const dateStr = formatDate(date);
   const url = `${comic.baseUrl}/${dateStr}`;
 
-  // Check if there's existing content to preserve during loading
-  const hasExistingContent = container.querySelector('img') !== null;
+  // Check if there's existing content to preserve during loading (image or error message)
+  const hasExistingContent = container.querySelector('img') !== null || container.querySelector('.help') !== null;
 
   // Start pulsing animation (current comic pulses while loading new one)
   container.classList.add('fading');
