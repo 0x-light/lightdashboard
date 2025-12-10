@@ -243,20 +243,14 @@ function renderRows(container, data, options) {
       flashClass = price > prevPrice ? 'flash-green' : 'flash-red';
     }
 
-    // Edit Mode Action
-    let actionHtml = '';
-    if (editMode) {
-      actionHtml = `<button class="btn-text watchlist-edit-btn" data-feed-id="${feedId}" style="color: var(--red);">[X]</button>`;
-    }
+    // Edit Mode Action - use same format as positions: [X] symbol (no span wrapper in edit mode)
+    const assetCellContent = editMode
+      ? `<button class="watchlist-edit-btn" data-feed-id="${feedId}">[X]</button> ${symbol}`
+      : `<span class="symbol">${symbol}</span>`;
 
     return `
       <tr class="${flashClass}">
-        <td>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            ${editMode ? actionHtml : ''}
-            <span class="symbol">${symbol}</span>
-          </div>
-        </td>
+        <td>${assetCellContent}</td>
         <td class="text-right font-mono">$${priceFormatted}</td>
         <td class="text-center chart">${chartHtml}</td>
         <td class="text-right font-mono" style="color: ${changeColor}">${changeText}</td>

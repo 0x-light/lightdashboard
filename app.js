@@ -365,6 +365,7 @@ let amountsVisible = true; // Default: show values
 let compactMode = true; // Default: compact mode
 let editMode = false;
 let hideSmallPositions = true; // Default: hide positions under $100
+let showHiddenPositions = false; // Toggle to show manually hidden positions
 let hiddenAssets = new Set();
 let cachedPositions = [];
 let cachedSummaryData = {};
@@ -376,6 +377,7 @@ let currentFontSize = 15; // Default font size in px
 
 // Expose to window for incremental renderer
 window.hideSmallPositions = hideSmallPositions;
+window.showHiddenPositions = showHiddenPositions;
 window.hiddenAssets = hiddenAssets;
 window.editMode = editMode;
 window.cachedPositions = cachedPositions;
@@ -669,43 +671,58 @@ function setupControls() {
   syncMobileButtons('newCompactModeBtn', 'newCompactModeBtnMobile');
 
   syncMobileButtons('newSettingsBtn', 'newSettingsBtnMobile');
-  syncMobileButtons('newHideSmallBtn', 'newHideSmallBtnMobile');
 
-  // Toggle small positions
-  const hideSmallBtn = document.getElementById('newHideSmallBtn');
-  if (hideSmallBtn) {
-    hideSmallBtn.addEventListener('click', () => {
-      hideSmallPositions = !hideSmallPositions;
-      window.hideSmallPositions = hideSmallPositions; // Update global for incremental renderer
-      const threshold = settings.minBalanceThreshold || 100;
-      hideSmallBtn.textContent = hideSmallPositions ? `[SHOW <$${threshold}]` : `[HIDE <$${threshold}]`;
+  // Show Hidden Positions toggle (shows <$100 positions and manually hidden)
+  const showHiddenBtn = document.getElementById('newShowHiddenBtn');
+  const threshold = settings.minBalanceThreshold || 100;
 
-      // Also update mobile button text
-      const mobileHideSmallBtn = document.getElementById('newHideSmallBtnMobile');
-      if (mobileHideSmallBtn) {
-        mobileHideSmallBtn.textContent = hideSmallBtn.textContent;
-      }
+  function updateShowHiddenButton() {
+    if (showHiddenBtn) {
+      // Use original format: [SHOW <$X] / [HIDE <$X]
+      showHiddenBtn.textContent = showHiddenPositions ? `[HIDE <$${threshold}]` : `[SHOW <$${threshold}]`;
+    }
+  }
+
+  // Initial update
+  updateShowHiddenButton();
+  // Make function available globally for updates when hiddenAssets changes
+  window.updateShowHiddenButton = updateShowHiddenButton;
+
+  if (showHiddenBtn) {
+    showHiddenBtn.addEventListener('click', () => {
+      showHiddenPositions = !showHiddenPositions;
+      window.showHiddenPositions = showHiddenPositions;
+      updateShowHiddenButton();
 
       // Force re-render
       if (window._portfolioRenderer) {
         window._portfolioRenderer.forceRender();
       }
     });
-
-    // Sync button text with initial state
-    const mobileHideSmallBtn = document.getElementById('newHideSmallBtnMobile');
-    if (mobileHideSmallBtn) {
-      mobileHideSmallBtn.textContent = hideSmallBtn.textContent;
-    }
   }
 
   // Edit list mode
   const editListBtn = document.getElementById('newEditListBtn');
+  const cancelEditBtn = document.getElementById('newCancelEditBtn');
+  let editModeSnapshot = null; // Store state before edit mode for cancel functionality
+
   if (editListBtn) {
     editListBtn.addEventListener('click', () => {
+      if (!editMode) {
+        // Entering edit mode - take snapshot
+        editModeSnapshot = {
+          hiddenAssets: new Set(hiddenAssets)
+        };
+      }
+
       editMode = !editMode;
       window.editMode = editMode; // Update global for incremental renderer
-      editListBtn.textContent = editMode ? '[SAVE CHANGES]' : '[EDIT]';
+      editListBtn.textContent = editMode ? '[SAVE]' : '[EDIT]';
+
+      // Show/hide cancel button
+      if (cancelEditBtn) {
+        cancelEditBtn.style.display = editMode ? 'inline' : 'none';
+      }
 
       // Re-render with edit mode
       if (window._portfolioRenderer) {
@@ -732,6 +749,11 @@ function setupControls() {
               s.hiddenAssets = Array.from(hiddenAssets);
               localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
               invalidateSettingsCache();
+
+              // Update show hidden button visibility
+              if (window.updateShowHiddenButton) {
+                window.updateShowHiddenButton();
+              }
 
               // Re-render
               if (window._portfolioRenderer) {
@@ -779,9 +801,58 @@ function setupControls() {
                   }
                 }
               }
+            } else if (e.target.classList.contains('position-restore-btn')) {
+              // Restore hidden position (remove from hiddenAssets)
+              const assetKey = e.target.getAttribute('data-asset-key');
+              hiddenAssets.delete(assetKey);
+              window.hiddenAssets = hiddenAssets;
+
+              // Save to localStorage
+              const s = getSettings();
+              s.hiddenAssets = Array.from(hiddenAssets);
+              localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+              invalidateSettingsCache();
+
+              // Update show hidden button visibility
+              if (window.updateShowHiddenButton) {
+                window.updateShowHiddenButton();
+              }
+
+              // Re-render
+              if (window._portfolioRenderer) {
+                window._portfolioRenderer.forceRender();
+              }
             }
           });
         }
+      }
+    });
+  }
+
+  // Cancel edit mode - restore snapshot
+  if (cancelEditBtn) {
+    cancelEditBtn.addEventListener('click', () => {
+      if (editModeSnapshot) {
+        // Restore hidden assets from snapshot
+        hiddenAssets = new Set(editModeSnapshot.hiddenAssets);
+        window.hiddenAssets = hiddenAssets;
+
+        // Save restored state
+        const s = getSettings();
+        s.hiddenAssets = Array.from(hiddenAssets);
+        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        invalidateSettingsCache();
+      }
+
+      // Exit edit mode
+      editMode = false;
+      window.editMode = editMode;
+      editListBtn.textContent = '[EDIT]';
+      cancelEditBtn.style.display = 'none';
+
+      // Re-render
+      if (window._portfolioRenderer) {
+        window._portfolioRenderer.forceRender();
       }
     });
   }
@@ -1767,10 +1838,26 @@ function setupControls() {
     }
   }
 
+  const cancelWatchlistEditBtn = document.getElementById('newCancelWatchlistEditBtn');
+  let watchlistEditSnapshot = null;
+
   async function toggleWatchlistEditMode() {
+    if (!watchlistEditMode) {
+      // Entering edit mode - take snapshot of current watchlist
+      const s = getSettings();
+      watchlistEditSnapshot = {
+        watchlist: [...(s.watchlist || [])]
+      };
+    }
+
     watchlistEditMode = !watchlistEditMode;
     if (editWatchlistBtn) {
       editWatchlistBtn.textContent = watchlistEditMode ? '[SAVE]' : '[EDIT]';
+    }
+
+    // Show/hide cancel button
+    if (cancelWatchlistEditBtn) {
+      cancelWatchlistEditBtn.style.display = watchlistEditMode ? 'inline' : 'none';
     }
 
     // Re-render watchlist with edit mode (using cached data if available)
@@ -1801,6 +1888,47 @@ function setupControls() {
 
   if (editWatchlistBtn) {
     editWatchlistBtn.addEventListener('click', toggleWatchlistEditMode);
+  }
+
+  // Cancel watchlist edit mode - restore snapshot
+  if (cancelWatchlistEditBtn) {
+    cancelWatchlistEditBtn.addEventListener('click', async () => {
+      if (watchlistEditSnapshot) {
+        // Restore watchlist from snapshot
+        const s = getSettings();
+        s.watchlist = [...watchlistEditSnapshot.watchlist];
+        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        invalidateSettingsCache();
+
+        // Clear cached data to force refetch
+        cachedWatchlistData = null;
+      }
+
+      // Exit edit mode
+      watchlistEditMode = false;
+      if (editWatchlistBtn) {
+        editWatchlistBtn.textContent = '[EDIT]';
+      }
+      cancelWatchlistEditBtn.style.display = 'none';
+
+      // Re-render watchlist
+      const watchlistBody = document.getElementById('newWatchlistBody');
+      if (watchlistBody) {
+        try {
+          const mod = await import('./modules/features/watchlist.js');
+          const s = getSettings();
+          await mod.render(watchlistBody, {
+            feedIds: s.watchlist || [],
+            pythProvider: window.AppModules?.data?.providers?.pyth,
+            useColoredPnL: s.useColoredPnL ?? true,
+            editMode: false,
+            showPriceChart: s.showPriceChart ?? true
+          });
+        } catch (e) {
+          console.error('Failed to cancel watchlist edit mode:', e);
+        }
+      }
+    });
   }
 
   // Add Position functionality

@@ -238,6 +238,12 @@ function shouldHidePosition(pos, opts) {
 
 function createTableRow(doc, pos, opts, prevDataMap) {
   const tr = doc.createElement('tr');
+
+  // Add class for hidden positions (shown with reduced opacity)
+  if (pos.isHiddenPosition) {
+    tr.className = 'position-row-hidden';
+  }
+
   const amountVisible = !!opts.amountsVisible;
   const value = computeValue(pos);
   const assetKey = `${pos.asset}_${pos.exchange}`;
@@ -332,21 +338,25 @@ function createTableRow(doc, pos, opts, prevDataMap) {
     }
 
     if (i === 0 && opts.editMode) {
-      // Add hide/show button to asset cell in edit mode
-      // For manual positions, add a DELETE button instead
-      // Robust check: look for flag OR exchange name string (fallback)
+      // Add [X] or [+] button to asset cell in edit mode
+      // [X] = hide, [+] = restore (only for manually hidden positions, NOT <$100)
+      // For manual positions, mark with data-manual-type for proper deletion
       const isManual = pos.isManual || (pos.exchange && typeof pos.exchange === 'string' && pos.exchange.startsWith('Manual'));
+      const isManuallyHidden = pos.isManuallyHidden; // Only manually hidden get [+]
 
       if (isManual) {
-        // Infer type if missing
+        // Manual positions can be deleted
         let manualType = pos.manualType;
         if (!manualType && pos.exchange) {
           manualType = pos.exchange.includes('Pyth') ? 'pyth' : 'custom';
         }
-
-        td.innerHTML = `${String(cells[i])} <button class="position-delete-btn" data-asset="${pos.asset}" data-manual-type="${manualType}">[DELETE]</button>`;
+        td.innerHTML = `<button class="position-delete-btn" data-asset="${pos.asset}" data-manual-type="${manualType}">[X]</button> ${String(cells[i])}`;
+      } else if (isManuallyHidden) {
+        // Manually hidden positions show [+] to restore
+        td.innerHTML = `<button class="position-restore-btn" data-asset-key="${assetKey}">[+]</button> ${String(cells[i])}`;
       } else {
-        td.innerHTML = `${String(cells[i])} <button class="position-edit-btn" data-asset-key="${assetKey}">[HIDE]</button>`;
+        // Normal positions show [X] to hide
+        td.innerHTML = `<button class="position-edit-btn" data-asset-key="${assetKey}">[X]</button> ${String(cells[i])}`;
       }
     } else if (isChart) {
       // Chart column uses innerHTML

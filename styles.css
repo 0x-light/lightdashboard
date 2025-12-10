@@ -2708,25 +2708,28 @@ input[type="range"]:focus::-moz-range-thumb {
 
 /* Edit list mode */
 .position-row-hidden {
-  opacity: 0.3;
+  opacity: 0.6;
 }
 
 .position-edit-btn,
 .position-delete-btn,
+.position-restore-btn,
 .watchlist-edit-btn {
+  display: inline;
   padding: 0;
   border: none;
-  margin-left: 8px;
-  font-size: 0.85em;
+  margin: 0;
+  font-size: inherit;
   cursor: pointer;
-  background: var(--bg);
-  color: var(--muted);
-  opacity: 0.6;
-  transition: all 0.2s ease;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  opacity: 0.5;
 }
 
 .position-edit-btn:hover,
 .position-delete-btn:hover,
+.position-restore-btn:hover,
 .watchlist-edit-btn:hover {
   color: var(--text);
 }
@@ -2841,10 +2844,8 @@ input[type="range"]:focus::-moz-range-thumb {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 2px 8px;
   font-family: inherit;
   transition: color 0.2s ease;
-  margin-left: 8px;
 }
 
 .watchlist-edit-btn:hover {
@@ -2890,6 +2891,8 @@ input[type="range"]:focus::-moz-range-thumb {
 #newWatchlistTable td:nth-child(1) {
   width: 90px;
   text-align: left;
+  white-space: nowrap;
+  padding-left: 0;
 }
 
 /* Price column wider to push Chart to align with positions Value column */

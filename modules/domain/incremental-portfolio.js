@@ -325,23 +325,47 @@ export class IncrementalPortfolioRenderer {
     // Calculate portfolio totals
     const { totalValue, totalPnL, totalPnLPercent } = this.calculateTotals(sorted);
 
-    // Filter for display (hide special positions + apply small balance filter)
+    // Filter for display (hide special positions + apply filters)
+    // Edit mode: shows manually hidden positions (for editing), but NOT <$100 positions
+    // Normal mode: hides both unless showHiddenPositions is true
     const hideSmallPositions = window.hideSmallPositions ?? true;
+    const showHiddenPositions = window.showHiddenPositions ?? false;
+    const editMode = window.editMode ?? false;
     const minThreshold = this.settings.minBalanceThreshold || 100;
     const hiddenAssets = window.hiddenAssets || new Set();
 
     const visible = sorted.filter(p => {
-      // Hide special tracking positions
+      // Hide special tracking positions always
       if (p.isHlAccountEquity || p.isLighterAccountEquity) return false;
 
-      // Hide manually hidden assets
       const assetKey = `${p.asset}_${p.exchange}`;
-      if (hiddenAssets.has(assetKey)) return false;
+      const isManuallyHidden = hiddenAssets.has(assetKey);
+      const isSmall = hideSmallPositions && (p.value || 0) < minThreshold;
 
-      // Apply small balance filter if enabled
-      if (hideSmallPositions) {
-        const value = p.value || 0;
-        if (value < minThreshold) return false;
+      // Clear flags first
+      p.isHiddenPosition = false;
+      p.isManuallyHidden = false;
+
+      // Handle manually hidden positions
+      if (isManuallyHidden) {
+        if (editMode || showHiddenPositions) {
+          // Show in edit mode (or when showing hidden)
+          p.isHiddenPosition = true;
+          p.isManuallyHidden = true; // Flag for [+] button
+          return true;
+        }
+        return false;
+      }
+
+      // Handle <$100 positions (never get [+], just filtered)
+      if (isSmall) {
+        if (showHiddenPositions) {
+          // Show with styling but NO [+] button (not restorable, just filtered)
+          p.isHiddenPosition = true;
+          p.isManuallyHidden = false; // No [+] button for these
+          return true;
+        }
+        return false;
       }
 
       return true;
