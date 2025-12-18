@@ -4,10 +4,13 @@ import { fetchWithCorsProxy } from '../../http/cors-proxy.js';
 const HERMES_BASE = 'https://hermes.pyth.network';
 
 // Helper to fetch valid Pyth data with robust fallbacks
-async function fetchPyth(path, timeoutMs = 10000) {
+async function fetchPyth(path, timeoutMs = 10000, bypassCache = false) {
   const url = `${HERMES_BASE}/v2${path}`;
+  // Add cache-busting param when bypassing cache to ensure unique request keys
+  const finalPath = bypassCache ? `${path}${path.includes('?') ? '&' : '?'}_t=${Date.now()}` : path;
+  const finalUrl = `${HERMES_BASE}/v2${finalPath}`;
   try {
-    return await fetchWithCorsProxy(url, {
+    return await fetchWithCorsProxy(finalUrl, {
       cloudflareProxy: '/api/pyth?path=',
       timeoutMs
     });
@@ -81,11 +84,11 @@ export async function getPriceFeeds(timeoutMs = 15000) {
   }
 }
 
-export async function getLatestByFeedIds(feedIds, timeoutMs = 10000) {
+export async function getLatestByFeedIds(feedIds, timeoutMs = 10000, bypassCache = false) {
   if (!Array.isArray(feedIds) || feedIds.length === 0) return {};
   const normalizedIds = feedIds.map(id => id.toLowerCase().startsWith('0x') ? id.toLowerCase() : `0x${id.toLowerCase()}`);
   const idsParam = normalizedIds.map(id => `ids[]=${id}`).join('&');
-  const data = await fetchPyth(`/updates/price/latest?${idsParam}&parsed=true`, timeoutMs);
+  const data = await fetchPyth(`/updates/price/latest?${idsParam}&parsed=true`, timeoutMs, bypassCache);
   const prices = {};
   const parsed = data?.parsed || [];
   for (const p of parsed) {

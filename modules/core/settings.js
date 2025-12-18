@@ -26,6 +26,7 @@ export function loadSettings() {
     if (s.hyperliquidAddress) s.hyperliquidAddress = simpleDecrypt(s.hyperliquidAddress);
     if (s.lighterAddress) s.lighterAddress = simpleDecrypt(s.lighterAddress);
     if (s.zerionApiKey) s.zerionApiKey = simpleDecrypt(s.zerionApiKey);
+    if (s.cieloApiKey) s.cieloApiKey = simpleDecrypt(s.cieloApiKey);
 
     // Merge with defaults to ensure new settings are included
     const defaults = getDefaultSettings();
@@ -52,6 +53,8 @@ export function getDefaultSettings() {
     heliusApiKey: '',
     openSeaApiKey: '',
     zerionApiKey: '',
+    cieloApiKey: '',
+    onchainProvider: 'zerion', // 'zerion' or 'cielo'
     font: 'berkeley',
     fontSize: 15,
     comicStrip: 'calvinandhobbes',

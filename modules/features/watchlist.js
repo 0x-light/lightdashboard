@@ -62,12 +62,12 @@ export async function fetchPrices(feedIds, pythProvider, includePriceHistory = f
 }
 
 // 1. Minimum Viable Data: Current Prices (Symbols loaded async)
-async function fetchBasicPrices(feedIds, pythProvider) {
+async function fetchBasicPrices(feedIds, pythProvider, bypassCache = false) {
   if (!Array.isArray(feedIds) || feedIds.length === 0 || !pythProvider) return [];
 
   try {
-    // Get prices FIRST (fast, critical)
-    const current = await pythProvider.getLatestByFeedIds(feedIds, 5000);
+    // Get prices FIRST (fast, critical) - bypass cache on refresh to get fresh data
+    const current = await pythProvider.getLatestByFeedIds(feedIds, 5000, bypassCache);
 
     // Try to get symbol map from cache (non-blocking, best effort)
     // getPriceFeeds will return instantly from cache if available
@@ -261,7 +261,7 @@ function renderRows(container, data, options) {
   container.innerHTML = html;
 }
 
-export async function render(container, { feedIds, pythProvider, useColoredPnL = true, editMode = false, cachedData = null, previousData = null, showPriceChart = true }) {
+export async function render(container, { feedIds, pythProvider, useColoredPnL = true, editMode = false, cachedData = null, previousData = null, showPriceChart = true, forceRefresh = false }) {
   if (!container) return;
 
   let prices = cachedData;
@@ -274,8 +274,9 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
   const updateUI = (data) => renderRows(container, data, { useColoredPnL, editMode, showPriceChart, prevPriceMap });
 
   // Stage 1: Basic Prices (Immediate)
-  if (!prices) {
-    prices = await fetchBasicPrices(feedIds, pythProvider);
+  // On forceRefresh, always fetch fresh data even if we have cached data
+  if (!prices || forceRefresh) {
+    prices = await fetchBasicPrices(feedIds, pythProvider, forceRefresh);
 
     if (prices.length === 0) {
       container.innerHTML = `<tr><td colspan="4" class="loading">No data available</td></tr>`;

@@ -24,6 +24,8 @@ const FIELD_MAPPINGS = {
 
   // API Keys
   newZerionApiKey: 'zerionApiKey',
+  newCieloApiKey: 'cieloApiKey',
+  newOnchainProvider: 'onchainProvider',
   newAlchemyApiKey: 'alchemyApiKey',
   newHeliusApiKey: 'heliusApiKey',
   newOpenSeaApiKey: 'openSeaApiKey',

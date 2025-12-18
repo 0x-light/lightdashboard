@@ -2716,15 +2716,19 @@ input[type="range"]:focus::-moz-range-thumb {
 .position-restore-btn,
 .watchlist-edit-btn {
   display: inline;
-  padding: 0;
+  padding: 8px 4px;
+  margin: -8px 0 -8px -4px;
   border: none;
-  margin: 0;
   font-size: inherit;
   cursor: pointer;
   background: transparent;
   color: var(--text);
   font-family: inherit;
   opacity: 0.5;
+  /* Ensure minimum touch target on mobile */
+  min-height: 44px;
+  min-width: 44px;
+  text-align: left;
 }
 
 .position-edit-btn:hover,

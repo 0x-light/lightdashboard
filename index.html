@@ -297,14 +297,35 @@
 
                     <fieldset>
                         <legend>API Keys</legend>
+
+                        <label style="display: block; margin-bottom: 8px;">
+                            Onchain Data Provider
+                            <select id="newOnchainProvider" class="settings-input"
+                                style="width: 100%; margin-top: 4px;">
+                                <option value="zerion">Zerion</option>
+                                <option value="cielo">Cielo Finance</option>
+                            </select>
+                        </label>
+                        <div class="info" style="margin-bottom: 12px;">Choose which service fetches your onchain wallet
+                            data</div>
+
                         <label>
                             Zerion API Key
                             <input id="newZerionApiKey" type="text" class="settings-input"
                                 placeholder="Your Zerion API key">
                         </label>
-                        <div class="info" style="margin-top: 4px;">Primary source for multichain portfolio data. Get a
-                            key at <a href="https://developers.zerion.io/reference/intro/getting-started"
-                                target="_blank" rel="noopener noreferrer">Zerion</a></div>
+                        <div class="info" style="margin-top: 4px;">Get a key at <a
+                                href="https://developers.zerion.io/reference/intro/getting-started" target="_blank"
+                                rel="noopener noreferrer">Zerion</a></div>
+
+                        <label style="margin-top: 12px;">
+                            Cielo Finance API Key
+                            <input id="newCieloApiKey" type="text" class="settings-input"
+                                placeholder="Your Cielo API key">
+                        </label>
+                        <div class="info" style="margin-top: 4px;">Get a free key at <a
+                                href="https://build.cielo.finance/" target="_blank" rel="noopener noreferrer">Cielo</a>
+                            (5,000 credits/month free)</div>
 
                         <label style="margin-top: 12px;">
                             Alchemy API Key

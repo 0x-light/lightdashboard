@@ -226,8 +226,18 @@ async function _doRenderPortfolioIncremental() {
   const expectedProviders = [];
   if (wallets.length > 0) {
     expectedProviders.push('Hyperliquid', 'Lighter');
-    if (settings.zerionApiKey) {
+    // Check which onchain provider to use
+    const onchainProvider = settings.onchainProvider || 'zerion';
+    if (onchainProvider === 'cielo' && settings.cieloApiKey) {
+      expectedProviders.push('Cielo');
+    } else if (onchainProvider === 'zerion' && settings.zerionApiKey) {
       expectedProviders.push('Zerion');
+    } else if (settings.zerionApiKey) {
+      // Fallback to Zerion if configured
+      expectedProviders.push('Zerion');
+    } else if (settings.cieloApiKey) {
+      // Fallback to Cielo if configured
+      expectedProviders.push('Cielo');
     } else if (settings.alchemyApiKey || settings.heliusApiKey) {
       expectedProviders.push('Alchemy/Helius');
     }
@@ -315,6 +325,7 @@ async function _doRenderPortfolioIncremental() {
     const { HyperliquidFetcher } = await import('./modules/data/fetchers/hyperliquid-fetcher.js');
     const { LighterFetcher } = await import('./modules/data/fetchers/lighter-fetcher.js?v=2.9.6');
     const { ZerionFetcher } = await import('./modules/data/fetchers/zerion-fetcher.js');
+    const { CieloFetcher } = await import('./modules/data/fetchers/cielo-fetcher.js');
     const { AlchemyHeliusFetcher } = await import('./modules/data/fetchers/alchemy-helius-fetcher.js');
     const { BitcoinZcashFetcher } = await import('./modules/data/fetchers/bitcoin-fetcher.js');
     const { ManualFetcher } = await import('./modules/data/fetchers/manual-fetcher.js');
@@ -338,6 +349,7 @@ async function _doRenderPortfolioIncremental() {
     manager.registerFetcher('Hyperliquid', new HyperliquidFetcher(providers, renderer, settings));
     manager.registerFetcher('Lighter', new LighterFetcher(providers, renderer));
     manager.registerFetcher('Zerion', new ZerionFetcher(providers, renderer, settings));
+    manager.registerFetcher('Cielo', new CieloFetcher(providers, renderer, settings));
     manager.registerFetcher('AlchemyHelius', new AlchemyHeliusFetcher(providers, renderer, settings));
     manager.registerFetcher('BitcoinZcash', new BitcoinZcashFetcher(providers, renderer));
     manager.registerFetcher('Manual', new ManualFetcher(providers, renderer, settings));
@@ -926,6 +938,8 @@ function setupControls() {
       const bitcoinInput = document.getElementById('newBitcoinAddresses');
       const zcashInput = document.getElementById('newZcashAddresses');
       const zerionInput = document.getElementById('newZerionApiKey');
+      const cieloInput = document.getElementById('newCieloApiKey');
+      const onchainProviderInput = document.getElementById('newOnchainProvider');
       const alchemyInput = document.getElementById('newAlchemyApiKey');
       const heliusInput = document.getElementById('newHeliusApiKey');
       const openseaInput = document.getElementById('newOpenSeaApiKey');
@@ -957,6 +971,8 @@ function setupControls() {
       if (bitcoinInput) bitcoinInput.value = s.bitcoinAddresses || '';
       if (zcashInput) zcashInput.value = s.zcashAddresses || '';
       if (zerionInput) zerionInput.value = s.zerionApiKey || '';
+      if (cieloInput) cieloInput.value = s.cieloApiKey || '';
+      if (onchainProviderInput) onchainProviderInput.value = s.onchainProvider || 'zerion';
       if (alchemyInput) alchemyInput.value = s.alchemyApiKey || '';
       if (heliusInput) heliusInput.value = s.heliusApiKey || '';
       if (openseaInput) openseaInput.value = s.openSeaApiKey || '';
@@ -1365,6 +1381,8 @@ function setupControls() {
       const bitcoinInput = document.getElementById('newBitcoinAddresses');
       const zcashInput = document.getElementById('newZcashAddresses');
       const zerionInput = document.getElementById('newZerionApiKey');
+      const cieloInput = document.getElementById('newCieloApiKey');
+      const onchainProviderInput = document.getElementById('newOnchainProvider');
       const alchemyInput = document.getElementById('newAlchemyApiKey');
       const heliusInput = document.getElementById('newHeliusApiKey');
       const openseaInput = document.getElementById('newOpenSeaApiKey');
@@ -1396,6 +1414,8 @@ function setupControls() {
       if (bitcoinInput) newSettings.bitcoinAddresses = bitcoinInput.value;
       if (zcashInput) newSettings.zcashAddresses = zcashInput.value;
       if (zerionInput) newSettings.zerionApiKey = zerionInput.value;
+      if (cieloInput) newSettings.cieloApiKey = cieloInput.value;
+      if (onchainProviderInput) newSettings.onchainProvider = onchainProviderInput.value;
       if (alchemyInput) newSettings.alchemyApiKey = alchemyInput.value;
       if (heliusInput) newSettings.heliusApiKey = heliusInput.value;
       if (openseaInput) newSettings.openSeaApiKey = openseaInput.value;
@@ -2808,7 +2828,8 @@ window.addEventListener('DOMContentLoaded', async () => {
             useColoredPnL: s.useColoredPnL ?? true,
             editMode: false,
             previousData: cachedWatchlistData,
-            showPriceChart: s.showPriceChart ?? true
+            showPriceChart: s.showPriceChart ?? true,
+            forceRefresh: true  // Always fetch fresh data on periodic refresh
           });
           cachedWatchlistData = prices;
         } catch (e) {
