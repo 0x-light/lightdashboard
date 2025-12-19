@@ -1502,6 +1502,18 @@ function setupControls() {
         // Apply font setting
         applyFont(newSettings.font || 'berkeley');
 
+        // Apply keyboard shortcuts setting (dynamic enable/disable)
+        if (newSettings.enableKeyboardShortcuts) {
+          import('./modules/features/keyboard-shortcuts.js')
+            .then(mod => mod.init())
+            .catch(e => console.warn('[Keyboard] Failed to load:', e));
+        } else {
+          // Try to disable if module was loaded
+          import('./modules/features/keyboard-shortcuts.js')
+            .then(mod => mod.disable())
+            .catch(() => { /* Module not loaded, nothing to disable */ });
+        }
+
         // Soft reload: re-fetch positions without full page refresh (this will reload settings)
         await renderPortfolioIncremental();
       } catch (e) {
@@ -1522,6 +1534,8 @@ function setupControls() {
     if (donateWindow) {
       if (donateBackdrop) donateBackdrop.style.display = 'block';
       donateWindow.style.display = 'flex';
+      // Disable scroll on mobile when modal open
+      document.body.classList.add('modal-open');
     }
     // Close mobile menu if open (with scroll restoration)
     closeMobileMenuWithScroll();
@@ -1531,6 +1545,8 @@ function setupControls() {
     if (donateWindow) {
       donateWindow.style.display = 'none';
       if (donateBackdrop) donateBackdrop.style.display = 'none';
+      // Re-enable scroll on mobile
+      document.body.classList.remove('modal-open');
     }
   };
 
@@ -1697,6 +1713,8 @@ function setupControls() {
       watchlistSearchResults.innerHTML = '';
       watchlistSearchResults.style.display = 'none';
     }
+    // Re-enable scroll on mobile
+    document.body.classList.remove('modal-open');
   }
 
   if (addToWatchlistBtn) {
@@ -1707,6 +1725,9 @@ function setupControls() {
       // Show modal
       if (watchlistSearchWindow) watchlistSearchWindow.style.display = 'block';
       if (watchlistSearchBackdrop) watchlistSearchBackdrop.style.display = 'block';
+
+      // Disable scroll on mobile when modal open
+      document.body.classList.add('modal-open');
 
       // Focus input
       if (watchlistSearchInput) {
@@ -2228,6 +2249,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   const Settings = window.AppModules?.core?.settings;
   const settings = (Settings && Settings.loadSettings && Settings.loadSettings()) || {};
 
+
   // Apply alignment
   const applyAlignment = () => {
     const container = document.querySelector('.container');
@@ -2469,6 +2491,13 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // NON-CRITICAL: Health checks in background
   runHealthChecks().catch(() => { });
+
+  // NON-CRITICAL: Keyboard shortcuts (lazy loaded if enabled)
+  if (settings.enableKeyboardShortcuts) {
+    import('./modules/features/keyboard-shortcuts.js')
+      .then(mod => mod.init())
+      .catch(e => console.warn('[Keyboard] Failed to load:', e));
+  }
 
   // NON-CRITICAL: Rain/Snow effects (lazy loaded after everything else)
   setTimeout(async () => {

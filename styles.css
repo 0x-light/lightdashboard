@@ -275,6 +275,8 @@ body {
     overflow: hidden;
     position: fixed;
     width: 100%;
+    height: 100%;
+    touch-action: none;
   }
 }
 
@@ -867,6 +869,11 @@ body.hide-comic #newComicSection {
 .settings-form textarea {
   max-width: 100%;
   box-sizing: border-box;
+}
+
+.settings-form textarea {
+  resize: vertical;
+  min-height: 3.5em;
 }
 
 .settings-actions {
@@ -2000,24 +2007,6 @@ html[data-theme="ft"] {
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
-html[data-theme="refined-white"] {
-  /* Refined White by sacred.computer */
-  --bg: #ffffff;
-  --bg-elev: #e0e0e0;
-  --text: #000000;
-  --text-bright: #000000;
-  --muted: #a8a8a8;
-  --accent: #000000;
-  --border: rgba(168, 168, 168, 0.1);
-  --card-bg: #f4f4f4;
-  --green: #24a148;
-  --red: #da1e28;
-  --orange: #ff6c04;
-  --yellow: #f1c21b;
-  --cyan: #00ffff;
-  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
-}
 
 html[data-theme="dark"] {
   /* Black Midnight Vapor by sacred.computer */
@@ -2038,24 +2027,6 @@ html[data-theme="dark"] {
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
-html[data-theme="code-red"] {
-  /* U-571 Code Red by sacred.computer */
-  --bg: #000000;
-  --bg-elev: #750408;
-  --text: #ffb3b9;
-  --text-bright: #ff8389;
-  --muted: #ff636b;
-  --accent: #da1e28;
-  --border: rgba(218, 30, 40, 0.7);
-  --card-bg: #2d0709;
-  --green: #fa4d56;
-  --red: #da1e28;
-  --orange: #ff6c04;
-  --yellow: #f1c21b;
-  --cyan: #00ffff;
-  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
-}
 
 html[data-theme="bioluminescence"] {
   /* Digital Bioluminescence by sacred.computer */
@@ -2095,24 +2066,6 @@ html[data-theme="safe-blue"] {
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
-html[data-theme="neon-green"] {
-  /* Neon Green Garden by sacred.computer */
-  --bg: rgba(44, 255, 5, 1);
-  --bg-elev: #5cff3b;
-  --text: #0a2c02;
-  --text-bright: #0a2c02;
-  --muted: #009f00;
-  --accent: #0a2c02;
-  --border: rgba(46, 231, 29, 0.1);
-  --card-bg: #b2ff94;
-  --green: #0a2c02;
-  --red: #ff52f3;
-  --orange: #ff6c04;
-  --yellow: #f1c21b;
-  --cyan: #00ffff;
-  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
-}
 
 html[data-theme="as400"] {
   /* Kirkland Signature AS/400 by sacred.computer */
@@ -2133,24 +2086,6 @@ html[data-theme="as400"] {
   --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
-html[data-theme="ember"] {
-  /* Ember - glowing fire on charcoal */
-  --bg: #0a0500;
-  --bg-elev: #1a0f00;
-  --text: #ff9800;
-  --text-bright: #ffeb3b;
-  --muted: #805020;
-  --accent: #ffb300;
-  --border: rgba(255, 152, 0, 0.2);
-  --card-bg: #150a00;
-  --green: #a5d61d;
-  --red: #ff3d00;
-  --orange: #ff6f00;
-  --yellow: #ffc107;
-  --cyan: #ffab40;
-  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
-  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
-}
 
 html[data-theme="ntsc-bw"] {
   /* BW NTSC TV (CGA) w/overscan, blurry */
@@ -2650,7 +2585,38 @@ input[type="range"]:focus::-moz-range-thumb {
 }
 
 @media (max-width: 870px) {
-  .sticker-window {
+
+  /* Full-screen modals on mobile (except sticker window) */
+  .sticker-window:not(#stickerWindow) {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-width: 100vw;
+    max-height: 100vh;
+    max-height: 100dvh;
+    transform: none;
+    border: none;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Ensure modal content scrolls properly */
+  .sticker-window:not(#stickerWindow) .sticker-window-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Sticker window stays as bottom sheet */
+  #stickerWindow {
     bottom: 0;
     right: 0;
     left: 0;
@@ -2658,13 +2624,9 @@ input[type="range"]:focus::-moz-range-thumb {
     transform: none;
     width: auto;
     max-width: none;
+    max-height: 60vh;
     border: none;
     border-top: 1px solid var(--border);
-  }
-
-  /* Only limit height for sticker modal, not other modals */
-  #stickerWindow {
-    max-height: 60vh;
   }
 
   .sticker-help-desktop {

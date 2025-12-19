@@ -481,6 +481,9 @@ export function openStickerWindow() {
     if (window) window.style.display = 'flex';
     if (backdrop) backdrop.style.display = 'block';
 
+    // Disable scroll on mobile when modal open
+    document.body.classList.add('modal-open');
+
     // Initialize if needed
     init();
 }
@@ -494,6 +497,9 @@ export function closeStickerWindow() {
 
     if (window) window.style.display = 'none';
     if (backdrop) backdrop.style.display = 'none';
+
+    // Re-enable scroll on mobile
+    document.body.classList.remove('modal-open');
 }
 
 /**

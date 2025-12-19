@@ -47,7 +47,10 @@ const FIELD_MAPPINGS = {
   newHideThemeBtn: { key: 'hideThemeBtn', type: 'checkbox', default: false },
   newHideAmountsBtn: { key: 'hideAmountsBtn', type: 'checkbox', default: false },
   newShowCompactBtn: { key: 'showCompactBtn', type: 'checkbox', default: true },
-  newHideDonateBtn: { key: 'hideDonateBtn', type: 'checkbox', default: false }
+  newHideDonateBtn: { key: 'hideDonateBtn', type: 'checkbox', default: false },
+
+  // Features
+  newEnableKeyboardShortcuts: { key: 'enableKeyboardShortcuts', type: 'checkbox', default: false }
 };
 
 export function getSettings() {
