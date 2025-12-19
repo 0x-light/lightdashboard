@@ -2711,24 +2711,35 @@ input[type="range"]:focus::-moz-range-thumb {
   opacity: 0.6;
 }
 
+/* Edit mode asset cell wrapper - keeps [X] and asset name on same line */
+.edit-asset-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  white-space: nowrap;
+}
+
 .position-edit-btn,
 .position-delete-btn,
 .position-restore-btn,
 .watchlist-edit-btn {
-  display: inline;
-  padding: 8px 4px;
-  margin: -8px 0 -8px -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Compact padding that doesn't affect line height */
+  padding: 0 4px 0 0;
+  margin: 0;
   border: none;
   font-size: inherit;
+  line-height: 1;
   cursor: pointer;
   background: transparent;
   color: var(--text);
   font-family: inherit;
   opacity: 0.5;
-  /* Ensure minimum touch target on mobile */
-  min-height: 44px;
-  min-width: 44px;
-  text-align: left;
+  /* Touch target handled at cell level, not button */
+  vertical-align: middle;
+  flex-shrink: 0;
 }
 
 .position-edit-btn:hover,
@@ -2736,6 +2747,7 @@ input[type="range"]:focus::-moz-range-thumb {
 .position-restore-btn:hover,
 .watchlist-edit-btn:hover {
   color: var(--text);
+  opacity: 1;
 }
 
 /* External link styling */

@@ -243,9 +243,9 @@ function renderRows(container, data, options) {
       flashClass = price > prevPrice ? 'flash-green' : 'flash-red';
     }
 
-    // Edit Mode Action - use same format as positions: [X] symbol (no span wrapper in edit mode)
+    // Edit Mode Action - use same format as positions: [X] symbol (wrapped in flex container)
     const assetCellContent = editMode
-      ? `<button class="watchlist-edit-btn" data-feed-id="${feedId}">[X]</button> ${symbol}`
+      ? `<span class="edit-asset-cell"><button class="watchlist-edit-btn" data-feed-id="${feedId}">[X]</button>${symbol}</span>`
       : `<span class="symbol">${symbol}</span>`;
 
     return `

@@ -350,13 +350,13 @@ function createTableRow(doc, pos, opts, prevDataMap) {
         if (!manualType && pos.exchange) {
           manualType = pos.exchange.includes('Pyth') ? 'pyth' : 'custom';
         }
-        td.innerHTML = `<button class="position-delete-btn" data-asset="${pos.asset}" data-manual-type="${manualType}">[X]</button> ${String(cells[i])}`;
+        td.innerHTML = `<span class="edit-asset-cell"><button class="position-delete-btn" data-asset="${pos.asset}" data-manual-type="${manualType}">[X]</button>${String(cells[i])}</span>`;
       } else if (isManuallyHidden) {
         // Manually hidden positions show [+] to restore
-        td.innerHTML = `<button class="position-restore-btn" data-asset-key="${assetKey}">[+]</button> ${String(cells[i])}`;
+        td.innerHTML = `<span class="edit-asset-cell"><button class="position-restore-btn" data-asset-key="${assetKey}">[+]</button>${String(cells[i])}</span>`;
       } else {
         // Normal positions show [X] to hide
-        td.innerHTML = `<button class="position-edit-btn" data-asset-key="${assetKey}">[X]</button> ${String(cells[i])}`;
+        td.innerHTML = `<span class="edit-asset-cell"><button class="position-edit-btn" data-asset-key="${assetKey}">[X]</button>${String(cells[i])}</span>`;
       }
     } else if (isChart) {
       // Chart column uses innerHTML
