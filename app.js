@@ -1799,7 +1799,7 @@ function setupControls() {
     const s = getSettings();
     if (!s.watchlist) s.watchlist = [];
 
-    s.watchlist = s.watchlist.filter(id => id !== feedId);
+    s.watchlist = s.watchlist.filter(id => id.toLowerCase() !== feedId.toLowerCase());
     try {
       localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
 
