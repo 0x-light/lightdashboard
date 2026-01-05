@@ -25,7 +25,8 @@ export function formatUsd(num, visible = true, showPlusSign = false) {
   } else if (abs === 0) {
     return '$0';
   } else {
-    return `${sign}$${abs.toFixed(2)}`;
+    // For small values, preserve significant digits (e.g., $0.0341 not $0.03)
+    return `${sign}$${abs.toPrecision(4)}`;
   }
 }
 
@@ -77,12 +78,14 @@ export function formatCurrency(value, amountsVisible = true) {
   } else if (abs === 0) {
     return '$0';
   } else {
-    return `$${abs.toFixed(2)}`;
+    // For small values, preserve significant digits (e.g., $0.0341 not $0.03)
+    return `$${abs.toPrecision(4)}`;
   }
 }
 
 export function get24hAgoTsSec() {
   return Math.floor((Date.now() - 24 * 60 * 60 * 1000) / 1000);
 }
+
 
 
