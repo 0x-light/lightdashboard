@@ -40,17 +40,31 @@ export class LighterFetcher {
             const data = await this.providers.lighter.fetchAccountByAddress(wallet, { timeoutMs: 3000 });
             if (!data?.accounts?.length) return;
 
-            // Collect positions to process
+            // Collect positions and spot assets to process
             const positionsData = [];
             const symbolsNeeded = new Set();
+            const spotAssetsData = [];
 
             for (const account of data.accounts) {
-                if (!account.positions?.length) continue;
-                for (const pos of account.positions) {
-                    const size = parseFloat(pos.position || 0);
-                    if (Math.abs(size) > 0) {
-                        symbolsNeeded.add(pos.symbol);
-                        positionsData.push({ account, pos, isLong: pos.sign !== -1 });
+                // Collect perp positions
+                if (account.positions?.length) {
+                    for (const pos of account.positions) {
+                        const size = parseFloat(pos.position || 0);
+                        if (Math.abs(size) > 0) {
+                            symbolsNeeded.add(pos.symbol);
+                            positionsData.push({ account, pos, isLong: pos.sign !== -1 });
+                        }
+                    }
+                }
+
+                // Collect spot assets (need price data too)
+                if (account.assets?.length) {
+                    for (const asset of account.assets) {
+                        const balance = parseFloat(asset.balance || 0) - parseFloat(asset.locked_balance || 0);
+                        if (balance > 0 && asset.symbol) {
+                            symbolsNeeded.add(asset.symbol);
+                            spotAssetsData.push({ account, asset, balance });
+                        }
                     }
                 }
             }
@@ -157,6 +171,33 @@ export class LighterFetcher {
                         _changeDetectionKey: `USDC_Lighter_${wallet}_${account.account_index}`
                     });
                 }
+
+            }
+
+            // Add spot asset balances (e.g., LIT token) - price data already pre-fetched
+            for (const { account, asset, balance } of spotAssetsData) {
+                const priceData = this.priceDataCache.get(asset.symbol);
+                const price = priceData?.currentPrice || 0;
+                const value = balance * price;
+
+                const spotPosition = {
+                    asset: asset.symbol,
+                    exchange: 'Lighter Spot',
+                    amount: balance,
+                    price: price,
+                    value: value,
+                    pnl: null, // No entry price data for spot
+                    isLeveraged: false,
+                    _changeDetectionKey: `${asset.symbol}_LighterSpot_${wallet}_${account.account_index}`
+                };
+
+                // Add price history and 24h change if available
+                if (priceData) {
+                    if (priceData.priceHistory) spotPosition.priceHistory = priceData.priceHistory;
+                    if (priceData.change24h != null) spotPosition.change24h = priceData.change24h;
+                }
+
+                walletRows.push(spotPosition);
             }
         } catch (e) {
             // Suppress expected errors (account not found)

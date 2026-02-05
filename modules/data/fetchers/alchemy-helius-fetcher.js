@@ -49,7 +49,7 @@ export class AlchemyHeliusFetcher {
 
             this.renderer.appendPositions(rows, 'Alchemy/Helius', {
                 removeFilter: (p) => {
-                    return p.exchange && p.exchange !== 'HL Perps' && p.exchange !== 'HL Spot' && p.exchange !== 'Lighter' && p.exchange !== 'Bitcoin' && p.exchange !== 'Zcash' && !p.exchange.includes('HL Perps') && !p.exchange.includes('HL Spot') && !p.exchange.includes('Lighter');
+                    return p.exchange && p.exchange !== 'HL Perps' && p.exchange !== 'HL Spot' && p.exchange !== 'Lighter' && p.exchange !== 'Lighter Spot' && p.exchange !== 'Bitcoin' && p.exchange !== 'Zcash' && !p.exchange.includes('HL Perps') && !p.exchange.includes('HL Spot') && !p.exchange.includes('Lighter');
                 }
             });
         } catch (e) {

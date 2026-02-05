@@ -189,8 +189,17 @@ export function calculatePortfolioTotals(positions) {
       totalValue += (p.value || 0);
       totalPnL += (p.pnl || 0);
     } else if (p.exchange === 'HL Perps' || p.exchange === 'HL Spot' || p.exchange === 'Lighter') {
-      // Skip individual HL/Lighter positions (already counted in equity above)
+      // Skip individual HL/Lighter perp positions (already counted in equity above)
       continue;
+    } else if (p.exchange === 'Lighter Spot') {
+      // Lighter Spot positions are NOT included in account equity, add them
+      const value = p.value || 0;
+      if (value > 0) {
+        totalValue += value;
+      }
+      if (p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl)) {
+        totalPnL += p.pnl;
+      }
     } else {
       // Add other positions (wallet balances, etc.)
       const value = p.value || 0;

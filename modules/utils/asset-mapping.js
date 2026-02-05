@@ -96,7 +96,8 @@ export function getCoingeckoId(assetSymbol) {
     'ONE': 'harmony',
     'ZIL': 'zilliqa',
     'BAT': 'basic-attention-token',
-    'ZRX': '0x'
+    'ZRX': '0x',
+    'LIT': 'lighter'  // Lighter exchange token
   };
   return mapping[assetSymbol] || null;
 }

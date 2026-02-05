@@ -12,7 +12,13 @@ const MARKET_ID_MAP = {
   'HYPE': 24,
   'YZY': 70,
   'ZEC': 90,
-  'ASTER': 83
+  'ASTER': 83,
+  'LIT': 120
+};
+
+// Spot asset ID mapping (for spot balances)
+const SPOT_ASSET_MAP = {
+  2: 'LIT'  // asset_id 2 = LIT token
 };
 
 // Cached funding rates (provider-level cache)
@@ -135,4 +141,40 @@ export async function fetchCumFunding(accountIndex, symbol, isLong, { timeoutMs 
   return null;
 }
 
-export default { fetchAccountByAddress, fetchCandlesticks, fetchFundingRates, fetchCumFunding };
+/**
+ * Fetch current price for a spot asset via candlesticks (last close price)
+ */
+export async function fetchSpotPrice(symbol, { timeoutMs = 5000 } = {}) {
+  const marketId = MARKET_ID_MAP[symbol];
+  if (!marketId) return null;
+
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const startTimestamp = now - (24 * 60 * 60); // Last 24 hours
+    const url = `${MAINNET}/candlesticks?market_id=${marketId}&resolution=1h&start_timestamp=${startTimestamp}&end_timestamp=${now}&count_back=24`;
+    const data = await HttpClient.getJson(url, { timeoutMs });
+
+    if (data?.candlesticks?.length) {
+      const closePrices = data.candlesticks.map(c => c.close);
+      return closePrices[closePrices.length - 1] || null;
+    }
+  } catch (_) { }
+
+  return null;
+}
+
+/**
+ * Get spot asset info mapping
+ */
+export function getSpotAssetMap() {
+  return SPOT_ASSET_MAP;
+}
+
+/**
+ * Get market ID for a symbol
+ */
+export function getMarketId(symbol) {
+  return MARKET_ID_MAP[symbol] || null;
+}
+
+export default { fetchAccountByAddress, fetchCandlesticks, fetchFundingRates, fetchCumFunding, fetchSpotPrice, getSpotAssetMap, getMarketId };
