@@ -17,7 +17,8 @@ function formatCurrency(value, amountsVisible) {
   } else if (abs === 0) {
     return '$0';
   } else {
-    return `$${abs.toFixed(2)}`;
+    // For small values, preserve significant digits (e.g., $0.0341 not $0.03)
+    return `$${abs.toPrecision(4)}`;
   }
 }
 

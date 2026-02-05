@@ -398,3 +398,4 @@ export function applyAlignment(settings) {
 export default { setupSettingsDialog, getSettings, invalidateSettingsCache, applyVisibilityClasses, applyAlignment, applyFont };
 
 
+

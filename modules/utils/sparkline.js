@@ -39,3 +39,4 @@ export function createSparkline(priceData, width = 60, height = 24, currentChang
 }
 
 
+

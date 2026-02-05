@@ -141,7 +141,8 @@ function formatUsd(num, visible, showPlusSign = false) {
   } else if (abs === 0) {
     return '$0';
   } else {
-    return `${sign}$${abs.toFixed(2)}`;
+    // For small values, preserve significant digits (e.g., $0.0341 not $0.03)
+    return `${sign}$${abs.toPrecision(4)}`;
   }
 }
 
@@ -153,7 +154,12 @@ function formatPrice(num, visible) {
   if (n === 0) return '$0';
 
   const abs = Math.abs(n);
-  // Use full precision with comma separators
+  // For small prices, use precision-based formatting to preserve significant digits
+  // e.g., 0.0341 should show as $0.0341, not $0.03
+  if (abs < 1) {
+    return `$${abs.toPrecision(4)}`;
+  }
+  // For larger prices, use 2 decimal places with comma separators
   return `$${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
