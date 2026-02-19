@@ -6,7 +6,7 @@ import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.9.5';
+const APP_VERSION = '2.9.10';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
@@ -124,6 +124,20 @@ async function runHealthChecks() {
     parts.push(`<span style="color: ${ok ? 'var(--green)' : 'var(--red)'};">●</span> Hyperliquid`);
   } catch (e) {
     parts.push('<span style="color: var(--red);">●</span> Hyperliquid');
+  }
+
+  // Lighter
+  try {
+    const wallets = (getSettings().walletAddresses || '').split(',').map(w => w.trim()).filter(Boolean);
+    if (wallets.length > 0) {
+      const data = await providers.lighter.fetchAccountByAddress(wallets[0], { timeoutMs: 8000 });
+      const ok = Array.isArray(data?.accounts) && data.accounts.length > 0;
+      parts.push(`<span style="color: ${ok ? 'var(--green)' : 'var(--red)'};">●</span> Lighter`);
+    } else {
+      parts.push('<span style="color: var(--red);">●</span> Lighter (no wallets)');
+    }
+  } catch (e) {
+    parts.push('<span style="color: var(--red);">●</span> Lighter');
   }
 
   // Zerion
@@ -256,8 +270,9 @@ async function _doRenderPortfolioIncremental() {
       const weatherLon = settings.weather?.lon;
       const weatherLabel = settings.weather?.label || 'your location';
 
-      if (weatherLat && weatherLon && mods.features?.weather?.fetchWeather) {
-        const data = await mods.features.weather.fetchWeather(weatherLat, weatherLon, 5000);
+      const hasWeatherCoords = Number.isFinite(Number(weatherLat)) && Number.isFinite(Number(weatherLon));
+      if (hasWeatherCoords && mods.features?.weather?.fetchWeather) {
+        const data = await mods.features.weather.fetchWeather(Number(weatherLat), Number(weatherLon), 5000);
         if (data?.current) {
           const temp = data.current.temperature_2m;
           const code = data.current.weather_code || 0;
@@ -321,9 +336,9 @@ async function _doRenderPortfolioIncremental() {
 
   // Initialize Portfolio Manager and Fetchers (Singleton pattern)
   if (!window._portfolioManager) {
-    const { PortfolioManager } = await import('./modules/domain/portfolio-manager.js?v=2.9.6');
+    const { PortfolioManager } = await import('./modules/domain/portfolio-manager.js?v=2.9.10');
     const { HyperliquidFetcher } = await import('./modules/data/fetchers/hyperliquid-fetcher.js');
-    const { LighterFetcher } = await import('./modules/data/fetchers/lighter-fetcher.js?v=2.9.6');
+    const { LighterFetcher } = await import('./modules/data/fetchers/lighter-fetcher.js?v=2.9.10');
     const { ZerionFetcher } = await import('./modules/data/fetchers/zerion-fetcher.js');
     const { CieloFetcher } = await import('./modules/data/fetchers/cielo-fetcher.js');
     const { AlchemyHeliusFetcher } = await import('./modules/data/fetchers/alchemy-helius-fetcher.js');
@@ -476,7 +491,7 @@ function setupPullToRefresh() {
     if (stickerBackdrop && stickerBackdrop.style.display !== 'none') return true;
 
     // Check if mobile menu is open
-    if (mobileMenu && mobileMenu.classList.contains('open')) return true;
+    if ((mobileMenu && mobileMenu.classList.contains('active')) || document.body.classList.contains('mobile-menu-open')) return true;
 
     // Check if touching any interactive elements (stickers, modal contents)
     if (target.closest('.sticker-controls, .placed-sticker, #stickerGrid, .settings, .sticker-window, .mobile-menu, .settings-backdrop')) {
@@ -602,7 +617,7 @@ function setupControls() {
   const settings = getSettings();
 
   // Apply saved font
-  applyFont(settings.font || 'berkeley');
+  applyFont(settings.font || 'system');
 
 
 
@@ -616,14 +631,19 @@ function setupControls() {
   if (settings.cryptoPositions && Array.isArray(settings.cryptoPositions) && settings.cryptoPositions.length > 0) {
     const originalCount = settings.cryptoPositions.length;
     settings.cryptoPositions = settings.cryptoPositions.filter(p => {
-      const assetName = p.type === 'custom' ? p.name : p.symbol;
-      const assetKey = `${assetName}_Manual`;
-      const isHidden = hiddenAssets.has(assetKey);
-      if (isHidden) {
+      const assetName = p.type === 'custom' ? (p.name || p.symbol) : p.symbol;
+      if (!assetName) return true;
+      const manualKeys = [
+        `${assetName}_Manual`,
+        `${assetName}_Manual (Custom)`,
+        `${assetName}_Manual (Pyth)`
+      ];
+      const hiddenKey = manualKeys.find(key => hiddenAssets.has(key));
+      if (hiddenKey) {
         // Hidden manual position removed
-        hiddenAssets.delete(assetKey); // Also remove from hiddenAssets
+        manualKeys.forEach(key => hiddenAssets.delete(key)); // Also remove all variants from hiddenAssets
       }
-      return !isHidden;
+      return !hiddenKey;
     });
 
     if (settings.cryptoPositions.length !== originalCount) {
@@ -646,21 +666,20 @@ function setupControls() {
 
   if (mobileMenuBtn && mobileMenu) {
     mobileMenuBtn.addEventListener('click', () => {
+      const scrollY = window.scrollY;
       mobileMenu.classList.add('active');
       document.body.classList.add('mobile-menu-open');
 
       // Disable scroll when mobile menu open
       document.body.classList.add('modal-open');
+      // Preserve current visual position while body is fixed
+      document.body.style.top = `-${scrollY}px`;
     });
   }
 
   if (closeMobileMenuBtn && mobileMenu) {
     closeMobileMenuBtn.addEventListener('click', () => {
-      mobileMenu.classList.remove('active');
-      document.body.classList.remove('mobile-menu-open');
-
-      // Re-enable scroll when mobile menu closed
-      document.body.classList.remove('modal-open');
+      closeMobileMenuWithScroll();
     });
   }
 
@@ -670,10 +689,7 @@ function setupControls() {
     const mobile = document.getElementById(mobileId);
     if (mobile && desktop) {
       mobile.addEventListener('click', () => {
-        if (mobileMenu) {
-          mobileMenu.classList.remove('active');
-          document.body.classList.remove('mobile-menu-open');
-        }
+        closeMobileMenuWithScroll();
         desktop.click();
       });
     }
@@ -691,7 +707,7 @@ function setupControls() {
   function updateShowHiddenButton() {
     if (showHiddenBtn) {
       // Use original format: [SHOW <$X] / [HIDE <$X]
-      showHiddenBtn.textContent = showHiddenPositions ? `[HIDE <$${threshold}]` : `[SHOW <$${threshold}]`;
+      showHiddenBtn.textContent = showHiddenPositions ? `Hide <$${threshold}` : `Show <$${threshold}`;
     }
   }
 
@@ -716,7 +732,95 @@ function setupControls() {
   // Edit list mode
   const editListBtn = document.getElementById('newEditListBtn');
   const cancelEditBtn = document.getElementById('newCancelEditBtn');
+  const positionsBody = document.getElementById('newPositionsBody');
   let editModeSnapshot = null; // Store state before edit mode for cancel functionality
+  const handlePositionEditClick = (e) => {
+    if (!editMode) return;
+
+    if (e.target.classList.contains('position-edit-btn')) {
+      const assetKey = e.target.getAttribute('data-asset-key');
+      if (hiddenAssets.has(assetKey)) {
+        hiddenAssets.delete(assetKey);
+      } else {
+        hiddenAssets.add(assetKey);
+      }
+      window.hiddenAssets = hiddenAssets; // Update global for incremental renderer
+
+      // Save to localStorage
+      const s = getSettings();
+      s.hiddenAssets = Array.from(hiddenAssets);
+      localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+      invalidateSettingsCache();
+
+      // Update show hidden button visibility
+      if (window.updateShowHiddenButton) {
+        window.updateShowHiddenButton();
+      }
+
+      // Re-render
+      if (window._portfolioRenderer) {
+        window._portfolioRenderer.forceRender();
+      }
+    } else if (e.target.classList.contains('position-delete-btn')) {
+      // Delete manual position
+      const asset = e.target.getAttribute('data-asset');
+      const manualType = e.target.getAttribute('data-manual-type');
+
+      const s = getSettings();
+      if (s.cryptoPositions && Array.isArray(s.cryptoPositions)) {
+        // Remove the matching position from settings
+        if (manualType === 'custom') {
+          s.cryptoPositions = s.cryptoPositions.filter(p => !(p.type === 'custom' && (p.name === asset || p.symbol === asset)));
+        } else if (manualType === 'pyth') {
+          s.cryptoPositions = s.cryptoPositions.filter(p => !(p.type === 'pyth' && p.symbol === asset));
+        }
+
+        // Also remove from hiddenAssets if present (so it doesn't linger as hidden)
+        const manualKeys = [`${asset}_Manual`, `${asset}_Manual (Custom)`, `${asset}_Manual (Pyth)`];
+        if (s.hiddenAssets && Array.isArray(s.hiddenAssets)) {
+          s.hiddenAssets = s.hiddenAssets.filter(key => !manualKeys.includes(key));
+        }
+
+        // Save
+        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        invalidateSettingsCache();
+
+        // Also remove from hiddenAssets set in memory
+        manualKeys.forEach(key => hiddenAssets.delete(key));
+        window.hiddenAssets = hiddenAssets; // Update global for incremental renderer
+
+        // Remove position from renderer's allPositions (the source of truth)
+        if (window._portfolioRenderer) {
+          if (manualType === 'custom') {
+            window._portfolioRenderer.removePositions(p => p.isManual && p.manualType === 'custom' && p.asset === asset);
+          } else if (manualType === 'pyth') {
+            window._portfolioRenderer.removePositions(p => p.isManual && p.manualType === 'pyth' && p.asset === asset);
+          }
+        }
+      }
+    } else if (e.target.classList.contains('position-restore-btn')) {
+      // Restore hidden position (remove from hiddenAssets)
+      const assetKey = e.target.getAttribute('data-asset-key');
+      hiddenAssets.delete(assetKey);
+      window.hiddenAssets = hiddenAssets;
+
+      // Save to localStorage
+      const s = getSettings();
+      s.hiddenAssets = Array.from(hiddenAssets);
+      localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+      invalidateSettingsCache();
+
+      // Update show hidden button visibility
+      if (window.updateShowHiddenButton) {
+        window.updateShowHiddenButton();
+      }
+
+      // Re-render
+      if (window._portfolioRenderer) {
+        window._portfolioRenderer.forceRender();
+      }
+    }
+  };
 
   if (editListBtn) {
     editListBtn.addEventListener('click', () => {
@@ -729,114 +833,24 @@ function setupControls() {
 
       editMode = !editMode;
       window.editMode = editMode; // Update global for incremental renderer
-      editListBtn.textContent = editMode ? '[SAVE]' : '[EDIT]';
+      editListBtn.textContent = editMode ? 'Save' : 'Edit';
 
       // Show/hide cancel button
       if (cancelEditBtn) {
         cancelEditBtn.style.display = editMode ? 'inline' : 'none';
       }
 
+      if (positionsBody) {
+        if (editMode) {
+          positionsBody.addEventListener('click', handlePositionEditClick);
+        } else {
+          positionsBody.removeEventListener('click', handlePositionEditClick);
+        }
+      }
+
       // Re-render with edit mode
       if (window._portfolioRenderer) {
         window._portfolioRenderer.forceRender();
-      }
-
-      // Add click handlers for hide/delete buttons if in edit mode
-      if (editMode) {
-        const positionsBody = document.getElementById('newPositionsBody');
-        if (positionsBody) {
-          positionsBody.addEventListener('click', (e) => {
-            if (e.target.classList.contains('position-edit-btn')) {
-              const assetKey = e.target.getAttribute('data-asset-key');
-              if (hiddenAssets.has(assetKey)) {
-                hiddenAssets.delete(assetKey);
-              } else {
-                hiddenAssets.add(assetKey);
-              }
-              window.hiddenAssets = hiddenAssets; // Update global for incremental renderer
-
-              // Save to localStorage
-              const Settings = window.AppModules?.core?.settings;
-              const s = getSettings();
-              s.hiddenAssets = Array.from(hiddenAssets);
-              localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
-              invalidateSettingsCache();
-
-              // Update show hidden button visibility
-              if (window.updateShowHiddenButton) {
-                window.updateShowHiddenButton();
-              }
-
-              // Re-render
-              if (window._portfolioRenderer) {
-                window._portfolioRenderer.forceRender();
-              }
-            } else if (e.target.classList.contains('position-delete-btn')) {
-              // Delete manual position
-              const asset = e.target.getAttribute('data-asset');
-              const manualType = e.target.getAttribute('data-manual-type');
-
-              // Direct delete without confirmation
-              {
-                const Settings = window.AppModules?.core?.settings;
-                const s = getSettings();
-
-                if (s.cryptoPositions && Array.isArray(s.cryptoPositions)) {
-                  // Remove the matching position from settings
-                  if (manualType === 'custom') {
-                    s.cryptoPositions = s.cryptoPositions.filter(p => !(p.type === 'custom' && p.name === asset));
-                  } else if (manualType === 'pyth') {
-                    s.cryptoPositions = s.cryptoPositions.filter(p => !(p.type === 'pyth' && p.symbol === asset));
-                  }
-
-                  // Also remove from hiddenAssets if present (so it doesn't linger as hidden)
-                  const assetKey = `${asset}_Manual`;
-                  if (s.hiddenAssets && s.hiddenAssets.includes(assetKey)) {
-                    s.hiddenAssets = s.hiddenAssets.filter(key => key !== assetKey);
-                  }
-
-                  // Save
-                  localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
-                  invalidateSettingsCache();
-
-                  // Also remove from hiddenAssets set in memory
-                  hiddenAssets.delete(assetKey);
-                  window.hiddenAssets = hiddenAssets; // Update global for incremental renderer
-
-                  // Remove position from renderer's allPositions (the source of truth)
-                  if (window._portfolioRenderer) {
-                    if (manualType === 'custom') {
-                      window._portfolioRenderer.removePositions(p => p.isManual && p.manualType === 'custom' && p.asset === asset);
-                    } else if (manualType === 'pyth') {
-                      window._portfolioRenderer.removePositions(p => p.isManual && p.manualType === 'pyth' && p.asset === asset);
-                    }
-                  }
-                }
-              }
-            } else if (e.target.classList.contains('position-restore-btn')) {
-              // Restore hidden position (remove from hiddenAssets)
-              const assetKey = e.target.getAttribute('data-asset-key');
-              hiddenAssets.delete(assetKey);
-              window.hiddenAssets = hiddenAssets;
-
-              // Save to localStorage
-              const s = getSettings();
-              s.hiddenAssets = Array.from(hiddenAssets);
-              localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
-              invalidateSettingsCache();
-
-              // Update show hidden button visibility
-              if (window.updateShowHiddenButton) {
-                window.updateShowHiddenButton();
-              }
-
-              // Re-render
-              if (window._portfolioRenderer) {
-                window._portfolioRenderer.forceRender();
-              }
-            }
-          });
-        }
       }
     });
   }
@@ -859,8 +873,11 @@ function setupControls() {
       // Exit edit mode
       editMode = false;
       window.editMode = editMode;
-      editListBtn.textContent = '[EDIT]';
+      editListBtn.textContent = 'Edit';
       cancelEditBtn.style.display = 'none';
+      if (positionsBody) {
+        positionsBody.removeEventListener('click', handlePositionEditClick);
+      }
 
       // Re-render
       if (window._portfolioRenderer) {
@@ -885,7 +902,7 @@ function setupControls() {
   if (amountsBtn) {
     amountsBtn.addEventListener('click', () => {
       amountsVisible = !amountsVisible;
-      amountsBtn.textContent = amountsVisible ? '[HIDE AMOUNTS]' : '[SHOW AMOUNTS]';
+      amountsBtn.textContent = amountsVisible ? 'Hide Amounts' : 'Show Amounts';
 
       // Also update mobile button text
       const mobileAmountsBtn = document.getElementById('newToggleAmountsBtnMobile');
@@ -908,7 +925,7 @@ function setupControls() {
   if (compactBtn) {
     compactBtn.addEventListener('click', () => {
       compactMode = !compactMode;
-      compactBtn.textContent = compactMode ? '[EXPAND]' : '[COMPACT]';
+      compactBtn.textContent = compactMode ? 'Expand' : 'Compact';
 
       // Toggle compact mode class - CSS handles padding and column visibility
       document.body.classList.toggle('compact-mode', compactMode);
@@ -977,27 +994,27 @@ function setupControls() {
       if (heliusInput) heliusInput.value = s.heliusApiKey || '';
       if (openseaInput) openseaInput.value = s.openSeaApiKey || '';
       if (cityInput) cityInput.value = s.weather?.label || '';
-      if (latInput) latInput.value = s.weather?.lat || '';
-      if (lonInput) lonInput.value = s.weather?.lon || '';
-      if (coloredPnLInput) coloredPnLInput.checked = s.useColoredPnL ?? true;
+      if (latInput) latInput.value = s.weather?.lat ?? '';
+      if (lonInput) lonInput.value = s.weather?.lon ?? '';
+      if (coloredPnLInput) coloredPnLInput.checked = s.useColoredPnL ?? false;
       if (hideWatchlistInput) hideWatchlistInput.checked = s.hideWatchlist ?? false;
       if (hideComicInput) hideComicInput.checked = s.hideComic ?? false;
       if (showExactAmountsInput) showExactAmountsInput.checked = s.showExactAmounts ?? false;
       if (showPriceChartInput) showPriceChartInput.checked = s.showPriceChart ?? true;
       if (minBalanceInput) minBalanceInput.value = s.minBalanceThreshold || 100;
       if (leftAlignedInput) leftAlignedInput.checked = s.leftAligned ?? true;
-      if (fontSelectInput) fontSelectInput.value = s.font || 'berkeley';
+      if (fontSelectInput) fontSelectInput.value = s.font || 'system';
 
 
       // Menu visibility checkboxes
-      if (hideSnowBtnInput) hideSnowBtnInput.checked = s.hideSnowBtn ?? false;
-      if (hideRainBtnInput) hideRainBtnInput.checked = s.hideRainBtn ?? false;
-      if (hideFontSizeInput) hideFontSizeInput.checked = s.hideFontSize ?? false;
+      if (hideSnowBtnInput) hideSnowBtnInput.checked = s.hideSnowBtn ?? true;
+      if (hideRainBtnInput) hideRainBtnInput.checked = s.hideRainBtn ?? true;
+      if (hideFontSizeInput) hideFontSizeInput.checked = s.hideFontSize ?? true;
       if (hideThemeBtnInput) hideThemeBtnInput.checked = s.hideThemeBtn ?? false;
       if (hideAmountsBtnInput) hideAmountsBtnInput.checked = s.hideAmountsBtn ?? false;
       if (showCompactBtnInput) showCompactBtnInput.checked = s.showCompactBtn ?? true;
-      if (hideDonateBtnInput) hideDonateBtnInput.checked = s.hideDonateBtn ?? false;
-      if (hideStickersBtnInput) hideStickersBtnInput.checked = s.hideStickersBtn ?? false;
+      if (hideDonateBtnInput) hideDonateBtnInput.checked = s.hideDonateBtn ?? true;
+      if (hideStickersBtnInput) hideStickersBtnInput.checked = s.hideStickersBtn ?? true;
 
       settingsDialog.style.display = 'block';
       settingsBackdrop.style.display = 'block';
@@ -1019,7 +1036,7 @@ function setupControls() {
       if (importMode && exportArea && importBtn) {
         exportArea.style.display = 'none';
         exportArea.setAttribute('readonly', 'readonly');
-        importBtn.textContent = '[IMPORT]';
+        importBtn.textContent = 'Import';
         importMode = false;
       }
       settingsDialog.style.display = 'none';
@@ -1056,7 +1073,7 @@ function setupControls() {
       try {
         await navigator.clipboard.writeText(exportData);
         const originalText = exportBtn.textContent;
-        exportBtn.textContent = '[COPIED!]';
+        exportBtn.textContent = 'Copied!';
         setTimeout(() => {
           exportBtn.textContent = originalText;
         }, 1500);
@@ -1072,18 +1089,18 @@ function setupControls() {
       if (!importMode) {
         // First click: show textarea for pasting
         exportArea.value = '';
-        exportArea.placeholder = 'Paste exported settings here, then click [SAVE & RELOAD] at the bottom';
+        exportArea.placeholder = 'Paste exported settings here, then click Save & Reload at the bottom';
         exportArea.style.display = 'block';
         exportArea.removeAttribute('readonly');
         exportArea.focus();
-        importBtn.textContent = '[CANCEL IMPORT]';
+        importBtn.textContent = 'Cancel Import';
         importMode = true;
       } else {
         // Second click: cancel import
         exportArea.style.display = 'none';
         exportArea.setAttribute('readonly', 'readonly');
         exportArea.value = '';
-        importBtn.textContent = '[IMPORT]';
+        importBtn.textContent = 'Import';
         importMode = false;
       }
     });
@@ -1094,7 +1111,7 @@ function setupControls() {
   if (forceUpdateBtn) {
     forceUpdateBtn.addEventListener('click', async () => {
       const originalText = forceUpdateBtn.textContent;
-      forceUpdateBtn.textContent = '[CLEARING...]';
+      forceUpdateBtn.textContent = 'Clearing...';
       forceUpdateBtn.disabled = true;
 
       try {
@@ -1127,7 +1144,7 @@ function setupControls() {
         window.location.replace(url.toString());
       } catch (error) {
         console.error('[Force Update] Error:', error);
-        forceUpdateBtn.textContent = '[ERROR - TRY AGAIN]';
+        forceUpdateBtn.textContent = 'Error - Try Again';
         forceUpdateBtn.disabled = false;
         setTimeout(() => {
           forceUpdateBtn.textContent = originalText;
@@ -1146,13 +1163,13 @@ function setupControls() {
   if (Rain && toggleRainBtn) {
     toggleRainBtn.addEventListener('click', () => {
       const active = Rain.toggleRain();
-      toggleRainBtn.textContent = active ? '[RAIN OFF]' : '[RAIN ON]';
+      toggleRainBtn.textContent = active ? 'Rain Off' : 'Rain On';
       if (toggleRainBtnMobile) {
-        toggleRainBtnMobile.textContent = active ? '[RAIN OFF]' : '[RAIN ON]';
+        toggleRainBtnMobile.textContent = active ? 'Rain Off' : 'Rain On';
       }
       if (active) {
-        toggleSnowBtn.textContent = '[SNOW ON]';
-        if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW ON]';
+        toggleSnowBtn.textContent = 'Snow On';
+        if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = 'Snow On';
       }
 
       // Save to localStorage
@@ -1167,13 +1184,13 @@ function setupControls() {
   if (Rain && toggleSnowBtn) {
     toggleSnowBtn.addEventListener('click', () => {
       const active = Rain.toggleSnow();
-      toggleSnowBtn.textContent = active ? '[SNOW OFF]' : '[SNOW ON]';
+      toggleSnowBtn.textContent = active ? 'Snow Off' : 'Snow On';
       if (toggleSnowBtnMobile) {
-        toggleSnowBtnMobile.textContent = active ? '[SNOW OFF]' : '[SNOW ON]';
+        toggleSnowBtnMobile.textContent = active ? 'Snow Off' : 'Snow On';
       }
       if (active) {
-        toggleRainBtn.textContent = '[RAIN ON]';
-        if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = '[RAIN ON]';
+        toggleRainBtn.textContent = 'Rain On';
+        if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = 'Rain On';
       }
 
       // Save to localStorage
@@ -1188,13 +1205,13 @@ function setupControls() {
   if (Rain && toggleRainBtnMobile) {
     toggleRainBtnMobile.addEventListener('click', () => {
       const active = Rain.toggleRain();
-      toggleRainBtnMobile.textContent = active ? '[RAIN OFF]' : '[RAIN ON]';
+      toggleRainBtnMobile.textContent = active ? 'Rain Off' : 'Rain On';
       if (toggleRainBtn) {
-        toggleRainBtn.textContent = active ? '[RAIN OFF]' : '[RAIN ON]';
+        toggleRainBtn.textContent = active ? 'Rain Off' : 'Rain On';
       }
       if (active) {
-        toggleSnowBtn.textContent = '[SNOW ON]';
-        if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW ON]';
+        toggleSnowBtn.textContent = 'Snow On';
+        if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = 'Snow On';
       }
 
       // Close mobile menu if open (with scroll restoration)
@@ -1212,13 +1229,13 @@ function setupControls() {
   if (Rain && toggleSnowBtnMobile) {
     toggleSnowBtnMobile.addEventListener('click', () => {
       const active = Rain.toggleSnow();
-      toggleSnowBtnMobile.textContent = active ? '[SNOW OFF]' : '[SNOW ON]';
+      toggleSnowBtnMobile.textContent = active ? 'Snow Off' : 'Snow On';
       if (toggleSnowBtn) {
-        toggleSnowBtn.textContent = active ? '[SNOW OFF]' : '[SNOW ON]';
+        toggleSnowBtn.textContent = active ? 'Snow Off' : 'Snow On';
       }
       if (active) {
-        toggleRainBtn.textContent = '[RAIN ON]';
-        if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = '[RAIN ON]';
+        toggleRainBtn.textContent = 'Rain On';
+        if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = 'Rain On';
       }
 
       // Close mobile menu if open (with scroll restoration)
@@ -1296,7 +1313,7 @@ function setupControls() {
         return;
       }
 
-      useMyLocationBtn.textContent = '[GETTING LOCATION...]';
+      useMyLocationBtn.textContent = 'Getting Location...';
       useMyLocationBtn.disabled = true;
 
       try {
@@ -1332,12 +1349,12 @@ function setupControls() {
           // Silent - city name is optional
         }
 
-        useMyLocationBtn.textContent = '[USE MY LOCATION]';
+        useMyLocationBtn.textContent = 'Use My Location';
         useMyLocationBtn.disabled = false;
       } catch (err) {
         console.error('Location denied:', err);
         alert('Could not get your location. Please check browser permissions.');
-        useMyLocationBtn.textContent = '[USE MY LOCATION]';
+        useMyLocationBtn.textContent = 'Use My Location';
         useMyLocationBtn.disabled = false;
       }
     });
@@ -1359,7 +1376,7 @@ function setupControls() {
           // Reset import mode UI
           exportArea.style.display = 'none';
           exportArea.setAttribute('readonly', 'readonly');
-          importBtn.textContent = '[IMPORT]';
+          importBtn.textContent = 'Import';
           importMode = false;
 
           // Close settings and reload
@@ -1438,10 +1455,12 @@ function setupControls() {
       if (hideDonateBtnInput) newSettings.hideDonateBtn = hideDonateBtnInput.checked;
       if (hideStickersBtnInput) newSettings.hideStickersBtn = hideStickersBtnInput.checked;
 
+      const parsedLat = parseFloat(latInput?.value);
+      const parsedLon = parseFloat(lonInput?.value);
       newSettings.weather = {
         label: cityInput?.value || '',
-        lat: parseFloat(latInput?.value) || 0,
-        lon: parseFloat(lonInput?.value) || 0
+        lat: Number.isFinite(parsedLat) ? parsedLat : null,
+        lon: Number.isFinite(parsedLon) ? parsedLon : null
       };
 
       // Save via legacy saveSettings (handles encryption)
@@ -1476,12 +1495,14 @@ function setupControls() {
             const prices = await watchlistMod.render(watchlistBody, {
               feedIds: newSettings.watchlist,
               pythProvider,
-              useColoredPnL: newSettings.useColoredPnL ?? true,
+              useColoredPnL: newSettings.useColoredPnL ?? false,
               editMode: watchlistEditMode,
               cachedData: cachedWatchlistData,
               showPriceChart: newSettings.showPriceChart ?? true
             });
-            cachedWatchlistData = prices; // Update cache
+            if (Array.isArray(prices) && prices.length > 0) {
+              cachedWatchlistData = prices; // Update cache only with valid data
+            }
           } catch (e) {
             // Silently fail if watchlist re-render fails
           }
@@ -1489,18 +1510,19 @@ function setupControls() {
 
         // Apply visibility settings via body classes
         const body = document.body;
-        body.classList.toggle('hide-snow-btn', newSettings.hideSnowBtn ?? false);
-        body.classList.toggle('hide-rain-btn', newSettings.hideRainBtn ?? false);
-        body.classList.toggle('hide-font-size', newSettings.hideFontSize ?? false);
+        body.classList.toggle('hide-snow-btn', newSettings.hideSnowBtn ?? true);
+        body.classList.toggle('hide-rain-btn', newSettings.hideRainBtn ?? true);
+        body.classList.toggle('hide-font-size', newSettings.hideFontSize ?? true);
         body.classList.toggle('hide-theme-btn', newSettings.hideThemeBtn ?? false);
         body.classList.toggle('hide-amounts-btn', newSettings.hideAmountsBtn ?? false);
-        body.classList.toggle('hide-donate-btn', newSettings.hideDonateBtn ?? false);
-        body.classList.toggle('hide-stickers-btn', newSettings.hideStickersBtn ?? false);
+        body.classList.toggle('hide-donate-btn', newSettings.hideDonateBtn ?? true);
+        body.classList.toggle('hide-stickers-btn', newSettings.hideStickersBtn ?? true);
         body.classList.toggle('hide-watchlist', newSettings.hideWatchlist ?? false);
         body.classList.toggle('hide-comic', newSettings.hideComic ?? false);
+        body.classList.toggle('mono-pnl', !(newSettings.useColoredPnL ?? false));
 
         // Apply font setting
-        applyFont(newSettings.font || 'berkeley');
+        applyFont(newSettings.font || 'system');
 
         // Apply keyboard shortcuts setting (dynamic enable/disable)
         if (newSettings.enableKeyboardShortcuts) {
@@ -1554,7 +1576,7 @@ function setupControls() {
     try {
       await navigator.clipboard.writeText(text);
       const originalText = button.textContent;
-      button.textContent = '[COPIED!]';
+      button.textContent = 'Copied!';
       button.style.opacity = '0.6';
       setTimeout(() => {
         button.textContent = originalText;
@@ -1685,14 +1707,14 @@ function setupControls() {
         // Reload watchlist immediately
         const watchlistBody = document.getElementById('newWatchlistBody');
         if (watchlistBody) {
-          watchlistBody.innerHTML = `<tr><td colspan="4" class="loading"><span class="loading-terminal">[LOADING...]</span></td></tr>`;
+          watchlistBody.innerHTML = `<tr><td colspan="4" class="loading"><span class="loading-terminal">Loading...</span></td></tr>`;
           try {
             const mod = await import('./modules/features/watchlist.js');
             const pythProvider = window.AppModules?.data?.providers?.pyth;
             await mod.render(watchlistBody, {
               feedIds: s.watchlist,
               pythProvider,
-              useColoredPnL: s.useColoredPnL ?? true,
+              useColoredPnL: s.useColoredPnL ?? false,
               showPriceChart: s.showPriceChart ?? true
             });
           } catch (e) {
@@ -1786,7 +1808,7 @@ function setupControls() {
         resultDiv.innerHTML = `
           <span>${feed.symbol}</span>
           <button class="btn-text ${isInWatchlist || isAdded ? 'added' : ''}" data-feed-id="${feed.id}">
-            ${isInWatchlist ? '[IN LIST]' : isAdded ? '[ADDED]' : '[ADD]'}
+            ${isInWatchlist ? 'In List' : isAdded ? 'Added' : 'Add'}
           </button>
         `;
 
@@ -1796,7 +1818,7 @@ function setupControls() {
             if (!addedFeeds.has(feed.id)) {
               addToWatchlist(feed.id);
               addedFeeds.add(feed.id);
-              btn.textContent = '[ADDED]';
+              btn.textContent = 'Added';
               btn.classList.add('added');
               resultDiv.classList.add('added');
             }
@@ -1832,7 +1854,7 @@ function setupControls() {
       // Reload watchlist immediately
       const watchlistBody = document.getElementById('newWatchlistBody');
       if (watchlistBody) {
-        watchlistBody.innerHTML = `<tr><td colspan="4" class="loading"><span class="loading-terminal">[LOADING...]</span></td></tr>`;
+        watchlistBody.innerHTML = `<tr><td colspan="4" class="loading"><span class="loading-terminal">Loading...</span></td></tr>`;
         (async () => {
           try {
             const mod = await import('./modules/features/watchlist.js');
@@ -1840,13 +1862,17 @@ function setupControls() {
             const prices = await mod.render(watchlistBody, {
               feedIds: s.watchlist,
               pythProvider,
-              useColoredPnL: s.useColoredPnL ?? true,
+              useColoredPnL: s.useColoredPnL ?? false,
               editMode: watchlistEditMode,
               showPriceChart: s.showPriceChart ?? true
             });
 
             // Update cache with new data
-            cachedWatchlistData = prices;
+            if ((s.watchlist || []).length === 0) {
+              cachedWatchlistData = [];
+            } else if (Array.isArray(prices) && prices.length > 0) {
+              cachedWatchlistData = prices;
+            }
 
             // Re-attach event listeners for edit buttons
             if (watchlistEditMode) {
@@ -1893,7 +1919,7 @@ function setupControls() {
 
     watchlistEditMode = !watchlistEditMode;
     if (editWatchlistBtn) {
-      editWatchlistBtn.textContent = watchlistEditMode ? '[SAVE]' : '[EDIT]';
+      editWatchlistBtn.textContent = watchlistEditMode ? 'Save' : 'Edit';
     }
 
     // Show/hide cancel button
@@ -1911,7 +1937,7 @@ function setupControls() {
         await mod.render(watchlistBody, {
           feedIds: s.watchlist || [],
           pythProvider: window.AppModules?.data?.providers?.pyth,
-          useColoredPnL: s.useColoredPnL ?? true,
+          useColoredPnL: s.useColoredPnL ?? false,
           editMode: watchlistEditMode,
           cachedData: cachedWatchlistData, // Pass cached data to avoid refetch
           showPriceChart: s.showPriceChart ?? true
@@ -1948,7 +1974,7 @@ function setupControls() {
       // Exit edit mode
       watchlistEditMode = false;
       if (editWatchlistBtn) {
-        editWatchlistBtn.textContent = '[EDIT]';
+        editWatchlistBtn.textContent = 'Edit';
       }
       cancelWatchlistEditBtn.style.display = 'none';
 
@@ -1961,7 +1987,7 @@ function setupControls() {
           await mod.render(watchlistBody, {
             feedIds: s.watchlist || [],
             pythProvider: window.AppModules?.data?.providers?.pyth,
-            useColoredPnL: s.useColoredPnL ?? true,
+            useColoredPnL: s.useColoredPnL ?? false,
             editMode: false,
             showPriceChart: s.showPriceChart ?? true
           });
@@ -2163,6 +2189,9 @@ function setupControls() {
         s.cryptoPositions.push({
           type: 'custom',
           name: name,
+          symbol: name,
+          amount: 1,
+          price: value,
           value: value
         });
       }
@@ -2314,17 +2343,18 @@ window.addEventListener('DOMContentLoaded', async () => {
     const body = document.body;
 
     // Button visibility
-    body.classList.toggle('hide-snow-btn', settings.hideSnowBtn ?? false);
-    body.classList.toggle('hide-rain-btn', settings.hideRainBtn ?? false);
-    body.classList.toggle('hide-font-size', settings.hideFontSize ?? false);
+    body.classList.toggle('hide-snow-btn', settings.hideSnowBtn ?? true);
+    body.classList.toggle('hide-rain-btn', settings.hideRainBtn ?? true);
+    body.classList.toggle('hide-font-size', settings.hideFontSize ?? true);
     body.classList.toggle('hide-theme-btn', settings.hideThemeBtn ?? false);
     body.classList.toggle('hide-amounts-btn', settings.hideAmountsBtn ?? false);
-    body.classList.toggle('hide-donate-btn', settings.hideDonateBtn ?? false);
-    body.classList.toggle('hide-stickers-btn', settings.hideStickersBtn ?? false);
+    body.classList.toggle('hide-donate-btn', settings.hideDonateBtn ?? true);
+    body.classList.toggle('hide-stickers-btn', settings.hideStickersBtn ?? true);
 
     // Section visibility
     body.classList.toggle('hide-watchlist', settings.hideWatchlist ?? false);
     body.classList.toggle('hide-comic', settings.hideComic ?? false);
+    body.classList.toggle('mono-pnl', !(settings.useColoredPnL ?? false));
   };
   applyVisibilityClasses();
 
@@ -2339,12 +2369,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Only enable one - prioritize rain if both are somehow enabled
     if (settings.rainEnabled && !settings.snowEnabled) {
       Rain.toggleRain();
-      if (toggleRainBtn) toggleRainBtn.textContent = '[RAIN OFF]';
-      if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = '[RAIN OFF]';
+      if (toggleRainBtn) toggleRainBtn.textContent = 'Rain Off';
+      if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = 'Rain Off';
     } else if (settings.snowEnabled && !settings.rainEnabled) {
       Rain.toggleSnow();
-      if (toggleSnowBtn) toggleSnowBtn.textContent = '[SNOW OFF]';
-      if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = '[SNOW OFF]';
+      if (toggleSnowBtn) toggleSnowBtn.textContent = 'Snow Off';
+      if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = 'Snow Off';
     }
   }
 
@@ -2513,14 +2543,14 @@ window.addEventListener('DOMContentLoaded', async () => {
           Rain.toggleSnow();
           const btn = document.getElementById('newToggleSnowBtn');
           const mobileBtn = document.getElementById('newToggleSnowBtnMobile');
-          if (btn) btn.textContent = '[SNOW OFF]';
-          if (mobileBtn) mobileBtn.textContent = '[SNOW OFF]';
+          if (btn) btn.textContent = 'Snow Off';
+          if (mobileBtn) mobileBtn.textContent = 'Snow Off';
         } else if (weather.isRaining) {
           Rain.toggleRain();
           const btn = document.getElementById('newToggleRainBtn');
           const mobileBtn = document.getElementById('newToggleRainBtnMobile');
-          if (btn) btn.textContent = '[RAIN OFF]';
-          if (mobileBtn) mobileBtn.textContent = '[RAIN OFF]';
+          if (btn) btn.textContent = 'Rain Off';
+          if (mobileBtn) mobileBtn.textContent = 'Rain Off';
         }
       }
     }
@@ -2797,11 +2827,13 @@ window.addEventListener('DOMContentLoaded', async () => {
         const prices = await mod.render(watchlistBody, {
           feedIds: watchlistIds,
           pythProvider,
-          useColoredPnL: settings.useColoredPnL ?? true,
+          useColoredPnL: settings.useColoredPnL ?? false,
           showPriceChart: settings.showPriceChart ?? true
         });
         // Cache the data for instant edit toggle
-        cachedWatchlistData = prices;
+        if (Array.isArray(prices) && prices.length > 0) {
+          cachedWatchlistData = prices;
+        }
       } catch (e) {
         watchlistBody.innerHTML = `<tr><td colspan="4" class="loading">Watchlist unavailable</td></tr>`;
       }
@@ -2854,13 +2886,15 @@ window.addEventListener('DOMContentLoaded', async () => {
           const prices = await mod.render(watchlistBody, {
             feedIds: s.watchlist,
             pythProvider: providers.pyth,
-            useColoredPnL: s.useColoredPnL ?? true,
+            useColoredPnL: s.useColoredPnL ?? false,
             editMode: false,
             previousData: cachedWatchlistData,
             showPriceChart: s.showPriceChart ?? true,
             forceRefresh: true  // Always fetch fresh data on periodic refresh
           });
-          cachedWatchlistData = prices;
+          if (Array.isArray(prices) && prices.length > 0) {
+            cachedWatchlistData = prices;
+          }
         } catch (e) {
           // Silently fail watchlist updates
         }

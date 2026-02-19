@@ -12,10 +12,10 @@ function authHeaders(apiKey) {
     };
 }
 
-function buildUrl(path, params, apiKey) {
+function buildUrl(path, params = {}) {
     if (USE_PROXY) {
         // Use proxy in production to avoid CORS
-        const queryParams = new URLSearchParams({ apiKey, path, ...params });
+        const queryParams = new URLSearchParams({ path, ...params });
         return `/api/cielo?${queryParams.toString()}`;
     } else {
         // Direct API call in development
@@ -36,8 +36,8 @@ export async function getWalletPortfolio(wallet, apiKey, { timeoutMs = 15000 } =
         return null;
     }
 
-    const url = buildUrl(`${wallet}/portfolio`, {}, apiKey);
-    const headers = USE_PROXY ? {} : authHeaders(apiKey);
+    const url = buildUrl(`${wallet}/portfolio`, {});
+    const headers = USE_PROXY ? { 'x-proxy-api-key': apiKey } : authHeaders(apiKey);
 
     try {
         const result = await HttpClient.getJson(url, { headers, timeoutMs });
@@ -68,8 +68,8 @@ export async function getTokenPnl(wallet, apiKey, { timeoutMs = 15000, timeframe
         params.active_positions_only = 'true';
     }
 
-    const url = buildUrl(`${wallet}/pnl/tokens`, params, apiKey);
-    const headers = USE_PROXY ? {} : authHeaders(apiKey);
+    const url = buildUrl(`${wallet}/pnl/tokens`, params);
+    const headers = USE_PROXY ? { 'x-proxy-api-key': apiKey } : authHeaders(apiKey);
 
     try {
         const result = await HttpClient.getJson(url, { headers, timeoutMs });

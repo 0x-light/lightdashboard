@@ -10,13 +10,13 @@ export function setupRainSnowControls(Rain, getSettings) {
   const toggleSnowBtnMobile = document.getElementById('newToggleSnowBtnMobile');
 
   const updateRainButtons = (active) => {
-    const text = active ? '[RAIN OFF]' : '[RAIN ON]';
+    const text = active ? 'Rain Off' : 'Rain On';
     if (toggleRainBtn) toggleRainBtn.textContent = text;
     if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = text;
   };
 
   const updateSnowButtons = (active) => {
-    const text = active ? '[SNOW OFF]' : '[SNOW ON]';
+    const text = active ? 'Snow Off' : 'Snow On';
     if (toggleSnowBtn) toggleSnowBtn.textContent = text;
     if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = text;
   };
@@ -122,7 +122,7 @@ export function setupAmountsToggle(onToggle) {
   const mobileAmountsBtn = document.getElementById('newToggleAmountsBtnMobile');
 
   const updateButtons = () => {
-    const text = amountsVisible ? '[HIDE AMOUNTS]' : '[SHOW AMOUNTS]';
+    const text = amountsVisible ? 'Hide Amounts' : 'Show Amounts';
     if (amountsBtn) amountsBtn.textContent = text;
     if (mobileAmountsBtn) mobileAmountsBtn.textContent = text;
   };
@@ -148,7 +148,7 @@ export function setupHideSmallToggle(getSettings, onToggle) {
   const updateButtons = () => {
     const settings = getSettings();
     const threshold = settings.minBalanceThreshold || 100;
-    const text = hideSmallPositions ? `[SHOW <$${threshold}]` : `[HIDE <$${threshold}]`;
+    const text = hideSmallPositions ? `Show <$${threshold}` : `Hide <$${threshold}`;
     if (hideSmallBtn) hideSmallBtn.textContent = text;
     if (mobileHideSmallBtn) mobileHideSmallBtn.textContent = text;
   };
@@ -227,7 +227,7 @@ export function setupEditModeToggle(getSettings, onToggle, invalidateCache) {
     editMode = !editMode;
     window.editMode = editMode;
     if (editListBtn) {
-      editListBtn.textContent = editMode ? '[SAVE CHANGES]' : '[EDIT]';
+      editListBtn.textContent = editMode ? 'Save Changes' : 'Edit';
     }
     if (editMode && positionsBody) {
       positionsBody.addEventListener('click', handlePositionEdit);

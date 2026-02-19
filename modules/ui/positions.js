@@ -344,11 +344,11 @@ function createTableRow(doc, pos, opts, prevDataMap) {
     }
 
     if (i === 0 && opts.editMode) {
-      // Add [X] or [+] button to asset cell in edit mode
-      // [X] = hide, [+] = restore (only for manually hidden positions, NOT <$100)
+      // Add × or + button to asset cell in edit mode
+      // × = hide, + = restore (only for manually hidden positions, NOT <$100)
       // For manual positions, mark with data-manual-type for proper deletion
       const isManual = pos.isManual || (pos.exchange && typeof pos.exchange === 'string' && pos.exchange.startsWith('Manual'));
-      const isManuallyHidden = pos.isManuallyHidden; // Only manually hidden get [+]
+      const isManuallyHidden = pos.isManuallyHidden; // Only manually hidden get +
 
       if (isManual) {
         // Manual positions can be deleted
@@ -356,13 +356,13 @@ function createTableRow(doc, pos, opts, prevDataMap) {
         if (!manualType && pos.exchange) {
           manualType = pos.exchange.includes('Pyth') ? 'pyth' : 'custom';
         }
-        td.innerHTML = `<span class="edit-asset-cell"><button class="position-delete-btn" data-asset="${pos.asset}" data-manual-type="${manualType}">[X]</button>${String(cells[i])}</span>`;
+        td.innerHTML = `<span class="edit-asset-cell"><button class="position-delete-btn" data-asset="${pos.asset}" data-manual-type="${manualType}">×</button>${String(cells[i])}</span>`;
       } else if (isManuallyHidden) {
-        // Manually hidden positions show [+] to restore
-        td.innerHTML = `<span class="edit-asset-cell"><button class="position-restore-btn" data-asset-key="${assetKey}">[+]</button>${String(cells[i])}</span>`;
+        // Manually hidden positions show + to restore
+        td.innerHTML = `<span class="edit-asset-cell"><button class="position-restore-btn" data-asset-key="${assetKey}">+</button>${String(cells[i])}</span>`;
       } else {
-        // Normal positions show [X] to hide
-        td.innerHTML = `<span class="edit-asset-cell"><button class="position-edit-btn" data-asset-key="${assetKey}">[X]</button>${String(cells[i])}</span>`;
+        // Normal positions show × to hide
+        td.innerHTML = `<span class="edit-asset-cell"><button class="position-edit-btn" data-asset-key="${assetKey}">×</button>${String(cells[i])}</span>`;
       }
     } else if (isChart) {
       // Chart column uses innerHTML

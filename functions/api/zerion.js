@@ -2,7 +2,7 @@
 // This proxies Zerion API requests to avoid CORS issues in production
 
 export async function onRequest(context) {
-  const { request, env } = context;
+  const { request } = context;
   
   // Handle CORS preflight
   if (request.method === 'OPTIONS') {
@@ -10,7 +10,7 @@ export async function onRequest(context) {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Proxy-Api-Key',
         'Access-Control-Max-Age': '86400'
       }
     });
@@ -23,7 +23,7 @@ export async function onRequest(context) {
   
   // Get parameters
   const url = new URL(request.url);
-  const apiKey = url.searchParams.get('apiKey');
+  const apiKey = request.headers.get('x-proxy-api-key') || url.searchParams.get('apiKey');
   const path = url.searchParams.get('path'); // e.g., "wallets/0x.../positions/"
   
   if (!apiKey) {
@@ -80,7 +80,7 @@ export async function onRequest(context) {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Proxy-Api-Key',
         'Cache-Control': 'public, max-age=10' // Cache for 10 seconds
       }
     });
@@ -94,4 +94,3 @@ export async function onRequest(context) {
     });
   }
 }
-

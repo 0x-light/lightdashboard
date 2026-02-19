@@ -1,21 +1,58 @@
 // Pyth provider (Hermes REST) with CORS proxy support
 import { fetchWithCorsProxy } from '../../http/cors-proxy.js';
+import { HttpClient } from '../../http/client.js';
 
 const HERMES_BASE = 'https://hermes.pyth.network';
+const LOCAL_FAILURE_THRESHOLD = 3;
+const LOCAL_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+let localConsecutiveFailures = 0;
+let localPythDisabledUntil = 0;
+let didLogLocalDisable = false;
+
+function isLocalPythDisabled() {
+  return !HttpClient.isProductionHost() && Date.now() < localPythDisabledUntil;
+}
+
+function notePythSuccess() {
+  localConsecutiveFailures = 0;
+  localPythDisabledUntil = 0;
+  didLogLocalDisable = false;
+}
+
+function notePythFailure() {
+  if (HttpClient.isProductionHost()) return;
+  localConsecutiveFailures += 1;
+  if (localConsecutiveFailures >= LOCAL_FAILURE_THRESHOLD) {
+    localPythDisabledUntil = Date.now() + LOCAL_COOLDOWN_MS;
+    localConsecutiveFailures = 0;
+    if (!didLogLocalDisable) {
+      console.warn('[Pyth] Temporarily disabling remote requests for 5 minutes after repeated failures on localhost.');
+      didLogLocalDisable = true;
+    }
+  }
+}
 
 // Helper to fetch valid Pyth data with robust fallbacks
 async function fetchPyth(path, timeoutMs = 10000, bypassCache = false) {
-  const url = `${HERMES_BASE}/v2${path}`;
+  if (isLocalPythDisabled()) {
+    return null;
+  }
+
   // Add cache-busting param when bypassing cache to ensure unique request keys
   const finalPath = bypassCache ? `${path}${path.includes('?') ? '&' : '?'}_t=${Date.now()}` : path;
   const finalUrl = `${HERMES_BASE}/v2${finalPath}`;
+
   try {
-    return await fetchWithCorsProxy(finalUrl, {
+    const data = await fetchWithCorsProxy(finalUrl, {
       cloudflareProxy: '/api/pyth?path=',
-      timeoutMs
+      timeoutMs,
+      // Avoid hammering public proxies on localhost when they are rate-limited.
+      maxPublicProxyAttempts: HttpClient.isProductionHost() ? 0 : 1
     });
+    notePythSuccess();
+    return data;
   } catch (e) {
-    // console.warn(`[Pyth] Fetch failed for ${path}:`, e);
+    notePythFailure();
     return null;
   }
 }
@@ -85,6 +122,7 @@ export async function getPriceFeeds(timeoutMs = 15000) {
 }
 
 export async function getLatestByFeedIds(feedIds, timeoutMs = 10000, bypassCache = false) {
+  if (isLocalPythDisabled()) return {};
   if (!Array.isArray(feedIds) || feedIds.length === 0) return {};
   const normalizedIds = feedIds.map(id => id.toLowerCase().startsWith('0x') ? id.toLowerCase() : `0x${id.toLowerCase()}`);
   const idsParam = normalizedIds.map(id => `ids[]=${id}`).join('&');
@@ -101,6 +139,7 @@ export async function getLatestByFeedIds(feedIds, timeoutMs = 10000, bypassCache
 }
 
 export async function getAtTimestampByFeedIds(feedIds, timestampSeconds, timeoutMs = 10000) {
+  if (isLocalPythDisabled()) return {};
   if (!Array.isArray(feedIds) || feedIds.length === 0) return {};
   const normalizedIds = feedIds.map(id => id.toLowerCase().startsWith('0x') ? id.toLowerCase() : `0x${id.toLowerCase()}`);
   const idsParam = normalizedIds.map(id => `ids[]=${id}`).join('&');
@@ -117,7 +156,7 @@ export async function getAtTimestampByFeedIds(feedIds, timestampSeconds, timeout
 }
 
 // Global Concurrency Queue
-const MAX_CONCURRENCY = 6;
+const MAX_CONCURRENCY = HttpClient.isProductionHost() ? 6 : 2;
 const globalQueue = []; // Array of functions returning promises
 let activeRequests = 0;
 
@@ -246,9 +285,18 @@ export async function getBatch24hPriceHistory(feedIds, points = 48, endTime = Da
     return results;
   }
 
+  if (isLocalPythDisabled()) {
+    Object.keys(results).forEach(id => {
+      results[id].sort((a, b) => a.timestamp - b.timestamp);
+    });
+    return results;
+  }
+
   // console.log(`[Pyth] Smart Cache: Fetching ${timestampsToFetch.length}/${timestamps.length} timestamps from API.`);
 
   const processTimestamp = async (ts) => {
+    if (isLocalPythDisabled()) return;
+
     const feedsNeeded = missingDataMap[ts];
     if (!feedsNeeded || feedsNeeded.length === 0) return;
 

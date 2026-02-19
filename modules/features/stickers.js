@@ -240,15 +240,15 @@ function createStickySticker(imageSrc, x, y, width = null, height = null, rotati
     // Control buttons
     const resizeHandle = document.createElement('div');
     resizeHandle.className = 'resize-handle';
-    resizeHandle.textContent = '[RESIZE]';
+    resizeHandle.textContent = 'Resize';
 
     const rotateHandle = document.createElement('div');
     rotateHandle.className = 'rotate-handle';
-    rotateHandle.textContent = '[ROTATE]';
+    rotateHandle.textContent = 'Rotate';
 
     const removeBtn = document.createElement('button');
     removeBtn.className = 'remove-btn';
-    removeBtn.textContent = '[REMOVE]';
+    removeBtn.textContent = 'Remove';
     removeBtn.onclick = (e) => {
         e.stopPropagation();
         removeStickySticker(id);

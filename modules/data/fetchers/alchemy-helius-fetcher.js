@@ -18,26 +18,31 @@ export class AlchemyHeliusFetcher {
 
             let rows = [];
             for (const token of alchemyTokens) {
+                const walletId = token.address || token.walletAddress || 'unknown';
                 rows.push({
+                    asset: token.tokenSymbol || 'Unknown',
                     exchange: token.blockchain,
                     amount: token.balance,
                     price: token.tokenPrice || 0,
                     value: token.balanceUsd || 0,
                     change24h: null,
                     pnl: null,
-                    _changeDetectionKey: `${token.tokenSymbol}_${token.blockchain}_${token.walletAddress || 'unknown'}`
+                    _source: 'Alchemy/Helius',
+                    _changeDetectionKey: `${token.tokenSymbol || 'Unknown'}_${token.blockchain}_${walletId}`
                 });
             }
             for (const token of heliusTokens) {
+                const walletId = token.address || token.walletAddress || 'unknown';
                 rows.push({
-                    asset: token.tokenSymbol,
+                    asset: token.tokenSymbol || 'Unknown',
                     exchange: token.blockchain,
                     amount: token.balance,
                     price: token.tokenPrice || 0,
                     value: token.balanceUsd || 0,
                     change24h: null,
                     pnl: null,
-                    _changeDetectionKey: `${token.tokenSymbol}_${token.blockchain}_${token.walletAddress || 'unknown'}`
+                    _source: 'Alchemy/Helius',
+                    _changeDetectionKey: `${token.tokenSymbol || 'Unknown'}_${token.blockchain}_${walletId}`
                 });
             }
 
@@ -49,7 +54,7 @@ export class AlchemyHeliusFetcher {
 
             this.renderer.appendPositions(rows, 'Alchemy/Helius', {
                 removeFilter: (p) => {
-                    return p.exchange && p.exchange !== 'HL Perps' && p.exchange !== 'HL Spot' && p.exchange !== 'Lighter' && p.exchange !== 'Lighter Spot' && p.exchange !== 'Bitcoin' && p.exchange !== 'Zcash' && !p.exchange.includes('HL Perps') && !p.exchange.includes('HL Spot') && !p.exchange.includes('Lighter');
+                    return p && p._source === 'Alchemy/Helius';
                 }
             });
         } catch (e) {

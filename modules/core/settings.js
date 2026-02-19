@@ -69,14 +69,14 @@ export function getDefaultSettings() {
     enableRealTimeUpdates: true,
     realTimeUpdateInterval: 5, // seconds
     heroPnLMode: 'total', // 'total' or '24h'
-    hideSnowBtn: false,
-    hideRainBtn: false,
+    hideSnowBtn: true,
+    hideRainBtn: true,
     hideThemeBtn: false,
     hideAmountsBtn: false,
-    hideFontSize: false,
+    hideFontSize: true,
     showCompactBtn: true,
-    showStickersBtn: true,
-    hideDonateBtn: false,
+    hideStickersBtn: true,
+    hideDonateBtn: true,
     showSettingsBtn: true,
     hiddenAssets: [], // Array of hidden asset keys: "ASSET_EXCHANGE"
     rainEnabled: false,

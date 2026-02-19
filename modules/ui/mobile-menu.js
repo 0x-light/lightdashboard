@@ -3,6 +3,17 @@
 // Store scroll position when menu opens (position: fixed resets scroll)
 let savedScrollPosition = 0;
 
+function getPinnedScrollPosition() {
+  const topValue = document.body.style.top;
+  if (!topValue) return savedScrollPosition;
+
+  const parsed = parseInt(topValue, 10);
+  if (Number.isFinite(parsed)) {
+    return Math.abs(parsed);
+  }
+  return savedScrollPosition;
+}
+
 export function setupMobileMenu() {
   const mobileMenuBtn = document.getElementById('newMobileMenuBtn');
   const mobileMenu = document.getElementById('newMobileMenu');
@@ -24,9 +35,11 @@ export function setupMobileMenu() {
     mobileMenu.classList.remove('active');
     document.body.classList.remove('mobile-menu-open');
     document.body.classList.remove('modal-open');
+    const restoreTo = getPinnedScrollPosition();
     // Restore scroll position
     document.body.style.top = '';
-    window.scrollTo(0, savedScrollPosition);
+    window.scrollTo(0, restoreTo);
+    savedScrollPosition = restoreTo;
   };
 
   if (mobileMenuBtn) {
@@ -52,9 +65,11 @@ export function syncMobileButton(desktopId, mobileId, closeMenuAfter = true) {
         mobileMenu.classList.remove('active');
         document.body.classList.remove('mobile-menu-open');
         document.body.classList.remove('modal-open');
+        const restoreTo = getPinnedScrollPosition();
         // Restore scroll position
         document.body.style.top = '';
-        window.scrollTo(0, savedScrollPosition);
+        window.scrollTo(0, restoreTo);
+        savedScrollPosition = restoreTo;
       }
       desktop.click();
     });
@@ -64,13 +79,18 @@ export function syncMobileButton(desktopId, mobileId, closeMenuAfter = true) {
 // Utility function to close mobile menu from anywhere in the app
 export function closeMobileMenuWithScroll() {
   const mobileMenu = document.getElementById('newMobileMenu');
+  const wasOpen = !!mobileMenu?.classList.contains('active') || document.body.classList.contains('mobile-menu-open');
+  const restoreTo = getPinnedScrollPosition();
   if (mobileMenu) {
     mobileMenu.classList.remove('active');
   }
   document.body.classList.remove('mobile-menu-open');
   document.body.classList.remove('modal-open');
   document.body.style.top = '';
-  window.scrollTo(0, savedScrollPosition);
+  if (wasOpen || restoreTo > 0) {
+    window.scrollTo(0, restoreTo);
+  }
+  savedScrollPosition = restoreTo;
 }
 
 // Sync mobile theme select with desktop
@@ -88,6 +108,5 @@ export function syncThemeSelects() {
 }
 
 export default { setupMobileMenu, syncMobileButton, syncThemeSelects };
-
 
 

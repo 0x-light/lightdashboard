@@ -12,10 +12,10 @@ function authHeaders(apiKey) {
   };
 }
 
-function buildUrl(path, params, apiKey) {
+function buildUrl(path, params = {}) {
   if (USE_PROXY) {
     // Use proxy in production to avoid CORS
-    const queryParams = new URLSearchParams({ apiKey, path, ...params });
+    const queryParams = new URLSearchParams({ path, ...params });
     return `/api/zerion?${queryParams.toString()}`;
   } else {
     // Direct API call in development
@@ -35,8 +35,8 @@ export async function getWalletPositions(wallet, apiKey, { timeoutMs = 15000, in
     params['filter[trash]'] = trashFilter;
   }
   
-  const url = buildUrl(`wallets/${wallet}/positions/`, params, apiKey);
-  const headers = USE_PROXY ? {} : authHeaders(apiKey);
+  const url = buildUrl(`wallets/${wallet}/positions/`, params);
+  const headers = USE_PROXY ? { 'x-proxy-api-key': apiKey } : authHeaders(apiKey);
   
   return await HttpClient.getJson(url, { headers, timeoutMs }).catch(() => null);
 }
@@ -49,17 +49,17 @@ export async function getWalletNfts(wallet, apiKey, { timeoutMs = 15000 } = {}) 
     'filter[trash]': 'only_non_trash'
   };
   
-  const url = buildUrl(`wallets/${wallet}/nft-positions/`, params, apiKey);
-  const headers = USE_PROXY ? {} : authHeaders(apiKey);
+  const url = buildUrl(`wallets/${wallet}/nft-positions/`, params);
+  const headers = USE_PROXY ? { 'x-proxy-api-key': apiKey } : authHeaders(apiKey);
   
   return await HttpClient.getJson(url, { headers, timeoutMs }).catch(() => null);
 }
 
 export async function getWalletPnl(wallet, apiKey, { timeoutMs = 15000 } = {}) {
-  const url = `${BASE}/wallets/${wallet}/pnl?currency=usd`;
-  return await HttpClient.getJson(url, { headers: authHeaders(apiKey), timeoutMs }).catch(() => null);
+  const url = buildUrl(`wallets/${wallet}/pnl`, { currency: 'usd' });
+  const headers = USE_PROXY ? { 'x-proxy-api-key': apiKey } : authHeaders(apiKey);
+  return await HttpClient.getJson(url, { headers, timeoutMs }).catch(() => null);
 }
 
 export default { getWalletPositions, getWalletNfts, getWalletPnl };
-
 

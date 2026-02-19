@@ -149,13 +149,15 @@ export async function checkWeatherAndAutoEnable() {
     
     const settings = JSON.parse(settingsStr);
     const weather = settings?.weather;
-    
-    if (!weather || !weather.lat || !weather.lon) {
+
+    const lat = Number(weather?.lat);
+    const lon = Number(weather?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       return;
     }
     
     const response = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${weather.lat}&longitude=${weather.lon}&current=weather_code,precipitation&timezone=auto`,
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,precipitation&timezone=auto`,
       { signal: AbortSignal.timeout(5000) }
     );
     
@@ -189,4 +191,3 @@ if (canvas) {
 }
 
 export default { toggleRain, toggleSnow, checkWeatherAndAutoEnable };
-

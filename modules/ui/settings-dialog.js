@@ -41,13 +41,13 @@ const FIELD_MAPPINGS = {
   newMinBalanceThreshold: { key: 'minBalanceThreshold', type: 'float', default: 100 },
 
   // Menu visibility
-  newHideSnowBtn: { key: 'hideSnowBtn', type: 'checkbox', default: false },
-  newHideRainBtn: { key: 'hideRainBtn', type: 'checkbox', default: false },
-  newHideFontSize: { key: 'hideFontSize', type: 'checkbox', default: false },
+  newHideSnowBtn: { key: 'hideSnowBtn', type: 'checkbox', default: true },
+  newHideRainBtn: { key: 'hideRainBtn', type: 'checkbox', default: true },
+  newHideFontSize: { key: 'hideFontSize', type: 'checkbox', default: true },
   newHideThemeBtn: { key: 'hideThemeBtn', type: 'checkbox', default: false },
   newHideAmountsBtn: { key: 'hideAmountsBtn', type: 'checkbox', default: false },
   newShowCompactBtn: { key: 'showCompactBtn', type: 'checkbox', default: true },
-  newHideDonateBtn: { key: 'hideDonateBtn', type: 'checkbox', default: false },
+  newHideDonateBtn: { key: 'hideDonateBtn', type: 'checkbox', default: true },
 
   // Features
   newEnableKeyboardShortcuts: { key: 'enableKeyboardShortcuts', type: 'checkbox', default: false }
@@ -99,7 +99,14 @@ function saveFormToSettings(settings) {
     if (mapping.type === 'checkbox') {
       value = el.checked;
     } else if (mapping.type === 'float') {
-      value = parseFloat(el.value) || mapping.default || 0;
+      const parsed = parseFloat(el.value);
+      if (Number.isFinite(parsed)) {
+        value = parsed;
+      } else if (mapping.subKey === 'lat' || mapping.subKey === 'lon') {
+        value = null;
+      } else {
+        value = mapping.default ?? 0;
+      }
     } else {
       value = el.value;
     }
@@ -144,7 +151,7 @@ export function setupSettingsDialog({ onSave, onClose }) {
     if (importMode && exportArea && importBtn) {
       exportArea.style.display = 'none';
       exportArea.setAttribute('readonly', 'readonly');
-      importBtn.textContent = '[IMPORT]';
+      importBtn.textContent = 'Import';
       importMode = false;
     }
     settingsDialog.style.display = 'none';
@@ -170,7 +177,7 @@ export function setupSettingsDialog({ onSave, onClose }) {
       try {
         await navigator.clipboard.writeText(exportData);
         const originalText = exportBtn.textContent;
-        exportBtn.textContent = '[COPIED!]';
+        exportBtn.textContent = 'Copied!';
         setTimeout(() => { exportBtn.textContent = originalText; }, 1500);
       } catch (err) { /* Clipboard failed but text is selected */ }
     });
@@ -181,17 +188,17 @@ export function setupSettingsDialog({ onSave, onClose }) {
     importBtn.addEventListener('click', () => {
       if (!importMode) {
         exportArea.value = '';
-        exportArea.placeholder = 'Paste exported settings here, then click [SAVE & RELOAD] at the bottom';
+        exportArea.placeholder = 'Paste exported settings here, then click Save & Reload at the bottom';
         exportArea.style.display = 'block';
         exportArea.removeAttribute('readonly');
         exportArea.focus();
-        importBtn.textContent = '[CANCEL IMPORT]';
+        importBtn.textContent = 'Cancel Import';
         importMode = true;
       } else {
         exportArea.style.display = 'none';
         exportArea.setAttribute('readonly', 'readonly');
         exportArea.value = '';
-        importBtn.textContent = '[IMPORT]';
+        importBtn.textContent = 'Import';
         importMode = false;
       }
     });
@@ -201,7 +208,7 @@ export function setupSettingsDialog({ onSave, onClose }) {
   if (forceUpdateBtn) {
     forceUpdateBtn.addEventListener('click', async () => {
       const originalText = forceUpdateBtn.textContent;
-      forceUpdateBtn.textContent = '[CLEARING...]';
+      forceUpdateBtn.textContent = 'Clearing...';
       forceUpdateBtn.disabled = true;
       try {
         // 1. Save user settings BEFORE clearing anything
@@ -272,7 +279,7 @@ export function setupSettingsDialog({ onSave, onClose }) {
         window.location.replace(url.toString());
       } catch (error) {
         console.error('[Force Update] Error:', error);
-        forceUpdateBtn.textContent = '[ERROR - TRY AGAIN]';
+        forceUpdateBtn.textContent = 'Error - Try Again';
         forceUpdateBtn.disabled = false;
         setTimeout(() => { forceUpdateBtn.textContent = originalText; }, 2000);
       }
@@ -286,7 +293,7 @@ export function setupSettingsDialog({ onSave, onClose }) {
         alert('Geolocation is not supported by your browser');
         return;
       }
-      useMyLocationBtn.textContent = '[GETTING LOCATION...]';
+      useMyLocationBtn.textContent = 'Getting Location...';
       useMyLocationBtn.disabled = true;
       try {
         const position = await new Promise((resolve, reject) => {
@@ -309,12 +316,12 @@ export function setupSettingsDialog({ onSave, onClose }) {
             if (city && cityInput) cityInput.value = city;
           }
         } catch (err) { /* City name is optional */ }
-        useMyLocationBtn.textContent = '[USE MY LOCATION]';
+        useMyLocationBtn.textContent = 'Use My Location';
         useMyLocationBtn.disabled = false;
       } catch (err) {
         console.error('Location denied:', err);
         alert('Could not get your location. Please check browser permissions.');
-        useMyLocationBtn.textContent = '[USE MY LOCATION]';
+        useMyLocationBtn.textContent = 'Use My Location';
         useMyLocationBtn.disabled = false;
       }
     });
@@ -333,7 +340,7 @@ export function setupSettingsDialog({ onSave, onClose }) {
           invalidateSettingsCache();
           exportArea.style.display = 'none';
           exportArea.setAttribute('readonly', 'readonly');
-          importBtn.textContent = '[IMPORT]';
+          importBtn.textContent = 'Import';
           importMode = false;
           closeSettings();
           location.reload();
@@ -365,14 +372,15 @@ export function setupSettingsDialog({ onSave, onClose }) {
 
 export function applyVisibilityClasses(settings) {
   const body = document.body;
-  body.classList.toggle('hide-snow-btn', settings.hideSnowBtn ?? false);
-  body.classList.toggle('hide-rain-btn', settings.hideRainBtn ?? false);
-  body.classList.toggle('hide-font-size', settings.hideFontSize ?? false);
+  body.classList.toggle('hide-snow-btn', settings.hideSnowBtn ?? true);
+  body.classList.toggle('hide-rain-btn', settings.hideRainBtn ?? true);
+  body.classList.toggle('hide-font-size', settings.hideFontSize ?? true);
   body.classList.toggle('hide-theme-btn', settings.hideThemeBtn ?? false);
   body.classList.toggle('hide-amounts-btn', settings.hideAmountsBtn ?? false);
-  body.classList.toggle('hide-donate-btn', settings.hideDonateBtn ?? false);
+  body.classList.toggle('hide-donate-btn', settings.hideDonateBtn ?? true);
   body.classList.toggle('hide-watchlist', settings.hideWatchlist ?? false);
   body.classList.toggle('hide-comic', settings.hideComic ?? false);
+  body.classList.toggle('mono-pnl', !(settings.useColoredPnL ?? false));
   body.classList.toggle('no-charts', !(settings.showPriceChart ?? true));
 }
 
@@ -396,6 +404,5 @@ export function applyAlignment(settings) {
 }
 
 export default { setupSettingsDialog, getSettings, invalidateSettingsCache, applyVisibilityClasses, applyAlignment, applyFont };
-
 
 

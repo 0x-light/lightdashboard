@@ -49,23 +49,41 @@ export class ManualFetcher {
                 }
             }
 
-            // Process Custom positions
+            // Process custom positions (supports both legacy and current schema)
             for (const pos of customPositions) {
-                const amount = parseFloat(pos.amount || 0);
-                const price = parseFloat(pos.price || 0);
-                const value = amount * price;
+                const asset = String(pos.symbol || pos.name || '').trim();
+                if (!asset) continue;
+
+                const rawAmount = Number(pos.amount);
+                const rawPrice = Number(pos.price);
+                const rawValue = Number(pos.value);
+
+                // Legacy custom entries are stored as { name, value }.
+                // Default to amount=1 and derive price from value when needed.
+                const amount = Number.isFinite(rawAmount) && rawAmount !== 0 ? rawAmount : 1;
+                let price = Number.isFinite(rawPrice) ? rawPrice : 0;
+                let value = Number.isFinite(rawValue) ? rawValue : 0;
+
+                if (value > 0 && (!Number.isFinite(rawPrice) || rawPrice <= 0)) {
+                    price = value / Math.abs(amount);
+                } else if (value <= 0 && price > 0) {
+                    value = Math.abs(amount) * price;
+                }
+
+                if (!Number.isFinite(value) || value <= 0) continue;
+                if (!Number.isFinite(price) || price < 0) price = 0;
 
                 rows.push({
-                    asset: pos.symbol,
+                    asset,
                     exchange: 'Manual (Custom)',
-                    amount: amount,
-                    price: price,
-                    value: value,
+                    amount,
+                    price,
+                    value,
                     change24h: null,
                     pnl: null,
                     isManual: true,
                     manualType: 'custom',
-                    _changeDetectionKey: `MANUAL_CUSTOM_${pos.symbol}`
+                    _changeDetectionKey: `MANUAL_CUSTOM_${asset}`
                 });
             }
 

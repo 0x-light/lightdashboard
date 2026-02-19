@@ -18,11 +18,11 @@
 
     <!-- Favicon -->
     <link rel="icon" href="/favicon.png" type="image/png">
-    <link rel="icon" href="/favicon.png" type="image/png" sizes="192x192">
-    <link rel="icon" href="/favicon.png" type="image/png" sizes="512x512">
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192">
+    <link rel="icon" href="/icon-512.png" type="image/png" sizes="512x512">
 
     <!-- iOS/Apple -->
-    <link rel="apple-touch-icon" href="/favicon.png">
+    <link rel="apple-touch-icon" href="/icon-180.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -30,18 +30,19 @@
     <meta name="theme-color" content="#000000" id="themeColorMeta">
 
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json?v=2.9.5">
+    <link rel="manifest" href="/manifest.json?v=2.9.10">
 
     <!-- Cache busting: update version number on each deployment -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="./styles.css?v=2.9.5">
+    <link rel="stylesheet" href="./styles.css?v=2.9.10">
     <!-- Apply theme synchronously to prevent flash of wrong theme -->
     <script>
         (function () {
             try {
-                var settings = JSON.parse(localStorage.getItem('dashboardSettings') || '{}');
+                var rawSettings = localStorage.getItem('myDashboardSettings.v1') || localStorage.getItem('dashboardSettings') || '{}';
+                var settings = JSON.parse(rawSettings);
                 var theme = settings.theme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
                 document.documentElement.dataset.theme = theme;
 
@@ -103,50 +104,131 @@
 
         <header class="app-header">
             <div class="greeting-container">
-                <h1 id="newGreeting" class="greeting">VIEWPORT</h1>
+                <h1 id="newGreeting" class="greeting">Viewport</h1>
             </div>
-            <button id="newMobileMenuBtn" class="btn-text mobile-menu-btn">[MENU]</button>
+            <button id="newMobileMenuBtn" class="btn-text mobile-menu-btn">Menu</button>
             <div class="header-actions">
-                <button id="newToggleSnowBtn" class="btn-text">[SNOW ON]</button>
-                <button id="newToggleRainBtn" class="btn-text">[RAIN ON]</button>
+                <button id="newToggleSnowBtn" class="btn-text">Snow On</button>
+                <button id="newToggleRainBtn" class="btn-text">Rain On</button>
                 <div class="font-size-controls">
-                    <button id="newDecreaseFontBtn" class="btn-text">[-</button>
+                    <button id="newDecreaseFontBtn" class="btn-text">-</button>
                     <span id="newFontSizeDisplay" class="btn-text">15px</span>
-                    <button id="newIncreaseFontBtn" class="btn-text">+]</button>
+                    <button id="newIncreaseFontBtn" class="btn-text">+</button>
                 </div>
+                <button id="newToggleAmountsBtn" class="btn-text">Hide Amounts</button>
                 <span class="theme-select-wrapper">
                     <select id="newThemeSelect" class="theme-select-btn">
                         <option value="light">Light</option>
                         <option value="dark">Dark</option>
-                        <option value="matrix">Matrix</option>
+                        <option value="bloomberg">Bloomberg</option>
                         <option value="ft">FT</option>
-                        <option value="bloomberg">Bloomberg Terminal</option>
-                        <option value="daily">Newspaper</option>
-                        <option value="eva01">EVA01</option>
-                        <option value="lcars">LCARS</option>
-                        <option value="as400">MS-DOS</option>
-                        <option value="astronomy">Astronomy</option>
-                        <option value="halloween">Halloween</option>
-                        <option value="christmas">Christmas</option>
-                        <option value="cyberpunk">Cyberpunk</option>
-                        <option value="retro">Retro</option>
-                        <option value="cozy-wooden">Wood</option>
-                        <option value="ntsc-bw">B&W NTSC TV (CGA)</option>
-                        <option value="amber-low">Low-res Amber TTL (CGA)</option>
-                        <option value="vga-white">White Mono VGA</option>
-                        <option value="paper-white">Paper White VGA</option>
-                        <option value="vga-amber">Amber VGA</option>
-                        <option value="p7-phosphor">P7 Phosphor</option>
-                        <option value="yellow-terminal">Yellow Terminal</option>
-                        <option value="bioluminescence">Bioluminescence</option>
-                        <option value="safe-blue">Blueprint</option>
+                        <option value="new-dark">New Dark</option>
+                        <option value="nocturne">Nocturne</option>
+                        <option value="dawn">Dawn</option>
+                        <option value="moss">Moss</option>
+                        <option value="ember">Ember</option>
+                        <option value="new-midnight">Midnight</option>
+                        <option value="fog">Fog</option>
+                        <option value="copper">Copper</option>
+                        <option value="arctic">Arctic</option>
+                        <option value="bruise">Bruise</option>
+                        <option value="kiln">Kiln</option>
+                        <option value="brine">Brine</option>
+                        <option value="glacial">Glacial</option>
+                        <option value="alabaster">Alabaster</option>
+                        <option value="obsidian">Obsidian</option>
+                        <option value="oxide">Oxide</option>
+                        <option value="parchment">Parchment</option>
+                        <option value="slate">Slate</option>
+                        <option value="bone">Bone</option>
+                        <option value="carbon">Carbon</option>
+                        <option value="verdant">Verdant</option>
+                        <option value="porcelain">Porcelain</option>
+                        <option value="terra">Terra</option>
+                        <option value="caspian">Caspian</option>
+                        <option value="wool">Wool</option>
+                        <option value="laurel">Laurel</option>
+                        <option value="umber">Umber</option>
+                        <option value="onyx">Onyx</option>
+                        <option value="marine">Marine</option>
+                        <option value="ivory">Ivory</option>
+                        <option value="new-blueprint">Blueprint</option>
+                        <option value="new-amber">Amber</option>
+                        <option value="mint">Mint</option>
+                        <option value="ocean">Ocean</option>
+                        <option value="phosphor">Phosphor</option>
+                        <option value="plasma">Plasma</option>
+                        <option value="crt">CRT</option>
+                        <option value="lcd">LCD</option>
+                        <option value="nixie">Nixie</option>
+                        <option value="vectrex">Vectrex</option>
+                        <option value="commodore">Commodore</option>
+                        <option value="gameboy">Game Boy</option>
+                        <option value="hypercard">HyperCard</option>
+                        <option value="minitel">Minitel</option>
+                        <option value="xerox">Xerox</option>
+                        <option value="dotmatrix">Dot Matrix</option>
+                        <option value="patriot">Patriot</option>
+                        <option value="azulejo">Azulejo</option>
+                        <option value="bauhaus">Bauhaus</option>
+                        <option value="tiffany">Tiffany</option>
+                        <option value="noir">Noir</option>
+                        <option value="rothko">Rothko</option>
+                        <option value="mainframe">Mainframe</option>
+                        <option value="workbench">Workbench</option>
+                        <option value="vt220">VT220</option>
+                        <option value="spectrum">Spectrum</option>
+                        <option value="scope">Scope</option>
+                        <option value="nextstep">NeXTSTEP</option>
+                        <option value="hpcalc">HP Calc</option>
+                        <option value="indigo">Indigo</option>
+                        <option value="trs80">TRS-80</option>
+                        <option value="radar">Radar</option>
+                        <option value="atarist">Atari ST</option>
+                        <option value="lisa">Lisa</option>
+                        <option value="fairlight">Fairlight</option>
+                        <option value="sharp">Sharp</option>
+                        <option value="tektronix">Tektronix</option>
+                        <option value="thomson">Thomson</option>
+                        <option value="plato">PLATO</option>
+                        <option value="bbcmicro">BBC Micro</option>
+                        <option value="kaypro">Kaypro</option>
+                        <option value="wang">Wang</option>
+                        <option value="amstrad">Amstrad</option>
+                        <option value="coco">CoCo</option>
+                        <option value="osborne">Osborne</option>
+                        <option value="adm3a">ADM-3A</option>
+                        <option value="sparc">SPARC</option>
+                        <option value="ti99">TI-99</option>
+                        <option value="apollo">Apollo</option>
+                        <option value="olivetti">Olivetti</option>
+                        <option value="heathkit">Heathkit</option>
+                        <option value="hal">HAL 9000</option>
+                        <option value="nostromo">Nostromo</option>
+                        <option value="tron">Tron</option>
+                        <option value="new-matrix">Matrix</option>
+                        <option value="new-lcars">LCARS</option>
+                        <option value="blade">Blade Runner</option>
+                        <option value="wargames">WarGames</option>
+                        <option value="alien">Alien</option>
+                        <option value="robocop">RoboCop</option>
+                        <option value="neuromancer">Neuromancer</option>
+                        <option value="tardis">TARDIS</option>
+                        <option value="deathstar">Death Star</option>
+                        <option value="predator">Predator</option>
+                        <option value="oblivion">Oblivion</option>
+                        <option value="fallout">Fallout</option>
+                        <option value="akira">Akira</option>
+                        <option value="cowboy">Cowboy Bebop</option>
+                        <option value="jarvis">J.A.R.V.I.S.</option>
+                        <option value="westworld">Westworld</option>
+                        <option value="shodan">SHODAN</option>
                     </select>
-                    <span class="theme-select-label">[THEME]</span>
+                    <span class="theme-select-label">Theme</span>
                 </span>
-                <button id="newToggleAmountsBtn" class="btn-text">[HIDE AMOUNTS]</button>
-                <button id="newStickersBtn" class="btn-text">[STICKERS]</button>
-                <button id="newDonateBtn" class="btn-text">[DONATE]</button>
-                <button id="newSettingsBtn" class="btn-text">[SETTINGS]</button>
+                <button id="newStickersBtn" class="btn-text">Stickers</button>
+                <button id="newDonateBtn" class="btn-text">Donate</button>
+                <button id="newSettingsBtn" class="btn-text">Settings</button>
             </div>
         </header>
 
@@ -154,50 +236,131 @@
         <div id="newMobileMenu" class="mobile-menu">
             <div class="mobile-menu-header">
                 <h1 class="greeting">Viewport</h1>
-                <button id="newCloseMobileMenuBtn" class="btn-text">[CLOSE]</button>
+                <button id="newCloseMobileMenuBtn" class="btn-text">Close</button>
             </div>
             <div class="mobile-menu-content">
-                <button id="newToggleSnowBtnMobile" class="btn-text">[SNOW ON]</button>
-                <button id="newToggleRainBtnMobile" class="btn-text">[RAIN ON]</button>
+                <button id="newToggleSnowBtnMobile" class="btn-text">Snow On</button>
+                <button id="newToggleRainBtnMobile" class="btn-text">Rain On</button>
                 <div class="font-size-controls">
-                    <button id="newDecreaseFontBtnMobile" class="btn-text">[-</button>
+                    <button id="newDecreaseFontBtnMobile" class="btn-text">-</button>
                     <span id="newFontSizeDisplayMobile" class="btn-text">15px</span>
-                    <button id="newIncreaseFontBtnMobile" class="btn-text">+]</button>
+                    <button id="newIncreaseFontBtnMobile" class="btn-text">+</button>
                 </div>
+                <button id="newToggleAmountsBtnMobile" class="btn-text">Hide Amounts</button>
                 <span class="theme-select-wrapper">
                     <select id="newThemeSelectMobile" class="theme-select-btn" style="padding:0!important;">
                         <option value="light">Light</option>
                         <option value="dark">Dark</option>
-                        <option value="matrix">Matrix</option>
+                        <option value="bloomberg">Bloomberg</option>
                         <option value="ft">FT</option>
-                        <option value="bloomberg">Bloomberg Terminal</option>
-                        <option value="daily">Newspaper</option>
-                        <option value="eva01">EVA01</option>
-                        <option value="lcars">LCARS</option>
-                        <option value="as400">MS-DOS</option>
-                        <option value="astronomy">Astronomy</option>
-                        <option value="halloween">Halloween</option>
-                        <option value="christmas">Christmas</option>
-                        <option value="cyberpunk">Cyberpunk</option>
-                        <option value="retro">Retro</option>
-                        <option value="cozy-wooden">Wood</option>
-                        <option value="ntsc-bw">B&W NTSC TV (CGA)</option>
-                        <option value="amber-low">Low-res Amber TTL (CGA)</option>
-                        <option value="vga-white">White Mono VGA</option>
-                        <option value="paper-white">Paper White VGA</option>
-                        <option value="vga-amber">Amber VGA</option>
-                        <option value="p7-phosphor">P7 Phosphor</option>
-                        <option value="yellow-terminal">Yellow Terminal</option>
-                        <option value="bioluminescence">Bioluminescence</option>
-                        <option value="safe-blue">Blueprint</option>
+                        <option value="new-dark">New Dark</option>
+                        <option value="nocturne">Nocturne</option>
+                        <option value="dawn">Dawn</option>
+                        <option value="moss">Moss</option>
+                        <option value="ember">Ember</option>
+                        <option value="new-midnight">Midnight</option>
+                        <option value="fog">Fog</option>
+                        <option value="copper">Copper</option>
+                        <option value="arctic">Arctic</option>
+                        <option value="bruise">Bruise</option>
+                        <option value="kiln">Kiln</option>
+                        <option value="brine">Brine</option>
+                        <option value="glacial">Glacial</option>
+                        <option value="alabaster">Alabaster</option>
+                        <option value="obsidian">Obsidian</option>
+                        <option value="oxide">Oxide</option>
+                        <option value="parchment">Parchment</option>
+                        <option value="slate">Slate</option>
+                        <option value="bone">Bone</option>
+                        <option value="carbon">Carbon</option>
+                        <option value="verdant">Verdant</option>
+                        <option value="porcelain">Porcelain</option>
+                        <option value="terra">Terra</option>
+                        <option value="caspian">Caspian</option>
+                        <option value="wool">Wool</option>
+                        <option value="laurel">Laurel</option>
+                        <option value="umber">Umber</option>
+                        <option value="onyx">Onyx</option>
+                        <option value="marine">Marine</option>
+                        <option value="ivory">Ivory</option>
+                        <option value="new-blueprint">Blueprint</option>
+                        <option value="new-amber">Amber</option>
+                        <option value="mint">Mint</option>
+                        <option value="ocean">Ocean</option>
+                        <option value="phosphor">Phosphor</option>
+                        <option value="plasma">Plasma</option>
+                        <option value="crt">CRT</option>
+                        <option value="lcd">LCD</option>
+                        <option value="nixie">Nixie</option>
+                        <option value="vectrex">Vectrex</option>
+                        <option value="commodore">Commodore</option>
+                        <option value="gameboy">Game Boy</option>
+                        <option value="hypercard">HyperCard</option>
+                        <option value="minitel">Minitel</option>
+                        <option value="xerox">Xerox</option>
+                        <option value="dotmatrix">Dot Matrix</option>
+                        <option value="patriot">Patriot</option>
+                        <option value="azulejo">Azulejo</option>
+                        <option value="bauhaus">Bauhaus</option>
+                        <option value="tiffany">Tiffany</option>
+                        <option value="noir">Noir</option>
+                        <option value="rothko">Rothko</option>
+                        <option value="mainframe">Mainframe</option>
+                        <option value="workbench">Workbench</option>
+                        <option value="vt220">VT220</option>
+                        <option value="spectrum">Spectrum</option>
+                        <option value="scope">Scope</option>
+                        <option value="nextstep">NeXTSTEP</option>
+                        <option value="hpcalc">HP Calc</option>
+                        <option value="indigo">Indigo</option>
+                        <option value="trs80">TRS-80</option>
+                        <option value="radar">Radar</option>
+                        <option value="atarist">Atari ST</option>
+                        <option value="lisa">Lisa</option>
+                        <option value="fairlight">Fairlight</option>
+                        <option value="sharp">Sharp</option>
+                        <option value="tektronix">Tektronix</option>
+                        <option value="thomson">Thomson</option>
+                        <option value="plato">PLATO</option>
+                        <option value="bbcmicro">BBC Micro</option>
+                        <option value="kaypro">Kaypro</option>
+                        <option value="wang">Wang</option>
+                        <option value="amstrad">Amstrad</option>
+                        <option value="coco">CoCo</option>
+                        <option value="osborne">Osborne</option>
+                        <option value="adm3a">ADM-3A</option>
+                        <option value="sparc">SPARC</option>
+                        <option value="ti99">TI-99</option>
+                        <option value="apollo">Apollo</option>
+                        <option value="olivetti">Olivetti</option>
+                        <option value="heathkit">Heathkit</option>
+                        <option value="hal">HAL 9000</option>
+                        <option value="nostromo">Nostromo</option>
+                        <option value="tron">Tron</option>
+                        <option value="new-matrix">Matrix</option>
+                        <option value="new-lcars">LCARS</option>
+                        <option value="blade">Blade Runner</option>
+                        <option value="wargames">WarGames</option>
+                        <option value="alien">Alien</option>
+                        <option value="robocop">RoboCop</option>
+                        <option value="neuromancer">Neuromancer</option>
+                        <option value="tardis">TARDIS</option>
+                        <option value="deathstar">Death Star</option>
+                        <option value="predator">Predator</option>
+                        <option value="oblivion">Oblivion</option>
+                        <option value="fallout">Fallout</option>
+                        <option value="akira">Akira</option>
+                        <option value="cowboy">Cowboy Bebop</option>
+                        <option value="jarvis">J.A.R.V.I.S.</option>
+                        <option value="westworld">Westworld</option>
+                        <option value="shodan">SHODAN</option>
                     </select>
-                    <span class="theme-select-label">[THEME]</span>
+                    <span class="theme-select-label">Theme</span>
                 </span>
-                <button id="newToggleAmountsBtnMobile" class="btn-text">[HIDE AMOUNTS]</button>
 
-                <button id="newStickersBtnMobile" class="btn-text">[STICKERS]</button>
-                <button id="newDonateBtnMobile" class="btn-text">[DONATE]</button>
-                <button id="newSettingsBtnMobile" class="btn-text">[SETTINGS]</button>
+                <button id="newStickersBtnMobile" class="btn-text">Stickers</button>
+                <button id="newDonateBtnMobile" class="btn-text">Donate</button>
+                <button id="newSettingsBtnMobile" class="btn-text">Settings</button>
             </div>
             <div class="mobile-menu-footer">
                 <div id="healthMobile" class="status-info" style="margin-bottom: 16px; font-size: 13px;">
@@ -216,7 +379,7 @@
             <div class="settings-form">
                 <header style="display: flex; justify-content: space-between; align-items: center;">
                     <h3>Settings</h3>
-                    <button id="newCloseSettingsBtn" class="btn-text">[CLOSE]</button>
+                    <button id="newCloseSettingsBtn" class="btn-text">Close</button>
                 </header>
 
                 <section>
@@ -232,12 +395,12 @@
                             between devices
                         </div>
                         <div class="button-row" style="margin-bottom: 8px;">
-                            <button type="button" id="newExportSettingsBtn" class="btn-text">[EXPORT]</button>
-                            <button type="button" id="newImportSettingsBtn" class="btn-text">[IMPORT]</button>
+                            <button type="button" id="newExportSettingsBtn" class="btn-text">Export</button>
+                            <button type="button" id="newImportSettingsBtn" class="btn-text">Import</button>
                         </div>
                         <textarea id="newSettingsExportArea" class="settings-input"
                             style="display: none; font-family: monospace; font-size: 12px; min-height: 100px;"
-                            placeholder="Paste exported settings here, then click [SAVE & RELOAD] at the bottom"
+                            placeholder="Paste exported settings here, then click Save & Reload at the bottom"
                             readonly></textarea>
                     </div>
 
@@ -261,8 +424,7 @@
                                 <input id="newWeatherLon" type="number" step="any" class="settings-input">
                             </label>
                         </div>
-                        <button id="newUseMyLocationBtn" type="button" class="btn-text" style="margin-top: 8px;">[USE MY
-                            LOCATION]</button>
+                        <button id="newUseMyLocationBtn" type="button" class="btn-text" style="margin-top: 8px;">Use My Location</button>
                         <div class="info" style="margin-top: 8px;">Location is used for weather display (optional)</div>
                     </fieldset>
 
@@ -361,6 +523,7 @@
                         <label style="display: block; margin-bottom: 12px;">
                             Font
                             <select id="newFontSelect" class="settings-input" style="width: 100%; margin-top: 4px;">
+                                <option value="system">System</option>
                                 <option value="berkeley">Berkeley Mono</option>
                                 <option value="commit">Commit Mono</option>
                                 <option value="departure">Departure Mono</option>
@@ -438,24 +601,24 @@
                     <div class="help" style="margin-top: 16px;">
                         <div style="margin-bottom: 8px;">Not seeing the latest version? Force clear all caches and
                             reload</div>
-                        <button type="button" id="newForceUpdateBtn" class="btn-text">[FORCE UPDATE]</button>
+                        <button type="button" id="newForceUpdateBtn" class="btn-text">Force Update</button>
                     </div>
                 </section>
                 <footer class="settings-actions">
-                    <button id="newCancelSettingsBtn" class="btn-text">[CANCEL]</button>
-                    <button id="newSaveSettingsBtn" class="btn-text">[SAVE & RELOAD]</button>
+                    <button id="newCancelSettingsBtn" class="btn-text">Cancel</button>
+                    <button id="newSaveSettingsBtn" class="btn-text">Save & Reload</button>
                 </footer>
             </div>
         </div>
         <main class="container">
             <section class="hero">
-                <p id="newSummary" class="hero-summary"><span class="loading-terminal">[...]</span></p>
+                <p id="newSummary" class="hero-summary"><span class="loading-terminal">...</span></p>
             </section>
 
             <section class="data-section" id="positionsSection" style="margin-top: 24px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <h2 class="section-title" style="margin: 0;">Positions</h2>
-                    <button id="newAddPositionBtn" class="btn-text">[+]</button>
+                    <button id="newAddPositionBtn" class="btn-text">+</button>
                 </div>
                 <div class="table-wrapper">
                     <table id="newPositionsTable" class="data-table">
@@ -474,16 +637,16 @@
                         </thead>
                         <tbody id="newPositionsBody">
                             <tr>
-                                <td colspan="9" class="loading"><span class="loading-terminal">[...]</span></td>
+                                <td colspan="9" class="loading"><span class="loading-terminal">...</span></td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
                 <div id="newMobilePositionsContainer" class="mobile-positions-container"></div>
                 <div class="button-row">
-                    <button id="newShowHiddenBtn" class="btn-text">[SHOW &lt;$100]</button>
-                    <button id="newEditListBtn" class="btn-text">[EDIT]</button>
-                    <button id="newCancelEditBtn" class="btn-text" style="display: none;">[CANCEL]</button>
+                    <button id="newShowHiddenBtn" class="btn-text">Show &lt;$100</button>
+                    <button id="newEditListBtn" class="btn-text">Edit</button>
+                    <button id="newCancelEditBtn" class="btn-text" style="display: none;">Cancel</button>
                 </div>
             </section>
 
@@ -491,7 +654,7 @@
             <section class="data-section" id="watchlistSection" style="margin-top: 24px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <h2 class="section-title" style="margin: 0;">Watchlist</h2>
-                    <button id="newAddToWatchlistBtn" class="btn-text">[+]</button>
+                    <button id="newAddToWatchlistBtn" class="btn-text">+</button>
                 </div>
                 <div class="table-wrapper">
                     <table id="newWatchlistTable" class="data-table">
@@ -511,8 +674,8 @@
                     </table>
                 </div>
                 <div class="button-row">
-                    <button id="newEditWatchlistBtn" class="btn-text">[EDIT]</button>
-                    <button id="newCancelWatchlistEditBtn" class="btn-text" style="display: none;">[CANCEL]</button>
+                    <button id="newEditWatchlistBtn" class="btn-text">Edit</button>
+                    <button id="newCancelWatchlistEditBtn" class="btn-text" style="display: none;">Cancel</button>
                 </div>
             </section>
 
@@ -520,11 +683,11 @@
                 <div class="comic-header">
                     <div class="comic-tabs">
                         <button id="newTabCalvin" class="comic-tab active" data-comic="calvinandhobbes">
-                            <span class="tab-desktop">CALVIN & HOBBES</span>
+                            <span class="tab-desktop">Calvin & Hobbes</span>
                             <span class="tab-mobile">C&H</span>
                         </button>
-                        <button id="newTabPeanuts" class="comic-tab" data-comic="peanuts">PEANUTS</button>
-                        <button id="newTabFarside" class="comic-tab" data-comic="farside">THE FAR SIDE</button>
+                        <button id="newTabPeanuts" class="comic-tab" data-comic="peanuts">Peanuts</button>
+                        <button id="newTabFarside" class="comic-tab" data-comic="farside">The Far Side</button>
                     </div>
                 </div>
                 <div class="comic-content">
@@ -532,14 +695,14 @@
                         <div id="newComic">Loading...</div>
                     </div>
                     <div class="calvin-controls-mobile">
-                        <button id="newComicPrevBtnMobile" class="btn-text">[PREV]</button>
-                        <button id="newComicRandomBtnMobile" class="btn-text">[RANDOM]</button>
-                        <button id="newComicNextBtnMobile" class="btn-text">[NEXT]</button>
+                        <button id="newComicPrevBtnMobile" class="btn-text">Prev</button>
+                        <button id="newComicRandomBtnMobile" class="btn-text">Random</button>
+                        <button id="newComicNextBtnMobile" class="btn-text">Next</button>
                     </div>
                     <div class="calvin-controls">
-                        <button id="newComicPrevBtn" class="btn-text">[PREV]</button>
-                        <button id="newComicRandomBtn" class="btn-text">[RANDOM]</button>
-                        <button id="newComicNextBtn" class="btn-text">[NEXT]</button>
+                        <button id="newComicPrevBtn" class="btn-text">Prev</button>
+                        <button id="newComicRandomBtn" class="btn-text">Random</button>
+                        <button id="newComicNextBtn" class="btn-text">Next</button>
                     </div>
                 </div>
             </section>
@@ -550,8 +713,8 @@
     <div id="newWatchlistSearchBackdrop" class="settings-backdrop" style="display: none;"></div>
     <div id="newWatchlistSearchWindow" class="sticker-window" style="display: none;">
         <div class="sticker-window-header">
-            <span>ADD TO WATCHLIST</span>
-            <button id="newCloseWatchlistSearchBtn" class="btn-text">[CLOSE]</button>
+            <span>Add to Watchlist</span>
+            <button id="newCloseWatchlistSearchBtn" class="btn-text">Close</button>
         </div>
         <div class="sticker-window-content">
             <div class="info" style="margin: 0 0 12px 0;">Search for tokens</div>
@@ -566,8 +729,8 @@
     <div id="newDonateBackdrop" class="settings-backdrop" style="display: none;"></div>
     <div id="newDonateWindow" class="sticker-window" style="display: none;">
         <div class="sticker-window-header">
-            <span>DONATE</span>
-            <button id="newCloseDonateBtn" class="btn-text">[CLOSE]</button>
+            <span>Donate</span>
+            <button id="newCloseDonateBtn" class="btn-text">Close</button>
         </div>
         <div class="sticker-window-content">
             <div class="help" style="margin-bottom: 0">Viewport is free for everyone, forever. If you'd like to support
@@ -578,15 +741,15 @@
                     <div class="donate-label">Bitcoin</div>
                     <div class="donate-address">bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt</div>
                     <button class="btn-text copy-address-btn"
-                        data-address="bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt">[COPY
-                        BITCOIN ADDRESS]</button>
+                        data-address="bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt">Copy
+                        Bitcoin Address</button>
                 </div>
                 <div class="donate-address-row">
                     <div class="donate-label">EVM</div>
                     <div class="donate-address">0x002cd0a71c10091d90A19eC98384FDe2923518F9</div>
                     <button class="btn-text copy-address-btn"
-                        data-address="0x002cd0a71c10091d90A19eC98384FDe2923518F9">[COPY
-                        EVM ADDRESS]</button>
+                        data-address="0x002cd0a71c10091d90A19eC98384FDe2923518F9">Copy
+                        EVM Address</button>
                 </div>
                 <div class="donate-address-row">
                     <div class="donate-label">ZCash</div>
@@ -594,15 +757,15 @@
                         u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h
                     </div>
                     <button class="btn-text copy-address-btn"
-                        data-address="u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h">[COPY
-                        ZCASH ADDRESS]</button>
+                        data-address="u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h">Copy
+                        ZCash Address</button>
                 </div>
                 <div class="donate-address-row">
                     <div class="donate-label">Solana</div>
                     <div class="donate-address">AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV</div>
                     <button class="btn-text copy-address-btn"
-                        data-address="AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV">[COPY
-                        SOLANA ADDRESS]</button>
+                        data-address="AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV">Copy
+                        Solana Address</button>
                 </div>
             </div>
         </div>
@@ -612,8 +775,8 @@
     <div id="newAddPositionBackdrop" class="settings-backdrop" style="display: none;"></div>
     <div id="newAddPositionModal" class="sticker-window" style="display: none;">
         <div class="sticker-window-header">
-            <span>ADD POSITION</span>
-            <button id="newCloseAddPositionBtn" class="btn-text">[CLOSE]</button>
+            <span>Add Position</span>
+            <button id="newCloseAddPositionBtn" class="btn-text">Close</button>
         </div>
         <div class="sticker-window-content">
             <div class="help" style="margin: 0 0 12px 0;">Add a manual position using a live price feed, or add a custom
@@ -623,8 +786,8 @@
             <div style="margin-bottom: 16px;">
                 <label style="display: block; margin-bottom: 8px;">Position Type</label>
                 <div class="button-row">
-                    <button id="newAddPositionTypePyth" class="btn-tab active" style="flex: 1;">[LIVE PRICE]</button>
-                    <button id="newAddPositionTypeCustom" class="btn-tab" style="flex: 1;">[CUSTOM ASSET]</button>
+                    <button id="newAddPositionTypePyth" class="btn-tab active" style="flex: 1;">Live Price</button>
+                    <button id="newAddPositionTypeCustom" class="btn-tab" style="flex: 1;">Custom Asset</button>
                 </div>
             </div>
 
@@ -656,7 +819,7 @@
                 <input type="number" id="newAddPositionCustomValue" class="settings-input" placeholder="5000"
                     style="width: 100%; margin-bottom: 16px;" step="any">
             </div>
-            <button id="newSavePositionBtn" class="btn-text btn-primary">[SAVE POSITION]</button>
+            <button id="newSavePositionBtn" class="btn-text btn-primary">Save Position</button>
         </div>
     </div>
 
@@ -664,8 +827,8 @@
     <div id="stickerBackdrop" class="settings-backdrop" style="display: none;"></div>
     <div id="stickerWindow" class="sticker-window" style="display: none;">
         <div class="sticker-window-header">
-            <span>STICKERS</span>
-            <button id="closeStickerWindowBtn" class="btn-text">[CLOSE]</button>
+            <span>Stickers</span>
+            <button id="closeStickerWindowBtn" class="btn-text">Close</button>
         </div>
         <div class="sticker-window-content">
             <div class="help sticker-help-desktop" style="margin-bottom: 8px;">Drag stickers onto the page to place
@@ -679,12 +842,12 @@
         </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.9.6" defer></script>
-    <script type="module" src="./app.js?v=2.9.6" defer></script>
+    <script type="module" src="./modules/app-init.js?v=2.9.10" defer></script>
+    <script type="module" src="./app.js?v=2.9.10" defer></script>
 
     <!-- Service Worker Registration -->
     <script defer>
-        const EXPECTED_VERSION = 'v2.9.6';
+        const EXPECTED_VERSION = 'v2.9.10';
 
         // Skip service worker on localhost for easier development/debugging
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';

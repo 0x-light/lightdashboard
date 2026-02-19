@@ -14,11 +14,30 @@ const MODAL_SELECTORS = [
     '#newMobileMenu'
 ];
 
+function isElementVisible(el) {
+    if (!el) return false;
+    const style = window.getComputedStyle(el);
+    return style.display !== 'none' && style.visibility !== 'hidden';
+}
+
+function getPinnedScrollPosition() {
+    const topValue = document.body.style.top;
+    if (!topValue) return 0;
+    const parsed = parseInt(topValue, 10);
+    return Number.isFinite(parsed) ? Math.abs(parsed) : 0;
+}
+
 // Check if any modal is currently open
 function isModalOpen() {
     for (const selector of MODAL_SELECTORS) {
         const el = document.querySelector(selector);
-        if (el && el.style.display !== 'none' && el.style.display !== '') {
+        if (selector === '#newMobileMenu') {
+            if (el?.classList.contains('active') || document.body.classList.contains('mobile-menu-open')) {
+                return true;
+            }
+            continue;
+        }
+        if (isElementVisible(el)) {
             return true;
         }
     }
@@ -37,7 +56,7 @@ function closeModals() {
     // Settings
     const settingsDialog = document.getElementById('newSettingsDialog');
     const settingsBackdrop = document.getElementById('newSettingsBackdrop');
-    if (settingsDialog?.style.display !== 'none') {
+    if (isElementVisible(settingsDialog)) {
         settingsDialog.style.display = 'none';
         if (settingsBackdrop) settingsBackdrop.style.display = 'none';
         document.body.classList.remove('modal-open');
@@ -47,7 +66,7 @@ function closeModals() {
     // Watchlist search
     const watchlistWindow = document.getElementById('newWatchlistSearchWindow');
     const watchlistBackdrop = document.getElementById('newWatchlistSearchBackdrop');
-    if (watchlistWindow?.style.display !== 'none') {
+    if (isElementVisible(watchlistWindow)) {
         watchlistWindow.style.display = 'none';
         if (watchlistBackdrop) watchlistBackdrop.style.display = 'none';
         const input = document.getElementById('newWatchlistSearchInput');
@@ -64,7 +83,7 @@ function closeModals() {
     // Donate
     const donateWindow = document.getElementById('newDonateWindow');
     const donateBackdrop = document.getElementById('newDonateBackdrop');
-    if (donateWindow?.style.display !== 'none') {
+    if (isElementVisible(donateWindow)) {
         donateWindow.style.display = 'none';
         if (donateBackdrop) donateBackdrop.style.display = 'none';
         document.body.classList.remove('modal-open');
@@ -74,7 +93,7 @@ function closeModals() {
     // Add Position
     const positionModal = document.getElementById('newAddPositionModal');
     const positionBackdrop = document.getElementById('newAddPositionBackdrop');
-    if (positionModal?.style.display !== 'none') {
+    if (isElementVisible(positionModal)) {
         positionModal.style.display = 'none';
         if (positionBackdrop) positionBackdrop.style.display = 'none';
         document.body.classList.remove('modal-open');
@@ -84,7 +103,7 @@ function closeModals() {
     // Sticker window
     const stickerWindow = document.getElementById('stickerWindow');
     const stickerBackdrop = document.getElementById('stickerBackdrop');
-    if (stickerWindow?.style.display !== 'none') {
+    if (isElementVisible(stickerWindow)) {
         stickerWindow.style.display = 'none';
         if (stickerBackdrop) stickerBackdrop.style.display = 'none';
         document.body.classList.remove('modal-open');
@@ -93,9 +112,15 @@ function closeModals() {
 
     // Mobile menu
     const mobileMenu = document.getElementById('newMobileMenu');
-    if (mobileMenu?.classList.contains('open')) {
-        mobileMenu.classList.remove('open');
+    if (mobileMenu?.classList.contains('active') || document.body.classList.contains('mobile-menu-open')) {
+        const restoreTo = getPinnedScrollPosition();
+        mobileMenu?.classList.remove('active');
+        document.body.classList.remove('mobile-menu-open');
         document.body.classList.remove('modal-open');
+        document.body.style.top = '';
+        if (restoreTo > 0) {
+            window.scrollTo(0, restoreTo);
+        }
         return true;
     }
 

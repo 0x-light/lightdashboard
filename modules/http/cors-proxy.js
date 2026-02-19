@@ -5,33 +5,63 @@ import { HttpClient } from './client.js';
 
 // Public CORS proxy services (used as fallbacks)
 const PUBLIC_PROXIES = [
-    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    (url) => `https://cors-anywhere.herokuapp.com/${url}`
+    { name: 'allorigins', build: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}` },
+    { name: 'corsproxy', build: (url) => `https://corsproxy.io/?${encodeURIComponent(url)}` },
+    { name: 'cors-anywhere', build: (url) => `https://cors-anywhere.herokuapp.com/${url}` }
 ];
+const PROXY_COOLDOWN_UNTIL = new Map();
+const DEFAULT_PROXY_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
+function parseHttpStatus(error) {
+    if (!error) return null;
+    if (Number.isFinite(error.status)) return Number(error.status);
+    const message = String(error.message || '');
+    const match = message.match(/\bHTTP\s+(\d{3})\b/i);
+    return match ? Number(match[1]) : null;
+}
+
+function isProxyCoolingDown(name) {
+    const until = PROXY_COOLDOWN_UNTIL.get(name) || 0;
+    return until > Date.now();
+}
+
+function putProxyOnCooldown(name, status, cooldownMs = DEFAULT_PROXY_COOLDOWN_MS) {
+    if (!name) return;
+    // 403/429 proxies are typically blocked/rate-limited; avoid hammering them.
+    if (status === 403 || status === 429) {
+        PROXY_COOLDOWN_UNTIL.set(name, Date.now() + cooldownMs);
+    }
+}
 
 /**
  * Attempt to fetch a URL with automatic CORS proxy fallback
  * In PRODUCTION: Only use Cloudflare proxy (no public proxies - they violate CSP)
- * In LOCALHOST: Race all proxies in parallel for best speed
+ * In LOCALHOST: Try direct first, then a limited number of public proxies sequentially
  */
 export async function fetchWithCorsProxy(url, options = {}) {
     const {
         cloudflareProxy = null,
-        timeoutMs = 8000
+        timeoutMs = 8000,
+        preferDirect = true,
+        maxPublicProxyAttempts = 2,
+        publicProxyCooldownMs = DEFAULT_PROXY_COOLDOWN_MS
     } = options;
 
     const isProduction = HttpClient.isProductionHost();
 
     // Helper to fetch and parse JSON
-    const tryFetch = async (attemptUrl) => {
+    const tryFetch = async (attempt) => {
+        const { attemptUrl, proxyName } = attempt;
         const response = await HttpClient.fetchWithTimeout(attemptUrl, {
             method: 'GET',
             headers: { 'Accept': 'application/json' }
         }, timeoutMs);
 
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            const error = new Error(`HTTP ${response.status}`);
+            error.status = response.status;
+            error.proxyName = proxyName || null;
+            throw error;
         }
 
         const contentType = response.headers.get('content-type') || '';
@@ -47,26 +77,46 @@ export async function fetchWithCorsProxy(url, options = {}) {
         const urlObj = new URL(url);
         const path = urlObj.pathname + urlObj.search;
         const proxyUrl = cloudflareProxy + encodeURIComponent(path);
-        return await tryFetch(proxyUrl);
+        return await tryFetch({ attemptUrl: proxyUrl, proxyName: 'cloudflare' });
     }
 
-    // LOCALHOST: Race all available options in parallel
+    // LOCALHOST/DEV: Try direct + limited public proxy fallbacks sequentially.
+    // Sequential execution avoids creating request storms and proxy rate-limits.
     const attempts = [];
 
-    // Direct URL (may work if CORS headers are present)
-    attempts.push(url);
+    if (preferDirect) {
+        attempts.push({ attemptUrl: url, proxyName: null });
+    }
 
     // Public proxies as fallback for localhost only
-    for (const proxyFn of PUBLIC_PROXIES) {
-        attempts.push(proxyFn(url));
+    if (!isProduction && maxPublicProxyAttempts > 0) {
+        let added = 0;
+        for (const proxy of PUBLIC_PROXIES) {
+            if (added >= maxPublicProxyAttempts) break;
+            if (isProxyCoolingDown(proxy.name)) continue;
+            attempts.push({ attemptUrl: proxy.build(url), proxyName: proxy.name });
+            added += 1;
+        }
     }
 
-    try {
-        return await Promise.any(attempts.map(attemptUrl => tryFetch(attemptUrl)));
-    } catch (aggregateError) {
-        // All attempts failed - silent on localhost to avoid spam
-        throw new Error('All CORS proxy attempts failed');
+    if (attempts.length === 0) {
+        throw new Error('No CORS proxy attempts available');
     }
+
+    let lastError = null;
+    for (const attempt of attempts) {
+        try {
+            return await tryFetch(attempt);
+        } catch (error) {
+            lastError = error;
+            const status = parseHttpStatus(error);
+            if (attempt.proxyName) {
+                putProxyOnCooldown(attempt.proxyName, status, publicProxyCooldownMs);
+            }
+        }
+    }
+
+    throw lastError || new Error('All CORS proxy attempts failed');
 }
 
 /**

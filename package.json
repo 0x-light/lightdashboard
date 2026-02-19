@@ -4,7 +4,7 @@
   "description": "Ultra-minimal terminal-style personal dashboard",
   "type": "module",
   "scripts": {
-    "dev": "python -m http.server 8000",
+    "dev": "python3 -m http.server 8000",
     "dev:pages": "wrangler pages dev . --local",
     "build": "echo 'No build required - static site'",
     "test": "node tests/run-portfolio-tests.mjs"

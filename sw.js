@@ -1,6 +1,6 @@
 // Service Worker for Light Dashboard
 // Provides offline support, intelligent caching, and automatic updates
-const CACHE_VERSION = 'v2.9.6';
+const CACHE_VERSION = 'v2.9.10';
 const BUILD_TIMESTAMP = '2025-12-09T20:10:00Z';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
@@ -293,4 +293,3 @@ self.addEventListener('message', (event) => {
     event.ports[0].postMessage({ version: CACHE_VERSION, timestamp: BUILD_TIMESTAMP });
   }
 });
-

@@ -527,6 +527,8 @@ export class IncrementalPortfolioRenderer {
   calculateTotals(positions) {
     let totalValue = 0;
     let totalPnL = 0;
+    const hasHlEquity = positions.some(p => p.isHlAccountEquity);
+    const hasLighterEquity = positions.some(p => p.isLighterAccountEquity);
 
     // Sum ALL equity positions (there may be multiple per wallet)
     for (const p of positions) {
@@ -536,8 +538,11 @@ export class IncrementalPortfolioRenderer {
       } else if (p.isLighterAccountEquity) {
         totalValue += (p.value || 0);
         totalPnL += (p.pnl || 0);
-      } else if (p.exchange === 'HL Perps' || p.exchange === 'HL Spot' || p.exchange === 'Lighter') {
-        // Skip individual HL/Lighter perp positions (already counted in equity above)
+      } else if ((p.exchange === 'HL Perps' || p.exchange === 'HL Spot') && hasHlEquity) {
+        // Skip individual HL positions only when account equity is present
+        continue;
+      } else if (p.exchange === 'Lighter' && hasLighterEquity) {
+        // Skip individual Lighter positions only when account equity is present
         continue;
       } else if (p.exchange === 'Lighter Spot') {
         // Lighter Spot positions are NOT included in account equity, add them
@@ -568,4 +573,3 @@ export class IncrementalPortfolioRenderer {
 }
 
 export default { IncrementalPortfolioRenderer };
-

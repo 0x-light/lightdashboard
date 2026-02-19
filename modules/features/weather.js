@@ -31,12 +31,13 @@ export async function renderWeather(container, settings = {}) {
   const label = settings.weather?.label || 'your location';
   const lat = settings.weather?.lat;
   const lon = settings.weather?.lon;
-  if (!lat || !lon) {
+  const hasCoords = Number.isFinite(Number(lat)) && Number.isFinite(Number(lon));
+  if (!hasCoords) {
     container.textContent = 'Set latitude and longitude in Settings to see weather.';
     return;
   }
   try {
-    const data = await fetchWeather(lat, lon);
+    const data = await fetchWeather(Number(lat), Number(lon));
     if (!data || !data.current) {
       container.textContent = 'Weather unavailable';
       return;
@@ -71,5 +72,4 @@ export async function renderWeather(container, settings = {}) {
 export const getWeather = fetchWeather;
 
 export default { fetchWeather, renderWeather, getWeather };
-
 

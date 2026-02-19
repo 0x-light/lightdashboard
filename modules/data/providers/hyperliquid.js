@@ -40,7 +40,7 @@ export async function fetchPositions(address, timeoutMs = 10000) {
   }
 
   const results = await Promise.all(queries);
-  const [perp, spot, xyzDex, ...vaultResults] = results;
+  let [perp, spot, xyzDex, ...vaultResults] = results;
 
   // Merge xyz dex and vault positions into main perp response
   // Track which coins we've already seen to avoid duplicates
@@ -234,5 +234,4 @@ export default {
   buildSpotPriceMap,
   fetchCandles
 };
-
 

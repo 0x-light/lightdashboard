@@ -272,6 +272,12 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
 
   // Render context helper (must be after prevPriceMap is defined)
   const updateUI = (data) => renderRows(container, data, { useColoredPnL, editMode, showPriceChart, prevPriceMap });
+  const getLastGoodData = () => {
+    if (Array.isArray(previousData) && previousData.length > 0) return previousData;
+    if (Array.isArray(cachedData) && cachedData.length > 0) return cachedData;
+    if (Array.isArray(prices) && prices.length > 0) return prices;
+    return null;
+  };
 
   // Stage 1: Basic Prices (Immediate)
   // On forceRefresh, always fetch fresh data even if we have cached data
@@ -279,6 +285,12 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
     prices = await fetchBasicPrices(feedIds, pythProvider, forceRefresh);
 
     if (prices.length === 0) {
+      // Keep last known good snapshot when refresh temporarily fails to prevent flicker/flashing empty state.
+      const fallbackData = getLastGoodData();
+      if (fallbackData) {
+        updateUI(fallbackData);
+        return fallbackData;
+      }
       container.innerHTML = `<tr><td colspan="4" class="loading">No data available</td></tr>`;
       return [];
     }
@@ -373,5 +385,4 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
 }
 
 export default { fetchPrices, render };
-
 

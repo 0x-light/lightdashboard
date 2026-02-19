@@ -19,9 +19,6 @@ export class CieloFetcher {
                         this.providers.cielo.getTokenPnl(wallet, this.settings.cieloApiKey, { timeoutMs: 10000, activePositionsOnly: true })
                     ]);
 
-                    // Debug logging
-                    console.log('[Cielo] Portfolio response for', wallet, ':', portfolioData);
-                    console.log('[Cielo] PNL response for', wallet, ':', pnlData);
 
                     // Build PNL lookup map by token address
                     const pnlByToken = new Map();
@@ -40,7 +37,6 @@ export class CieloFetcher {
 
                     // Process portfolio data - check multiple possible response structures
                     const portfolio = portfolioData?.data?.portfolio || portfolioData?.portfolio || portfolioData?.data || [];
-                    console.log('[Cielo] Portfolio array:', portfolio);
 
                     if (Array.isArray(portfolio) && portfolio.length > 0) {
                         for (const item of portfolio) {
@@ -89,7 +85,6 @@ export class CieloFetcher {
                         }
                     }
 
-                    console.log('[Cielo] Processed rows for', wallet, ':', walletRows);
                 } catch (err) {
                     console.warn(`[Cielo] Failed for wallet ${wallet}:`, err);
                 }
