@@ -969,7 +969,6 @@ function setupControls() {
       const showExactAmountsInput = document.getElementById('newShowExactAmounts');
       const showPriceChartInput = document.getElementById('newShowPriceChart');
       const minBalanceInput = document.getElementById('newMinBalanceThreshold');
-      const leftAlignedInput = document.getElementById('newLeftAligned');
       const fontSelectInput = document.getElementById('newFontSelect');
 
       // Menu visibility controls
@@ -1002,7 +1001,6 @@ function setupControls() {
       if (showExactAmountsInput) showExactAmountsInput.checked = s.showExactAmounts ?? false;
       if (showPriceChartInput) showPriceChartInput.checked = s.showPriceChart ?? true;
       if (minBalanceInput) minBalanceInput.value = s.minBalanceThreshold || 100;
-      if (leftAlignedInput) leftAlignedInput.checked = s.leftAligned ?? true;
       if (fontSelectInput) fontSelectInput.value = s.font || 'system';
 
 
@@ -1412,7 +1410,6 @@ function setupControls() {
       const showExactAmountsInput = document.getElementById('newShowExactAmounts');
       const showPriceChartInput = document.getElementById('newShowPriceChart');
       const minBalanceInput = document.getElementById('newMinBalanceThreshold');
-      const leftAlignedInput = document.getElementById('newLeftAligned');
       const fontSelectInput = document.getElementById('newFontSelect');
 
       // Menu visibility controls
@@ -1442,7 +1439,6 @@ function setupControls() {
       if (showExactAmountsInput) newSettings.showExactAmounts = showExactAmountsInput.checked;
       if (showPriceChartInput) newSettings.showPriceChart = showPriceChartInput.checked;
       if (minBalanceInput) newSettings.minBalanceThreshold = parseFloat(minBalanceInput.value) || 100;
-      if (leftAlignedInput) newSettings.leftAligned = leftAlignedInput.checked;
       if (fontSelectInput) newSettings.font = fontSelectInput.value;
 
       // Save menu visibility settings
@@ -1472,7 +1468,7 @@ function setupControls() {
         // Apply alignment immediately
         const container = document.querySelector('.container');
         if (container) {
-          if (newSettings.leftAligned) {
+          if (true) {
             container.style.margin = '0 auto';
           } else {
             container.style.margin = '';
@@ -2283,7 +2279,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   const applyAlignment = () => {
     const container = document.querySelector('.container');
     if (container) {
-      if (settings.leftAligned) {
+      if (true) {
         container.style.margin = '0 auto';
       } else {
         container.style.margin = '';

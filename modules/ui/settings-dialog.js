@@ -37,7 +37,6 @@ const FIELD_MAPPINGS = {
   newHideComic: { key: 'hideComic', type: 'checkbox', default: false },
   newShowExactAmounts: { key: 'showExactAmounts', type: 'checkbox', default: false },
   newShowPriceChart: { key: 'showPriceChart', type: 'checkbox', default: true },
-  newLeftAligned: { key: 'leftAligned', type: 'checkbox', default: true },
   newMinBalanceThreshold: { key: 'minBalanceThreshold', type: 'float', default: 100 },
 
   // Menu visibility
@@ -399,7 +398,7 @@ export function applyFont(settings) {
 export function applyAlignment(settings) {
   const container = document.querySelector('.container');
   if (container) {
-    container.style.margin = settings.leftAligned ? '0 auto' : '';
+    container.style.margin = '0 auto';
   }
 }
 
