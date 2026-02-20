@@ -1,5 +1,6 @@
 // Settings loader compatible with legacy app storage/encryption
-const STORAGE_KEY = 'myDashboardSettings.v1';
+const STORAGE_KEY = 'myDashboardSettings.v2';
+const LEGACY_KEY = 'myDashboardSettings.v1';
 const ENCRYPT_PREFIX = 'enc:';
 
 function simpleDecrypt(encoded) {
@@ -14,9 +15,31 @@ function simpleDecrypt(encoded) {
   return encoded;
 }
 
+// Keys that get reset to new defaults during v1→v2 migration
+const V2_RESET_KEYS = [
+  'fontSize', 'hideSnowBtn', 'hideRainBtn', 'hideFontSize',
+  'hideThemeBtn', 'hideAmountsBtn', 'hideStickersBtn', 'hideDonateBtn'
+];
+
 export function loadSettings() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    let raw = localStorage.getItem(STORAGE_KEY);
+
+    // Migrate from v1 if v2 doesn't exist yet
+    if (!raw) {
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      if (legacy) {
+        const old = JSON.parse(legacy);
+        // Drop cosmetic keys so new defaults take over
+        V2_RESET_KEYS.forEach(k => delete old[k]);
+        const defaults = getDefaultSettings();
+        const migrated = { ...defaults, ...old };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+        localStorage.removeItem(LEGACY_KEY);
+        raw = localStorage.getItem(STORAGE_KEY);
+      }
+    }
+
     if (!raw) return null;
     const s = JSON.parse(raw);
     if (s.walletAddresses) s.walletAddresses = simpleDecrypt(s.walletAddresses);
@@ -56,7 +79,7 @@ export function getDefaultSettings() {
     cieloApiKey: '',
     onchainProvider: 'zerion', // 'zerion' or 'cielo'
     font: 'berkeley',
-    fontSize: 15,
+    fontSize: 14,
     comicStrip: 'calvinandhobbes',
     hideComic: false,
     comicCollapsed: false, // Whether comic section is collapsed

@@ -1,6 +1,6 @@
 // Settings dialog module - handles settings modal UI and persistence
 
-const STORAGE_KEY = 'myDashboardSettings.v1';
+const STORAGE_KEY = 'myDashboardSettings.v2';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 let importMode = false;

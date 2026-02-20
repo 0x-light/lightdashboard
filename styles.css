@@ -244,7 +244,7 @@ a {
 }
 
 html {
-  font-size: 15px;
+  font-size: 14px;
   /* Default, overridden by JS */
   margin: 0;
   padding: 0;
@@ -674,11 +674,15 @@ body.hide-comic #newComicSection {
 }
 
 /* Performance: CSS containment for better rendering */
-.data-table,
 .position-card,
 .watchlist-search-result,
 .card {
   contain: layout style;
+}
+
+/* Keep table width calculations stable across browsers. */
+.data-table {
+  contain: style;
 }
 
 .hero,
@@ -1351,6 +1355,10 @@ textarea::-moz-placeholder {
 .card-asset {
   font-weight: 400;
   color: var(--text);
+}
+
+.short-arrow {
+  opacity: 0.4;
 }
 
 .card-exchange {
@@ -2866,8 +2874,13 @@ input[type="range"]:focus::-moz-range-thumb {
 }
 
 /* Watchlist table column widths - align Chart with positions Value column */
+#watchlistSection .table-wrapper {
+  width: 100%;
+}
+
 #newWatchlistTable {
   width: 100%;
+  min-width: 100%;
   table-layout: fixed;
 }
 

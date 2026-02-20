@@ -144,7 +144,7 @@ export function toggleSnow() {
 // Check weather and auto-enable rain/snow
 export async function checkWeatherAndAutoEnable() {
   try {
-    const settingsStr = localStorage.getItem('myDashboardSettings.v1');
+    const settingsStr = localStorage.getItem('myDashboardSettings.v2');
     if (!settingsStr) return;
     
     const settings = JSON.parse(settingsStr);

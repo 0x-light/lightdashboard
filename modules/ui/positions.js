@@ -233,6 +233,21 @@ function computeValue(pos) {
   return amount * price;
 }
 
+function isShortPosition(pos) {
+  const amount = Number(pos?.amount);
+  return !!pos?.isLeveraged && Number.isFinite(amount) && amount < 0;
+}
+
+function formatAssetLabel(pos) {
+  return pos?.asset || '—';
+}
+
+function formatAssetLabelHtml(pos) {
+  const base = formatAssetLabel(pos);
+  if (!isShortPosition(pos)) return base;
+  return `${base}<span class="short-arrow"> ↓</span>`;
+}
+
 function shouldHidePosition(pos, opts) {
   if (opts.hideNfts && pos.exchange === 'OpenSea') return true;
   if (opts.hideSmallPositions) {
@@ -289,7 +304,7 @@ function createTableRow(doc, pos, opts, prevDataMap) {
   // Use compact column order
   // Order: Asset, Price, Chart, Value, P&L, Funding, 24H%, Amount, Exchange
   const cells = [
-    pos.asset || '—',
+    formatAssetLabelHtml(pos),
     formatPrice(pos.price, true),
     chartCell,
     formatUsd(value, amountVisible),
@@ -427,7 +442,7 @@ function createMobileCard(doc, pos, opts) {
   const fundingRateDisplay = fundingRateText ? ` <span class="funding-rate-inline">(${fundingRateText})</span>` : '';
 
   card.innerHTML = `
-    <div class="card-row"><span class="card-label">Asset</span><span class="card-asset">${pos.asset || '—'}</span></div>
+    <div class="card-row"><span class="card-label">Asset</span><span class="card-asset">${formatAssetLabelHtml(pos)}</span></div>
     <div class="card-row"><span class="card-label">Exchange</span><span class="card-value">${pos.exchange || '—'}</span></div>
     <div class="card-row"><span class="card-label">Amount</span><span class="card-value">${formatAmount(pos.amount, amountVisible, showExactAmounts)}</span></div>
     <div class="card-row"><span class="card-label">Price</span><span class="card-value"${priceChanged ? ' data-flash="true"' : ''}>${formatPrice(pos.price, true)}</span></div>
@@ -533,5 +548,3 @@ export function renderPositions({ positions, containers, options, previousPositi
 }
 
 export default { renderPositions };
-
-

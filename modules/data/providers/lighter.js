@@ -31,6 +31,23 @@ let cachedFundingRates = null;
 let fundingRatesCacheTime = 0;
 const FUNDING_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// Account lookup cache to avoid repeating expensive endpoint probing on every refresh.
+const ACCOUNT_SUCCESS_CACHE_TTL_MS = 45 * 1000;
+const ACCOUNT_FAILURE_CACHE_TTL_MS = 2 * 60 * 1000;
+const accountLookupCache = new Map();
+const accountLookupInFlight = new Map();
+
+function readCachedAccountLookup(cacheKey) {
+  const cached = accountLookupCache.get(cacheKey);
+  if (!cached) return undefined;
+  const ttl = cached.ok ? ACCOUNT_SUCCESS_CACHE_TTL_MS : ACCOUNT_FAILURE_CACHE_TTL_MS;
+  if ((Date.now() - cached.timestamp) <= ttl) {
+    return cached.value;
+  }
+  accountLookupCache.delete(cacheKey);
+  return undefined;
+}
+
 function normalizeCandleRows(data) {
   if (!data || typeof data !== 'object') return [];
 
@@ -528,23 +545,48 @@ export async function fetchAccountByAddress(address, { timeoutMs = 10000 } = {})
   const withoutPrefix = lowerAddress.startsWith('0x') ? lowerAddress.slice(2) : lowerAddress;
   const withPrefix = withoutPrefix ? `0x${withoutPrefix}` : '';
   const addressCandidates = Array.from(new Set([raw, lowerAddress, withPrefix, withoutPrefix].filter(Boolean)));
+  const cacheKey = withPrefix || lowerAddress || raw;
 
-  for (const baseUrl of [MAINNET, TESTNET]) {
-    for (const addr of addressCandidates) {
-      const result = await fetchAccountsFromCluster(baseUrl, addr, timeoutMs);
-      if (result?.accounts?.length) {
-        return result;
+  const cachedValue = readCachedAccountLookup(cacheKey);
+  if (cachedValue !== undefined) {
+    return cachedValue;
+  }
+
+  if (accountLookupInFlight.has(cacheKey)) {
+    return accountLookupInFlight.get(cacheKey);
+  }
+
+  const lookupPromise = (async () => {
+    for (const baseUrl of [MAINNET, TESTNET]) {
+      for (const addr of addressCandidates) {
+        const result = await fetchAccountsFromCluster(baseUrl, addr, timeoutMs);
+        if (result?.accounts?.length) {
+          return result;
+        }
       }
     }
-  }
 
-  // Final fallback: Explorer API by address/account index.
-  const explorerResult = await fetchAccountsFromExplorer(addressCandidates, timeoutMs);
-  if (explorerResult?.accounts?.length) {
-    return explorerResult;
-  }
+    // Final fallback: Explorer API by address/account index.
+    const explorerResult = await fetchAccountsFromExplorer(addressCandidates, timeoutMs);
+    if (explorerResult?.accounts?.length) {
+      return explorerResult;
+    }
 
-  return null;
+    return null;
+  })();
+
+  accountLookupInFlight.set(cacheKey, lookupPromise);
+  try {
+    const result = await lookupPromise;
+    accountLookupCache.set(cacheKey, {
+      value: result,
+      ok: !!(result?.accounts?.length),
+      timestamp: Date.now()
+    });
+    return result;
+  } finally {
+    accountLookupInFlight.delete(cacheKey);
+  }
 }
 
 /**

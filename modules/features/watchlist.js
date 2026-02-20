@@ -1,6 +1,15 @@
 // Watchlist feature (lazy-loaded)
 
 const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
+let lastGoodWatchlistData = null;
+
+function cloneWatchlistData(data) {
+  if (!Array.isArray(data)) return null;
+  return data.map(item => ({
+    ...item,
+    priceHistory: Array.isArray(item.priceHistory) ? [...item.priceHistory] : item.priceHistory
+  }));
+}
 
 function isStablecoin(symbol) {
   if (!symbol) return false;
@@ -172,10 +181,11 @@ async function enrichWithHistory(prices, pythProvider, onProgress = null) {
     console.warn('[Watchlist] Fast history fetch failed', e);
   }
 
-  // Pass 2: High resolution (96 points / 15m) for FINAL quality
-  // This will leverage the cache from Pass 1 and only fetch the missing points
+  // Pass 2: Higher resolution for final quality.
+  // Use fewer points for larger watchlists to reduce API pressure and improve reliability.
   try {
-    const fullResults = await pythProvider.getBatch24hPriceHistory(feedIds, 96, now);
+    const fullPoints = itemsToFetch.length > 8 ? 48 : 72;
+    const fullResults = await pythProvider.getBatch24hPriceHistory(feedIds, fullPoints, now);
 
     for (const item of itemsToFetch) {
       const history = fullResults[item.feedId];
@@ -264,6 +274,12 @@ function renderRows(container, data, options) {
 export async function render(container, { feedIds, pythProvider, useColoredPnL = true, editMode = false, cachedData = null, previousData = null, showPriceChart = true, forceRefresh = false }) {
   if (!container) return;
 
+  if (!Array.isArray(feedIds) || feedIds.length === 0) {
+    lastGoodWatchlistData = null;
+    renderRows(container, [], { useColoredPnL, editMode, showPriceChart, prevPriceMap: {} });
+    return [];
+  }
+
   let prices = cachedData;
   const prevPriceMap = {};
   if (previousData) {
@@ -273,10 +289,16 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
   // Render context helper (must be after prevPriceMap is defined)
   const updateUI = (data) => renderRows(container, data, { useColoredPnL, editMode, showPriceChart, prevPriceMap });
   const getLastGoodData = () => {
+    if (Array.isArray(lastGoodWatchlistData) && lastGoodWatchlistData.length > 0) return lastGoodWatchlistData;
     if (Array.isArray(previousData) && previousData.length > 0) return previousData;
     if (Array.isArray(cachedData) && cachedData.length > 0) return cachedData;
     if (Array.isArray(prices) && prices.length > 0) return prices;
     return null;
+  };
+  const persistLastGoodData = (data) => {
+    if (Array.isArray(data) && data.length > 0) {
+      lastGoodWatchlistData = cloneWatchlistData(data);
+    }
   };
 
   // Stage 1: Basic Prices (Immediate)
@@ -289,6 +311,7 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
       const fallbackData = getLastGoodData();
       if (fallbackData) {
         updateUI(fallbackData);
+        persistLastGoodData(fallbackData);
         return fallbackData;
       }
       container.innerHTML = `<tr><td colspan="4" class="loading">No data available</td></tr>`;
@@ -323,6 +346,7 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
     }
 
     updateUI(prices);
+    persistLastGoodData(prices);
 
     // Trigger Stage 2 & 3 in background
 
@@ -346,6 +370,7 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
             }
           }
           if (updated) updateUI(prices);
+          if (updated) persistLastGoodData(prices);
         } catch (e) {
           console.warn('[Watchlist] Symbol resolution failed', e);
         }
@@ -353,18 +378,24 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
 
       await enrichWith24hChange(prices, pythProvider);
       updateUI(prices); // Re-render with % changes
+      persistLastGoodData(prices);
 
       // Stage 3: Charts
       if (showPriceChart) {
         // Pass callback to update UI after "fast preview" loaded
-        await enrichWithHistory(prices, pythProvider, () => updateUI(prices));
+        await enrichWithHistory(prices, pythProvider, () => {
+          updateUI(prices);
+          persistLastGoodData(prices);
+        });
         updateUI(prices); // Re-render with Final Charts
+        persistLastGoodData(prices);
       }
     })();
 
   } else {
     // Cached data case
     updateUI(prices);
+    persistLastGoodData(prices);
 
     // Refresh background data if needed? 
     // For now assume cached data is good enough to start, but we might want to refresh.
@@ -377,12 +408,13 @@ export async function render(container, { feedIds, pythProvider, useColoredPnL =
       (async () => {
         await enrichWithHistory(prices, pythProvider);
         updateUI(prices);
+        persistLastGoodData(prices);
       })();
     }
   }
 
+  persistLastGoodData(prices);
   return prices;
 }
 
 export default { fetchPrices, render };
-

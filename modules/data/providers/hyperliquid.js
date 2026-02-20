@@ -12,6 +12,38 @@ async function post(body, timeoutMs) {
   });
 }
 
+function parseFiniteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function resolvePerpAccountValue(state) {
+  if (!state) return null;
+
+  const accountValue = parseFiniteNumber(state?.marginSummary?.accountValue);
+  const crossAccountValue = parseFiniteNumber(state?.crossMarginSummary?.accountValue);
+  const rawUsd = parseFiniteNumber(state?.marginSummary?.totalRawUsd);
+  const crossRawUsd = parseFiniteNumber(state?.crossMarginSummary?.totalRawUsd);
+  const withdrawable = parseFiniteNumber(state?.withdrawable);
+
+  let best = null;
+  for (const candidate of [accountValue, crossAccountValue, rawUsd, crossRawUsd]) {
+    if (candidate !== null) {
+      best = candidate;
+      break;
+    }
+  }
+
+  if (best !== null && withdrawable !== null) {
+    if (best >= 0 && withdrawable >= 0) {
+      return Math.max(best, withdrawable);
+    }
+    return best;
+  }
+
+  return best ?? withdrawable;
+}
+
 export async function fetchPositions(address, timeoutMs = 10000) {
   if (!address) return null;
 
@@ -44,23 +76,25 @@ export async function fetchPositions(address, timeoutMs = 10000) {
 
   // Merge xyz dex and vault positions into main perp response
   // Track which coins we've already seen to avoid duplicates
-  const existingCoins = new Set(perp?.assetPositions?.map(p => p.position?.coin) || []);
+  const existingCoins = new Set((perp?.assetPositions || []).map(p => p.position?.coin).filter(Boolean));
 
-  // Combine perp equity from main dex and xyz dex (spot will be added in app)
-  let mainPerpEquity = 0;
-  let xyzEquity = 0;
+  const perpSources = [perp, xyzDex, ...vaultResults].filter(Boolean);
+  const combinedPerpEquity = perpSources.reduce((sum, source) => {
+    const value = resolvePerpAccountValue(source);
+    return sum + (value ?? 0);
+  }, 0);
 
-  if (perp?.marginSummary) {
-    mainPerpEquity = parseFloat(perp.marginSummary.accountValue || 0);
+  if (!perp && (perpSources.length > 0 || combinedPerpEquity !== 0)) {
+    perp = { assetPositions: [] };
   }
 
-  if (xyzDex?.marginSummary) {
-    xyzEquity = parseFloat(xyzDex.marginSummary.accountValue || 0);
-  }
-
-  const combinedPerpEquity = mainPerpEquity + xyzEquity;
-
-  if (perp && perp.marginSummary) {
+  if (perp) {
+    if (!Array.isArray(perp.assetPositions)) {
+      perp.assetPositions = [];
+    }
+    if (!perp.marginSummary || typeof perp.marginSummary !== 'object') {
+      perp.marginSummary = {};
+    }
     perp.marginSummary.accountValue = combinedPerpEquity.toString();
   }
 
@@ -230,8 +264,9 @@ export default {
   fetchMetaAndAssetCtxs,
   fetchXyzDexMetaAndAssetCtxs,
   fetchSpotMeta,
+  fetchSpotMetaAndAssetCtxs,
   fetchHistoricalPrice,
   buildSpotPriceMap,
-  fetchCandles
+  fetchCandles,
+  resolvePerpAccountValue
 };
-

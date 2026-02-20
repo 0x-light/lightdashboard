@@ -1,7 +1,7 @@
 // UI Controls module - handles button interactions
 import { closeMobileMenuWithScroll } from './mobile-menu.js';
 
-const STORAGE_KEY = 'myDashboardSettings.v1';
+const STORAGE_KEY = 'myDashboardSettings.v2';
 
 export function setupRainSnowControls(Rain, getSettings) {
   const toggleRainBtn = document.getElementById('newToggleRainBtn');

@@ -38,10 +38,27 @@ export async function fetchHyperliquidPositions(wallets, providers) {
     for (const wallet of wallets) {
       const data = await providers.hyperliquid.fetchPositions(wallet, 3000);
 
-      let perpEquity = 0;
-      if (data?.perp?.marginSummary) {
-        perpEquity = parseFloat(data.perp.marginSummary.accountValue || 0);
-      }
+      const resolvePerpEquity = (state) => {
+        const marginValue = Number(state?.marginSummary?.accountValue);
+        const crossValue = Number(state?.crossMarginSummary?.accountValue);
+        const withdrawable = Number(state?.withdrawable);
+        const values = [marginValue, crossValue].filter(Number.isFinite);
+        const best = values.length > 0 ? values[0] : null;
+
+        if (best !== null && Number.isFinite(withdrawable)) {
+          if (best >= 0 && withdrawable >= 0) {
+            return Math.max(best, withdrawable);
+          }
+          return best;
+        }
+
+        if (best !== null) return best;
+        return Number.isFinite(withdrawable) ? withdrawable : 0;
+      };
+
+      const perpEquity = providers.hyperliquid.resolvePerpAccountValue
+        ? (providers.hyperliquid.resolvePerpAccountValue(data?.perp) ?? 0)
+        : resolvePerpEquity(data?.perp);
 
       const spotPriceMap = providers.hyperliquid.buildSpotPriceMap(hlAllMids, hlSpotMeta);
       let spotEquity = 0;
@@ -476,6 +493,5 @@ export default {
   fetchManualPositions,
   updatePositionPrices
 };
-
 
 

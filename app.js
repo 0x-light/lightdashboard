@@ -654,7 +654,7 @@ function setupControls() {
 
   // Save if we cleaned up anything
   if (needsSave) {
-    localStorage.setItem('myDashboardSettings.v1', JSON.stringify(settings));
+    localStorage.setItem('myDashboardSettings.v2', JSON.stringify(settings));
     invalidateSettingsCache();
     // Cleanup completed
   }
@@ -749,7 +749,7 @@ function setupControls() {
       // Save to localStorage
       const s = getSettings();
       s.hiddenAssets = Array.from(hiddenAssets);
-      localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
       invalidateSettingsCache();
 
       // Update show hidden button visibility
@@ -782,7 +782,7 @@ function setupControls() {
         }
 
         // Save
-        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
         invalidateSettingsCache();
 
         // Also remove from hiddenAssets set in memory
@@ -807,7 +807,7 @@ function setupControls() {
       // Save to localStorage
       const s = getSettings();
       s.hiddenAssets = Array.from(hiddenAssets);
-      localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
       invalidateSettingsCache();
 
       // Update show hidden button visibility
@@ -866,7 +866,7 @@ function setupControls() {
         // Save restored state
         const s = getSettings();
         s.hiddenAssets = Array.from(hiddenAssets);
-        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
         invalidateSettingsCache();
       }
 
@@ -1175,7 +1175,7 @@ function setupControls() {
       s.rainEnabled = active;
       s.snowEnabled = false;
       s.rainSnowManuallySet = true; // User has manually set preference
-      localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
     });
   }
 
@@ -1196,7 +1196,7 @@ function setupControls() {
       s.snowEnabled = active;
       s.rainEnabled = false;
       s.rainSnowManuallySet = true; // User has manually set preference
-      localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
     });
   }
 
@@ -1220,7 +1220,7 @@ function setupControls() {
       s.rainEnabled = active;
       s.snowEnabled = false;
       s.rainSnowManuallySet = true; // User has manually set preference
-      localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
     });
   }
 
@@ -1244,7 +1244,7 @@ function setupControls() {
       s.snowEnabled = active;
       s.rainEnabled = false;
       s.rainSnowManuallySet = true; // User has manually set preference
-      localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
     });
   }
 
@@ -1261,7 +1261,7 @@ function setupControls() {
         applyFontSize(newSize);
         const s = getSettings();
         s.fontSize = newSize;
-        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
       }
     });
   }
@@ -1273,7 +1273,7 @@ function setupControls() {
         applyFontSize(newSize);
         const s = getSettings();
         s.fontSize = newSize;
-        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
       }
     });
   }
@@ -1285,7 +1285,7 @@ function setupControls() {
         applyFontSize(newSize);
         const s = getSettings();
         s.fontSize = newSize;
-        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
       }
     });
   }
@@ -1297,7 +1297,7 @@ function setupControls() {
         applyFontSize(newSize);
         const s = getSettings();
         s.fontSize = newSize;
-        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
       }
     });
   }
@@ -1368,7 +1368,7 @@ function setupControls() {
           const importedSettings = JSON.parse(decoded);
 
           // Save imported settings to localStorage
-          localStorage.setItem('myDashboardSettings.v1', JSON.stringify(importedSettings));
+          localStorage.setItem('myDashboardSettings.v2', JSON.stringify(importedSettings));
           invalidateSettingsCache(); // Clear cache so next getSettings() reads fresh data
 
           // Reset import mode UI
@@ -1461,7 +1461,7 @@ function setupControls() {
 
       // Save via legacy saveSettings (handles encryption)
       try {
-        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(newSettings));
+        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(newSettings));
         invalidateSettingsCache(); // Clear cache so next getSettings() reads fresh data
         closeSettings();
 
@@ -1482,24 +1482,16 @@ function setupControls() {
           document.body.classList.remove('no-charts');
         }
 
-        // Re-render watchlist with new showPriceChart setting
-        const watchlistBody = document.getElementById('newWatchlistBody');
-        if (watchlistBody && newSettings.watchlist && newSettings.watchlist.length > 0) {
+        // Re-render watchlist with updated settings while preserving existing rows
+        if (newSettings.watchlist && newSettings.watchlist.length > 0) {
           try {
-            const watchlistMod = await import('./modules/features/watchlist.js');
-            const pythProvider = window.AppModules?.data?.providers?.pyth;
-            const prices = await watchlistMod.render(watchlistBody, {
-              feedIds: newSettings.watchlist,
-              pythProvider,
-              useColoredPnL: newSettings.useColoredPnL ?? false,
+            await renderWatchlistPanel({
+              feedIdsOverride: newSettings.watchlist,
+              forceRefresh: false,
               editMode: watchlistEditMode,
-              cachedData: cachedWatchlistData,
-              showPriceChart: newSettings.showPriceChart ?? true
+              preserveCurrentData: true
             });
-            if (Array.isArray(prices) && prices.length > 0) {
-              cachedWatchlistData = prices; // Update cache only with valid data
-            }
-          } catch (e) {
+          } catch (_) {
             // Silently fail if watchlist re-render fails
           }
         }
@@ -1691,6 +1683,81 @@ function setupControls() {
     }
   }
 
+  let watchlistRenderInFlight = false;
+  let watchlistRenderQueued = false;
+  let watchlistQueuedOptions = null;
+
+  async function renderWatchlistPanel(options = {}) {
+    const {
+      feedIdsOverride = null,
+      forceRefresh = false,
+      editMode = watchlistEditMode,
+      preserveCurrentData = true
+    } = options;
+
+    const watchlistBody = document.getElementById('newWatchlistBody');
+    if (!watchlistBody) return [];
+
+    const s = getSettings();
+    const feedIds = Array.isArray(feedIdsOverride) ? feedIdsOverride : (s.watchlist || []);
+    const pythProvider = window.AppModules?.data?.providers?.pyth;
+    if (!pythProvider) return cachedWatchlistData || [];
+
+    if (watchlistRenderInFlight) {
+      watchlistRenderQueued = true;
+      watchlistQueuedOptions = options;
+      return cachedWatchlistData || [];
+    }
+
+    watchlistRenderInFlight = true;
+    try {
+      const mod = await import('./modules/features/watchlist.js');
+      const previousData = Array.isArray(cachedWatchlistData) && cachedWatchlistData.length > 0
+        ? cachedWatchlistData
+        : null;
+
+      const prices = await mod.render(watchlistBody, {
+        feedIds,
+        pythProvider,
+        useColoredPnL: s.useColoredPnL ?? false,
+        editMode,
+        cachedData: preserveCurrentData ? previousData : null,
+        previousData,
+        showPriceChart: s.showPriceChart ?? true,
+        forceRefresh
+      });
+
+      if (feedIds.length === 0) {
+        cachedWatchlistData = [];
+      } else if (Array.isArray(prices) && prices.length > 0) {
+        cachedWatchlistData = prices;
+      }
+
+      if (editMode) {
+        attachWatchlistEditListeners();
+      }
+
+      return prices;
+    } catch (e) {
+      console.warn('[Watchlist] Render failed:', e?.message || e);
+      if (!watchlistBody.querySelector('tr')) {
+        watchlistBody.innerHTML = `<tr><td colspan="4" class="loading">Watchlist unavailable</td></tr>`;
+      }
+      return cachedWatchlistData || [];
+    } finally {
+      watchlistRenderInFlight = false;
+      if (watchlistRenderQueued) {
+        const queued = watchlistQueuedOptions || {};
+        watchlistRenderQueued = false;
+        watchlistQueuedOptions = null;
+        queueMicrotask(() => { renderWatchlistPanel(queued); });
+      }
+    }
+  }
+
+  // Expose watchlist renderer for lifecycle code outside setupControls().
+  window.renderWatchlistPanel = renderWatchlistPanel;
+
   async function addToWatchlist(feedId) {
     const s = getSettings();
     if (!s.watchlist) s.watchlist = [];
@@ -1698,25 +1765,13 @@ function setupControls() {
     if (!s.watchlist.includes(feedId)) {
       s.watchlist.push(feedId);
       try {
-        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
-
-        // Reload watchlist immediately
-        const watchlistBody = document.getElementById('newWatchlistBody');
-        if (watchlistBody) {
-          watchlistBody.innerHTML = `<tr><td colspan="4" class="loading"><span class="loading-terminal">Loading...</span></td></tr>`;
-          try {
-            const mod = await import('./modules/features/watchlist.js');
-            const pythProvider = window.AppModules?.data?.providers?.pyth;
-            await mod.render(watchlistBody, {
-              feedIds: s.watchlist,
-              pythProvider,
-              useColoredPnL: s.useColoredPnL ?? false,
-              showPriceChart: s.showPriceChart ?? true
-            });
-          } catch (e) {
-            watchlistBody.innerHTML = `<tr><td colspan="4" class="loading">Watchlist unavailable</td></tr>`;
-          }
-        }
+        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
+        await renderWatchlistPanel({
+          feedIdsOverride: s.watchlist,
+          forceRefresh: true,
+          editMode: watchlistEditMode,
+          preserveCurrentData: true
+        });
       } catch (e) {
         console.error('Failed to save watchlist:', e);
       }
@@ -1840,45 +1895,18 @@ function setupControls() {
 
     s.watchlist = s.watchlist.filter(id => id.toLowerCase() !== feedId.toLowerCase());
     try {
-      localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
 
       // Update cached data and re-render
       if (cachedWatchlistData) {
         cachedWatchlistData = cachedWatchlistData.filter(item => item.feedId !== feedId);
       }
-
-      // Reload watchlist immediately
-      const watchlistBody = document.getElementById('newWatchlistBody');
-      if (watchlistBody) {
-        watchlistBody.innerHTML = `<tr><td colspan="4" class="loading"><span class="loading-terminal">Loading...</span></td></tr>`;
-        (async () => {
-          try {
-            const mod = await import('./modules/features/watchlist.js');
-            const pythProvider = window.AppModules?.data?.providers?.pyth;
-            const prices = await mod.render(watchlistBody, {
-              feedIds: s.watchlist,
-              pythProvider,
-              useColoredPnL: s.useColoredPnL ?? false,
-              editMode: watchlistEditMode,
-              showPriceChart: s.showPriceChart ?? true
-            });
-
-            // Update cache with new data
-            if ((s.watchlist || []).length === 0) {
-              cachedWatchlistData = [];
-            } else if (Array.isArray(prices) && prices.length > 0) {
-              cachedWatchlistData = prices;
-            }
-
-            // Re-attach event listeners for edit buttons
-            if (watchlistEditMode) {
-              attachWatchlistEditListeners();
-            }
-          } catch (e) {
-            watchlistBody.innerHTML = '<tr><td colspan="4" class="loading">Watchlist unavailable</td></tr>';
-          }
-        })();
-      }
+      renderWatchlistPanel({
+        feedIdsOverride: s.watchlist,
+        forceRefresh: false,
+        editMode: watchlistEditMode,
+        preserveCurrentData: true
+      });
     } catch (e) {
       console.error('Failed to remove from watchlist:', e);
     }
@@ -1923,29 +1951,16 @@ function setupControls() {
       cancelWatchlistEditBtn.style.display = watchlistEditMode ? 'inline' : 'none';
     }
 
-    // Re-render watchlist with edit mode (using cached data if available)
-    const watchlistBody = document.getElementById('newWatchlistBody');
-    if (watchlistBody && cachedWatchlistData) {
-      // Use cached data for instant toggle
-      try {
-        const mod = await import('./modules/features/watchlist.js');
-        const s = getSettings();
-        await mod.render(watchlistBody, {
-          feedIds: s.watchlist || [],
-          pythProvider: window.AppModules?.data?.providers?.pyth,
-          useColoredPnL: s.useColoredPnL ?? false,
-          editMode: watchlistEditMode,
-          cachedData: cachedWatchlistData, // Pass cached data to avoid refetch
-          showPriceChart: s.showPriceChart ?? true
-        });
-
-        // Attach edit button listeners
-        if (watchlistEditMode) {
-          attachWatchlistEditListeners();
-        }
-      } catch (e) {
-        console.error('Failed to toggle watchlist edit mode:', e);
-      }
+    try {
+      const s = getSettings();
+      await renderWatchlistPanel({
+        feedIdsOverride: s.watchlist || [],
+        forceRefresh: false,
+        editMode: watchlistEditMode,
+        preserveCurrentData: true
+      });
+    } catch (e) {
+      console.error('Failed to toggle watchlist edit mode:', e);
     }
   }
 
@@ -1960,7 +1975,7 @@ function setupControls() {
         // Restore watchlist from snapshot
         const s = getSettings();
         s.watchlist = [...watchlistEditSnapshot.watchlist];
-        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
         invalidateSettingsCache();
 
         // Clear cached data to force refetch
@@ -1974,22 +1989,16 @@ function setupControls() {
       }
       cancelWatchlistEditBtn.style.display = 'none';
 
-      // Re-render watchlist
-      const watchlistBody = document.getElementById('newWatchlistBody');
-      if (watchlistBody) {
-        try {
-          const mod = await import('./modules/features/watchlist.js');
-          const s = getSettings();
-          await mod.render(watchlistBody, {
-            feedIds: s.watchlist || [],
-            pythProvider: window.AppModules?.data?.providers?.pyth,
-            useColoredPnL: s.useColoredPnL ?? false,
-            editMode: false,
-            showPriceChart: s.showPriceChart ?? true
-          });
-        } catch (e) {
-          console.error('Failed to cancel watchlist edit mode:', e);
-        }
+      try {
+        const s = getSettings();
+        await renderWatchlistPanel({
+          feedIdsOverride: s.watchlist || [],
+          forceRefresh: true,
+          editMode: false,
+          preserveCurrentData: true
+        });
+      } catch (e) {
+        console.error('Failed to cancel watchlist edit mode:', e);
       }
     });
   }
@@ -2193,7 +2202,7 @@ function setupControls() {
       }
 
       try {
-        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
         closeAddPosition();
 
         // Soft reload: re-fetch positions without full page refresh
@@ -2303,7 +2312,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         // Save to localStorage
         const s = getSettings();
         s.theme = newTheme;
-        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
 
         // Sync mobile dropdown
         if (themeSelectMobile) themeSelectMobile.value = newTheme;
@@ -2319,7 +2328,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         // Save to localStorage
         const s = getSettings();
         s.theme = newTheme;
-        localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
 
         // Sync desktop dropdown
         if (themeSelect) themeSelect.value = newTheme;
@@ -2330,7 +2339,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Init font size
   let fontSize = settings?.fontSize;
   if (typeof fontSize === 'string' || !fontSize) {
-    fontSize = 15; // Default if it's a string or not set
+    fontSize = 14; // Default if it's a string or not set
   }
   applyFontSize(fontSize);
 
@@ -2744,7 +2753,7 @@ window.addEventListener('DOMContentLoaded', async () => {
           const Settings = window.AppModules?.core?.settings;
           const s = getSettings();
           s.comicStrip = comicKey;
-          localStorage.setItem('myDashboardSettings.v1', JSON.stringify(s));
+          localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
         });
       }
     });
@@ -2815,20 +2824,21 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   if (!settings.hideWatchlist && watchlistBody) {
     const loadWatchlist = async () => {
-      watchlistBody.innerHTML = `<tr><td colspan="4" class="loading">Loading...</td></tr>`;
+      if ((!Array.isArray(cachedWatchlistData) || cachedWatchlistData.length === 0) && !watchlistBody.querySelector('tr')) {
+        watchlistBody.innerHTML = `<tr><td colspan="4" class="loading">Loading...</td></tr>`;
+      }
       try {
-        const mod = await import('./modules/features/watchlist.js');
-        const pythProvider = window.AppModules?.data?.providers?.pyth;
         const watchlistIds = settings.watchlist || [];
-        const prices = await mod.render(watchlistBody, {
-          feedIds: watchlistIds,
-          pythProvider,
-          useColoredPnL: settings.useColoredPnL ?? false,
-          showPriceChart: settings.showPriceChart ?? true
-        });
-        // Cache the data for instant edit toggle
-        if (Array.isArray(prices) && prices.length > 0) {
-          cachedWatchlistData = prices;
+        const renderWatchlist = window.renderWatchlistPanel;
+        if (typeof renderWatchlist === 'function') {
+          await renderWatchlist({
+            feedIdsOverride: watchlistIds,
+            forceRefresh: false,
+            editMode: watchlistEditMode,
+            preserveCurrentData: true
+          });
+        } else {
+          throw new Error('Watchlist renderer not initialized');
         }
       } catch (e) {
         watchlistBody.innerHTML = `<tr><td colspan="4" class="loading">Watchlist unavailable</td></tr>`;
@@ -2865,8 +2875,16 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Periodic updates - just do a full refresh like initial load (it works correctly)
   let updateInterval = null;
+  let refreshInProgress = false;
+  let refreshQueued = false;
 
   async function refreshPortfolio() {
+    if (refreshInProgress) {
+      refreshQueued = true;
+      return;
+    }
+    refreshInProgress = true;
+
     try {
       // Full re-fetch using the same path as initial load - this always works correctly
       await renderPortfolioIncremental();
@@ -2878,18 +2896,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 
       if (watchlistBody && s.watchlist && s.watchlist.length > 0 && !watchlistEditMode && providers?.pyth) {
         try {
-          const mod = await import('./modules/features/watchlist.js');
-          const prices = await mod.render(watchlistBody, {
-            feedIds: s.watchlist,
-            pythProvider: providers.pyth,
-            useColoredPnL: s.useColoredPnL ?? false,
-            editMode: false,
-            previousData: cachedWatchlistData,
-            showPriceChart: s.showPriceChart ?? true,
-            forceRefresh: true  // Always fetch fresh data on periodic refresh
-          });
-          if (Array.isArray(prices) && prices.length > 0) {
-            cachedWatchlistData = prices;
+          const renderWatchlist = window.renderWatchlistPanel;
+          if (typeof renderWatchlist === 'function') {
+            await renderWatchlist({
+              feedIdsOverride: s.watchlist,
+              forceRefresh: true,
+              editMode: false,
+              preserveCurrentData: true
+            });
           }
         } catch (e) {
           // Silently fail watchlist updates
@@ -2897,6 +2911,12 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
     } catch (e) {
       console.warn('[Refresh] Failed:', e?.message || e);
+    } finally {
+      refreshInProgress = false;
+      if (refreshQueued) {
+        refreshQueued = false;
+        queueMicrotask(() => { refreshPortfolio(); });
+      }
     }
   }
 

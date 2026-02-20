@@ -99,10 +99,27 @@ export class HyperliquidFetcher {
                     // I will assume the user wants me to inject the cache application logic.
 
                     // I will target the end of the loop where rows are ready.
-                    let perpEquity = 0;
-                    if (data?.perp?.marginSummary) {
-                        perpEquity = parseFloat(data.perp.marginSummary.accountValue || 0);
-                    }
+                    const resolvePerpEquity = (state) => {
+                        const marginValue = Number(state?.marginSummary?.accountValue);
+                        const crossValue = Number(state?.crossMarginSummary?.accountValue);
+                        const withdrawable = Number(state?.withdrawable);
+                        const values = [marginValue, crossValue].filter(Number.isFinite);
+                        const best = values.length > 0 ? values[0] : null;
+
+                        if (best !== null && Number.isFinite(withdrawable)) {
+                            if (best >= 0 && withdrawable >= 0) {
+                                return Math.max(best, withdrawable);
+                            }
+                            return best;
+                        }
+
+                        if (best !== null) return best;
+                        return Number.isFinite(withdrawable) ? withdrawable : 0;
+                    };
+
+                    const perpEquity = this.providers.hyperliquid.resolvePerpAccountValue
+                        ? (this.providers.hyperliquid.resolvePerpAccountValue(data?.perp) ?? 0)
+                        : resolvePerpEquity(data?.perp);
 
                     let spotEquity = 0;
                     if (data?.spot?.balances) {

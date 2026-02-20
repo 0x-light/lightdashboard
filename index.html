@@ -41,7 +41,7 @@
     <script>
         (function () {
             try {
-                var rawSettings = localStorage.getItem('myDashboardSettings.v1') || localStorage.getItem('dashboardSettings') || '{}';
+                var rawSettings = localStorage.getItem('myDashboardSettings.v2') || localStorage.getItem('myDashboardSettings.v1') || localStorage.getItem('dashboardSettings') || '{}';
                 var settings = JSON.parse(rawSettings);
                 var theme = settings.theme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
                 document.documentElement.dataset.theme = theme;
@@ -112,7 +112,7 @@
                 <button id="newToggleRainBtn" class="btn-text">Rain On</button>
                 <div class="font-size-controls">
                     <button id="newDecreaseFontBtn" class="btn-text">-</button>
-                    <span id="newFontSizeDisplay" class="btn-text">15px</span>
+                    <span id="newFontSizeDisplay" class="btn-text">14px</span>
                     <button id="newIncreaseFontBtn" class="btn-text">+</button>
                 </div>
                 <button id="newToggleAmountsBtn" class="btn-text">Hide Amounts</button>
@@ -243,7 +243,7 @@
                 <button id="newToggleRainBtnMobile" class="btn-text">Rain On</button>
                 <div class="font-size-controls">
                     <button id="newDecreaseFontBtnMobile" class="btn-text">-</button>
-                    <span id="newFontSizeDisplayMobile" class="btn-text">15px</span>
+                    <span id="newFontSizeDisplayMobile" class="btn-text">14px</span>
                     <button id="newIncreaseFontBtnMobile" class="btn-text">+</button>
                 </div>
                 <button id="newToggleAmountsBtnMobile" class="btn-text">Hide Amounts</button>
