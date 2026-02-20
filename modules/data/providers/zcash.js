@@ -1,6 +1,28 @@
 // Zcash provider - blazing fast multi-address support
 import { HttpClient } from '../../http/client.js';
 
+const ZCASH_DEBUG = (() => {
+  try {
+    return typeof window !== 'undefined' &&
+      window.localStorage &&
+      window.localStorage.getItem('debug.zcash') === '1';
+  } catch (_) {
+    return false;
+  }
+})();
+
+function zcashDebugWarn(...args) {
+  if (ZCASH_DEBUG) {
+    console.warn(...args);
+  }
+}
+
+function zcashDebugError(...args) {
+  if (ZCASH_DEBUG) {
+    console.error(...args);
+  }
+}
+
 /**
  * Validate Zcash transparent address format (basic check)
  */
@@ -15,7 +37,6 @@ function isZcashAddress(address) {
  */
 export async function getTokenBalances(addresses, { timeoutMs = 15000 } = {}) {
   if (!Array.isArray(addresses) || addresses.length === 0) {
-    console.warn('[Zcash] No addresses provided');
     return [];
   }
   
@@ -25,7 +46,7 @@ export async function getTokenBalances(addresses, { timeoutMs = 15000 } = {}) {
     .filter(addr => isZcashAddress(addr));
   
   if (zecAddresses.length === 0) {
-    console.warn('[Zcash] No valid Zcash addresses found');
+    zcashDebugWarn('[Zcash] No valid Zcash addresses found');
     return [];
   }
   
@@ -54,7 +75,7 @@ export async function getTokenBalances(addresses, { timeoutMs = 15000 } = {}) {
         }
         return null;
       } catch (err) {
-        console.error(`[Zcash] Error fetching ${address}:`, err.message);
+        zcashDebugError(`[Zcash] Error fetching ${address}:`, err.message);
         return null;
       }
     })
@@ -78,4 +99,3 @@ export default {
   getTokenBalances, 
   fetchBalance 
 };
-

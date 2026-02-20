@@ -2,6 +2,7 @@
  * Incremental Portfolio Renderer
  * Streams positions as each provider responds (no blocking)
  */
+import { getRandomSpinner } from '../ui/unicode-animations.js';
 
 export class IncrementalPortfolioRenderer {
   constructor({ providers, settings, containers, ui, expectedProviders = [], initialPositions = null }) {
@@ -36,7 +37,6 @@ export class IncrementalPortfolioRenderer {
     // Safety timeout: force hide loader after 10 seconds no matter what
     this.safetyTimeout = setTimeout(() => {
       if (this.isLoading) {
-        console.warn('[Portfolio] Safety timeout reached, hiding loader');
         this.hideGreetingLoader();
       }
     }, 10000);
@@ -59,8 +59,8 @@ export class IncrementalPortfolioRenderer {
       return;
     }
 
-    // ASCII spinner frames for smooth animation
-    const frames = ['⢎⡰', '⢎⡡', '⢎⡑', '⢎⠱', '⠎⡱', '⢊⡱', '⢌⡱', '⢆⡱'];
+    // Pick a random spinner each time
+    const { frames, interval } = getRandomSpinner();
     let currentFrame = 0;
 
     // Create loader span
@@ -76,7 +76,7 @@ export class IncrementalPortfolioRenderer {
       if (loader.parentElement) {
         loader.textContent = frames[currentFrame];
       }
-    }, 100); // Update every 100ms for smooth rotation
+    }, interval);
 
     greeting.appendChild(loader);
   }

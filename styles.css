@@ -3639,9 +3639,9 @@ html[data-theme="amstrad"] {
   --card-bg: #00002c; --green: #80ff00; --red: #ff8000;
 }
 html[data-theme="coco"] {
-  --bg: #0a4a0a; --bg-elev: #145414; --text: #ffa040; --text-bright: #ffc060;
-  --muted: color-mix(in srgb, var(--text) 60%, transparent); --accent: #ffa040; --border: rgba(255,160,64,0.1);
-  --card-bg: #0e4e0e; --green: #60ff60; --red: #ff6060;
+  --bg: #33ff33; --bg-elev: #28e828; --text: #000000; --text-bright: #000000;
+  --muted: color-mix(in srgb, var(--text) 60%, transparent); --accent: #000000; --border: rgba(0,0,0,0.15);
+  --card-bg: #40ff40; --green: #004400; --red: #440000;
 }
 html[data-theme="osborne"] {
   --bg: #041004; --bg-elev: #0e1a0e; --text: #a8f0a0; --text-bright: #c8ffc0;
@@ -3798,3 +3798,4 @@ body.mono-pnl .change.negative {
 body.mono-pnl .sparkline polyline {
   stroke: var(--text) !important;
 }
+

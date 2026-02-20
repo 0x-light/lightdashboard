@@ -5,6 +5,8 @@ import { HttpClient } from '../../http/client.js';
 const HERMES_BASE = 'https://hermes.pyth.network';
 const LOCAL_FAILURE_THRESHOLD = 3;
 const LOCAL_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_IDS_PER_TIMESTAMP_REQUEST = 8;
+const MAX_TIMESTAMP_SPLIT_DEPTH = 3;
 let localConsecutiveFailures = 0;
 let localPythDisabledUntil = 0;
 let didLogLocalDisable = false;
@@ -46,8 +48,9 @@ async function fetchPyth(path, timeoutMs = 10000, bypassCache = false) {
     const data = await fetchWithCorsProxy(finalUrl, {
       cloudflareProxy: '/api/pyth?path=',
       timeoutMs,
-      // Avoid hammering public proxies on localhost when they are rate-limited.
-      maxPublicProxyAttempts: HttpClient.isProductionHost() ? 0 : 1
+      // Keep console clean: use first-party proxy only, no public proxy churn.
+      preferDirect: false,
+      maxPublicProxyAttempts: 0
     });
     notePythSuccess();
     return data;
@@ -61,6 +64,119 @@ let feedsCache = null;
 let feedsCacheTimestamp = 0;
 const FEEDS_CACHE_KEY = 'pyth_price_feeds_v1';
 const FEEDS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const FEED_ID_PATTERN = /^0x[a-f0-9]{64}$/;
+
+function normalizeFeedId(id) {
+  if (typeof id !== 'string') return null;
+  const trimmed = id.trim().toLowerCase();
+  if (!trimmed) return null;
+  const normalized = trimmed.startsWith('0x') ? trimmed : `0x${trimmed}`;
+  return FEED_ID_PATTERN.test(normalized) ? normalized : null;
+}
+
+function getKnownFeedIdSet() {
+  if ((!feedsCache || typeof feedsCache !== 'object') && typeof localStorage !== 'undefined') {
+    try {
+      const cached = localStorage.getItem(FEEDS_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const ts = Number(parsed?.timestamp || 0);
+        const data = parsed?.data;
+        if (data && typeof data === 'object' && Number.isFinite(ts) && (Date.now() - ts) < FEEDS_CACHE_TTL) {
+          feedsCache = data;
+          feedsCacheTimestamp = ts;
+        }
+      }
+    } catch (_) {
+      // Ignore storage parse/access errors.
+    }
+  }
+
+  if (!feedsCache || typeof feedsCache !== 'object') return null;
+  const set = new Set();
+  for (const id of Object.values(feedsCache)) {
+    const normalized = normalizeFeedId(id);
+    if (normalized) set.add(normalized);
+  }
+  return set.size > 0 ? set : null;
+}
+
+function normalizeFeedIds(feedIds) {
+  if (!Array.isArray(feedIds) || feedIds.length === 0) return [];
+  const knownSet = getKnownFeedIdSet();
+  const out = [];
+  const seen = new Set();
+  for (const id of feedIds) {
+    const normalized = normalizeFeedId(id);
+    if (!normalized) continue;
+    if (knownSet && !knownSet.has(normalized)) {
+      // Skip unknown IDs when we have a known feed map to avoid 404 spam.
+      continue;
+    }
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function parseParsedPrices(data) {
+  const prices = {};
+  const parsed = data?.parsed;
+  if (!Array.isArray(parsed)) return prices;
+
+  for (const item of parsed) {
+    const id = normalizeFeedId(item?.id);
+    if (!id) continue;
+    const price = parseFloat(item?.price?.price) * Math.pow(10, item?.price?.expo || 0);
+    if (Number.isFinite(price)) {
+      prices[id] = price;
+    }
+  }
+
+  return prices;
+}
+
+function chunkArray(values, chunkSize) {
+  if (!Array.isArray(values) || values.length === 0) return [];
+  const size = Math.max(1, Number(chunkSize) || 1);
+  const out = [];
+  for (let i = 0; i < values.length; i += size) {
+    out.push(values.slice(i, i + size));
+  }
+  return out;
+}
+
+async function fetchTimestampChunkWithSplit(feedIds, timestampSeconds, timeoutMs = 10000, depth = 0) {
+  if (!Array.isArray(feedIds) || feedIds.length === 0) return {};
+
+  const idsParam = feedIds.map(id => `ids[]=${id}`).join('&');
+  const data = await fetchPyth(`/updates/price/${timestampSeconds}?${idsParam}&parsed=true`, timeoutMs);
+  const prices = parseParsedPrices(data);
+
+  // If we got data, keep it. If not, split to isolate bad IDs and salvage good ones.
+  if (Object.keys(prices).length > 0 || feedIds.length <= 1 || depth >= MAX_TIMESTAMP_SPLIT_DEPTH) {
+    return prices;
+  }
+
+  const mid = Math.ceil(feedIds.length / 2);
+  const left = await fetchTimestampChunkWithSplit(feedIds.slice(0, mid), timestampSeconds, timeoutMs, depth + 1);
+  const right = await fetchTimestampChunkWithSplit(feedIds.slice(mid), timestampSeconds, timeoutMs, depth + 1);
+  return { ...left, ...right };
+}
+
+async function fetchTimestampPricesResilient(feedIds, timestampSeconds, timeoutMs = 10000) {
+  const normalizedIds = normalizeFeedIds(feedIds);
+  if (normalizedIds.length === 0) return {};
+
+  const results = {};
+  const chunks = chunkArray(normalizedIds, MAX_IDS_PER_TIMESTAMP_REQUEST);
+  for (const chunk of chunks) {
+    const chunkPrices = await fetchTimestampChunkWithSplit(chunk, timestampSeconds, timeoutMs, 0);
+    Object.assign(results, chunkPrices);
+  }
+  return results;
+}
 
 export async function getPriceFeeds(timeoutMs = 15000) {
   const now = Date.now();
@@ -123,36 +239,16 @@ export async function getPriceFeeds(timeoutMs = 15000) {
 
 export async function getLatestByFeedIds(feedIds, timeoutMs = 10000, bypassCache = false) {
   if (isLocalPythDisabled()) return {};
-  if (!Array.isArray(feedIds) || feedIds.length === 0) return {};
-  const normalizedIds = feedIds.map(id => id.toLowerCase().startsWith('0x') ? id.toLowerCase() : `0x${id.toLowerCase()}`);
+  const normalizedIds = normalizeFeedIds(feedIds);
+  if (normalizedIds.length === 0) return {};
   const idsParam = normalizedIds.map(id => `ids[]=${id}`).join('&');
   const data = await fetchPyth(`/updates/price/latest?${idsParam}&parsed=true`, timeoutMs, bypassCache);
-  const prices = {};
-  const parsed = data?.parsed || [];
-  for (const p of parsed) {
-    const id = p?.id ? (p.id.toLowerCase().startsWith('0x') ? p.id.toLowerCase() : `0x${p.id.toLowerCase()}`) : null;
-    if (!id) continue;
-    const price = parseFloat(p?.price?.price) * Math.pow(10, p?.price?.expo || 0);
-    if (Number.isFinite(price)) prices[id] = price;
-  }
-  return prices;
+  return parseParsedPrices(data);
 }
 
 export async function getAtTimestampByFeedIds(feedIds, timestampSeconds, timeoutMs = 10000) {
   if (isLocalPythDisabled()) return {};
-  if (!Array.isArray(feedIds) || feedIds.length === 0) return {};
-  const normalizedIds = feedIds.map(id => id.toLowerCase().startsWith('0x') ? id.toLowerCase() : `0x${id.toLowerCase()}`);
-  const idsParam = normalizedIds.map(id => `ids[]=${id}`).join('&');
-  const data = await fetchPyth(`/updates/price/${timestampSeconds}?${idsParam}&parsed=true`, timeoutMs);
-  const prices = {};
-  const parsed = data?.parsed || [];
-  for (const p of parsed) {
-    const id = p?.id ? (p.id.toLowerCase().startsWith('0x') ? p.id.toLowerCase() : `0x${p.id.toLowerCase()}`) : null;
-    if (!id) continue;
-    const price = parseFloat(p?.price?.price) * Math.pow(10, p?.price?.expo || 0);
-    if (Number.isFinite(price)) prices[id] = price;
-  }
-  return prices;
+  return fetchTimestampPricesResilient(feedIds, timestampSeconds, timeoutMs);
 }
 
 // Global Concurrency Queue
@@ -194,8 +290,9 @@ const enqueue = (task) => {
 export async function getBatch24hPriceHistory(feedIds, points = 48, endTime = Date.now()) {
   if (!feedIds || feedIds.length === 0) return {};
 
-  // Deduplicate feedIds and normalize them
-  const uniqueFeedIds = [...new Set(feedIds)].map(id => id.toLowerCase().startsWith('0x') ? id.toLowerCase() : `0x${id.toLowerCase()}`);
+  // Normalize, dedupe, and optionally filter unknown/invalid IDs.
+  const uniqueFeedIds = normalizeFeedIds(feedIds);
+  if (uniqueFeedIds.length === 0) return {};
 
   const now = Math.floor(endTime / 1000);
   const day = 24 * 60 * 60;
@@ -240,7 +337,7 @@ export async function getBatch24hPriceHistory(feedIds, points = 48, endTime = Da
   };
   // ---------------------------
 
-  const feedIdsToFetchInitial = [...new Set(feedIds.map(id => id.toLowerCase().startsWith('0x') ? id.toLowerCase() : `0x${id.toLowerCase()}`))];
+  const feedIdsToFetchInitial = uniqueFeedIds;
 
   // 1. Check Cache First
   // We need to know which (feedId, timestamp) pairs are missing.
@@ -301,29 +398,16 @@ export async function getBatch24hPriceHistory(feedIds, points = 48, endTime = Da
     if (!feedsNeeded || feedsNeeded.length === 0) return;
 
     try {
-      const idsParam = feedsNeeded.map(id => `ids[]=${id}`).join('&');
+      const priceMap = await fetchTimestampPricesResilient(feedsNeeded, ts, 10000);
+      if (!priceMap || Object.keys(priceMap).length === 0) return;
 
-      // Use fetchPyth which handles 429 retries internally via fetchWithCorsProxy logic? 
-      // Actually fetchWithCorsProxy just tries proxies. Error handling is still basic.
-      // But we can catch 429 here if needed.
-      const data = await fetchPyth(`/updates/price/${ts}?${idsParam}&parsed=true`, 10000);
-
-      if (!data) return; // Silent fail if all proxies fail
-
-      if (data && data.parsed && Array.isArray(data.parsed)) {
-        data.parsed.forEach(update => {
-          const id = update.id.startsWith('0x') ? update.id.toLowerCase() : `0x${update.id.toLowerCase()}`;
-          const targetId = feedsNeeded.find(fid => fid === id);
-
-          if (targetId && update.price) {
-            const price = parseFloat(update.price.price) * Math.pow(10, update.price.expo);
-            if (Number.isFinite(price) && price > 0) {
-              if (!results[targetId]) results[targetId] = [];
-              results[targetId].push({ timestamp: ts, price: price });
-              saveToCache(targetId, ts, price);
-            }
-          }
-        });
+      for (const targetId of feedsNeeded) {
+        const price = priceMap[targetId];
+        if (Number.isFinite(price) && price > 0) {
+          if (!results[targetId]) results[targetId] = [];
+          results[targetId].push({ timestamp: ts, price });
+          saveToCache(targetId, ts, price);
+        }
       }
     } catch (e) {
       // If 429, we should arguably retry, but for now just log
@@ -352,7 +436,9 @@ export async function get24hPriceHistory(feedId, timeoutMs = 10000, points = 96)
   // Let's keep timeoutMs but maybe it's unused?
   // Let's modify ManualFetcher to pass points.
   const result = await getBatch24hPriceHistory([feedId], points);
-  return result[feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`] || [];
+  const normalized = normalizeFeedId(feedId);
+  if (!normalized) return [];
+  return result[normalized] || [];
 }
 
 export default { getPriceFeeds, getLatestByFeedIds, getAtTimestampByFeedIds, get24hPriceHistory, getBatch24hPriceHistory };

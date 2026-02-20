@@ -11,6 +11,45 @@ const PUBLIC_PROXIES = [
 ];
 const PROXY_COOLDOWN_UNTIL = new Map();
 const DEFAULT_PROXY_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_DEV_PROXY_ORIGIN = 'https://viewport.is';
+const DEV_PROXY_ORIGIN_KEY = 'ld_proxy_origin';
+
+function normalizeOrigin(origin) {
+    if (typeof origin !== 'string') return null;
+    const trimmed = origin.trim().replace(/\/+$/, '');
+    if (!trimmed) return null;
+    if (!/^https?:\/\//i.test(trimmed)) return null;
+    try {
+        const parsed = new URL(trimmed);
+        return `${parsed.protocol}//${parsed.host}`;
+    } catch (_) {
+        return null;
+    }
+}
+
+function getConfiguredDevProxyOrigin() {
+    if (HttpClient.isProductionHost()) return '';
+    try {
+        const fromWindow = normalizeOrigin(window.__LD_PROXY_ORIGIN__);
+        if (fromWindow) return fromWindow;
+    } catch (_) { /* ignore */ }
+    try {
+        const fromStorage = normalizeOrigin(localStorage.getItem(DEV_PROXY_ORIGIN_KEY));
+        if (fromStorage) return fromStorage;
+    } catch (_) { /* ignore */ }
+    return DEFAULT_DEV_PROXY_ORIGIN;
+}
+
+function resolveProxyPrefix(prefix) {
+    if (!prefix || typeof prefix !== 'string') return null;
+    if (/^https?:\/\//i.test(prefix)) return prefix;
+    if (prefix.startsWith('/')) {
+        if (HttpClient.isProductionHost()) return prefix;
+        const devOrigin = getConfiguredDevProxyOrigin();
+        return `${devOrigin}${prefix}`;
+    }
+    return prefix;
+}
 
 function parseHttpStatus(error) {
     if (!error) return null;
@@ -34,9 +73,8 @@ function putProxyOnCooldown(name, status, cooldownMs = DEFAULT_PROXY_COOLDOWN_MS
 }
 
 /**
- * Attempt to fetch a URL with automatic CORS proxy fallback
- * In PRODUCTION: Only use Cloudflare proxy (no public proxies - they violate CSP)
- * In LOCALHOST: Try direct first, then a limited number of public proxies sequentially
+ * Attempt to fetch a URL with optional first-party proxy and fallback strategy.
+ * In production, public proxies are always disabled.
  */
 export async function fetchWithCorsProxy(url, options = {}) {
     const {
@@ -72,27 +110,34 @@ export async function fetchWithCorsProxy(url, options = {}) {
         return JSON.parse(text);
     };
 
-    // PRODUCTION: Only use Cloudflare proxy - no fallbacks (CSP blocks public proxies)
-    if (isProduction && cloudflareProxy) {
-        const urlObj = new URL(url);
-        const path = urlObj.pathname + urlObj.search;
-        const proxyUrl = cloudflareProxy + encodeURIComponent(path);
-        return await tryFetch({ attemptUrl: proxyUrl, proxyName: 'cloudflare' });
-    }
-
-    // LOCALHOST/DEV: Try direct + limited public proxy fallbacks sequentially.
-    // Sequential execution avoids creating request storms and proxy rate-limits.
+    // Build attempts in priority order.
     const attempts = [];
+
+    const resolvedCloudflareProxy = resolveProxyPrefix(cloudflareProxy);
+    if (resolvedCloudflareProxy) {
+        let path = '';
+        try {
+            const urlObj = new URL(url);
+            path = urlObj.pathname + urlObj.search;
+        } catch (_) {
+            path = String(url || '');
+        }
+        attempts.push({
+            attemptUrl: `${resolvedCloudflareProxy}${encodeURIComponent(path)}`,
+            proxyName: 'cloudflare'
+        });
+    }
 
     if (preferDirect) {
         attempts.push({ attemptUrl: url, proxyName: null });
     }
 
-    // Public proxies as fallback for localhost only
-    if (!isProduction && maxPublicProxyAttempts > 0) {
+    // Public proxies as fallback for localhost only (disabled in production).
+    const allowedPublicAttempts = isProduction ? 0 : Math.max(0, Number(maxPublicProxyAttempts) || 0);
+    if (allowedPublicAttempts > 0) {
         let added = 0;
         for (const proxy of PUBLIC_PROXIES) {
-            if (added >= maxPublicProxyAttempts) break;
+            if (added >= allowedPublicAttempts) break;
             if (isProxyCoolingDown(proxy.name)) continue;
             attempts.push({ attemptUrl: proxy.build(url), proxyName: proxy.name });
             added += 1;
@@ -123,20 +168,17 @@ export async function fetchWithCorsProxy(url, options = {}) {
  * Build a Pyth API URL with Cloudflare proxy in production
  */
 export function buildPythUrl(path) {
-    if (HttpClient.isProductionHost()) {
-        return `/api/pyth?path=${encodeURIComponent(path)}`;
-    }
-    return `https://hermes.pyth.network${path.startsWith('/') ? path : '/' + path}`;
+    const proxyPrefix = resolveProxyPrefix('/api/pyth?path=');
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return `${proxyPrefix}${encodeURIComponent(normalizedPath)}`;
 }
 
 /**
  * Build a CoinGecko API URL with Cloudflare proxy in production
  */
 export function buildCoinGeckoUrl(url) {
-    if (HttpClient.isProductionHost()) {
-        return `/api/coingecko?url=${encodeURIComponent(url)}`;
-    }
-    return url;
+    const proxyPrefix = resolveProxyPrefix('/api/coingecko?url=');
+    return `${proxyPrefix}${encodeURIComponent(url)}`;
 }
 
 export default { fetchWithCorsProxy, buildPythUrl, buildCoinGeckoUrl };

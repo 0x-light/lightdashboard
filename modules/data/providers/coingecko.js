@@ -1,16 +1,9 @@
 // CoinGecko provider client (uses Cloudflare proxy in production via HttpClient)
 import { HttpClient } from '../../http/client.js';
+import { buildCoinGeckoUrl } from '../../http/cors-proxy.js';
 
 function proxy(url) {
-  try {
-    const u = new URL(url);
-    if (u.hostname === 'api.coingecko.com' && HttpClient.isProductionHost()) {
-      return `/api/coingecko?url=${encodeURIComponent(url)}`;
-    }
-    return url;
-  } catch (_) {
-    return url;
-  }
+  return buildCoinGeckoUrl(url);
 }
 
 export async function getSimplePrice(idsCsv, { timeoutMs = 15000, ttlMs = 60000 } = {}) {
@@ -27,5 +20,4 @@ export async function getHistoricalUsd(coinId, dateStr, { timeoutMs = 15000, ttl
 }
 
 export default { getSimplePrice, getHistoricalUsd };
-
 

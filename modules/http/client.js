@@ -4,6 +4,8 @@
 const DEFAULT_TIMEOUT_MS = 5000; // Reduced from 15s to 5s for faster failures
 const DEFAULT_RETRIES = 1; // Reduced from 2 to 1 retry for speed
 const DEFAULT_BACKOFF_BASE_MS = 200; // Reduced from 300ms to 200ms
+const DEFAULT_DEV_PROXY_ORIGIN = 'https://viewport.is';
+const DEV_PROXY_ORIGIN_KEY = 'ld_proxy_origin';
 
 // In-flight requests for deduplication
 const inFlightByKey = new Map();
@@ -70,11 +72,45 @@ function shouldRetry(errorOrResponse) {
   return false;
 }
 
+function normalizeOrigin(origin) {
+  if (typeof origin !== 'string') return null;
+  const trimmed = origin.trim().replace(/\/+$/, '');
+  if (!trimmed) return null;
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch (_) {
+    return null;
+  }
+}
+
+function getDevProxyOrigin() {
+  if (isProductionHost()) return '';
+  try {
+    const fromWindow = normalizeOrigin(window.__LD_PROXY_ORIGIN__);
+    if (fromWindow) return fromWindow;
+  } catch (_) {
+    // ignore
+  }
+  try {
+    const fromStorage = normalizeOrigin(localStorage.getItem(DEV_PROXY_ORIGIN_KEY));
+    if (fromStorage) return fromStorage;
+  } catch (_) {
+    // ignore
+  }
+  return DEFAULT_DEV_PROXY_ORIGIN;
+}
+
 function maybeProxyCoinGecko(rawUrl) {
   try {
     const u = new URL(rawUrl);
-    if (u.hostname === 'api.coingecko.com' && isProductionHost()) {
-      return `/api/coingecko?url=${encodeURIComponent(rawUrl)}`;
+    if (u.hostname === 'api.coingecko.com') {
+      if (isProductionHost()) {
+        return `/api/coingecko?url=${encodeURIComponent(rawUrl)}`;
+      }
+      const devOrigin = getDevProxyOrigin();
+      return `${devOrigin}/api/coingecko?url=${encodeURIComponent(rawUrl)}`;
     }
     return rawUrl;
   } catch (_) {
@@ -185,5 +221,4 @@ export const HttpClient = {
 };
 
 export default HttpClient;
-
 

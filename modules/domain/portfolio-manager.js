@@ -13,7 +13,6 @@ export class PortfolioManager {
 
     async fetchAll(wallets, solanaAddrs, bitcoinAddrs, zcashAddrs) {
         if (this.isFetching) {
-            console.warn('[PortfolioManager] Fetch already in progress');
             return;
         }
         this.isFetching = true;

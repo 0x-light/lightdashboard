@@ -4,6 +4,21 @@ import { getCoingeckoId } from '../../utils/asset-mapping.js';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes for price data
 const CUM_FUNDING_CACHE_TTL = 15 * 60 * 1000; // 15 minutes for cumulative funding
 const WALLET_ROWS_CACHE_TTL = 30 * 60 * 1000; // 30 minutes stale fallback for transient API failures
+const LIGHTER_DEBUG = (() => {
+    try {
+        return typeof window !== 'undefined' &&
+            window.localStorage &&
+            window.localStorage.getItem('debug.lighter') === '1';
+    } catch (_) {
+        return false;
+    }
+})();
+
+function lighterDebugWarn(...args) {
+    if (LIGHTER_DEBUG) {
+        console.warn(...args);
+    }
+}
 
 function firstFiniteNumber(...values) {
     for (const value of values) {
@@ -237,8 +252,6 @@ export class LighterFetcher {
 
     async _fetchWallet(wallet) {
         let walletRows = [];
-        const host = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';
-        const isLocalhost = host === 'localhost' || host === '127.0.0.1';
         const spotAssetMap = (typeof this.providers?.lighter?.getSpotAssetMap === 'function')
             ? this.providers.lighter.getSpotAssetMap()
             : null;
@@ -259,9 +272,7 @@ export class LighterFetcher {
                 : [];
             hasAccountsPayload = accounts.length > 0;
             if (accounts.length === 0) {
-                if (isLocalhost) {
-                    console.warn('[Lighter] No accounts returned for wallet:', wallet, data);
-                }
+                lighterDebugWarn('[Lighter] No accounts returned for wallet:', wallet, data);
                 // Keep stale rows on transient upstream no-account responses.
                 if (cachedRows.length > 0) {
                     walletRows = cachedRows;
@@ -608,14 +619,14 @@ export class LighterFetcher {
                 }
             }
 
-            if (isLocalhost && walletRows.length === 0) {
-                console.warn('[Lighter] Accounts found but no renderable positions/balances parsed for wallet:', wallet, accounts);
+            if (walletRows.length === 0) {
+                lighterDebugWarn('[Lighter] Accounts found but no renderable positions/balances parsed for wallet:', wallet, accounts);
             }
         } catch (e) {
             hadRuntimeError = true;
             // Suppress expected errors (account not found)
             if (!e.message?.includes('400') && !e.message?.includes('404')) {
-                console.warn('[Lighter] Error:', e.message);
+                lighterDebugWarn('[Lighter] Error:', e.message);
             }
         }
 
@@ -633,15 +644,13 @@ export class LighterFetcher {
             );
 
         if (shouldUseStaleRows) {
-            if (isLocalhost) {
-                console.warn('[Lighter] Using cached wallet rows due to temporary upstream data gap:', {
-                    wallet,
-                    hadRuntimeError,
-                    hasPricingGap,
-                    hasAccountsPayload,
-                    fetchedRows: walletRows.length
-                });
-            }
+            lighterDebugWarn('[Lighter] Using cached wallet rows due to temporary upstream data gap:', {
+                wallet,
+                hadRuntimeError,
+                hasPricingGap,
+                hasAccountsPayload,
+                fetchedRows: walletRows.length
+            });
             walletRows = cachedRows;
         } else if (walletRows.length > 0) {
             this._setCachedWalletRows(wallet, walletRows);

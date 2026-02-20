@@ -2,11 +2,12 @@
 import * as AssetMapping from './modules/utils/asset-mapping.js';
 import * as Portfolio from './modules/domain/portfolio.js';
 import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
+import { getRandomSpinner } from './modules/ui/unicode-animations.js';
 
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.9.10';
+const APP_VERSION = '2.9.14';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
@@ -128,14 +129,11 @@ async function runHealthChecks() {
 
   // Lighter
   try {
-    const wallets = (getSettings().walletAddresses || '').split(',').map(w => w.trim()).filter(Boolean);
-    if (wallets.length > 0) {
-      const data = await providers.lighter.fetchAccountByAddress(wallets[0], { timeoutMs: 8000 });
-      const ok = Array.isArray(data?.accounts) && data.accounts.length > 0;
-      parts.push(`<span style="color: ${ok ? 'var(--green)' : 'var(--red)'};">●</span> Lighter`);
-    } else {
-      parts.push('<span style="color: var(--red);">●</span> Lighter (no wallets)');
-    }
+    // Avoid wallet-address probes here; they create noisy 400s for wallets without Lighter accounts.
+    // Funding-rates endpoint is a stable health signal for Lighter API availability.
+    const data = await providers.lighter.fetchFundingRates({ timeoutMs: 8000 });
+    const ok = !!(data && typeof data === 'object');
+    parts.push(`<span style="color: ${ok ? 'var(--green)' : 'var(--red)'};">●</span> Lighter`);
   } catch (e) {
     parts.push('<span style="color: var(--red);">●</span> Lighter');
   }
@@ -336,9 +334,9 @@ async function _doRenderPortfolioIncremental() {
 
   // Initialize Portfolio Manager and Fetchers (Singleton pattern)
   if (!window._portfolioManager) {
-    const { PortfolioManager } = await import('./modules/domain/portfolio-manager.js?v=2.9.10');
+    const { PortfolioManager } = await import('./modules/domain/portfolio-manager.js?v=2.9.14');
     const { HyperliquidFetcher } = await import('./modules/data/fetchers/hyperliquid-fetcher.js');
-    const { LighterFetcher } = await import('./modules/data/fetchers/lighter-fetcher.js?v=2.9.10');
+    const { LighterFetcher } = await import('./modules/data/fetchers/lighter-fetcher.js?v=2.9.14');
     const { ZerionFetcher } = await import('./modules/data/fetchers/zerion-fetcher.js');
     const { CieloFetcher } = await import('./modules/data/fetchers/cielo-fetcher.js');
     const { AlchemyHeliusFetcher } = await import('./modules/data/fetchers/alchemy-helius-fetcher.js');
@@ -2430,8 +2428,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         return;
       }
 
-      // ASCII spinner frames: ◐ ◓ ◑ ◒ or ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
-      const frames = ['◐', '◓', '◑', '◒'];
+      // Pick a random spinner each time
+      const { frames, interval } = getRandomSpinner();
       let frameIndex = 0;
 
       // Create spinner element
@@ -2447,7 +2445,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (spinnerEl) {
           spinnerEl.textContent = frames[frameIndex];
         }
-      }, 150);
+      }, interval);
     };
 
     const stopSpinner = () => {
@@ -2994,4 +2992,6 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
     }
   });
+
+
 });

@@ -1,4 +1,5 @@
 // ESM bootstrap: expose modules on window without altering existing app flow
+import './core/console-policy.js';
 import * as Portfolio from './domain/portfolio.js';
 import * as IncrementalPortfolio from './domain/incremental-portfolio.js';
 import * as Http from './http/client.js';
@@ -58,5 +59,4 @@ window.AppModules.features.rain = Rain;
 window.AppModules.features.weather = Weather;
 
 // Modules loaded
-
 

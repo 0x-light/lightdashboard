@@ -13,9 +13,6 @@
     <link rel="dns-prefetch" href="https://blockchain.info">
     <link rel="dns-prefetch" href="https://api.zcha.in">
 
-    <!-- Preload critical fonts -->
-    <link rel="preload" href="/BerkeleyMono-Regular.otf" as="font" type="font/otf" crossorigin>
-
     <!-- Favicon -->
     <link rel="icon" href="/favicon.png" type="image/png">
     <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192">
@@ -30,13 +27,13 @@
     <meta name="theme-color" content="#000000" id="themeColorMeta">
 
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json?v=2.9.10">
+    <link rel="manifest" href="/manifest.json?v=2.9.14">
 
     <!-- Cache busting: update version number on each deployment -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="./styles.css?v=2.9.10">
+    <link rel="stylesheet" href="./styles.css?v=2.9.14">
     <!-- Apply theme synchronously to prevent flash of wrong theme -->
     <script>
         (function () {
@@ -384,7 +381,7 @@
 
                 <section>
                     <!-- Privacy Notice -->
-                    <div class="info" style="margin-bottom: 16px;">All settings are stored locally in your browser.
+                    <div class="info">All settings are stored locally in your browser.
                         Nothing is
                         sent
                         to any server.</div>
@@ -394,7 +391,7 @@
                         <div style="margin-bottom: 8px;">Import/export your settings as text to backup or transfer
                             between devices
                         </div>
-                        <div class="button-row" style="margin-bottom: 8px;">
+                        <div class="button-row" style="margin-bottom: 0;">
                             <button type="button" id="newExportSettingsBtn" class="btn-text">Export</button>
                             <button type="button" id="newImportSettingsBtn" class="btn-text">Import</button>
                         </div>
@@ -424,7 +421,7 @@
                                 <input id="newWeatherLon" type="number" step="any" class="settings-input">
                             </label>
                         </div>
-                        <button id="newUseMyLocationBtn" type="button" class="btn-text" style="margin-top: 8px;">Use My Location</button>
+                        <button id="newUseMyLocationBtn" type="button" class="btn-text" style="margin-top: 8px;">⌖ Use my location</button>
                         <div class="info" style="margin-top: 8px;">Location is used for weather display (optional)</div>
                     </fieldset>
 
@@ -839,12 +836,12 @@
         </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.9.10" defer></script>
-    <script type="module" src="./app.js?v=2.9.10" defer></script>
+    <script type="module" src="./modules/app-init.js?v=2.9.14" defer></script>
+    <script type="module" src="./app.js?v=2.9.14" defer></script>
 
     <!-- Service Worker Registration -->
     <script defer>
-        const EXPECTED_VERSION = 'v2.9.10';
+        const EXPECTED_VERSION = 'v2.9.14';
 
         // Skip service worker on localhost for easier development/debugging
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -882,16 +879,13 @@
                             });
                         });
                     })
-                    .catch((error) => {
-                        console.warn('[SW] Registration failed:', error);
-                    });
+                    .catch(() => { });
             });
         } else if (isLocalhost && 'serviceWorker' in navigator) {
             // On localhost, unregister any existing service workers
             navigator.serviceWorker.getRegistrations().then(registrations => {
                 for (const registration of registrations) {
                     registration.unregister();
-                    console.log('[SW] Unregistered service worker for localhost debugging');
                 }
             });
         }

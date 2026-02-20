@@ -3,7 +3,6 @@ import { HttpClient } from '../../http/client.js';
 import { fetchWithCorsProxy } from '../../http/cors-proxy.js';
 
 const MAINNET = 'https://mainnet.zklighter.elliot.ai/api/v1';
-const TESTNET = 'https://testnet.zklighter.elliot.ai/api/v1';
 const EXPLORER_BASE = 'https://explorer.elliot.ai/api';
 
 // Market ID mapping (symbol -> market_id)
@@ -33,9 +32,64 @@ const FUNDING_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Account lookup cache to avoid repeating expensive endpoint probing on every refresh.
 const ACCOUNT_SUCCESS_CACHE_TTL_MS = 45 * 1000;
-const ACCOUNT_FAILURE_CACHE_TTL_MS = 2 * 60 * 1000;
+const ACCOUNT_FAILURE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const accountLookupCache = new Map();
 const accountLookupInFlight = new Map();
+const ACCOUNT_NEGATIVE_STORAGE_PREFIX = 'lighter_no_account_v1:';
+
+function hasLocalStorage() {
+  try {
+    return typeof window !== 'undefined' && !!window.localStorage;
+  } catch (_) {
+    return false;
+  }
+}
+
+function getNegativeStorageKey(cacheKey) {
+  return `${ACCOUNT_NEGATIVE_STORAGE_PREFIX}${String(cacheKey || '').toLowerCase()}`;
+}
+
+function readPersistentNegativeLookup(cacheKey) {
+  if (!hasLocalStorage() || !cacheKey) return false;
+  try {
+    const raw = window.localStorage.getItem(getNegativeStorageKey(cacheKey));
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    const ts = Number(parsed?.timestamp || 0);
+    if (!Number.isFinite(ts) || ts <= 0) {
+      window.localStorage.removeItem(getNegativeStorageKey(cacheKey));
+      return false;
+    }
+    if ((Date.now() - ts) <= ACCOUNT_FAILURE_CACHE_TTL_MS) {
+      return true;
+    }
+    window.localStorage.removeItem(getNegativeStorageKey(cacheKey));
+  } catch (_) {
+    // Ignore malformed storage values.
+  }
+  return false;
+}
+
+function writePersistentNegativeLookup(cacheKey) {
+  if (!hasLocalStorage() || !cacheKey) return;
+  try {
+    window.localStorage.setItem(
+      getNegativeStorageKey(cacheKey),
+      JSON.stringify({ timestamp: Date.now() })
+    );
+  } catch (_) {
+    // Ignore storage quota/privacy errors.
+  }
+}
+
+function clearPersistentNegativeLookup(cacheKey) {
+  if (!hasLocalStorage() || !cacheKey) return;
+  try {
+    window.localStorage.removeItem(getNegativeStorageKey(cacheKey));
+  } catch (_) {
+    // Ignore storage errors.
+  }
+}
 
 function readCachedAccountLookup(cacheKey) {
   const cached = accountLookupCache.get(cacheKey);
@@ -93,6 +147,31 @@ function parseHttpStatus(error) {
   const message = String(error.message || '');
   const match = message.match(/\bHTTP\s+(\d{3})\b/i);
   return match ? Number(match[1]) : null;
+}
+
+function parseApiErrorCode(error) {
+  if (!error) return null;
+  const message = String(error.message || '');
+  const match = message.match(/"code"\s*:\s*(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function isAccountNotFoundError(error) {
+  const status = parseHttpStatus(error);
+  const code = parseApiErrorCode(error);
+  const message = String(error?.message || '');
+  return status === 400 && (code === 21100 || /account not found/i.test(message));
+}
+
+function isInvalidParamError(error) {
+  const status = parseHttpStatus(error);
+  const code = parseApiErrorCode(error);
+  const message = String(error?.message || '');
+  return status === 400 && (code === 20001 || /invalid param/i.test(message));
+}
+
+function isDefinitiveLookupFailure(error) {
+  return isAccountNotFoundError(error) || isInvalidParamError(error);
 }
 
 function shouldUseDevProxyFallback(error) {
@@ -374,24 +453,21 @@ async function fetchAccountByIndex(baseUrl, accountIndex, timeoutMs) {
   const encodedIndex = encodeURIComponent(String(accountIndex));
   const endpoints = [
     `${baseUrl}/account?by=index&value=${encodedIndex}`,
-    `${baseUrl}/account?by=account_index&value=${encodedIndex}`,
-    `${baseUrl}/account?by=accountIndex&value=${encodedIndex}`,
-    `${baseUrl}/account?account_index=${encodedIndex}`,
-    `${baseUrl}/account?accountIndex=${encodedIndex}`,
-    `${baseUrl}/account?index=${encodedIndex}`,
-    `${baseUrl}/account/${encodedIndex}`,
-    `${baseUrl}/accounts/${encodedIndex}`
+    `${baseUrl}/account?by=account_index&value=${encodedIndex}`
   ];
 
-  for (const url of [...new Set(endpoints)]) {
+  for (const url of endpoints) {
     try {
       const data = await getJsonWithDevCorsFallback(url, timeoutMs);
       const accounts = normalizeAccountsPayload(data);
       if (accounts.length > 0) {
-        // Prefer detailed account objects, but don't drop unknown-valid payloads.
         return { accounts };
       }
-    } catch (_) { }
+    } catch (err) {
+      if (isDefinitiveLookupFailure(err)) {
+        return null;
+      }
+    }
   }
   return null;
 }
@@ -408,19 +484,15 @@ async function fetchExplorerPositionsByParam(param, timeoutMs) {
 
 async function fetchExplorerAccountIndexes(address, timeoutMs) {
   const encodedAddress = encodeURIComponent(address);
-  const urls = [
-    `${EXPLORER_BASE}/search?query=${encodedAddress}`,
-    `${EXPLORER_BASE}/search?q=${encodedAddress}`
-  ];
-
-  for (const url of urls) {
-    try {
-      const data = await getJsonWithDevCorsFallback(url, timeoutMs);
-      const indexes = extractIndexesFromExplorerSearch(data);
-      if (indexes.length > 0) {
-        return indexes;
-      }
-    } catch (_) { }
+  const url = `${EXPLORER_BASE}/search?q=${encodedAddress}`;
+  try {
+    const data = await getJsonWithDevCorsFallback(url, timeoutMs);
+    const indexes = extractIndexesFromExplorerSearch(data);
+    if (indexes.length > 0) {
+      return indexes;
+    }
+  } catch (_) {
+    // Ignore: explorer lookup is a best-effort fallback.
   }
 
   return [];
@@ -457,78 +529,49 @@ async function fetchAccountsFromExplorer(addressCandidates, timeoutMs) {
 async function fetchAccountsFromCluster(baseUrl, address, timeoutMs) {
   const encodedAddress = encodeURIComponent(address);
 
-  // Legacy endpoint shape
-  const directAccountEndpoints = [
-    `${baseUrl}/account?by=l1_address&value=${encodedAddress}`,
-    `${baseUrl}/account?by=l1Address&value=${encodedAddress}`,
-    `${baseUrl}/account?by=address&value=${encodedAddress}`,
-    `${baseUrl}/account?by=owner&value=${encodedAddress}`,
-    `${baseUrl}/account?l1_address=${encodedAddress}`,
-    `${baseUrl}/account?l1Address=${encodedAddress}`,
-    `${baseUrl}/account?address=${encodedAddress}`,
-    `${baseUrl}/account?owner=${encodedAddress}`
-  ];
-
-  for (const url of [...new Set(directAccountEndpoints)]) {
-    try {
-      const data = await getJsonWithDevCorsFallback(url, timeoutMs);
-      const accounts = normalizeAccountsPayload(data);
-      if (accounts.some(hasDetailedAccountShape)) {
-        return { accounts };
-      }
-
-      // If accounts are present but not in a recognized shape, try by-index expansion first.
-      if (accounts.length > 0) {
-        const indexes = extractAccountIndexes(data);
-        if (indexes.length > 0) {
-          const accountResults = await Promise.all(indexes.map(idx => fetchAccountByIndex(baseUrl, idx, timeoutMs)));
-          const mergedAccounts = accountResults.flatMap(result => result?.accounts || []);
-          if (mergedAccounts.length > 0) {
-            return { accounts: mergedAccounts };
-          }
-        }
-        // Last resort: return raw accounts so fetcher can attempt best-effort parsing.
-        return { accounts };
-      }
-    } catch (_) { }
+  // Canonical main endpoint from Lighter docs.
+  try {
+    const byL1Url = `${baseUrl}/account?by=l1_address&value=${encodedAddress}`;
+    const data = await getJsonWithDevCorsFallback(byL1Url, timeoutMs);
+    const accounts = normalizeAccountsPayload(data);
+    if (accounts.length > 0) {
+      return { accounts, source: 'account_by_l1_address' };
+    }
+  } catch (err) {
+    if (isAccountNotFoundError(err)) {
+      return { notFound: true };
+    }
+    if (!isInvalidParamError(err)) {
+      // Non-canonical/temporary failure: let caller decide whether to use explorer fallback.
+      return null;
+    }
   }
 
-  // New endpoint shape (returns sub-account indexes on some API versions)
-  const accountsByAddressEndpoints = [
-    `${baseUrl}/accountsByL1Address?l1_address=${encodedAddress}`,
-    `${baseUrl}/accountsByL1Address?address=${encodedAddress}`,
-    `${baseUrl}/accounts-by-l1-address?l1_address=${encodedAddress}`,
-    `${baseUrl}/accounts-by-l1-address?address=${encodedAddress}`,
-    `${baseUrl}/accounts/by-l1-address?l1_address=${encodedAddress}`,
-    `${baseUrl}/accounts/by-l1-address?address=${encodedAddress}`,
-    `${baseUrl}/accounts?l1_address=${encodedAddress}`,
-    `${baseUrl}/accounts?address=${encodedAddress}`
-  ];
+  // Fallback for clusters exposing sub-accounts first.
+  try {
+    const listUrl = `${baseUrl}/accountsByL1Address?l1_address=${encodedAddress}`;
+    const data = await getJsonWithDevCorsFallback(listUrl, timeoutMs);
+    const directAccounts = normalizeAccountsPayload(data);
+    if (directAccounts.some(hasDetailedAccountShape)) {
+      return { accounts: directAccounts, source: 'accountsByL1Address_detailed' };
+    }
 
-  for (const url of [...new Set(accountsByAddressEndpoints)]) {
-    try {
-      const data = await getJsonWithDevCorsFallback(url, timeoutMs);
-      const directAccounts = normalizeAccountsPayload(data);
-      if (directAccounts.some(hasDetailedAccountShape)) {
-        return { accounts: directAccounts };
-      }
-
-      // Some API versions already return usable account objects under non-standard fields.
-      if (directAccounts.length > 0 && directAccounts.some(a => a && typeof a === 'object')) {
-        return { accounts: directAccounts };
-      }
-
-      const indexes = extractAccountIndexes(data);
-      if (indexes.length === 0) {
-        continue;
-      }
-
-      const accountResults = await Promise.all(indexes.map(idx => fetchAccountByIndex(baseUrl, idx, timeoutMs)));
+    const indexes = extractAccountIndexes(data);
+    if (indexes.length > 0) {
+      const accountResults = await Promise.all(indexes.map((idx) => fetchAccountByIndex(baseUrl, idx, timeoutMs)));
       const mergedAccounts = accountResults.flatMap(result => result?.accounts || []);
       if (mergedAccounts.length > 0) {
-        return { accounts: mergedAccounts };
+        return { accounts: mergedAccounts, source: 'accountsByL1Address_indexes' };
       }
-    } catch (_) { }
+    }
+
+    if (directAccounts.length > 0) {
+      return { accounts: directAccounts, source: 'accountsByL1Address_raw' };
+    }
+  } catch (err) {
+    if (isDefinitiveLookupFailure(err)) {
+      return { notFound: true };
+    }
   }
 
   return null;
@@ -544,7 +587,7 @@ export async function fetchAccountByAddress(address, { timeoutMs = 10000 } = {})
   const lowerAddress = raw.toLowerCase();
   const withoutPrefix = lowerAddress.startsWith('0x') ? lowerAddress.slice(2) : lowerAddress;
   const withPrefix = withoutPrefix ? `0x${withoutPrefix}` : '';
-  const addressCandidates = Array.from(new Set([raw, lowerAddress, withPrefix, withoutPrefix].filter(Boolean)));
+  const addressCandidates = [raw];
   const cacheKey = withPrefix || lowerAddress || raw;
 
   const cachedValue = readCachedAccountLookup(cacheKey);
@@ -552,24 +595,47 @@ export async function fetchAccountByAddress(address, { timeoutMs = 10000 } = {})
     return cachedValue;
   }
 
+  if (readPersistentNegativeLookup(cacheKey)) {
+    accountLookupCache.set(cacheKey, {
+      value: null,
+      ok: false,
+      timestamp: Date.now()
+    });
+    return null;
+  }
+
   if (accountLookupInFlight.has(cacheKey)) {
     return accountLookupInFlight.get(cacheKey);
   }
 
   const lookupPromise = (async () => {
-    for (const baseUrl of [MAINNET, TESTNET]) {
+    // Use mainnet only by default to avoid duplicate request noise.
+    // Testnet can still be queried via explicit provider entry if needed.
+    const baseUrls = [MAINNET];
+    let sawDefinitiveNotFound = false;
+
+    for (const baseUrl of baseUrls) {
       for (const addr of addressCandidates) {
         const result = await fetchAccountsFromCluster(baseUrl, addr, timeoutMs);
         if (result?.accounts?.length) {
           return result;
         }
+        if (result?.notFound) {
+          sawDefinitiveNotFound = true;
+          break;
+        }
+      }
+      if (sawDefinitiveNotFound) {
+        break;
       }
     }
 
-    // Final fallback: Explorer API by address/account index.
-    const explorerResult = await fetchAccountsFromExplorer(addressCandidates, timeoutMs);
-    if (explorerResult?.accounts?.length) {
-      return explorerResult;
+    if (!sawDefinitiveNotFound) {
+      // Final fallback: Explorer API by address/account index.
+      const explorerResult = await fetchAccountsFromExplorer(addressCandidates, timeoutMs);
+      if (explorerResult?.accounts?.length) {
+        return explorerResult;
+      }
     }
 
     return null;
@@ -578,11 +644,17 @@ export async function fetchAccountByAddress(address, { timeoutMs = 10000 } = {})
   accountLookupInFlight.set(cacheKey, lookupPromise);
   try {
     const result = await lookupPromise;
+    const hasAccounts = !!(result?.accounts?.length);
     accountLookupCache.set(cacheKey, {
       value: result,
-      ok: !!(result?.accounts?.length),
+      ok: hasAccounts,
       timestamp: Date.now()
     });
+    if (hasAccounts) {
+      clearPersistentNegativeLookup(cacheKey);
+    } else {
+      writePersistentNegativeLookup(cacheKey);
+    }
     return result;
   } finally {
     accountLookupInFlight.delete(cacheKey);
