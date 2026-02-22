@@ -2618,6 +2618,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     const loadComic = async (comicKey = currentComicStrip, date = currentComicDate) => {
       try {
+        comicEl.scrollLeft = 0;
         const mod = await import('./modules/features/comics.js');
         await mod.renderComic(comicEl, comicKey, date);
         currentComicDate = date;
