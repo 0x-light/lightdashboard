@@ -836,7 +836,6 @@ body.hide-comic #newComicSection {
   font-family: inherit;
   font-size: 1em;
   font-weight: 400;
-  letter-spacing: 0.5px;
   transition: all 0.2s ease;
   white-space: nowrap;
   flex-shrink: 0;
@@ -1230,7 +1229,6 @@ textarea::-moz-placeholder {
   padding: 0;
   opacity: 0.4;
   font-weight: 400;
-  letter-spacing: 0.02em;
 }
 
 .comic-tab:hover {
@@ -1700,7 +1698,6 @@ body.mobile-menu-open {
   .settings-tab {
     padding: 10px 8px;
     font-size: 1em;
-    letter-spacing: 0.3px;
   }
 
   fieldset {
@@ -3185,7 +3182,6 @@ input[type="range"]:focus::-moz-range-thumb {
   .pull-to-refresh-text {
     font-size: 13px;
     
-    letter-spacing: 2px;
     font-weight: 400;
     padding: 16px 0;
   }
