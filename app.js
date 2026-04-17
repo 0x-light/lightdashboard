@@ -71,6 +71,15 @@ function invalidateSettingsCache() {
   settingsTimestamp = 0;
 }
 
+// Another tab (or this tab via a different code path) may mutate settings. The `storage` event
+// fires on *other* tabs; we still want same-tab writes to go through `invalidateSettingsCache()`,
+// but this catches cross-tab drift automatically.
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'myDashboardSettings.v2' || e.key === null) invalidateSettingsCache();
+  });
+}
+
 // Re-export utilities for legacy compatibility if needed, or just use modules directly
 const { getCoingeckoId } = AssetMapping;
 const { calculatePortfolioTotals, filterPositions } = Portfolio;
@@ -307,7 +316,10 @@ async function _doRenderPortfolioIncremental() {
 
           const hour = now.getHours();
           const showMoon = hour >= 18 || hour < 6;
-          const moonText = showMoon ? ` with a ${moonIcon} ${moonName} moon` : '';
+          // Avoid "new moon moon" / "full moon moon": moonName already contains "moon" for
+          // the cardinal phases, so only append the word for the crescent/gibbous/quarter ones.
+          const moonSuffix = moonName.endsWith('moon') ? '' : ' moon';
+          const moonText = showMoon ? ` with a ${moonIcon} ${moonName}${moonSuffix}` : '';
 
           const precipitation = data.daily?.precipitation_sum?.[0] || 0;
 
@@ -390,7 +402,11 @@ let amountsVisible = true; // Default: show values
 let compactMode = true; // Default: compact mode
 let editMode = false;
 let hideSmallPositions = true; // Default: hide positions under $100
-let showHiddenPositions = false; // Toggle to show manually hidden positions
+// Restore the "show hidden positions" toggle from settings so users don't have to click it
+// on every page load. Fall back to false (the historical default) when not yet saved.
+let showHiddenPositions = (() => {
+  try { return !!getSettings().showHiddenPositions; } catch { return false; }
+})();
 let hiddenAssets = new Set();
 let cachedPositions = [];
 let cachedSummaryData = {};
@@ -634,7 +650,11 @@ function setupControls() {
       const manualKeys = [
         `${assetName}_Manual`,
         `${assetName}_Manual (Custom)`,
-        `${assetName}_Manual (Pyth)`
+        `${assetName}_Manual (Pyth)`,
+        `${assetName}_Manual (Stock)`,
+        `${assetName}_Manual (FX)`,
+        `${assetName}_Manual (Metal)`,
+        `${assetName}_Manual (Commodity)`
       ];
       const hiddenKey = manualKeys.find(key => hiddenAssets.has(key));
       if (hiddenKey) {
@@ -720,6 +740,16 @@ function setupControls() {
       window.showHiddenPositions = showHiddenPositions;
       updateShowHiddenButton();
 
+      // Persist so the choice survives a reload.
+      try {
+        const s = getSettings();
+        s.showHiddenPositions = showHiddenPositions;
+        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
+        invalidateSettingsCache();
+      } catch (e) {
+        console.warn('[Settings] Failed to persist showHiddenPositions:', e);
+      }
+
       // Force re-render
       if (window._portfolioRenderer) {
         window._portfolioRenderer.forceRender();
@@ -774,7 +804,15 @@ function setupControls() {
         }
 
         // Also remove from hiddenAssets if present (so it doesn't linger as hidden)
-        const manualKeys = [`${asset}_Manual`, `${asset}_Manual (Custom)`, `${asset}_Manual (Pyth)`];
+        const manualKeys = [
+          `${asset}_Manual`,
+          `${asset}_Manual (Custom)`,
+          `${asset}_Manual (Pyth)`,
+          `${asset}_Manual (Stock)`,
+          `${asset}_Manual (FX)`,
+          `${asset}_Manual (Metal)`,
+          `${asset}_Manual (Commodity)`
+        ];
         if (s.hiddenAssets && Array.isArray(s.hiddenAssets)) {
           s.hiddenAssets = s.hiddenAssets.filter(key => !manualKeys.includes(key));
         }
@@ -1056,10 +1094,19 @@ function setupControls() {
     });
   }
 
-  // Export settings
+  // Export settings. Wallet-asset entry prices live in a separate localStorage key
+  // (`walletAssetEntryPrices`) rather than in the settings blob, so we splice them in under
+  // a namespaced field. Import unpacks them back into that key.
   if (exportBtn && exportArea) {
     exportBtn.addEventListener('click', async () => {
-      const s = getSettings();
+      const s = { ...getSettings() };
+      try {
+        const walletPrices = localStorage.getItem('walletAssetEntryPrices');
+        if (walletPrices) {
+          s.__walletAssetEntryPrices = JSON.parse(walletPrices);
+        }
+      } catch (_) { /* ignore parse failures — just skip in that case */ }
+
       const exportData = btoa(JSON.stringify(s));
       exportArea.value = exportData;
       exportArea.style.display = 'block';
@@ -1365,6 +1412,19 @@ function setupControls() {
           const decoded = atob(importData);
           const importedSettings = JSON.parse(decoded);
 
+          // Split out the wallet-asset entry prices back into their own localStorage key
+          // so the EntryPriceTracker finds them. Strip the namespaced field before storing
+          // the rest as settings so we don't leak it into subsequent exports.
+          const walletPrices = importedSettings.__walletAssetEntryPrices;
+          if (walletPrices && typeof walletPrices === 'object') {
+            try {
+              localStorage.setItem('walletAssetEntryPrices', JSON.stringify(walletPrices));
+            } catch (e) {
+              console.warn('[Import] Failed to restore walletAssetEntryPrices:', e);
+            }
+          }
+          delete importedSettings.__walletAssetEntryPrices;
+
           // Save imported settings to localStorage
           localStorage.setItem('myDashboardSettings.v2', JSON.stringify(importedSettings));
           invalidateSettingsCache(); // Clear cache so next getSettings() reads fresh data
@@ -1661,24 +1721,59 @@ function setupControls() {
     try {
       const mods = window.AppModules || {};
       const providers = mods.data?.providers || {};
-      const feeds = await providers.pyth.getPriceFeeds(15000);
 
-      // Check if we got valid results
+      // Prefer the richer metadata endpoint — gives us asset class (crypto/equity/fx/metal),
+      // human-readable names ("Apple Inc."), and market-hours flags for stocks. Fall back to the
+      // flat symbol→id map if metadata isn't exposed (older provider revisions).
+      let metadata = [];
+      if (typeof providers.pyth?.getFeedsWithMetadata === 'function') {
+        metadata = await providers.pyth.getFeedsWithMetadata(15000);
+      }
+
+      if (Array.isArray(metadata) && metadata.length > 0) {
+        allPythFeeds = metadata;
+        console.log(`[Search] Loaded ${allPythFeeds.length} Pyth feeds (with metadata) from API`);
+        return allPythFeeds;
+      }
+
+      const feeds = await providers.pyth.getPriceFeeds(15000);
       if (feeds && typeof feeds === 'object' && Object.keys(feeds).length > 0) {
-        allPythFeeds = Object.entries(feeds).map(([symbol, id]) => ({ symbol, id }));
+        allPythFeeds = Object.entries(feeds).map(([symbol, id]) => ({
+          symbol, id, category: 'crypto', name: symbol
+        }));
         console.log(`[Search] Loaded ${allPythFeeds.length} Pyth feeds from API`);
         return allPythFeeds;
       }
 
-      // API returned empty - use fallback
       console.warn('[Search] Pyth API returned empty, using fallback feeds');
-      allPythFeeds = FALLBACK_FEEDS;
+      allPythFeeds = FALLBACK_FEEDS.map(f => ({ ...f, category: 'crypto', name: f.symbol }));
       return allPythFeeds;
     } catch (e) {
       console.error('Failed to load Pyth feeds:', e);
-      allPythFeeds = FALLBACK_FEEDS;
+      allPythFeeds = FALLBACK_FEEDS.map(f => ({ ...f, category: 'crypto', name: f.symbol }));
       return allPythFeeds;
     }
+  }
+
+  // Category label shown as a chip next to the ticker in search results / selection summary.
+  function categoryLabel(cat) {
+    switch (cat) {
+      case 'equity': return 'Stock';
+      case 'etf': return 'ETF';
+      case 'fund': return 'Fund';
+      case 'index': return 'Index';
+      case 'crypto': return 'Crypto';
+      case 'fx': return 'FX';
+      case 'metal': return 'Metal';
+      case 'commodity': return 'Commodity';
+      default: return '';
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
   }
 
   let watchlistRenderInFlight = false;
@@ -1688,6 +1783,7 @@ function setupControls() {
   async function renderWatchlistPanel(options = {}) {
     const {
       feedIdsOverride = null,
+      entriesOverride = null,
       forceRefresh = false,
       editMode = watchlistEditMode,
       preserveCurrentData = true
@@ -1697,9 +1793,15 @@ function setupControls() {
     if (!watchlistBody) return [];
 
     const s = getSettings();
-    const feedIds = Array.isArray(feedIdsOverride) ? feedIdsOverride : (s.watchlist || []);
-    const pythProvider = window.AppModules?.data?.providers?.pyth;
-    if (!pythProvider) return cachedWatchlistData || [];
+    // Support both legacy (string[]) and new (object[]) watchlist shapes. The new shape lets us
+    // distinguish Pyth crypto feeds from Yahoo stocks/ETFs without losing the symbol on load.
+    const rawList = Array.isArray(entriesOverride)
+      ? entriesOverride
+      : (Array.isArray(feedIdsOverride) ? feedIdsOverride : (s.watchlist || []));
+    const providers = window.AppModules?.data?.providers || {};
+    const pythProvider = providers.pyth;
+    const stocksProvider = providers.stocks;
+    if (!pythProvider && !stocksProvider) return cachedWatchlistData || [];
 
     if (watchlistRenderInFlight) {
       watchlistRenderQueued = true;
@@ -1715,8 +1817,9 @@ function setupControls() {
         : null;
 
       const prices = await mod.render(watchlistBody, {
-        feedIds,
+        entries: rawList,
         pythProvider,
+        stocksProvider,
         useColoredPnL: s.useColoredPnL ?? false,
         editMode,
         cachedData: preserveCurrentData ? previousData : null,
@@ -1725,7 +1828,7 @@ function setupControls() {
         forceRefresh
       });
 
-      if (feedIds.length === 0) {
+      if (rawList.length === 0) {
         cachedWatchlistData = [];
       } else if (Array.isArray(prices) && prices.length > 0) {
         cachedWatchlistData = prices;
@@ -1756,23 +1859,65 @@ function setupControls() {
   // Expose watchlist renderer for lifecycle code outside setupControls().
   window.renderWatchlistPanel = renderWatchlistPanel;
 
-  async function addToWatchlist(feedId) {
+  // Composite key that uniquely identifies a watchlist entry across providers. Matches the
+  // key format used by modules/features/watchlist.js so UI events and storage stay in sync.
+  function watchlistEntryKey(entry) {
+    if (!entry) return '';
+    if (typeof entry === 'string') {
+      const id = entry.toLowerCase();
+      return `pyth:${id.startsWith('0x') ? id : `0x${id}`}`;
+    }
+    if (entry.provider === 'yahoo' && entry.symbol) return `yahoo:${entry.symbol.toUpperCase()}`;
+    if (entry.provider === 'pyth' && entry.id) {
+      const id = entry.id.toLowerCase();
+      return `pyth:${id.startsWith('0x') ? id : `0x${id}`}`;
+    }
+    if (entry.id) {
+      const id = entry.id.toLowerCase();
+      return `pyth:${id.startsWith('0x') ? id : `0x${id}`}`;
+    }
+    return '';
+  }
+
+  function currentWatchlistKeys() {
+    const s = getSettings();
+    const list = s.watchlist || [];
+    return new Set(list.map(watchlistEntryKey).filter(Boolean));
+  }
+
+  // Add either a Pyth feed (via id) or a Yahoo symbol to the watchlist. Callers pass a
+  // normalized entry object; we dedupe on composite key so adding the same ticker twice is a
+  // no-op regardless of which source the user picked it from.
+  async function addToWatchlist(entry) {
     const s = getSettings();
     if (!s.watchlist) s.watchlist = [];
 
-    if (!s.watchlist.includes(feedId)) {
-      s.watchlist.push(feedId);
-      try {
-        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
-        await renderWatchlistPanel({
-          feedIdsOverride: s.watchlist,
-          forceRefresh: true,
-          editMode: watchlistEditMode,
-          preserveCurrentData: true
-        });
-      } catch (e) {
-        console.error('Failed to save watchlist:', e);
-      }
+    const targetKey = watchlistEntryKey(entry);
+    if (!targetKey) return;
+
+    const existing = new Set(s.watchlist.map(watchlistEntryKey));
+    if (existing.has(targetKey)) return;
+
+    // Normalize to the rich object form on write — legacy string entries can coexist but new
+    // writes always carry provider info so the UI keeps working after a reload.
+    const toStore = typeof entry === 'string'
+      ? { provider: 'pyth', id: entry }
+      : (entry.provider === 'yahoo'
+          ? { provider: 'yahoo', symbol: entry.symbol, name: entry.name || null, category: entry.category || null }
+          : { provider: 'pyth', id: entry.id });
+
+    s.watchlist.push(toStore);
+    try {
+      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
+      invalidateSettingsCache();
+      await renderWatchlistPanel({
+        entriesOverride: s.watchlist,
+        forceRefresh: true,
+        editMode: watchlistEditMode,
+        preserveCurrentData: true
+      });
+    } catch (e) {
+      console.error('Failed to save watchlist:', e);
     }
   }
 
@@ -1816,26 +1961,17 @@ function setupControls() {
   }
 
   if (watchlistSearchInput) {
-    const addedFeeds = new Set();
+    // Keys (composite) that were just added during this search session. The dedupe against
+    // the persisted watchlist is separate — this set only stops double-clicks.
+    const addedKeys = new Set();
+    let watchlistSearchDebounce = null;
+    let watchlistSearchSeq = 0;
 
-    function performSearch(query) {
+    function renderWatchlistSearchRows(feeds) {
       if (!watchlistSearchResults) return;
+      const watchlistKeys = currentWatchlistKeys();
 
-      const feeds = allPythFeeds || [];
-      const s = getSettings();
-      const currentWatchlist = s.watchlist || [];
-
-      if (!query) {
-        watchlistSearchResults.innerHTML = '<div class="help" style="padding: 16px;">Type to search tokens...</div>';
-        watchlistSearchResults.style.display = 'block';
-        return;
-      }
-
-      const matches = feeds.filter(f =>
-        f.symbol.toLowerCase().includes(query.toLowerCase())
-      ).slice(0, 50);
-
-      if (matches.length === 0) {
+      if (feeds.length === 0) {
         watchlistSearchResults.innerHTML = '<div class="help" style="padding: 16px;">No results found</div>';
         watchlistSearchResults.style.display = 'block';
         return;
@@ -1843,20 +1979,26 @@ function setupControls() {
 
       watchlistSearchResults.innerHTML = '';
       watchlistSearchResults.style.display = 'block';
-      matches.forEach(feed => {
+      feeds.forEach(feed => {
+        // Wrap the raw feed in an entry object matching our storage format so the key is
+        // computed identically to what's persisted / rendered downstream.
+        const entry = feed.provider === 'yahoo'
+          ? { provider: 'yahoo', symbol: feed.symbol, name: feed.name, category: feed.category }
+          : { provider: 'pyth', id: feed.id };
+        const key = watchlistEntryKey(entry);
+
         const resultDiv = document.createElement('div');
         resultDiv.className = 'watchlist-search-result';
 
-        const isInWatchlist = currentWatchlist.includes(feed.id);
-        const isAdded = addedFeeds.has(feed.id);
+        const isInWatchlist = watchlistKeys.has(key);
+        const isAdded = addedKeys.has(key);
+        if (isInWatchlist || isAdded) resultDiv.classList.add('added');
 
-        if (isInWatchlist || isAdded) {
-          resultDiv.classList.add('added');
-        }
-
+        const label = categoryLabel(feed.category);
+        const name = feed.name && feed.name !== feed.symbol ? ` <span style="opacity: 0.65;">— ${escapeHtml(feed.name)}</span>` : '';
         resultDiv.innerHTML = `
-          <span>${feed.symbol}</span>
-          <button class="btn-text ${isInWatchlist || isAdded ? 'added' : ''}" data-feed-id="${feed.id}">
+          <span><strong>${escapeHtml(feed.symbol)}</strong>${name}${label ? ` <span style="opacity: 0.5; font-size: 0.85em;">${label}</span>` : ''}</span>
+          <button class="btn-text ${isInWatchlist || isAdded ? 'added' : ''}" data-entry-key="${key}">
             ${isInWatchlist ? 'In List' : isAdded ? 'Added' : 'Add'}
           </button>
         `;
@@ -1864,9 +2006,9 @@ function setupControls() {
         const btn = resultDiv.querySelector('button');
         if (!isInWatchlist) {
           btn.addEventListener('click', () => {
-            if (!addedFeeds.has(feed.id)) {
-              addToWatchlist(feed.id);
-              addedFeeds.add(feed.id);
+            if (!addedKeys.has(key)) {
+              addToWatchlist(entry);
+              addedKeys.add(key);
               btn.textContent = 'Added';
               btn.classList.add('added');
               resultDiv.classList.add('added');
@@ -1878,6 +2020,35 @@ function setupControls() {
       });
     }
 
+    function performSearch(query) {
+      if (!watchlistSearchResults) return;
+      clearTimeout(watchlistSearchDebounce);
+
+      if (!query) {
+        watchlistSearchResults.innerHTML = '<div class="help" style="padding: 16px;">Type to search tokens or stocks...</div>';
+        watchlistSearchResults.style.display = 'block';
+        return;
+      }
+
+      const feeds = allPythFeeds || [];
+      const pythMatches = rankFeedMatches(query, feeds);
+      // Instant feedback from local Pyth corpus; Yahoo results arrive shortly after.
+      renderWatchlistSearchRows(pythMatches);
+
+      const seq = ++watchlistSearchSeq;
+      watchlistSearchDebounce = setTimeout(async () => {
+        const stocksProvider = window.AppModules?.data?.providers?.stocks;
+        if (!stocksProvider?.searchSymbols) return;
+        try {
+          const yahoo = await stocksProvider.searchSymbols(query, { limit: 25 });
+          if (seq !== watchlistSearchSeq) return;
+          renderWatchlistSearchRows(mergeSearchResults(pythMatches, yahoo));
+        } catch (err) {
+          console.warn('[Watchlist search] Yahoo search failed:', err?.message || err);
+        }
+      }, 250);
+    }
+
     watchlistSearchInput.addEventListener('input', (e) => {
       const query = e.target.value.trim();
       performSearch(query);
@@ -1887,20 +2058,22 @@ function setupControls() {
   // Watchlist Edit functionality
   const editWatchlistBtn = document.getElementById('newEditWatchlistBtn');
 
-  function removeFromWatchlist(feedId) {
+  // Remove by composite key so mixed Pyth/Yahoo entries can all be deleted the same way.
+  function removeFromWatchlist(targetKey) {
+    if (!targetKey) return;
     const s = getSettings();
     if (!s.watchlist) s.watchlist = [];
 
-    s.watchlist = s.watchlist.filter(id => id.toLowerCase() !== feedId.toLowerCase());
+    s.watchlist = s.watchlist.filter(e => watchlistEntryKey(e) !== targetKey);
     try {
       localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
+      invalidateSettingsCache();
 
-      // Update cached data and re-render
       if (cachedWatchlistData) {
-        cachedWatchlistData = cachedWatchlistData.filter(item => item.feedId !== feedId);
+        cachedWatchlistData = cachedWatchlistData.filter(item => item.key !== targetKey);
       }
       renderWatchlistPanel({
-        feedIdsOverride: s.watchlist,
+        entriesOverride: s.watchlist,
         forceRefresh: false,
         editMode: watchlistEditMode,
         preserveCurrentData: true
@@ -1917,11 +2090,13 @@ function setupControls() {
       const newWatchlistBody = watchlistBody.cloneNode(true);
       watchlistBody.parentNode.replaceChild(newWatchlistBody, watchlistBody);
 
-      // Add new listener
       newWatchlistBody.addEventListener('click', (e) => {
         if (e.target.classList.contains('watchlist-edit-btn')) {
-          const feedId = e.target.getAttribute('data-feed-id');
-          removeFromWatchlist(feedId);
+          // Prefer the new composite key; fall back to legacy `data-feed-id` if an older
+          // render's buttons are still in the DOM (e.g. partial update races).
+          const key = e.target.getAttribute('data-entry-key')
+            || (e.target.getAttribute('data-feed-id') ? `pyth:${e.target.getAttribute('data-feed-id').toLowerCase()}` : null);
+          if (key) removeFromWatchlist(key);
         }
       });
     }
@@ -2012,8 +2187,11 @@ function setupControls() {
   const addPositionCustomSection = document.getElementById('newAddPositionCustomSection');
   const addPositionPythSearch = document.getElementById('newAddPositionPythSearch');
   const addPositionPythResults = document.getElementById('newAddPositionPythResults');
+  const addPositionPythSelection = document.getElementById('newAddPositionPythSelection');
   const addPositionPythAmount = document.getElementById('newAddPositionPythAmount');
+  const addPositionPythEntryDate = document.getElementById('newAddPositionPythEntryDate');
   const addPositionPythEntryPrice = document.getElementById('newAddPositionPythEntryPrice');
+  const addPositionPythEntryPriceHint = document.getElementById('newAddPositionPythEntryPriceHint');
   const addPositionCustomName = document.getElementById('newAddPositionCustomName');
   const addPositionCustomValue = document.getElementById('newAddPositionCustomValue');
   const savePositionBtn = document.getElementById('newSavePositionBtn');
@@ -2043,12 +2221,21 @@ function setupControls() {
       selectedPythFeed = null;
       if (addPositionPythSearch) addPositionPythSearch.value = '';
       if (addPositionPythAmount) addPositionPythAmount.value = '';
-      if (addPositionPythEntryPrice) addPositionPythEntryPrice.value = '';
+      if (addPositionPythEntryDate) addPositionPythEntryDate.value = '';
+      if (addPositionPythEntryPrice) {
+        addPositionPythEntryPrice.value = '';
+        delete addPositionPythEntryPrice.dataset.userEdited;
+      }
+      if (addPositionPythEntryPriceHint) addPositionPythEntryPriceHint.textContent = '';
       if (addPositionCustomName) addPositionCustomName.value = '';
       if (addPositionCustomValue) addPositionCustomValue.value = '';
       if (addPositionPythResults) {
         addPositionPythResults.innerHTML = '';
         addPositionPythResults.style.display = 'none';
+      }
+      if (addPositionPythSelection) {
+        addPositionPythSelection.innerHTML = '';
+        addPositionPythSelection.style.display = 'none';
       }
 
       // Set initial view
@@ -2098,9 +2285,110 @@ function setupControls() {
     });
   }
 
+  // Rank local Pyth matches. Yahoo results arrive pre-ranked by their API and are interleaved
+  // separately so we don't have to second-guess a much larger corpus.
+  function rankFeedMatches(query, feeds) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const scored = [];
+    for (const feed of feeds) {
+      const sym = (feed.symbol || '').toLowerCase();
+      const name = (feed.name || '').toLowerCase();
+      let score = -1;
+      if (sym === q) score = 100;
+      else if (sym.startsWith(q)) score = 80;
+      else if (sym.includes(q)) score = 60;
+      else if (name.includes(q)) score = 40;
+      else continue;
+      if (feed.category === 'crypto') score += 2;
+      scored.push({ feed, score });
+    }
+    scored.sort((a, b) => b.score - a.score || a.feed.symbol.length - b.feed.symbol.length);
+    return scored.slice(0, 12).map(s => s.feed);
+  }
+
+  // Merge Pyth + Yahoo results, deduping by normalized symbol. Pyth wins ties because its
+  // crypto prices are real-time on-chain vs Yahoo's cached retail feed.
+  function mergeSearchResults(pythMatches, yahooMatches) {
+    const seen = new Map();
+    const add = (feed, fromPyth) => {
+      const key = `${feed.category || ''}|${(feed.symbol || '').toUpperCase()}`;
+      if (seen.has(key)) return;
+      seen.set(key, { ...feed, provider: fromPyth ? 'pyth' : 'yahoo' });
+    };
+    for (const f of pythMatches) add(f, true);
+    for (const f of yahooMatches) add(f, false);
+    return Array.from(seen.values()).slice(0, 25);
+  }
+
+  function renderSelectedFeed(feed) {
+    if (!addPositionPythSelection) return;
+    if (!feed) {
+      addPositionPythSelection.style.display = 'none';
+      addPositionPythSelection.innerHTML = '';
+      return;
+    }
+    const label = categoryLabel(feed.category);
+    const name = feed.name && feed.name !== feed.symbol ? ` — ${escapeHtml(feed.name)}` : '';
+    let hint = '';
+    if (feed.marketHours === 'us-equity') {
+      hint = '<div style="margin-top: 4px; opacity: 0.7;">Prices update only during US market hours (9:30–16:00 ET, Mon–Fri).</div>';
+    }
+    const exchange = feed.exchange ? `<span style="opacity: 0.6;"> · ${escapeHtml(feed.exchange)}</span>` : '';
+    addPositionPythSelection.innerHTML =
+      `<strong>${escapeHtml(feed.symbol)}</strong>${name}` +
+      (label ? ` <span style="opacity: 0.6;">· ${label}</span>` : '') +
+      exchange +
+      hint;
+    addPositionPythSelection.style.display = 'block';
+  }
+
+  function renderSearchResults(matches) {
+    if (!addPositionPythResults) return;
+    addPositionPythResults.innerHTML = '';
+    if (matches.length === 0) {
+      addPositionPythResults.style.display = 'none';
+      return;
+    }
+    addPositionPythResults.style.display = 'block';
+    matches.forEach(feed => {
+      const resultDiv = document.createElement('div');
+      resultDiv.className = 'watchlist-search-result';
+      resultDiv.style.cursor = 'pointer';
+      resultDiv.style.padding = '6px 8px';
+      resultDiv.style.display = 'flex';
+      resultDiv.style.justifyContent = 'space-between';
+      resultDiv.style.gap = '8px';
+      const label = categoryLabel(feed.category);
+      const name = feed.name && feed.name !== feed.symbol ? escapeHtml(feed.name) : '';
+      const exchange = feed.exchange ? ` <span style="opacity: 0.5; font-size: 0.8em;">(${escapeHtml(feed.exchange)})</span>` : '';
+      resultDiv.innerHTML =
+        `<span><strong>${escapeHtml(feed.symbol)}</strong>${name ? ` <span style="opacity: 0.7;">— ${name}</span>` : ''}${exchange}</span>` +
+        (label ? `<span style="opacity: 0.6; font-size: 0.85em;">${label}</span>` : '');
+      resultDiv.addEventListener('click', () => {
+        selectedPythFeed = feed;
+        addPositionPythSearch.value = feed.symbol;
+        addPositionPythResults.innerHTML = '';
+        addPositionPythResults.style.display = 'none';
+        renderSelectedFeed(feed);
+        if (addPositionPythEntryDate?.value) {
+          fetchHistoricalEntryPrice(feed, addPositionPythEntryDate.value).catch(() => {});
+        }
+      });
+      addPositionPythResults.appendChild(resultDiv);
+    });
+  }
+
+  // Debounced merged search: local Pyth results show instantly, Yahoo results arrive ~250ms
+  // later and are merged in. Each keystroke supersedes the previous Yahoo call via searchSeq.
+  let searchDebounce = null;
+  let searchSeq = 0;
+
   if (addPositionPythSearch) {
     addPositionPythSearch.addEventListener('input', (e) => {
       const query = e.target.value.trim();
+      clearTimeout(searchDebounce);
+
       if (!query || !addPositionPythResults) {
         if (addPositionPythResults) {
           addPositionPythResults.innerHTML = '';
@@ -2110,29 +2398,95 @@ function setupControls() {
       }
 
       const feeds = allPythFeeds || [];
-      const matches = feeds.filter(f =>
-        f.symbol.toLowerCase().includes(query.toLowerCase())
-      ).slice(0, 20);
+      const pythMatches = rankFeedMatches(query, feeds);
+      renderSearchResults(pythMatches);
 
-      addPositionPythResults.innerHTML = '';
-      if (matches.length > 0) {
-        addPositionPythResults.style.display = 'block';
-        matches.forEach(feed => {
-          const resultDiv = document.createElement('div');
-          resultDiv.className = 'watchlist-search-result';
-          resultDiv.innerHTML = `<span>${feed.symbol}</span>`;
-          resultDiv.style.cursor = 'pointer';
-          resultDiv.addEventListener('click', () => {
-            selectedPythFeed = feed;
-            addPositionPythSearch.value = feed.symbol;
-            addPositionPythResults.innerHTML = '';
-            addPositionPythResults.style.display = 'none';
-          });
-          addPositionPythResults.appendChild(resultDiv);
-        });
-      } else {
-        addPositionPythResults.style.display = 'none';
+      const seq = ++searchSeq;
+      searchDebounce = setTimeout(async () => {
+        const stocksProvider = window.AppModules?.data?.providers?.stocks;
+        if (!stocksProvider?.searchSymbols) return;
+        try {
+          const yahoo = await stocksProvider.searchSymbols(query, { limit: 15 });
+          if (seq !== searchSeq) return; // newer query superseded this one
+          renderSearchResults(mergeSearchResults(pythMatches, yahoo));
+        } catch (err) {
+          console.warn('[Search] Yahoo search failed:', err?.message || err);
+        }
+      }, 250);
+    });
+  }
+
+  // Look up the close on a given date and pre-fill the entry-price field. Routed to the
+  // appropriate provider based on the selected feed: Pyth for its on-chain crypto feeds,
+  // Yahoo for stocks/ETFs/FX/indices. Pre-fill is non-authoritative — the user can override.
+  // Empty-hint collapse is handled by CSS (`.help:empty { display: none }`).
+  let historicalLookupSeq = 0;
+  async function fetchHistoricalEntryPrice(feed, dateStr) {
+    if (!feed || !dateStr) return;
+    const mods = window.AppModules || {};
+    const hint = addPositionPythEntryPriceHint;
+
+    const token = ++historicalLookupSeq;
+    if (hint) hint.textContent = 'Looking up entry price…';
+
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if (!y || !m || !d) return;
+    if (Date.UTC(y, m - 1, d) > Date.now()) {
+      if (hint) hint.textContent = 'Date must be in the past.';
+      return;
+    }
+
+    let price = null;
+    let sourceLabel = '';
+    try {
+      if (feed.provider === 'yahoo' || (!feed.id && feed.symbol)) {
+        price = await mods.data?.providers?.stocks?.getHistoricalPrice?.(feed.symbol, dateStr);
+        sourceLabel = 'Yahoo';
+      } else if (feed.id) {
+        // 16:00 UTC picks a liquid intraday moment for equities; crypto/FX/metal tick continuously.
+        const ts = Math.floor(Date.UTC(y, m - 1, d, 16, 0, 0) / 1000);
+        const prices = await mods.data?.providers?.pyth?.getAtTimestampByFeedIds?.([feed.id], ts, 10000);
+        price = prices ? prices[feed.id.toLowerCase()] : null;
+        sourceLabel = 'Pyth';
       }
+      if (token !== historicalLookupSeq) return;
+
+      if (Number.isFinite(price) && price > 0) {
+        if (addPositionPythEntryPrice && !addPositionPythEntryPrice.dataset.userEdited) {
+          // Keep meaningful precision but trim trailing zeros so the input stays readable.
+          addPositionPythEntryPrice.value = price.toFixed(6).replace(/\.?0+$/, '');
+        }
+        if (hint) {
+          hint.textContent = `${sourceLabel} price on ${dateStr}: $${price.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
+        }
+      } else if (hint) {
+        hint.textContent = 'No historical price available — enter manually.';
+      }
+    } catch (e) {
+      if (token !== historicalLookupSeq) return;
+      if (hint) hint.textContent = 'Historical lookup failed — enter price manually.';
+    }
+  }
+
+  if (addPositionPythEntryDate) {
+    addPositionPythEntryDate.addEventListener('change', () => {
+      if (!selectedPythFeed) {
+        if (addPositionPythEntryPriceHint) {
+          addPositionPythEntryPriceHint.textContent = 'Pick a ticker first to auto-fill the price.';
+        }
+        return;
+      }
+      // Reset userEdited so a fresh lookup can populate when the user changes dates; they can
+      // still type over the value afterwards.
+      if (addPositionPythEntryPrice) delete addPositionPythEntryPrice.dataset.userEdited;
+      fetchHistoricalEntryPrice(selectedPythFeed, addPositionPythEntryDate.value).catch(() => {});
+    });
+  }
+
+  // Respect manual edits to the entry-price field: once the user types, we stop overwriting it.
+  if (addPositionPythEntryPrice) {
+    addPositionPythEntryPrice.addEventListener('input', () => {
+      addPositionPythEntryPrice.dataset.userEdited = '1';
     });
   }
 
@@ -2165,14 +2519,34 @@ function setupControls() {
           return;
         }
 
-        // Add Pyth position
-        s.cryptoPositions.push({
-          type: 'pyth',
-          symbol: selectedPythFeed.symbol,
-          feedId: selectedPythFeed.id,
-          amount: amount,
-          entryPrice: entryPrice
-        });
+        // Route the saved position to the right provider:
+        //   - Pyth feed (has feed id): type: 'pyth'  → on-chain real-time price via Pyth
+        //   - Yahoo feed (no id):     type: 'stock' → Yahoo Finance quote lookup
+        // Both share the same PnL math in manual-fetcher; only the price source differs.
+        const provider = selectedPythFeed.provider || (selectedPythFeed.id ? 'pyth' : 'yahoo');
+        if (provider === 'yahoo') {
+          s.cryptoPositions.push({
+            type: 'stock',
+            symbol: selectedPythFeed.symbol,
+            amount,
+            entryPrice,
+            category: selectedPythFeed.category || 'equity',
+            name: selectedPythFeed.name || selectedPythFeed.symbol,
+            exchange: selectedPythFeed.exchange || null,
+            entryDate: addPositionPythEntryDate?.value || null
+          });
+        } else {
+          s.cryptoPositions.push({
+            type: 'pyth',
+            symbol: selectedPythFeed.symbol,
+            feedId: selectedPythFeed.id,
+            amount,
+            entryPrice,
+            category: selectedPythFeed.category || 'crypto',
+            name: selectedPythFeed.name || selectedPythFeed.symbol,
+            entryDate: addPositionPythEntryDate?.value || null
+          });
+        }
       } else {
         // Validate custom position
         const name = addPositionCustomName.value.trim();

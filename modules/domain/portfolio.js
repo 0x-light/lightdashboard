@@ -169,54 +169,61 @@ export function filterPositions(positions, options = {}) {
   });
 }
 
+const finiteOrZero = (v) => (Number.isFinite(v) ? v : 0);
+
 /**
- * Calculate portfolio totals (value and PnL)
- * @param {Array} positions 
- * @returns {Object} { totalValue, totalPnL, totalPnLPercent, costBasis }
+ * True when position should be excluded from totals because a synthetic account-equity row
+ * covers its venue. Keeps per-position rows visible in the UI while preventing notional/
+ * leveraged value from leaking into portfolio totals.
+ */
+function isCoveredByVenueEquity(p, hasHlEquity, hasLighterEquity) {
+  if (hasHlEquity && (p.exchange === 'HL Perps' || p.exchange === 'HL Spot')) return true;
+  // Lighter Spot represents standalone token balances, NOT covered by account equity.
+  if (hasLighterEquity && p.exchange === 'Lighter') return true;
+  return false;
+}
+
+/**
+ * Calculate portfolio totals (value and PnL).
+ * Single source of truth — IncrementalPortfolioRenderer must delegate here to avoid drift.
+ *
+ * @param {Array} positions
+ * @returns {{ totalValue: number, totalPnL: number, totalPnLPercent: number, costBasis: number }}
  */
 export function calculatePortfolioTotals(positions) {
+  if (!Array.isArray(positions) || positions.length === 0) {
+    return { totalValue: 0, totalPnL: 0, totalPnLPercent: 0, costBasis: 0 };
+  }
+
   let totalValue = 0;
   let totalPnL = 0;
-  const hasHlEquity = positions.some(p => p.isHlAccountEquity);
-  const hasLighterEquity = positions.some(p => p.isLighterAccountEquity);
+  const hasHlEquity = positions.some(p => p?.isHlAccountEquity);
+  const hasLighterEquity = positions.some(p => p?.isLighterAccountEquity);
 
-  // Sum ALL positions in a single pass (handles multiple wallets correctly)
   for (const p of positions) {
-    if (p.isHlAccountEquity) {
-      // Add Hyperliquid equity (may have multiple wallets)
-      totalValue += (p.value || 0);
-      totalPnL += (p.pnl || 0);
-    } else if (p.isLighterAccountEquity) {
-      // Add Lighter equity (may have multiple wallets)
-      totalValue += (p.value || 0);
-      totalPnL += (p.pnl || 0);
-    } else if ((p.exchange === 'HL Perps' || p.exchange === 'HL Spot') && hasHlEquity) {
-      // Skip individual HL positions only when account equity is present
+    if (!p) continue;
+
+    if (p.isHlAccountEquity || p.isLighterAccountEquity) {
+      totalValue += finiteOrZero(Number(p.value));
+      totalPnL += finiteOrZero(Number(p.pnl));
       continue;
-    } else if (p.exchange === 'Lighter' && hasLighterEquity) {
-      // Skip individual Lighter positions only when account equity is present
-      continue;
-    } else if (p.exchange === 'Lighter Spot') {
-      // Lighter Spot positions are NOT included in account equity, add them
-      const value = p.value || 0;
-      if (value > 0) {
-        totalValue += value;
-      }
-      if (p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl)) {
-        totalPnL += p.pnl;
-      }
-    } else {
-      // Add other positions (wallet balances, etc.)
-      const value = p.value || 0;
-      if (value > 0) {
-        totalValue += value;
-      }
-      if (p.pnl !== null && p.pnl !== undefined && !isNaN(p.pnl)) {
-        totalPnL += p.pnl;
-      }
+    }
+
+    if (isCoveredByVenueEquity(p, hasHlEquity, hasLighterEquity)) continue;
+
+    const value = Number(p.value);
+    if (Number.isFinite(value) && value > 0) {
+      totalValue += value;
+    }
+    const pnl = Number(p.pnl);
+    if (Number.isFinite(pnl)) {
+      totalPnL += pnl;
     }
   }
 
+  // costBasis = value - pnl holds for spot (value = cost + pnl) and for HL/Lighter equity rows
+  // where value is reported NAV and pnl is unrealized component. For leveraged perps skipped above,
+  // the equity row carries the correct cost-basis signal.
   const costBasis = totalValue - totalPnL;
   const totalPnLPercent = (costBasis > 0) ? (totalPnL / costBasis) * 100 : 0;
 

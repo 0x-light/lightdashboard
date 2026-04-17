@@ -1069,6 +1069,12 @@ textarea::-moz-placeholder {
   background-color: var(--border);
 }
 
+/* An empty .help hint shouldn't reserve layout space (margins, padding, background).
+   Callers can just do `el.textContent = ''` and this rule takes care of hiding. */
+.help:empty {
+  display: none;
+}
+
 .info {
   color: var(--muted);
   max-width: 100%;

@@ -112,6 +112,15 @@ function maybeProxyCoinGecko(rawUrl) {
       const devOrigin = getDevProxyOrigin();
       return `${devOrigin}/api/coingecko?url=${encodeURIComponent(rawUrl)}`;
     }
+    // Yahoo Finance is CORS-restricted; route through our Cloudflare Pages Function. Always
+    // use a relative path: Pages serves /functions/api/* at the same origin, so the proxy is
+    // available in both `wrangler pages dev` and in production. (The CoinGecko branch above
+    // uses an external dev origin to let plain `python3 -m http.server` piggyback on a
+    // deployed proxy — we don't replicate that for Yahoo since it causes silent failures when
+    // the external origin hasn't deployed this endpoint yet.)
+    if (u.hostname === 'query1.finance.yahoo.com' || u.hostname === 'query2.finance.yahoo.com') {
+      return `/api/yahoo?url=${encodeURIComponent(rawUrl)}`;
+    }
     return rawUrl;
   } catch (_) {
     return rawUrl;

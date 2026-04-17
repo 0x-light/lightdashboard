@@ -1,3 +1,19 @@
+// Maps a feed category to the exchange label shown in the positions table. Back-compat:
+// when category is missing (older saved positions) we fall back to "Manual (Pyth)".
+function labelForCategory(category) {
+  switch (category) {
+    case 'equity': return 'Manual (Stock)';
+    case 'etf': return 'Manual (ETF)';
+    case 'fund': return 'Manual (Fund)';
+    case 'index': return 'Manual (Index)';
+    case 'fx': return 'Manual (FX)';
+    case 'metal': return 'Manual (Metal)';
+    case 'commodity': return 'Manual (Commodity)';
+    case 'crypto': return 'Manual (Pyth)';
+    default: return 'Manual (Pyth)';
+  }
+}
+
 export class ManualFetcher {
     constructor(providers, renderer, settings) {
         this.providers = providers;
@@ -9,7 +25,52 @@ export class ManualFetcher {
         try {
             const rows = [];
             const pythPositions = cryptoPositions.filter(p => p.type === 'pyth');
+            const stockPositions = cryptoPositions.filter(p => p.type === 'stock');
             const customPositions = cryptoPositions.filter(p => p.type === 'custom');
+
+            // Stock/ETF/FX/Index positions via Yahoo Finance. Single batched quote request
+            // covers everything in one round-trip.
+            if (stockPositions.length > 0 && this.providers.stocks?.getQuotes) {
+                try {
+                    const symbols = stockPositions.map(p => p.symbol).filter(Boolean);
+                    const quotes = await this.providers.stocks.getQuotes(symbols, { timeoutMs: 5000 });
+
+                    for (const pos of stockPositions) {
+                        const amount = parseFloat(pos.amount || 0);
+                        const entryPrice = parseFloat(pos.entryPrice || 0);
+                        const quote = quotes[pos.symbol];
+                        const currentPrice = Number.isFinite(quote?.price) ? quote.price : 0;
+                        const value = amount * currentPrice;
+                        const pnl = entryPrice > 0 ? (currentPrice - entryPrice) * amount : null;
+
+                        const category = pos.category || 'equity';
+                        rows.push({
+                            asset: pos.symbol,
+                            exchange: labelForCategory(category),
+                            amount,
+                            price: currentPrice,
+                            value,
+                            change24h: Number.isFinite(quote?.change24h) ? quote.change24h : null,
+                            pnl,
+                            entryPrice: entryPrice || undefined,
+                            entryDate: pos.entryDate || undefined,
+                            assetName: pos.name || quote?.name || pos.symbol,
+                            marketState: quote?.marketState || null,
+                            // Spark quote already includes sparkline data — use it so the row
+                            // renders with a chart on first paint, no follow-up fetch needed.
+                            priceHistory: Array.isArray(quote?.priceHistory) && quote.priceHistory.length > 1
+                              ? quote.priceHistory
+                              : undefined,
+                            category,
+                            isManual: true,
+                            manualType: 'stock',
+                            _changeDetectionKey: `MANUAL_STOCK_${pos.symbol}`
+                        });
+                    }
+                } catch (e) {
+                    console.warn('[Manual] Failed to fetch stock quotes:', e);
+                }
+            }
 
             // Fetch prices for Pyth positions
             if (pythPositions.length > 0) {
@@ -29,15 +90,25 @@ export class ManualFetcher {
                                 pnl = (currentPrice - entryPrice) * amount;
                             }
 
+                            // Category-aware exchange label distinguishes stocks from crypto in the
+                            // positions table. Legacy Pyth crypto positions saved before this change
+                            // lack `category` — treat them as crypto.
+                            const category = pos.category || 'crypto';
+                            const exchange = labelForCategory(category);
+
                             rows.push({
                                 asset: pos.symbol,
-                                exchange: 'Manual (Pyth)',
-                                amount: amount,
+                                exchange,
+                                amount,
                                 price: currentPrice,
-                                value: value,
+                                value,
                                 change24h: null, // Could fetch if needed
-                                pnl: pnl,
+                                pnl,
                                 feedId: pos.feedId,
+                                entryPrice: entryPrice || undefined,
+                                entryDate: pos.entryDate || undefined,
+                                assetName: pos.name || pos.symbol,
+                                category,
                                 isManual: true,
                                 manualType: 'pyth',
                                 _changeDetectionKey: `MANUAL_PYTH_${pos.symbol}_${pos.feedId}`
@@ -91,12 +162,46 @@ export class ManualFetcher {
                 removeFilter: (p) => p.exchange && p.exchange.startsWith('Manual')
             });
 
-            // Enrich with Pyth History
+            // Enrich asynchronously from the appropriate provider. Each enrichment re-pushes
+            // the rows so the renderer picks up the updated price history for sparklines.
             this.enrichWithPythHistory(rows);
+            this.enrichWithStockHistory(rows);
 
         } catch (e) {
             this.renderer.markProviderFailed('Manual', e);
         }
+    }
+
+    async enrichWithStockHistory(rows) {
+        if (!rows || rows.length === 0) return;
+        if (this.settings && this.settings.showPriceChart === false) return;
+        const provider = this.providers?.stocks;
+        if (!provider?.get24hPriceHistory) return;
+
+        const stockRows = rows.filter(r => r.manualType === 'stock' && !r.priceHistory);
+        if (stockRows.length === 0) return;
+
+        const threshold = this.settings.minBalanceThreshold || 0;
+
+        // Fetch per-symbol in parallel; Yahoo doesn't batch chart requests. Cheap for typical
+        // portfolios (<20 symbols) and the HTTP client's in-flight dedup prevents duplicates.
+        const fetches = stockRows.map(async (row) => {
+            const exchangeKey = row.exchange || 'Manual (Stock)';
+            const isHidden = this.settings.hiddenAssets?.includes(`${row.asset}_${exchangeKey}`);
+            if (isHidden || row.value < threshold) return;
+            try {
+                const history = await provider.get24hPriceHistory(row.asset, { timeoutMs: 5000 });
+                if (Array.isArray(history) && history.length > 0) {
+                    row.priceHistory = history;
+                }
+            } catch (_) { /* non-fatal: row renders without sparkline */ }
+        });
+
+        await Promise.all(fetches);
+
+        this.renderer.appendPositions(rows, 'Manual', {
+            removeFilter: (p) => p.exchange && p.exchange.startsWith('Manual')
+        });
     }
 
     async enrichWithPythHistory(rows) {
@@ -104,7 +209,9 @@ export class ManualFetcher {
         if (this.settings && this.settings.showPriceChart === false) return;
 
 
-        const pythRows = rows.filter(r => r.exchange === 'Manual (Pyth)' && !r.priceHistory);
+        // Any Pyth-backed manual row qualifies for history enrichment — the category-aware
+        // exchange labels (Manual (Stock), Manual (FX), etc.) are all sourced from Pyth feeds.
+        const pythRows = rows.filter(r => r.manualType === 'pyth' && !r.priceHistory);
         // console.log(`[Manual] Enriching ${pythRows.length} Pyth positions with history.`);
         if (pythRows.length === 0) return;
 
@@ -133,8 +240,9 @@ export class ManualFetcher {
                 continue;
             }
 
-            // Check threshold and hidden status
-            const isHidden = this.settings.hiddenAssets && this.settings.hiddenAssets.includes(`${row.asset}_Manual (Pyth)`);
+            // Check threshold and hidden status — exchange label varies by category now.
+            const exchangeKey = row.exchange || 'Manual (Pyth)';
+            const isHidden = this.settings.hiddenAssets && this.settings.hiddenAssets.includes(`${row.asset}_${exchangeKey}`);
             const threshold = this.settings.minBalanceThreshold || 0;
             if (isHidden || row.value < threshold) {
                 continue;

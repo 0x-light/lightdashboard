@@ -14,6 +14,7 @@ import * as BTC from './data/providers/bitcoin.js';
 import * as ZEC from './data/providers/zcash.js';
 import * as ALCHEMY from './data/providers/alchemy.js';
 import * as HELIUS from './data/providers/helius.js';
+import * as STOCKS from './data/providers/stocks.js';
 import * as HeroUI from './ui/hero.js';
 import * as PositionsUI from './ui/positions.js';
 import * as Settings from './core/settings.js';
@@ -44,6 +45,7 @@ window.AppModules.data.providers.bitcoin = BTC;
 window.AppModules.data.providers.zcash = ZEC;
 window.AppModules.data.providers.alchemy = ALCHEMY;
 window.AppModules.data.providers.helius = HELIUS;
+window.AppModules.data.providers.stocks = STOCKS;
 window.AppModules.ui = window.AppModules.ui || {};
 window.AppModules.ui.hero = HeroUI;
 window.AppModules.ui.positions = PositionsUI;
@@ -51,6 +53,17 @@ window.AppModules.utils = window.AppModules.utils || {};
 window.AppModules.utils.entryPriceTracker = EntryPriceTracker;
 window.AppModules.utils.coinGeckoBatcher = CoinGeckoBatcher;
 window.AppModules.utils.assetMapping = AssetMapping;
+
+// README documents walletPnLUtils on window as the entry-price console helper. Expose it here
+// (the docs were ahead of the code). See README "Wallet Asset PnL Management" section.
+window.walletPnLUtils = {
+  viewEntryPrices: EntryPriceTracker.viewEntryPrices,
+  setEntryPrice: EntryPriceTracker.setEntryPrice,
+  resetEntryPrice: EntryPriceTracker.resetEntryPrice,
+  resetAll: EntryPriceTracker.resetAllEntryPrices,
+  export: EntryPriceTracker.exportEntryPrices,
+  import: EntryPriceTracker.importEntryPrices
+};
 window.AppModules.core = window.AppModules.core || {};
 window.AppModules.core.settings = Settings;
 window.AppModules.core.themes = Themes;

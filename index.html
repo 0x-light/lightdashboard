@@ -789,18 +789,26 @@
             <div id="newAddPositionPythSection">
                 <label style="display: block; margin-bottom: 8px;">Search Ticker</label>
                 <input type="text" id="newAddPositionPythSearch" class="settings-input"
-                    placeholder="Search for tickers..." style="width: 100%; margin-bottom: 12px;">
+                    placeholder="Search AAPL, BTC, EUR/USD, XAU..." style="width: 100%; margin-bottom: 12px;">
                 <div id="newAddPositionPythResults"
-                    style="max-height: 200px; overflow-y: auto; display: none; margin-bottom: 16px;">
+                    style="max-height: 240px; overflow-y: auto; display: none; margin-bottom: 16px;">
+                </div>
+                <div id="newAddPositionPythSelection" class="help"
+                    style="display: none; margin-bottom: 12px; padding: 8px; border: 1px solid var(--border); background: var(--bg-elev);">
                 </div>
 
                 <label style="display: block; margin-bottom: 8px;">Amount</label>
                 <input type="number" id="newAddPositionPythAmount" class="settings-input" placeholder="0.00"
                     style="width: 100%; margin-bottom: 16px;" step="any">
 
+                <label style="display: block; margin-bottom: 8px;">Entry Date (optional — auto-fills entry price)</label>
+                <input type="date" id="newAddPositionPythEntryDate" class="settings-input"
+                    style="width: 100%; margin-bottom: 16px;">
+
                 <label style="display: block; margin-bottom: 8px;">Entry Price (USD)</label>
                 <input type="number" id="newAddPositionPythEntryPrice" class="settings-input" placeholder="0.00"
-                    style="width: 100%; margin-bottom: 16px;" step="any">
+                    style="width: 100%; margin-bottom: 8px;" step="any">
+                <div id="newAddPositionPythEntryPriceHint" class="help" style="margin-bottom: 16px;"></div>
             </div>
 
             <!-- Custom Asset Section -->

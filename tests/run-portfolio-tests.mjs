@@ -3,6 +3,8 @@ import { calculatePortfolioTotals } from '../modules/domain/portfolio.js';
 import { ManualFetcher } from '../modules/data/fetchers/manual-fetcher.js';
 import { AlchemyHeliusFetcher } from '../modules/data/fetchers/alchemy-helius-fetcher.js';
 import { LighterFetcher } from '../modules/data/fetchers/lighter-fetcher.js';
+import { _internal as pythInternal } from '../modules/data/providers/pyth.js';
+import { normalizeEntries } from '../modules/features/watchlist.js';
 
 async function testManualCustomLegacySchema() {
   const calls = [];
@@ -61,6 +63,180 @@ function testHyperliquidTotalsFallbackWhenNoEquity() {
 
   assert.equal(totals.totalValue, 220, 'HL positions should count when no equity row exists');
   assert.equal(totals.totalPnL, 15);
+}
+
+function testCostBasisOnLosses() {
+  // Value $80, PnL -$20 → cost basis must be $100 (original purchase price)
+  const totals = calculatePortfolioTotals([
+    { exchange: 'Ethereum', value: 80, pnl: -20 }
+  ]);
+  assert.equal(totals.totalValue, 80);
+  assert.equal(totals.totalPnL, -20);
+  assert.equal(totals.costBasis, 100, 'cost basis should add back the loss');
+  assert.equal(totals.totalPnLPercent, -20, 'pnl% = -20/100 = -20%');
+}
+
+function testNaNPnlIsSkipped() {
+  const totals = calculatePortfolioTotals([
+    { exchange: 'Ethereum', value: 100, pnl: 10 },
+    { exchange: 'Arbitrum', value: 50, pnl: Number.NaN },
+    { exchange: 'Base', value: 25 } // missing pnl entirely
+  ]);
+  assert.equal(totals.totalValue, 175);
+  assert.equal(totals.totalPnL, 10, 'NaN and missing pnl must not corrupt totalPnL');
+}
+
+function testMultiWalletHlEquityAggregates() {
+  const totals = calculatePortfolioTotals([
+    { exchange: 'HL Perps', isHlAccountEquity: true, value: 1000, pnl: 30 },
+    { exchange: 'HL Perps', isHlAccountEquity: true, value: 500, pnl: -20 },
+    { exchange: 'HL Perps', value: 300, pnl: 100 }, // raw perp row — must be skipped
+    { exchange: 'HL Spot', value: 150, pnl: 5 }     // spot row — must also be skipped
+  ]);
+  assert.equal(totals.totalValue, 1500, 'HL equity rows should sum across wallets');
+  assert.equal(totals.totalPnL, 10);
+}
+
+function testLighterLeverageDoesNotInflateTotals() {
+  // Realistic scenario: user has $1k equity with a 5x-leveraged BTC long (notional $5k).
+  // Before the fix, total read ~$6k. After the fix, the equity row is authoritative.
+  const totals = calculatePortfolioTotals([
+    { exchange: 'Lighter', isLighterAccountEquity: true, value: 1000, pnl: 50 },
+    { exchange: 'Lighter', asset: 'BTC', value: 5000, pnl: 50, isLeveraged: true, amount: 0.1 }
+  ]);
+  assert.equal(totals.totalValue, 1000, 'leveraged perp notional must not leak into totals');
+  assert.equal(totals.totalPnL, 50);
+}
+
+function testShortPnlSignPreserved() {
+  // Short ETH: amount=-1, entry=2000, current=1800 → pnl = (2000-1800)*1 = +200 via signed amount.
+  const totals = calculatePortfolioTotals([
+    { exchange: 'HL Perps', value: 1800, pnl: 200 } // HL fetcher already signs pnl correctly
+  ]);
+  assert.equal(totals.totalPnL, 200);
+}
+
+function testPythFeedParserRecognisesAllCategories() {
+  const { parsePythFeed, buildFlatMap } = pythInternal;
+
+  const btc = parsePythFeed({
+    id: '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43',
+    attributes: { symbol: 'Crypto.BTC/USD', description: 'Bitcoin / US Dollar', asset_type: 'Crypto' }
+  });
+  assert.equal(btc.symbol, 'BTC');
+  assert.equal(btc.category, 'crypto');
+  assert.equal(btc.marketHours, null);
+
+  const aapl = parsePythFeed({
+    id: '0x49f6b65cb1de6b10eaf75e7c03ca029c306d0357e91b5311b175084a5ad55688',
+    attributes: { symbol: 'Equity.US.AAPL/USD', description: 'Apple Inc.', asset_type: 'Equity' }
+  });
+  assert.equal(aapl.symbol, 'AAPL');
+  assert.equal(aapl.category, 'equity');
+  assert.equal(aapl.name, 'Apple Inc.');
+  assert.equal(aapl.marketHours, 'us-equity', 'equities must flag market-hours handling');
+
+  const eurusd = parsePythFeed({
+    id: '0xa995d00bb36a63cef7fd2c287dc105fc8f3d93779f062f09551b0af3e81ec30b',
+    attributes: { symbol: 'FX.EUR/USD', description: 'Euro / US Dollar' }
+  });
+  assert.equal(eurusd.symbol, 'EUR/USD');
+  assert.equal(eurusd.category, 'fx');
+
+  const gold = parsePythFeed({
+    id: '0x765d2ba906dbc32ca17cc11f5310a89e9ee1f6420508c63861f2f8ba4ee34bb2',
+    attributes: { symbol: 'Metal.XAU/USD', description: 'Gold / US Dollar' }
+  });
+  assert.equal(gold.symbol, 'XAU');
+  assert.equal(gold.category, 'metal');
+
+  // Non-USD quote — ignored (dashboard is USD-denominated)
+  const nonUsd = parsePythFeed({
+    id: '0xdeadbeef' + '0'.repeat(56),
+    attributes: { symbol: 'FX.EUR/GBP' }
+  });
+  assert.equal(nonUsd, null, 'non-USD quote feeds must be skipped');
+
+  // Crypto wins on ticker collisions so wallet-asset lookups stay stable.
+  const ambiguous = buildFlatMap([
+    { symbol: 'X', id: '0x1', category: 'equity' },
+    { symbol: 'X', id: '0x2', category: 'crypto' }
+  ]);
+  assert.equal(ambiguous.X, '0x2', 'crypto must take priority in the flat symbol map');
+}
+
+async function testManualFetcherLabelsStockPositions() {
+  const calls = [];
+  const renderer = {
+    appendPositions: (rows, source, options) => calls.push({ rows, source, options }),
+    markProviderFailed: (_, err) => { throw err; }
+  };
+  const providers = {
+    pyth: {
+      getLatestByFeedIds: async (ids) => ({
+        '0xaapl': 200
+      })
+    }
+  };
+  const fetcher = new ManualFetcher(providers, renderer, {
+    showPriceChart: false,
+    hiddenAssets: [],
+    minBalanceThreshold: 0
+  });
+
+  await fetcher.fetch([
+    { type: 'pyth', symbol: 'AAPL', feedId: '0xaapl', amount: 10, entryPrice: 150,
+      category: 'equity', name: 'Apple Inc.', entryDate: '2024-01-02' }
+  ]);
+
+  assert.equal(calls.length, 1);
+  const [row] = calls[0].rows;
+  assert.equal(row.asset, 'AAPL');
+  assert.equal(row.exchange, 'Manual (Stock)', 'equity category must surface as "Manual (Stock)"');
+  assert.equal(row.amount, 10);
+  assert.equal(row.price, 200);
+  assert.equal(row.value, 2000);
+  assert.equal(row.pnl, 500, 'pnl = amount * (current - entry)');
+  assert.equal(row.entryDate, '2024-01-02', 'entry date should round-trip onto the row');
+  assert.equal(row.category, 'equity');
+}
+
+async function testManualFetcherLegacyPythPositionFallsBackToCrypto() {
+  // Positions saved before the category change must keep displaying as Manual (Pyth).
+  const calls = [];
+  const renderer = {
+    appendPositions: (rows) => calls.push({ rows }),
+    markProviderFailed: (_, err) => { throw err; }
+  };
+  const providers = {
+    pyth: { getLatestByFeedIds: async () => ({ '0xbtc': 65000 }) }
+  };
+  const fetcher = new ManualFetcher(providers, renderer, {
+    showPriceChart: false, hiddenAssets: [], minBalanceThreshold: 0
+  });
+
+  await fetcher.fetch([
+    { type: 'pyth', symbol: 'BTC', feedId: '0xbtc', amount: 0.5, entryPrice: 60000 }
+  ]);
+
+  const [row] = calls[0].rows;
+  assert.equal(row.exchange, 'Manual (Pyth)', 'legacy positions without category default to Manual (Pyth)');
+  assert.equal(row.category, 'crypto');
+}
+
+function testEmptyAndMalformedInputs() {
+  assert.deepEqual(
+    calculatePortfolioTotals([]),
+    { totalValue: 0, totalPnL: 0, totalPnLPercent: 0, costBasis: 0 }
+  );
+  assert.deepEqual(
+    calculatePortfolioTotals(null),
+    { totalValue: 0, totalPnL: 0, totalPnLPercent: 0, costBasis: 0 }
+  );
+  // Undefined/null rows should not throw
+  const totals = calculatePortfolioTotals([null, undefined, { exchange: 'Base', value: 10, pnl: 1 }]);
+  assert.equal(totals.totalValue, 10);
+  assert.equal(totals.totalPnL, 1);
 }
 
 async function testAlchemyHeliusRowShape() {
@@ -176,8 +352,16 @@ async function testLighterAlternateSchemaRows() {
   const walletCall = calls.find(c => c.source === 'Lighter_0xabc');
   assert.ok(walletCall, 'lighter wallet rows should be appended');
   assert.ok(walletCall.rows.some(r => r.asset === 'ETH' && r.exchange === 'Lighter' && r.value === 6000), 'perp row should be parsed from alternate schema');
-  assert.ok(walletCall.rows.some(r => r.asset === 'USDC' && r.exchange === 'Lighter' && r.value === 1500), 'collateral fallback should create USDC row');
+  const equityRow = walletCall.rows.find(r => r.isLighterAccountEquity);
+  assert.ok(equityRow, 'collateral fallback should create synthetic account-equity row');
+  assert.equal(equityRow.value, 1620, 'equity row should be free collateral + perp unrealized PnL when total NAV missing');
+  assert.equal(equityRow.pnl, 120, 'equity row pnl should reflect aggregated perp unrealized PnL');
   assert.ok(walletCall.rows.some(r => r.asset === 'LIT' && r.exchange === 'Lighter Spot' && r.amount === 8), 'spot row should be parsed from alternate schema');
+
+  // Perp notional ($6000) must not leak into portfolio totals now that an equity row exists.
+  const totals = calculatePortfolioTotals(walletCall.rows);
+  assert.equal(totals.totalValue, 1700, 'lighter totals = equity row + spot row, not perp notional');
+  assert.equal(totals.totalPnL, 120, 'totals pnl should come from equity row');
 }
 
 async function testLighterObjectMapSchemaRows() {
@@ -245,7 +429,15 @@ async function testLighterObjectMapSchemaRows() {
   assert.ok(walletCall, 'lighter wallet rows should be appended for object-map schema');
   assert.ok(walletCall.rows.some(r => r.asset === 'ETH' && r.exchange === 'Lighter' && r.value === 4800), 'market_id mapping should resolve perp symbol and value');
   assert.ok(walletCall.rows.some(r => r.asset === 'LIT' && r.exchange === 'Lighter Spot' && r.amount === 4), 'asset_id mapping should resolve spot symbol');
-  assert.ok(walletCall.rows.some(r => r.asset === 'USDC' && r.exchange === 'Lighter' && r.value === 2000), 'equity fallback should populate USDC balance row');
+  const equityRow = walletCall.rows.find(r => r.isLighterAccountEquity);
+  assert.ok(equityRow, 'account-equity row should be emitted when total equity field is present');
+  assert.equal(equityRow.value, 2000, 'equity row should use API-reported total equity directly');
+  assert.equal(equityRow.pnl, -40, 'equity row pnl should aggregate perp unrealized PnL when account-level pnl missing');
+
+  // Double-check the perp notional ($4800 at 1.5x-ish notional) is skipped by totals.
+  const totals = calculatePortfolioTotals(walletCall.rows);
+  assert.equal(totals.totalValue, 2040, 'totals = equity row (2000) + LIT spot row (40), no perp notional');
+  assert.equal(totals.totalPnL, -40);
 }
 
 async function testLighterCoinGeckoFallbackForSpotPrice() {
@@ -295,11 +487,125 @@ async function testLighterCoinGeckoFallbackForSpotPrice() {
   assert.equal(litRow.change24h, 10, 'spot 24h change should fall back to CoinGecko');
 }
 
+async function testManualFetcherRoutesStockPositionsThroughYahoo() {
+  const calls = [];
+  const renderer = {
+    appendPositions: (rows, source, options) => calls.push({ rows, source, options }),
+    markProviderFailed: (_, err) => { throw err; }
+  };
+
+  const getQuotesCalls = [];
+  const providers = {
+    stocks: {
+      getQuotes: async (symbols) => {
+        getQuotesCalls.push(symbols);
+        return {
+          AAPL: { symbol: 'AAPL', price: 220, change24h: 1.5, marketState: 'REGULAR',
+                  name: 'Apple Inc.', previousClose: 217 },
+          SPY: { symbol: 'SPY', price: 500, change24h: 0.8, marketState: 'CLOSED',
+                 name: 'SPDR S&P 500', previousClose: 496 }
+        };
+      },
+      get24hPriceHistory: async () => []
+    }
+  };
+
+  const fetcher = new ManualFetcher(providers, renderer, {
+    showPriceChart: false,
+    hiddenAssets: [],
+    minBalanceThreshold: 0
+  });
+
+  await fetcher.fetch([
+    { type: 'stock', symbol: 'AAPL', amount: 10, entryPrice: 180, category: 'equity',
+      name: 'Apple Inc.', entryDate: '2024-01-02', exchange: 'NASDAQ' },
+    { type: 'stock', symbol: 'SPY', amount: 5, entryPrice: 480, category: 'etf',
+      name: 'SPDR S&P 500' }
+  ]);
+
+  const manualCall = calls.find(c => c.source === 'Manual');
+  assert.ok(manualCall, 'manual rows should be appended under "Manual" source');
+  assert.equal(manualCall.rows.length, 2);
+
+  const aapl = manualCall.rows.find(r => r.asset === 'AAPL');
+  assert.equal(aapl.exchange, 'Manual (Stock)');
+  assert.equal(aapl.amount, 10);
+  assert.equal(aapl.price, 220);
+  assert.equal(aapl.value, 2200);
+  assert.equal(aapl.pnl, 400, 'PnL = 10 * (220 - 180)');
+  assert.equal(aapl.change24h, 1.5);
+  assert.equal(aapl.entryDate, '2024-01-02');
+  assert.equal(aapl.marketState, 'REGULAR');
+  assert.equal(aapl.category, 'equity');
+  assert.equal(aapl.manualType, 'stock');
+
+  const spy = manualCall.rows.find(r => r.asset === 'SPY');
+  assert.equal(spy.exchange, 'Manual (ETF)', 'ETF category should surface as Manual (ETF)');
+  assert.equal(spy.marketState, 'CLOSED');
+
+  assert.equal(getQuotesCalls.length, 1, 'one batched quote call for both symbols');
+  assert.deepEqual(new Set(getQuotesCalls[0]), new Set(['AAPL', 'SPY']));
+}
+
+function testWatchlistNormalizeEntriesAcceptsLegacyAndMixed() {
+  // Legacy: array of Pyth feed id strings
+  const legacy = normalizeEntries([
+    '0xabc123',
+    '0xdef456'
+  ]);
+  assert.equal(legacy.length, 2);
+  assert.equal(legacy[0].provider, 'pyth');
+  assert.equal(legacy[0].id, '0xabc123');
+
+  // New: mixed pyth + yahoo objects
+  const mixed = normalizeEntries([
+    '0xlegacy',
+    { provider: 'pyth', id: '0xexplicit' },
+    { provider: 'yahoo', symbol: 'AAPL', name: 'Apple Inc.', category: 'equity' },
+    { provider: 'yahoo', symbol: 'spy' } // lowercase — symbol normalization is for keys only
+  ]);
+  assert.equal(mixed.length, 4, 'all valid entries must survive');
+  assert.equal(mixed[0].provider, 'pyth');
+  assert.equal(mixed[1].provider, 'pyth');
+  assert.equal(mixed[2].provider, 'yahoo');
+  assert.equal(mixed[2].name, 'Apple Inc.');
+  assert.equal(mixed[3].symbol, 'spy');
+
+  // Defensive: invalid / empty / malformed entries are dropped rather than crashing
+  const noise = normalizeEntries([
+    null,
+    undefined,
+    '',
+    { provider: 'yahoo' },                // missing symbol
+    { provider: 'unknown', id: 'x' },     // unknown provider
+    { id: '0xbarefootid' }                // legacy-shaped object without provider
+  ]);
+  assert.equal(noise.length, 1, 'only the legacy-shaped pyth object should survive');
+  assert.equal(noise[0].provider, 'pyth');
+  assert.equal(noise[0].id, '0xbarefootid');
+
+  // Non-array input is tolerated
+  assert.deepEqual(normalizeEntries(null), []);
+  assert.deepEqual(normalizeEntries(undefined), []);
+  assert.deepEqual(normalizeEntries('not-an-array'), []);
+}
+
 async function run() {
   await testManualCustomLegacySchema();
   testLighterTotalsWithoutEquity();
   testLighterTotalsWithEquity();
   testHyperliquidTotalsFallbackWhenNoEquity();
+  testCostBasisOnLosses();
+  testNaNPnlIsSkipped();
+  testMultiWalletHlEquityAggregates();
+  testLighterLeverageDoesNotInflateTotals();
+  testShortPnlSignPreserved();
+  testPythFeedParserRecognisesAllCategories();
+  testWatchlistNormalizeEntriesAcceptsLegacyAndMixed();
+  await testManualFetcherLabelsStockPositions();
+  await testManualFetcherLegacyPythPositionFallsBackToCrypto();
+  await testManualFetcherRoutesStockPositionsThroughYahoo();
+  testEmptyAndMalformedInputs();
   await testAlchemyHeliusRowShape();
   await testLighterAlternateSchemaRows();
   await testLighterObjectMapSchemaRows();

@@ -62,9 +62,76 @@ async function fetchPyth(path, timeoutMs = 10000, bypassCache = false) {
 
 let feedsCache = null;
 let feedsCacheTimestamp = 0;
-const FEEDS_CACHE_KEY = 'pyth_price_feeds_v1';
+let feedsMetadataCache = null;
+// v2 adds equity / FX / metal / commodity coverage — the crypto-only v1 cache would be stale.
+const FEEDS_CACHE_KEY = 'pyth_price_feeds_v2';
+const FEEDS_METADATA_CACHE_KEY = 'pyth_feed_metadata_v2';
 const FEEDS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 const FEED_ID_PATTERN = /^0x[a-f0-9]{64}$/;
+const LEGACY_FEEDS_CACHE_KEY = 'pyth_price_feeds_v1';
+
+// Pyth symbols are structured as `<Category>.<Rest>/<Quote>`. We extract a compact
+// symbol (AAPL, BTC, EUR/USD, XAU) and the category so the UI can label stocks distinctly
+// from crypto. Non-USD quotes are intentionally excluded — everything in the dashboard is USD.
+const FEED_PARSERS = [
+  {
+    category: 'crypto',
+    // Crypto.BTC/USD → BTC
+    test: /^Crypto\.([A-Za-z0-9]+)\/USD$/i,
+    extractSymbol: (m) => m[1].toUpperCase()
+  },
+  {
+    category: 'equity',
+    // Equity.US.AAPL/USD → AAPL  (also tolerate Equity.AAPL/USD just in case)
+    test: /^Equity(?:\.[A-Z]{2})?\.([A-Za-z0-9._-]+)\/USD$/i,
+    extractSymbol: (m) => m[1].toUpperCase()
+  },
+  {
+    category: 'fx',
+    // FX.EUR/USD → EUR/USD
+    test: /^FX\.([A-Za-z]{3})\/USD$/i,
+    extractSymbol: (m) => `${m[1].toUpperCase()}/USD`
+  },
+  {
+    category: 'metal',
+    // Metal.XAU/USD → XAU (gold), XAG (silver), etc.
+    test: /^Metal\.([A-Za-z]+)\/USD$/i,
+    extractSymbol: (m) => m[1].toUpperCase()
+  },
+  {
+    category: 'commodity',
+    // Commodities.WTI/USD, Commodity.WTI/USD
+    test: /^Commodit(?:y|ies)\.([A-Za-z0-9]+)\/USD$/i,
+    extractSymbol: (m) => m[1].toUpperCase()
+  }
+];
+
+function parsePythFeed(feed) {
+  const symbolField = feed?.attributes?.symbol;
+  const id = feed?.id;
+  if (!symbolField || !id) return null;
+
+  for (const parser of FEED_PARSERS) {
+    const m = symbolField.match(parser.test);
+    if (m) {
+      const symbol = parser.extractSymbol(m);
+      if (!symbol) return null;
+      const normalizedId = id.toLowerCase().startsWith('0x') ? id.toLowerCase() : `0x${id.toLowerCase()}`;
+      return {
+        symbol,
+        id: normalizedId,
+        category: parser.category,
+        // display/description come from Pyth metadata when available — e.g. "Apple Inc.", "Bitcoin / US Dollar"
+        name: feed?.attributes?.description || feed?.attributes?.display_symbol || symbol,
+        displaySymbol: feed?.attributes?.display_symbol || feed?.attributes?.generic_symbol || null,
+        assetType: feed?.attributes?.asset_type || null,
+        // Flag stocks as market-hours-sensitive so the UI can hint that prices may be stale off-hours.
+        marketHours: parser.category === 'equity' ? 'us-equity' : null
+      };
+    }
+  }
+  return null;
+}
 
 function normalizeFeedId(id) {
   if (typeof id !== 'string') return null;
@@ -178,62 +245,107 @@ async function fetchTimestampPricesResilient(feedIds, timestampSeconds, timeoutM
   return results;
 }
 
-export async function getPriceFeeds(timeoutMs = 15000) {
-  const now = Date.now();
+// Load cached metadata from localStorage into memory on demand. Returns null if absent/expired.
+function loadCachedMetadata() {
+  if (feedsMetadataCache && (Date.now() - feedsCacheTimestamp < FEEDS_CACHE_TTL)) {
+    return feedsMetadataCache;
+  }
+  try {
+    const cached = localStorage?.getItem(FEEDS_METADATA_CACHE_KEY);
+    if (!cached) return null;
+    const { timestamp, data } = JSON.parse(cached);
+    if (!data || !Array.isArray(data)) return null;
+    if (Date.now() - timestamp >= FEEDS_CACHE_TTL) return null;
+    feedsMetadataCache = data;
+    feedsCacheTimestamp = timestamp;
+    // Derive flat map from metadata so both functions stay in sync.
+    feedsCache = buildFlatMap(data);
+    return data;
+  } catch (_) {
+    return null;
+  }
+}
 
-  // 1. Check Memory Cache
-  if (feedsCache && (now - feedsCacheTimestamp < FEEDS_CACHE_TTL)) {
+function buildFlatMap(metadata) {
+  const map = {};
+  if (!Array.isArray(metadata)) return map;
+  // Resolve collisions: crypto wins over other categories if a ticker collides (preserves
+  // behavior for existing wallet-asset enrichment callers that expect BTC/ETH/etc).
+  const priorityOrder = { crypto: 0, equity: 1, fx: 2, metal: 3, commodity: 4 };
+  const currentPriority = {};
+  for (const feed of metadata) {
+    if (!feed?.symbol || !feed?.id) continue;
+    const existingPri = currentPriority[feed.symbol];
+    const newPri = priorityOrder[feed.category] ?? 99;
+    if (existingPri === undefined || newPri < existingPri) {
+      map[feed.symbol] = feed.id;
+      currentPriority[feed.symbol] = newPri;
+    }
+  }
+  return map;
+}
+
+async function fetchAndCacheFeeds(timeoutMs) {
+  const now = Date.now();
+  const feeds = await fetchPyth('/price_feeds', timeoutMs) || [];
+  const metadata = [];
+  if (Array.isArray(feeds)) {
+    for (const feed of feeds) {
+      const parsed = parsePythFeed(feed);
+      if (parsed) metadata.push(parsed);
+    }
+  }
+
+  if (metadata.length > 0) {
+    feedsMetadataCache = metadata;
+    feedsCache = buildFlatMap(metadata);
+    feedsCacheTimestamp = now;
+    try {
+      localStorage?.setItem(FEEDS_METADATA_CACHE_KEY, JSON.stringify({ timestamp: now, data: metadata }));
+      localStorage?.setItem(FEEDS_CACHE_KEY, JSON.stringify({ timestamp: now, data: feedsCache }));
+      // v1 held crypto-only data and is no longer consulted; drop it to free quota.
+      localStorage?.removeItem(LEGACY_FEEDS_CACHE_KEY);
+    } catch (_) { /* ignore quota */ }
+  }
+
+  return metadata;
+}
+
+/**
+ * Flat `{ symbol: feedId }` map across all supported asset classes (crypto, equity, FX, metal,
+ * commodity). Existing callers that only care about crypto symbols still work because crypto
+ * wins on ticker collisions (see `buildFlatMap`). Cached for 24h.
+ */
+export async function getPriceFeeds(timeoutMs = 15000) {
+  if (feedsCache && (Date.now() - feedsCacheTimestamp < FEEDS_CACHE_TTL)) {
     return feedsCache;
   }
+  if (loadCachedMetadata()) return feedsCache || {};
 
-  // 2. Check LocalStorage
   try {
-    const cached = localStorage.getItem(FEEDS_CACHE_KEY);
-    if (cached) {
-      const { timestamp, data } = JSON.parse(cached);
-      if (now - timestamp < FEEDS_CACHE_TTL) {
-        feedsCache = data;
-        feedsCacheTimestamp = timestamp;
-        return data; // Return immediately from local storage
-      }
-    }
-  } catch (e) {
-    console.warn('[Pyth] Failed to load feeds from storage', e);
-  }
-
-  // 3. Fetch from API
-  try {
-    const feeds = await fetchPyth('/price_feeds', timeoutMs) || [];
-    const feedMap = {};
-    if (Array.isArray(feeds)) {
-      for (const feed of feeds) {
-        const symbol = feed?.attributes?.symbol;
-        const id = feed?.id;
-        if (symbol && id) {
-          const match = symbol.match(/Crypto\.([A-Z0-9]+)\/USD/i);
-          if (match) {
-            const asset = match[1].toUpperCase();
-            const normalizedId = id.toLowerCase().startsWith('0x') ? id.toLowerCase() : `0x${id.toLowerCase()}`;
-            feedMap[asset] = normalizedId;
-          }
-        }
-      }
-    }
-
-    // Save to Cache
-    if (Object.keys(feedMap).length > 0) {
-      feedsCache = feedMap;
-      feedsCacheTimestamp = now;
-      try {
-        localStorage.setItem(FEEDS_CACHE_KEY, JSON.stringify({ timestamp: now, data: feedMap }));
-      } catch (e) { /* ignore quota */ }
-    }
-
-    return feedMap;
+    await fetchAndCacheFeeds(timeoutMs);
+    return feedsCache || {};
   } catch (e) {
     console.error('[Pyth] Failed to fetch price feeds', e);
-    // Fallback to cache even if expired? No, return empty or old cache if available
     return feedsCache || {};
+  }
+}
+
+/**
+ * Rich metadata for each feed — { symbol, id, category, name, displaySymbol, assetType, marketHours }.
+ * Used by the add-position search UI to show asset class and a friendly name (e.g. "AAPL — Apple Inc.").
+ */
+export async function getFeedsWithMetadata(timeoutMs = 15000) {
+  if (feedsMetadataCache && (Date.now() - feedsCacheTimestamp < FEEDS_CACHE_TTL)) {
+    return feedsMetadataCache;
+  }
+  if (loadCachedMetadata()) return feedsMetadataCache || [];
+
+  try {
+    return await fetchAndCacheFeeds(timeoutMs);
+  } catch (e) {
+    console.error('[Pyth] Failed to fetch price feeds (metadata)', e);
+    return feedsMetadataCache || [];
   }
 }
 
@@ -441,4 +553,7 @@ export async function get24hPriceHistory(feedId, timeoutMs = 10000, points = 96)
   return result[normalized] || [];
 }
 
-export default { getPriceFeeds, getLatestByFeedIds, getAtTimestampByFeedIds, get24hPriceHistory, getBatch24hPriceHistory };
+// Exposed for tests; not meant for general consumers.
+export const _internal = { parsePythFeed, buildFlatMap };
+
+export default { getPriceFeeds, getFeedsWithMetadata, getLatestByFeedIds, getAtTimestampByFeedIds, get24hPriceHistory, getBatch24hPriceHistory };

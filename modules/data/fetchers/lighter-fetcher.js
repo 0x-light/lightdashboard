@@ -159,20 +159,33 @@ function getAssetSymbol(asset, spotAssetMap = null) {
     return '';
 }
 
-function getAccountEquity(account) {
+// Total account NAV (equity) — includes free collateral, open-position margin, and unrealized PnL.
+// Prefer explicit total fields; these correspond to real account value the user sees on Lighter.
+function getAccountTotalValue(account) {
+    return firstFiniteNumber(
+        account?.total_asset_value,
+        account?.totalAssetValue,
+        account?.equity,
+        account?.account_value,
+        account?.accountValue,
+        account?.total_value,
+        account?.totalValue,
+        account?.net_asset_value,
+        account?.netAssetValue,
+        account?.portfolio_value,
+        account?.portfolioValue
+    );
+}
+
+// Free collateral — just unallocated USDC. NOT account equity when positions are open.
+function getAccountFreeCollateral(account) {
     return firstFiniteNumber(
         account?.available_balance,
         account?.availableBalance,
         account?.collateral,
         account?.free_collateral,
-        account?.freeCollateral,
-        account?.total_asset_value,
-        account?.equity,
-        account?.account_value,
-        account?.accountValue,
-        account?.total_value,
-        account?.totalValue
-    ) || 0;
+        account?.freeCollateral
+    );
 }
 
 function getAccountPnl(account) {
@@ -182,7 +195,7 @@ function getAccountPnl(account) {
         account?.total_unrealized_pnl,
         account?.totalUnrealizedPnl,
         account?.pnl
-    ) || 0;
+    );
 }
 
 export class LighterFetcher {
@@ -452,6 +465,14 @@ export class LighterFetcher {
 
             const positionsWithFunding = await Promise.all(cumFundingPromises);
 
+            // Track per-account unrealized PnL so the equity row reflects position PnL even when the
+            // API omits a top-level pnl field.
+            const perpPnlByAccount = new Map();
+            const addPerpPnl = (accountKey, pnl) => {
+                if (!Number.isFinite(pnl)) return;
+                perpPnlByAccount.set(accountKey, (perpPnlByAccount.get(accountKey) || 0) + pnl);
+            };
+
             // Build position rows
             for (const { accountIndex, pos, symbol, isLong, cumFunding } of positionsWithFunding) {
                 const size = firstFiniteNumber(
@@ -511,19 +532,22 @@ export class LighterFetcher {
                 const derivedPrice = absSize > 0 && value > 0 ? (value / absSize) : 0;
                 const price = derivedPrice || markPrice || entryPrice;
 
+                const positionPnl = firstFiniteNumber(
+                    pos.unrealized_pnl,
+                    pos.unrealizedPnl,
+                    pos.uPnl,
+                    pos.unrealized_pnl_usd,
+                    pos.pnl
+                );
+                addPerpPnl(accountIndex ?? 'unknown', positionPnl || 0);
+
                 const position = {
                     asset: symbol || 'Unknown',
                     exchange: 'Lighter',
                     amount: isLong ? absSize : -absSize,
                     price,
                     value,
-                    pnl: firstFiniteNumber(
-                        pos.unrealized_pnl,
-                        pos.unrealizedPnl,
-                        pos.uPnl,
-                        pos.unrealized_pnl_usd,
-                        pos.pnl
-                    ) || 0,
+                    pnl: positionPnl || 0,
                     entryPrice,
                     isLeveraged: true,
                     _changeDetectionKey: `${symbol || 'Unknown'}_Lighter_${wallet}_${accountIndex ?? 'unknown'}`
@@ -548,23 +572,44 @@ export class LighterFetcher {
                 walletRows.push(position);
             }
 
-            // Add USDC balances
+            // Emit one synthetic Lighter account-equity row per account.
+            // This is the single source of truth for Lighter NAV in portfolio totals. Per-position
+            // perp rows above are kept for display but are *excluded* from totals by the
+            // `isLighterAccountEquity` flag, preventing notional-value inflation.
             for (const account of accounts) {
                 const accountIndex = getAccountIndex(account);
-                const balance = getAccountEquity(account);
-                if (balance > 1) {
-                    walletRows.push({
-                        asset: 'USDC',
-                        exchange: 'Lighter',
-                        amount: balance,
-                        price: 1,
-                        value: balance,
-                        pnl: 0,
-                        isLeveraged: false,
-                        _changeDetectionKey: `USDC_Lighter_${wallet}_${accountIndex ?? 'unknown'}`
-                    });
+                const accountKey = accountIndex ?? 'unknown';
+                const totalValue = getAccountTotalValue(account);
+                const freeCollateral = getAccountFreeCollateral(account);
+                const accountLevelPnl = getAccountPnl(account);
+                const perpPnlSum = perpPnlByAccount.get(accountKey) || 0;
+                const pnl = Number.isFinite(accountLevelPnl) ? accountLevelPnl : perpPnlSum;
+
+                // Prefer API-reported total equity (already includes margin + unrealized PnL).
+                // When absent, approximate NAV = free collateral + unrealized PnL. This undercounts
+                // position margin but is safe: it never over-reports by counting notional.
+                let equityValue;
+                if (Number.isFinite(totalValue)) {
+                    equityValue = totalValue;
+                } else if (Number.isFinite(freeCollateral)) {
+                    equityValue = freeCollateral + perpPnlSum;
+                } else {
+                    equityValue = null;
                 }
 
+                if (Number.isFinite(equityValue) && equityValue > 1) {
+                    walletRows.push({
+                        asset: 'LIGHTER_ACCOUNT_EQUITY',
+                        exchange: 'Lighter',
+                        amount: 1,
+                        price: equityValue,
+                        value: equityValue,
+                        pnl,
+                        isLighterAccountEquity: true,
+                        isLeveraged: false,
+                        _changeDetectionKey: `LIGHTER_ACCOUNT_EQUITY_${wallet}_${accountKey}`
+                    });
+                }
             }
 
             // Add spot asset balances (e.g., LIT token) - price data already pre-fetched
@@ -603,18 +648,29 @@ export class LighterFetcher {
             }
 
             if (walletRows.length === 0) {
-                const fallbackEquity = accounts.reduce((sum, account) => sum + getAccountEquity(account), 0);
+                // Fallback: no parseable positions/balances but the API returned accounts. Try to
+                // synthesize a single equity row from any total/free field the payload exposes.
+                const fallbackEquity = accounts.reduce((sum, account) => {
+                    const total = getAccountTotalValue(account);
+                    if (Number.isFinite(total)) return sum + total;
+                    const free = getAccountFreeCollateral(account);
+                    return Number.isFinite(free) ? sum + free : sum;
+                }, 0);
                 if (fallbackEquity > 0) {
-                    const fallbackPnl = accounts.reduce((sum, account) => sum + getAccountPnl(account), 0);
+                    const fallbackPnl = accounts.reduce((sum, account) => {
+                        const p = getAccountPnl(account);
+                        return Number.isFinite(p) ? sum + p : sum;
+                    }, 0);
                     walletRows.push({
-                        asset: 'Lighter Account',
+                        asset: 'LIGHTER_ACCOUNT_EQUITY',
                         exchange: 'Lighter',
                         amount: 1,
                         price: fallbackEquity,
                         value: fallbackEquity,
                         pnl: fallbackPnl,
+                        isLighterAccountEquity: true,
                         isLeveraged: false,
-                        _changeDetectionKey: `LIGHTER_ACCOUNT_${wallet}`
+                        _changeDetectionKey: `LIGHTER_ACCOUNT_EQUITY_${wallet}`
                     });
                 }
             }

@@ -104,17 +104,25 @@ export function resetEntryPrice(assetKey) {
 }
 
 /**
- * Manually set entry price for an asset
+ * Manually set entry price for an asset. Returns false if the price is not a finite positive
+ * number, or if the underlying save fails — callers in the console helper can surface this.
  */
 export function setEntryPrice(assetKey, price, date = null) {
+  const parsed = parseFloat(price);
+  if (!assetKey || !Number.isFinite(parsed) || parsed <= 0) {
+    console.warn('[EntryPriceTracker] setEntryPrice rejected invalid input:', { assetKey, price });
+    return false;
+  }
   const entryPrices = loadEntryPrices();
+  const previous = entryPrices[assetKey];
   entryPrices[assetKey] = {
-    price: parseFloat(price),
+    price: parsed,
     date: date || new Date().toISOString(),
-    amount: entryPrices[assetKey]?.amount || 0
+    // Preserve the amount recorded at first detection when available; avoid clobbering it to 0
+    // for a fresh manual entry so downstream tooling can distinguish "never detected" from zero.
+    ...(previous?.amount !== undefined ? { amount: previous.amount } : {})
   };
-  saveEntryPrices(entryPrices);
-  return true;
+  return saveEntryPrices(entryPrices);
 }
 
 /**
