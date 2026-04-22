@@ -1,13 +1,14 @@
 // Minimal alpha boot for the new modular dashboard
 import * as AssetMapping from './modules/utils/asset-mapping.js';
 import * as Portfolio from './modules/domain/portfolio.js';
+import { PortfolioManager } from './modules/domain/portfolio-manager.js';
 import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
 import { getRandomSpinner } from './modules/ui/unicode-animations.js';
 
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.9.14';
+const APP_VERSION = '2.9.15';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
@@ -346,9 +347,8 @@ async function _doRenderPortfolioIncremental() {
 
   // Initialize Portfolio Manager and Fetchers (Singleton pattern)
   if (!window._portfolioManager) {
-    const { PortfolioManager } = await import('./modules/domain/portfolio-manager.js?v=2.9.14');
     const { HyperliquidFetcher } = await import('./modules/data/fetchers/hyperliquid-fetcher.js');
-    const { LighterFetcher } = await import('./modules/data/fetchers/lighter-fetcher.js?v=2.9.14');
+    const { LighterFetcher } = await import('./modules/data/fetchers/lighter-fetcher.js');
     const { ZerionFetcher } = await import('./modules/data/fetchers/zerion-fetcher.js');
     const { CieloFetcher } = await import('./modules/data/fetchers/cielo-fetcher.js');
     const { AlchemyHeliusFetcher } = await import('./modules/data/fetchers/alchemy-helius-fetcher.js');
