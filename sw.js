@@ -1,7 +1,7 @@
 // Service Worker for Light Dashboard
 // Provides offline support, intelligent caching, and automatic updates
-const CACHE_VERSION = 'v2.9.15';
-const BUILD_TIMESTAMP = '2026-02-20T18:28:00Z';
+const CACHE_VERSION = 'v2.9.16';
+const BUILD_TIMESTAMP = '2026-05-04T14:07:49Z';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
 // Force clear all caches on install - enabled to ensure users get new versions
@@ -129,6 +129,12 @@ self.addEventListener('fetch', (event) => {
 
   // Handle same-origin requests
   if (url.origin === self.location.origin) {
+    // Same-origin API proxies carry live market/account data. Let the browser/network handle
+    // them so they do not fall into the static asset cache-first branch below.
+    if (url.pathname.startsWith('/api/')) {
+      return;
+    }
+
     // For HTML files - always network first to get updates immediately
     if (request.destination === 'document' || url.pathname.endsWith('.html') || url.pathname === '/') {
       event.respondWith(
