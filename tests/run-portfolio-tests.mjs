@@ -5,6 +5,13 @@ import { AlchemyHeliusFetcher } from '../modules/data/fetchers/alchemy-helius-fe
 import { LighterFetcher } from '../modules/data/fetchers/lighter-fetcher.js';
 import { _internal as pythInternal } from '../modules/data/providers/pyth.js';
 import { normalizeEntries } from '../modules/features/watchlist.js';
+import {
+  getManualPositionAsset,
+  getManualPositionHiddenKeys,
+  manualTypeFromExchange,
+  removeManualPositionByAsset,
+  renderedManualPositionMatches
+} from '../modules/features/manual-positions.js';
 
 async function testManualCustomLegacySchema() {
   const calls = [];
@@ -547,6 +554,42 @@ async function testManualFetcherRoutesStockPositionsThroughYahoo() {
   assert.deepEqual(new Set(getQuotesCalls[0]), new Set(['AAPL', 'SPY']));
 }
 
+function testManualPositionDeletionHandlesStocksAndCategoryKeys() {
+  const positions = [
+    { type: 'stock', symbol: 'AAPL', amount: 10 },
+    { type: 'pyth', symbol: 'AAPL', feedId: '0xaapl', amount: 1 },
+    { type: 'custom', name: 'AAPL', value: 100 },
+    { type: 'stock', symbol: 'SPY', amount: 5 },
+    { type: 'custom', name: 'Gold bars', symbol: 'XAU', value: 2000 }
+  ];
+
+  const remaining = removeManualPositionByAsset(positions, 'AAPL', 'stock');
+  assert.equal(remaining.length, 4, 'only the Yahoo-backed stock row should be removed');
+  assert.ok(remaining.some(p => p.type === 'pyth' && p.symbol === 'AAPL'));
+  assert.ok(remaining.some(p => p.type === 'custom' && p.name === 'AAPL'));
+  assert.ok(remaining.some(p => p.type === 'stock' && p.symbol === 'SPY'));
+  assert.equal(getManualPositionAsset(positions[4]), 'XAU', 'custom deletion should follow rendered asset first');
+  assert.equal(removeManualPositionByAsset(positions, 'Gold bars', 'custom').length, 4);
+
+  const hiddenKeys = getManualPositionHiddenKeys('SPY');
+  assert.ok(hiddenKeys.includes('SPY_Manual (Stock)'));
+  assert.ok(hiddenKeys.includes('SPY_Manual (ETF)'));
+  assert.ok(hiddenKeys.includes('SPY_Manual (Fund)'));
+  assert.ok(hiddenKeys.includes('SPY_Manual (Index)'));
+
+  assert.equal(manualTypeFromExchange('Manual (ETF)'), 'stock');
+  assert.equal(manualTypeFromExchange('Manual (Custom)'), 'custom');
+  assert.equal(manualTypeFromExchange('Manual (Pyth)'), 'pyth');
+  assert.equal(
+    renderedManualPositionMatches({ isManual: true, manualType: 'stock', asset: 'AAPL' }, 'AAPL', 'stock'),
+    true
+  );
+  assert.equal(
+    renderedManualPositionMatches({ isManual: true, manualType: 'pyth', asset: 'AAPL' }, 'AAPL', 'stock'),
+    false
+  );
+}
+
 function testWatchlistNormalizeEntriesAcceptsLegacyAndMixed() {
   // Legacy: array of Pyth feed id strings
   const legacy = normalizeEntries([
@@ -605,6 +648,7 @@ async function run() {
   await testManualFetcherLabelsStockPositions();
   await testManualFetcherLegacyPythPositionFallsBackToCrypto();
   await testManualFetcherRoutesStockPositionsThroughYahoo();
+  testManualPositionDeletionHandlesStocksAndCategoryKeys();
   testEmptyAndMalformedInputs();
   await testAlchemyHeliusRowShape();
   await testLighterAlternateSchemaRows();

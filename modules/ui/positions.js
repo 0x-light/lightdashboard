@@ -1,5 +1,6 @@
 // Positions UI module (incremental extraction)
 // This module progressively takes over rendering of desktop table and mobile cards.
+import { manualTypeFromExchange } from '../features/manual-positions.js';
 
 const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
 
@@ -369,9 +370,10 @@ function createTableRow(doc, pos, opts, prevDataMap) {
         // Manual positions can be deleted
         let manualType = pos.manualType;
         if (!manualType && pos.exchange) {
-          manualType = pos.exchange.includes('Pyth') ? 'pyth' : 'custom';
+          manualType = manualTypeFromExchange(pos.exchange);
         }
-        td.innerHTML = `<span class="edit-asset-cell"><button class="position-delete-btn" data-asset="${pos.asset}" data-manual-type="${manualType}">×</button>${String(cells[i])}</span>`;
+        const manualTypeAttr = manualType ? ` data-manual-type="${manualType}"` : '';
+        td.innerHTML = `<span class="edit-asset-cell"><button class="position-delete-btn" data-asset="${pos.asset}"${manualTypeAttr}>×</button>${String(cells[i])}</span>`;
       } else if (isManuallyHidden) {
         // Manually hidden positions show + to restore
         td.innerHTML = `<span class="edit-asset-cell"><button class="position-restore-btn" data-asset-key="${assetKey}">+</button>${String(cells[i])}</span>`;

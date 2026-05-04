@@ -1,4 +1,8 @@
 // UI Controls module - handles button interactions
+import {
+  getManualPositionHiddenKeys,
+  removeManualPositionByAsset
+} from '../features/manual-positions.js';
 import { closeMobileMenuWithScroll } from './mobile-menu.js';
 
 const STORAGE_KEY = 'myDashboardSettings.v2';
@@ -204,18 +208,14 @@ export function setupEditModeToggle(getSettings, onToggle, invalidateCache) {
       if (confirm(`Delete manual position "${asset}"?`)) {
         const s = getSettings();
         if (s.cryptoPositions && Array.isArray(s.cryptoPositions)) {
-          if (manualType === 'custom') {
-            s.cryptoPositions = s.cryptoPositions.filter(p => !(p.type === 'custom' && p.name === asset));
-          } else if (manualType === 'pyth') {
-            s.cryptoPositions = s.cryptoPositions.filter(p => !(p.type === 'pyth' && p.symbol === asset));
-          }
-          const assetKey = `${asset}_Manual`;
+          s.cryptoPositions = removeManualPositionByAsset(s.cryptoPositions, asset, manualType);
+          const manualKeys = getManualPositionHiddenKeys(asset);
           if (s.hiddenAssets) {
-            s.hiddenAssets = s.hiddenAssets.filter(key => key !== assetKey);
+            s.hiddenAssets = s.hiddenAssets.filter(key => !manualKeys.includes(key));
           }
           localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
           invalidateCache?.();
-          hiddenAssets.delete(assetKey);
+          manualKeys.forEach(key => hiddenAssets.delete(key));
           window.hiddenAssets = hiddenAssets;
           onToggle?.();
         }
@@ -287,6 +287,5 @@ export default {
   setupEditModeToggle,
   setupThemeControls
 };
-
 
 

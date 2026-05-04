@@ -2,6 +2,12 @@
 import * as AssetMapping from './modules/utils/asset-mapping.js';
 import * as Portfolio from './modules/domain/portfolio.js';
 import { PortfolioManager } from './modules/domain/portfolio-manager.js';
+import {
+  getManualPositionAssetAliases,
+  getManualPositionHiddenKeys,
+  removeManualPositionByAsset,
+  renderedManualPositionMatches
+} from './modules/features/manual-positions.js';
 import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
 import { getRandomSpinner } from './modules/ui/unicode-animations.js';
 
@@ -645,17 +651,9 @@ function setupControls() {
   if (settings.cryptoPositions && Array.isArray(settings.cryptoPositions) && settings.cryptoPositions.length > 0) {
     const originalCount = settings.cryptoPositions.length;
     settings.cryptoPositions = settings.cryptoPositions.filter(p => {
-      const assetName = p.type === 'custom' ? (p.name || p.symbol) : p.symbol;
-      if (!assetName) return true;
-      const manualKeys = [
-        `${assetName}_Manual`,
-        `${assetName}_Manual (Custom)`,
-        `${assetName}_Manual (Pyth)`,
-        `${assetName}_Manual (Stock)`,
-        `${assetName}_Manual (FX)`,
-        `${assetName}_Manual (Metal)`,
-        `${assetName}_Manual (Commodity)`
-      ];
+      const assetNames = getManualPositionAssetAliases(p);
+      if (assetNames.length === 0) return true;
+      const manualKeys = assetNames.flatMap(getManualPositionHiddenKeys);
       const hiddenKey = manualKeys.find(key => hiddenAssets.has(key));
       if (hiddenKey) {
         // Hidden manual position removed
@@ -796,23 +794,10 @@ function setupControls() {
 
       const s = getSettings();
       if (s.cryptoPositions && Array.isArray(s.cryptoPositions)) {
-        // Remove the matching position from settings
-        if (manualType === 'custom') {
-          s.cryptoPositions = s.cryptoPositions.filter(p => !(p.type === 'custom' && (p.name === asset || p.symbol === asset)));
-        } else if (manualType === 'pyth') {
-          s.cryptoPositions = s.cryptoPositions.filter(p => !(p.type === 'pyth' && p.symbol === asset));
-        }
+        s.cryptoPositions = removeManualPositionByAsset(s.cryptoPositions, asset, manualType);
 
         // Also remove from hiddenAssets if present (so it doesn't linger as hidden)
-        const manualKeys = [
-          `${asset}_Manual`,
-          `${asset}_Manual (Custom)`,
-          `${asset}_Manual (Pyth)`,
-          `${asset}_Manual (Stock)`,
-          `${asset}_Manual (FX)`,
-          `${asset}_Manual (Metal)`,
-          `${asset}_Manual (Commodity)`
-        ];
+        const manualKeys = getManualPositionHiddenKeys(asset);
         if (s.hiddenAssets && Array.isArray(s.hiddenAssets)) {
           s.hiddenAssets = s.hiddenAssets.filter(key => !manualKeys.includes(key));
         }
@@ -827,11 +812,7 @@ function setupControls() {
 
         // Remove position from renderer's allPositions (the source of truth)
         if (window._portfolioRenderer) {
-          if (manualType === 'custom') {
-            window._portfolioRenderer.removePositions(p => p.isManual && p.manualType === 'custom' && p.asset === asset);
-          } else if (manualType === 'pyth') {
-            window._portfolioRenderer.removePositions(p => p.isManual && p.manualType === 'pyth' && p.asset === asset);
-          }
+          window._portfolioRenderer.removePositions(p => renderedManualPositionMatches(p, asset, manualType));
         }
       }
     } else if (e.target.classList.contains('position-restore-btn')) {
