@@ -478,6 +478,17 @@ h6 {
   font-weight: 400;
 }
 
+.provider-status {
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.5;
+  font-size: 0.95em;
+}
+
+.provider-status[hidden] {
+  display: none;
+}
+
 /* Data Section */
 .data-section {
   margin-top: 28px;
@@ -2701,6 +2712,7 @@ input[type="range"]:focus::-moz-range-thumb {
 .position-edit-btn,
 .position-delete-btn,
 .position-restore-btn,
+.position-manual-edit-btn,
 .watchlist-edit-btn {
   display: inline-flex;
   align-items: center;
@@ -2724,6 +2736,7 @@ input[type="range"]:focus::-moz-range-thumb {
 .position-edit-btn:hover,
 .position-delete-btn:hover,
 .position-restore-btn:hover,
+.position-manual-edit-btn:hover,
 .watchlist-edit-btn:hover {
   color: var(--text);
   opacity: 1;
@@ -3800,4 +3813,3 @@ body.mono-pnl .change.negative {
 body.mono-pnl .sparkline polyline {
   stroke: var(--text) !important;
 }
-

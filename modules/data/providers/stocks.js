@@ -10,6 +10,12 @@
 // Function) so the browser sidesteps CORS. This provider issues plain URLs.
 
 import { HttpClient } from '../../http/client.js';
+import {
+  getFxCurrency,
+  getQuoteUnitScale,
+  normalizeBaseCurrency,
+  normalizeCurrencyCode
+} from '../../utils/currency.js';
 
 const SEARCH_BASE = 'https://query2.finance.yahoo.com/v1/finance/search';
 const SPARK_BASE = 'https://query1.finance.yahoo.com/v8/finance/spark';
@@ -54,6 +60,7 @@ export async function searchSymbols(query, { limit = 15, timeoutMs = 4000 } = {}
         longName: q.longname || null,
         exchange: q.exchDisp || q.exchange || null,
         category: categoryFromQuoteType(q.quoteType),
+        currency: q.currency || null,
         provider: 'yahoo',
         marketHours: q.quoteType === 'EQUITY' || q.quoteType === 'ETF' ? 'us-equity' : null
       });
@@ -97,7 +104,7 @@ export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
 
   const merged = {};
   const results = await Promise.all(chunks.map(async (chunk) => {
-    const url = `${SPARK_BASE}?symbols=${encodeURIComponent(chunk.join(','))}&range=1d&interval=5m&includePrePost=false`;
+    const url = `${SPARK_BASE}?symbols=${encodeURIComponent(chunk.join(','))}&range=1d&interval=5m&includePrePost=true`;
     try {
       // Spark responds as { "<SYMBOL>": { close, timestamp, previousClose, ... } }
       return await HttpClient.getJson(url, { timeoutMs, ttlMs: 15_000, retries: 1 });
@@ -138,7 +145,7 @@ export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
         price,
         change24h,
         previousClose: Number.isFinite(prevClose) ? prevClose : null,
-        currency: 'USD',
+        currency: payload.currency || payload.meta?.currency || null,
         marketState: null, // spark doesn't expose this — caller can infer from time-of-day
         exchange: null,
         priceHistory
@@ -146,6 +153,51 @@ export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
     }
   }
   return merged;
+}
+
+/**
+ * Returns conversion rates from each source currency into `baseCurrency`.
+ * Rates include quote-unit scaling, so GBp -> GBP is represented as 0.01 before
+ * any cross-currency conversion.
+ */
+export async function getFxRates(currencies, baseCurrency = 'USD', { timeoutMs = 5000 } = {}) {
+  const base = normalizeBaseCurrency(baseCurrency);
+  const sources = Array.from(new Set((Array.isArray(currencies) ? currencies : [])
+    .map(currency => normalizeCurrencyCode(currency, 'USD'))
+    .filter(Boolean)));
+
+  const rates = { [base]: 1 };
+  const lookups = new Map();
+  const symbols = [];
+
+  for (const source of sources) {
+    const fxSource = getFxCurrency(source);
+    const scale = getQuoteUnitScale(source);
+    if (fxSource === base) {
+      rates[source] = scale;
+      continue;
+    }
+
+    const direct = `${fxSource}${base}=X`;
+    const inverse = `${base}${fxSource}=X`;
+    lookups.set(source, { direct, inverse, scale });
+    symbols.push(direct, inverse);
+  }
+
+  if (symbols.length === 0) return rates;
+
+  const quotes = await getQuotes(symbols, { timeoutMs });
+  for (const [source, { direct, inverse, scale }] of lookups.entries()) {
+    const directPrice = Number(quotes?.[direct]?.price);
+    const inversePrice = Number(quotes?.[inverse]?.price);
+    if (Number.isFinite(directPrice) && directPrice > 0) {
+      rates[source] = directPrice * scale;
+    } else if (Number.isFinite(inversePrice) && inversePrice > 0) {
+      rates[source] = (1 / inversePrice) * scale;
+    }
+  }
+
+  return rates;
 }
 
 /**
@@ -220,4 +272,4 @@ export async function get24hPriceHistory(symbol, { timeoutMs = 5000, range = '1d
   }
 }
 
-export default { searchSymbols, getQuotes, getHistoricalPrice, get24hPriceHistory };
+export default { searchSymbols, getQuotes, getFxRates, getHistoricalPrice, get24hPriceHistory };

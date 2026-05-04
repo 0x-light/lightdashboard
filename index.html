@@ -27,13 +27,13 @@
     <meta name="theme-color" content="#000000" id="themeColorMeta">
 
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json?v=2.9.15">
+    <link rel="manifest" href="/manifest.json?v=2.9.16">
 
     <!-- Cache busting: update version number on each deployment -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="./styles.css?v=2.9.15">
+    <link rel="stylesheet" href="./styles.css?v=2.9.16">
     <!-- Apply theme synchronously to prevent flash of wrong theme -->
     <script>
         (function () {
@@ -455,6 +455,28 @@
                     </fieldset>
 
                     <fieldset>
+                        <legend>Brokerages</legend>
+                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                            <input id="newIbkrEnabled" type="checkbox" class="settings-input">
+                            Enable IBKR positions
+                        </label>
+                        <label>
+                            IBKR Gateway URL
+                            <input id="newIbkrGatewayUrl" type="text" class="settings-input"
+                                placeholder="https://localhost:5000/v1/api">
+                        </label>
+                        <div class="info" style="margin-top: 4px;">Run and sign in to Client Portal Gateway on this
+                            machine. The app stores only this local URL, not your IBKR password.</div>
+                        <label style="margin-top: 12px;">
+                            Account IDs (optional, comma-separated)
+                            <input id="newIbkrAccountIds" type="text" class="settings-input"
+                                placeholder="U1234567, U7654321">
+                        </label>
+                        <div class="info" style="margin-top: 4px;">Leave blank to include every account returned by
+                            IBKR.</div>
+                    </fieldset>
+
+                    <fieldset>
                         <legend>API Keys</legend>
 
                         <label style="display: block; margin-bottom: 8px;">
@@ -526,6 +548,15 @@
                                 <option value="departure">Departure Mono</option>
                             </select>
                         </label>
+                        <label style="display: block; margin-bottom: 12px;">
+                            Portfolio Currency
+                            <select id="newPortfolioBaseCurrency" class="settings-input"
+                                style="width: 100%; margin-top: 4px;">
+                                <option value="USD">USD</option>
+                                <option value="EUR">EUR</option>
+                                <option value="GBP">GBP</option>
+                            </select>
+                        </label>
                         <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                             <input id="newUseColoredPnL" type="checkbox" class="settings-input">
                             Use colored P&L (green/red)
@@ -552,7 +583,7 @@
                             Enable keyboard shortcuts (R, S, W, Esc, arrows)
                         </label>
                         <label style="margin-top: 12px;">
-                            Hide balances below (USD)
+                            Hide balances below (portfolio currency)
                             <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100"
                                 style="width: 100px;" class="settings-input">
                         </label>
@@ -607,6 +638,7 @@
         <main class="container">
             <section class="hero">
                 <p id="newSummary" class="hero-summary"><span class="loading-terminal">...</span></p>
+                <div id="newProviderStatus" class="provider-status" hidden></div>
             </section>
 
             <section class="data-section" id="positionsSection" style="margin-top: 24px;">
@@ -769,7 +801,7 @@
     <div id="newAddPositionBackdrop" class="settings-backdrop" style="display: none;"></div>
     <div id="newAddPositionModal" class="sticker-window" style="display: none;">
         <div class="sticker-window-header">
-            <span>Add Position</span>
+            <span id="newAddPositionTitle">Add Position</span>
             <button id="newCloseAddPositionBtn" class="btn-text">Close</button>
         </div>
         <div class="sticker-window-content">
@@ -805,7 +837,8 @@
                 <input type="date" id="newAddPositionPythEntryDate" class="settings-input"
                     style="width: 100%; margin-bottom: 16px;">
 
-                <label style="display: block; margin-bottom: 8px;">Entry Price (USD)</label>
+                <label id="newAddPositionPythEntryPriceLabel" style="display: block; margin-bottom: 8px;">Entry Price
+                    (ticker quote currency)</label>
                 <input type="number" id="newAddPositionPythEntryPrice" class="settings-input" placeholder="0.00"
                     style="width: 100%; margin-bottom: 8px;" step="any">
                 <div id="newAddPositionPythEntryPriceHint" class="help" style="margin-bottom: 16px;"></div>
@@ -817,7 +850,8 @@
                 <input type="text" id="newAddPositionCustomName" class="settings-input"
                     placeholder="e.g., Gold bars, Real estate, etc." style="width: 100%; margin-bottom: 16px;">
 
-                <label style="display: block; margin-bottom: 8px;">Value (USD)</label>
+                <label id="newAddPositionCustomValueLabel" style="display: block; margin-bottom: 8px;">Value (portfolio
+                    currency)</label>
                 <input type="number" id="newAddPositionCustomValue" class="settings-input" placeholder="5000"
                     style="width: 100%; margin-bottom: 16px;" step="any">
             </div>
@@ -844,12 +878,12 @@
         </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.9.15" defer></script>
-    <script type="module" src="./app.js?v=2.9.15" defer></script>
+    <script type="module" src="./modules/app-init.js?v=2.9.16" defer></script>
+    <script type="module" src="./app.js?v=2.9.16" defer></script>
 
     <!-- Service Worker Registration -->
     <script defer>
-        const EXPECTED_VERSION = 'v2.9.15';
+        const EXPECTED_VERSION = 'v2.9.16';
 
         // Skip service worker on localhost for easier development/debugging
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';

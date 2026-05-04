@@ -3,8 +3,17 @@ import { calculatePortfolioTotals } from '../modules/domain/portfolio.js';
 import { ManualFetcher } from '../modules/data/fetchers/manual-fetcher.js';
 import { AlchemyHeliusFetcher } from '../modules/data/fetchers/alchemy-helius-fetcher.js';
 import { LighterFetcher } from '../modules/data/fetchers/lighter-fetcher.js';
+import { IbkrFetcher, _internal as ibkrFetcherInternal } from '../modules/data/fetchers/ibkr-fetcher.js';
+import * as StocksProvider from '../modules/data/providers/stocks.js';
+import * as IbkrProvider from '../modules/data/providers/ibkr.js';
 import { _internal as pythInternal } from '../modules/data/providers/pyth.js';
 import { normalizeEntries } from '../modules/features/watchlist.js';
+import {
+  formatMoney,
+  getFxCurrency,
+  getQuoteUnitScale,
+  normalizeBaseCurrency
+} from '../modules/utils/currency.js';
 import {
   getManualPositionAsset,
   getManualPositionHiddenKeys,
@@ -508,9 +517,9 @@ async function testManualFetcherRoutesStockPositionsThroughYahoo() {
         getQuotesCalls.push(symbols);
         return {
           AAPL: { symbol: 'AAPL', price: 220, change24h: 1.5, marketState: 'REGULAR',
-                  name: 'Apple Inc.', previousClose: 217 },
+                  name: 'Apple Inc.', previousClose: 217, currency: 'USD' },
           SPY: { symbol: 'SPY', price: 500, change24h: 0.8, marketState: 'CLOSED',
-                 name: 'SPDR S&P 500', previousClose: 496 }
+                 name: 'SPDR S&P 500', previousClose: 496, currency: 'USD' }
         };
       },
       get24hPriceHistory: async () => []
@@ -544,6 +553,7 @@ async function testManualFetcherRoutesStockPositionsThroughYahoo() {
   assert.equal(aapl.entryDate, '2024-01-02');
   assert.equal(aapl.marketState, 'REGULAR');
   assert.equal(aapl.category, 'equity');
+  assert.equal(aapl.currency, 'USD');
   assert.equal(aapl.manualType, 'stock');
 
   const spy = manualCall.rows.find(r => r.asset === 'SPY');
@@ -552,6 +562,236 @@ async function testManualFetcherRoutesStockPositionsThroughYahoo() {
 
   assert.equal(getQuotesCalls.length, 1, 'one batched quote call for both symbols');
   assert.deepEqual(new Set(getQuotesCalls[0]), new Set(['AAPL', 'SPY']));
+}
+
+async function testManualFetcherPreservesCustomPositionCurrency() {
+  const calls = [];
+  const renderer = {
+    appendPositions: (rows, source, options) => calls.push({ rows, source, options }),
+    markProviderFailed: (_, err) => { throw err; }
+  };
+
+  const fetcher = new ManualFetcher({}, renderer, {
+    showPriceChart: false,
+    portfolioBaseCurrency: 'EUR'
+  });
+
+  await fetcher.fetch([
+    { type: 'custom', name: 'London note', value: 500, currency: 'GBP' },
+    { type: 'custom', name: 'Euro cash', value: 1000 }
+  ]);
+
+  const manualCall = calls.find(c => c.source === 'Manual');
+  assert.ok(manualCall, 'manual rows should be appended for custom positions');
+  assert.equal(manualCall.rows.find(r => r.asset === 'London note').currency, 'GBP');
+  assert.equal(manualCall.rows.find(r => r.asset === 'Euro cash').currency, 'EUR');
+}
+
+async function testStocksQuotesUseExtendedHoursSparkData() {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    const target = new URL(String(url), 'https://viewport.test').searchParams.get('url') || '';
+    assert.ok(target.includes('includePrePost=true'), 'quote request should include extended-hours candles');
+
+    return new Response(JSON.stringify({
+      CRWV: {
+        symbol: 'CRWV',
+        timestamp: [1777901400, 1777901700],
+        close: [125.31, 128.33],
+        previousClose: 119.01,
+        chartPreviousClose: 119.01
+      }
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  };
+
+  try {
+    const quotes = await StocksProvider.getQuotes(['CRWV'], { timeoutMs: 1000 });
+    assert.equal(calls.length, 1);
+    assert.equal(quotes.CRWV.price, 128.33);
+    assert.equal(quotes.CRWV.previousClose, 119.01);
+    assert.ok(quotes.CRWV.change24h > 7);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function testStocksSearchCarriesQuoteCurrency() {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    quotes: [{
+      symbol: 'VOD.L',
+      shortname: 'Vodafone Group plc',
+      exchDisp: 'London',
+      quoteType: 'EQUITY',
+      currency: 'GBp'
+    }]
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  });
+
+  try {
+    const results = await StocksProvider.searchSymbols('vod', { timeoutMs: 1000 });
+    assert.equal(results.length, 1);
+    assert.equal(results[0].symbol, 'VOD.L');
+    assert.equal(results[0].currency, 'GBp');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function testCurrencyFormattingAndFxRates() {
+  assert.equal(normalizeBaseCurrency('EUR'), 'EUR');
+  assert.equal(normalizeBaseCurrency('JPY'), 'USD');
+  assert.equal(getFxCurrency('GBp'), 'GBP');
+  assert.equal(getQuoteUnitScale('GBp'), 0.01);
+  assert.equal(formatMoney(1234, { currency: 'EUR' }), '€1.2k');
+  assert.equal(formatMoney(150, { currency: 'GBp', compact: false }), '150 GBp');
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const target = new URL(String(url), 'https://viewport.test').searchParams.get('url') || '';
+    assert.ok(target.includes('EURUSD%3DX') || target.includes('EURUSD=X'));
+    return new Response(JSON.stringify({
+      'EURUSD=X': {
+        symbol: 'EURUSD=X',
+        timestamp: [1],
+        close: [1.1],
+        previousClose: 1.09
+      },
+      'GBPUSD=X': {
+        symbol: 'GBPUSD=X',
+        timestamp: [1],
+        close: [1.25],
+        previousClose: 1.24
+      }
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  };
+
+  try {
+    const rates = await StocksProvider.getFxRates(['EUR', 'GBp'], 'USD', { timeoutMs: 1000 });
+    assert.equal(rates.EUR, 1.1);
+    assert.equal(rates.GBp, 0.0125);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function testIbkrProviderUsesPortfolio2Positions() {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    const textUrl = String(url);
+    calls.push(textUrl);
+    const target = textUrl.includes('/api/yahoo?url=')
+      ? decodeURIComponent(new URL(textUrl, 'https://viewport.test').searchParams.get('url') || '')
+      : textUrl;
+
+    if (target.endsWith('/portfolio/accounts')) {
+      return new Response(JSON.stringify([{ accountId: 'U1234567' }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    if (target.includes('/portfolio2/U1234567/positions')) {
+      return new Response(JSON.stringify([
+        {
+          position: 12,
+          conid: '9408',
+          avgPrice: 266.2,
+          currency: 'USD',
+          description: 'MCD',
+          marketPrice: 258.83,
+          marketValue: 3105.96,
+          unrealizedPnl: 88.55,
+          secType: 'STK',
+          assetClass: 'STK'
+        }
+      ]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    return new Response('{}', { status: 404, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const accounts = await IbkrProvider.getAccounts({ baseUrl: 'https://localhost:5000/v1/api', timeoutMs: 1000 });
+    const positions = await IbkrProvider.getPositions(accounts[0].accountId, {
+      baseUrl: 'https://localhost:5000/v1/api',
+      timeoutMs: 1000
+    });
+    assert.equal(accounts.length, 1);
+    assert.equal(positions.length, 1);
+    assert.equal(positions[0].description, 'MCD');
+    assert.ok(calls.some(url => url.includes('/portfolio2/U1234567/positions')));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function testIbkrFetcherMapsRowsForRenderer() {
+  const calls = [];
+  const renderer = {
+    appendPositions: (rows, source, options) => calls.push({ rows, source, options }),
+    markProviderFailed: (_, err) => { throw err; }
+  };
+  const providers = {
+    ibkr: {
+      getDefaultGatewayUrl: () => 'https://localhost:5000/v1/api',
+      getAccounts: async () => [{ accountId: 'U1234567' }, { accountId: 'U7654321' }],
+      getPositions: async (accountId) => accountId === 'U1234567'
+        ? [{
+            position: 12,
+            conid: '9408',
+            avgPrice: 266.2,
+            description: 'MCD',
+            marketPrice: 258.83,
+            marketValue: 3105.96,
+            unrealizedPnl: 88.55,
+            secType: 'STK',
+            assetClass: 'STK'
+          }]
+        : []
+    }
+  };
+  const fetcher = new IbkrFetcher(providers, renderer, {
+    ibkrEnabled: true,
+    ibkrGatewayUrl: 'https://localhost:5000/v1/api',
+    ibkrAccountIds: 'U1234567'
+  });
+
+  await fetcher.fetch();
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].source, 'IBKR');
+  assert.equal(calls[0].rows.length, 1);
+  assert.equal(calls[0].rows[0].asset, 'MCD');
+  assert.equal(calls[0].rows[0].exchange, 'IBKR STK');
+  assert.equal(calls[0].rows[0].amount, 12);
+  assert.equal(calls[0].rows[0].price, 258.83);
+  assert.equal(calls[0].rows[0].value, 3105.96);
+  assert.equal(calls[0].rows[0].pnl, 88.55);
+  assert.equal(calls[0].rows[0].ibkrAccountId, 'U1234567');
+  assert.equal(calls[0].options.removeFilter({ exchange: 'IBKR STK' }), true);
+  assert.equal(calls[0].options.removeFilter({ exchange: 'Manual (Stock)' }), false);
+
+  const optionRow = ibkrFetcherInternal.rowToPosition({
+    position: 1,
+    contractDesc: 'AAPL  260116C00200000',
+    mktPrice: 10,
+    mktValue: 1000,
+    secType: 'OPT'
+  }, 'U1234567');
+  assert.equal(optionRow.exchange, 'IBKR OPT');
 }
 
 function testManualPositionDeletionHandlesStocksAndCategoryKeys() {
@@ -648,6 +888,12 @@ async function run() {
   await testManualFetcherLabelsStockPositions();
   await testManualFetcherLegacyPythPositionFallsBackToCrypto();
   await testManualFetcherRoutesStockPositionsThroughYahoo();
+  await testManualFetcherPreservesCustomPositionCurrency();
+  await testStocksQuotesUseExtendedHoursSparkData();
+  await testStocksSearchCarriesQuoteCurrency();
+  await testCurrencyFormattingAndFxRates();
+  await testIbkrProviderUsesPortfolio2Positions();
+  await testIbkrFetcherMapsRowsForRenderer();
   testManualPositionDeletionHandlesStocksAndCategoryKeys();
   testEmptyAndMalformedInputs();
   await testAlchemyHeliusRowShape();

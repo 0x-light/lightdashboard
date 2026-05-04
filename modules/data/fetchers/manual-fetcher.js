@@ -55,6 +55,7 @@ export class ManualFetcher {
                             entryPrice: entryPrice || undefined,
                             entryDate: pos.entryDate || undefined,
                             assetName: pos.name || quote?.name || pos.symbol,
+                            currency: pos.currency || quote?.currency || undefined,
                             marketState: quote?.marketState || null,
                             // Spark quote already includes sparkline data — use it so the row
                             // renders with a chart on first paint, no follow-up fetch needed.
@@ -108,6 +109,7 @@ export class ManualFetcher {
                                 entryPrice: entryPrice || undefined,
                                 entryDate: pos.entryDate || undefined,
                                 assetName: pos.name || pos.symbol,
+                                currency: pos.currency || 'USD',
                                 category,
                                 isManual: true,
                                 manualType: 'pyth',
@@ -152,6 +154,7 @@ export class ManualFetcher {
                     value,
                     change24h: null,
                     pnl: null,
+                    currency: pos.currency || this.settings?.portfolioBaseCurrency || 'USD',
                     isManual: true,
                     manualType: 'custom',
                     _changeDetectionKey: `MANUAL_CUSTOM_${asset}`

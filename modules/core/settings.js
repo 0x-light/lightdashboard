@@ -77,6 +77,9 @@ export function getDefaultSettings() {
     openSeaApiKey: '',
     zerionApiKey: '',
     cieloApiKey: '',
+    ibkrEnabled: false,
+    ibkrGatewayUrl: 'https://localhost:5000/v1/api',
+    ibkrAccountIds: '',
     onchainProvider: 'zerion', // 'zerion' or 'cielo'
     font: 'berkeley',
     fontSize: 14,
@@ -87,6 +90,7 @@ export function getDefaultSettings() {
     showRainForecast: true,
     useColoredPnL: true,
     usePythPrices: true,
+    portfolioBaseCurrency: 'USD',
     minBalanceThreshold: 100,
     enableRealTimeUpdates: true,
     realTimeUpdateInterval: 5, // seconds
@@ -113,5 +117,3 @@ export function getDefaultSettings() {
 }
 
 export default { loadSettings, getDefaultSettings };
-
-

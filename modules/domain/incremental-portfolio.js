@@ -3,6 +3,12 @@
  * Streams positions as each provider responds (no blocking)
  */
 import { getRandomSpinner } from '../ui/unicode-animations.js';
+import {
+  getFxCurrency,
+  getQuoteUnitScale,
+  normalizeBaseCurrency,
+  normalizeCurrencyCode
+} from '../utils/currency.js';
 import { calculatePortfolioTotals } from './portfolio.js';
 
 export class IncrementalPortfolioRenderer {
@@ -16,6 +22,7 @@ export class IncrementalPortfolioRenderer {
     // This allows the UI to show existing data while fresh data is being fetched
     this.allPositions = initialPositions || window.cachedPositions || [];
     this.providerStatus = new Map(); // track which providers finished
+    this.providerErrors = new Map();
     this.renderDebounce = null;
     // If we have initial positions, we're not really "loading" - just refreshing in background
     this.isLoading = this.allPositions.length === 0;
@@ -35,6 +42,10 @@ export class IncrementalPortfolioRenderer {
     this._cachedAggregationToken = -1;
     this._cachedTotals = null;
     this._cachedTotalsToken = -1;
+    this._fxRatesToken = 0;
+    this._fxRatesBase = null;
+    this._fxRates = new Map();
+    this._fxRatesLoading = new Set();
 
     // Store reference to renderer IMMEDIATELY for external re-renders
     window._portfolioRenderer = this;
@@ -126,6 +137,7 @@ export class IncrementalPortfolioRenderer {
     this.allPositions = [];
     this._positionsToken++;
     this.providerStatus.clear();
+    this.providerErrors.clear();
     this.isLoading = true;
     this.showGreetingLoader();
     this.render(); // Clear UI immediately
@@ -152,7 +164,9 @@ export class IncrementalPortfolioRenderer {
   appendPositions(newRows, source, options = {}) {
     if (!Array.isArray(newRows) || newRows.length === 0) {
       this.providerStatus.set(source, 'completed');
+      this.providerErrors.delete(source);
       this.checkIfAllProvidersFinished();
+      this.renderProviderStatus();
       return;
     }
 
@@ -191,16 +205,26 @@ export class IncrementalPortfolioRenderer {
     this.allPositions.push(...newRows);
     this._positionsToken++;
     this.providerStatus.set(source, 'completed');
+    this.providerErrors.delete(source);
 
     // Check if all providers finished
     this.checkIfAllProvidersFinished();
+    const fxPromise = this.loadFxRatesForPositions(newRows);
 
     // Debouncing tuned for streaming providers: render first batch quickly, coalesce the rest.
     // Prior value (250ms) added ~750ms to first paint with 3 providers. 80ms feels instant while
     // still batching the common "multiple providers return within one tick" case.
     const debounceDelay = this.renderCount === 0 ? 16 : 80;
-    clearTimeout(this.renderDebounce);
-    this.renderDebounce = setTimeout(() => this.render(), debounceDelay);
+    const scheduleRender = () => {
+      clearTimeout(this.renderDebounce);
+      this.renderDebounce = setTimeout(() => this.render(), debounceDelay);
+    };
+    if (fxPromise) {
+      fxPromise.finally(scheduleRender);
+    } else {
+      scheduleRender();
+    }
+    this.renderProviderStatus();
   }
 
   /**
@@ -209,7 +233,160 @@ export class IncrementalPortfolioRenderer {
   markProviderFailed(source, error) {
     console.warn(`[${source}] Failed:`, error?.message || error);
     this.providerStatus.set(source, 'failed');
+    this.providerErrors.set(source, error?.message || String(error || 'Unknown error'));
     this.checkIfAllProvidersFinished();
+    this.renderProviderStatus();
+  }
+
+  getBaseCurrency() {
+    return normalizeBaseCurrency(this.settings?.portfolioBaseCurrency);
+  }
+
+  resetFxRatesIfNeeded() {
+    const base = this.getBaseCurrency();
+    if (this._fxRatesBase === base) return;
+    this._fxRatesBase = base;
+    this._fxRates = new Map([[base, 1]]);
+    this._fxRatesLoading.clear();
+    this._fxRatesToken++;
+  }
+
+  localConversionRate(currency) {
+    const base = this.getBaseCurrency();
+    const normalized = normalizeCurrencyCode(currency, 'USD');
+    const fxCurrency = getFxCurrency(normalized);
+    if (fxCurrency === base) return getQuoteUnitScale(normalized);
+    return null;
+  }
+
+  conversionRateFor(currency) {
+    this.resetFxRatesIfNeeded();
+    const normalized = normalizeCurrencyCode(currency, 'USD');
+    const localRate = this.localConversionRate(normalized);
+    if (Number.isFinite(localRate)) return localRate;
+    const rate = Number(this._fxRates.get(normalized));
+    return Number.isFinite(rate) && rate > 0 ? rate : null;
+  }
+
+  currenciesNeedingFx(positions) {
+    this.resetFxRatesIfNeeded();
+    const missing = new Set();
+    for (const position of Array.isArray(positions) ? positions : []) {
+      const currency = normalizeCurrencyCode(position?.currency || position?.sourceCurrency || 'USD', 'USD');
+      if (this.localConversionRate(currency) !== null) continue;
+      if (this._fxRates.has(currency)) continue;
+      if (this._fxRatesLoading.has(currency)) continue;
+      missing.add(currency);
+    }
+    return Array.from(missing);
+  }
+
+  loadFxRatesForPositions(positions) {
+    const missing = this.currenciesNeedingFx(positions);
+    if (missing.length === 0) return null;
+    const base = this.getBaseCurrency();
+    missing.forEach(currency => this._fxRatesLoading.add(currency));
+
+    return (async () => {
+      try {
+        const rates = await this.providers?.stocks?.getFxRates?.(missing, base, { timeoutMs: 5000 });
+        const unresolved = [];
+        for (const currency of missing) {
+          const rate = Number(rates?.[currency]);
+          if (Number.isFinite(rate) && rate > 0) {
+            this._fxRates.set(currency, rate);
+          } else {
+            this._fxRates.set(currency, null);
+            unresolved.push(currency);
+          }
+        }
+        if (unresolved.length > 0) {
+          this.providerStatus.set('FX', 'failed');
+          this.providerErrors.set('FX', `missing ${unresolved.join(', ')} rate`);
+        } else {
+          this.providerStatus.set('FX', 'completed');
+          this.providerErrors.delete('FX');
+        }
+      } catch (e) {
+        missing.forEach(currency => this._fxRates.set(currency, null));
+        this.providerStatus.set('FX', 'failed');
+        this.providerErrors.set('FX', e?.message || String(e || 'Failed to load FX rates'));
+      } finally {
+        missing.forEach(currency => this._fxRatesLoading.delete(currency));
+        this._fxRatesToken++;
+        this.renderProviderStatus();
+        this.forceRender();
+      }
+    })();
+  }
+
+  convertPositionToBase(position) {
+    const baseCurrency = this.getBaseCurrency();
+    const sourceCurrency = normalizeCurrencyCode(position?.currency || position?.sourceCurrency || 'USD', 'USD');
+    const rate = this.conversionRateFor(sourceCurrency);
+    const sourcePrice = Number(position?.sourcePrice ?? position?.price ?? 0);
+    const sourceValue = Number(position?.sourceValue ?? position?.value ?? 0);
+    const sourcePnl = position?.sourcePnl ?? position?.pnl;
+    const sourceFunding = position?.sourceFunding ?? position?.funding;
+    const hasRate = Number.isFinite(rate) && rate > 0;
+
+    return {
+      ...position,
+      price: sourcePrice,
+      sourcePrice,
+      sourceValue,
+      sourcePnl,
+      sourceFunding,
+      sourceCurrency,
+      currency: sourceCurrency,
+      baseCurrency,
+      fxRate: hasRate ? rate : null,
+      fxConversionMissing: !hasRate,
+      value: hasRate && Number.isFinite(sourceValue) ? sourceValue * rate : 0,
+      pnl: hasRate && Number.isFinite(Number(sourcePnl)) ? Number(sourcePnl) * rate : null,
+      funding: hasRate && Number.isFinite(Number(sourceFunding)) ? Number(sourceFunding) * rate : sourceFunding
+    };
+  }
+
+  convertPositionsToBase(positions) {
+    this.loadFxRatesForPositions(positions);
+    return (Array.isArray(positions) ? positions : []).map(position => this.convertPositionToBase(position));
+  }
+
+  renderProviderStatus() {
+    const el = this.containers?.providerStatusEl || document.getElementById('newProviderStatus');
+    if (!el) return;
+
+    const expected = Array.from(new Set(this.expectedProviders || []));
+    const failed = [];
+    const pending = [];
+    for (const provider of expected) {
+      const status = this.providerStatus.get(provider);
+      if (status === 'failed') failed.push(provider);
+      else if (!status && this.isLoading) pending.push(provider);
+    }
+    for (const [provider, status] of this.providerStatus.entries()) {
+      if (status === 'failed' && !failed.includes(provider)) failed.push(provider);
+    }
+
+    const parts = [];
+    if (pending.length > 0) parts.push(`Loading: ${pending.join(', ')}`);
+    if (failed.length > 0) {
+      const failedText = failed.map(provider => {
+        const message = this.providerErrors.get(provider);
+        return message ? `${provider} (${message})` : provider;
+      }).join(', ');
+      parts.push(`Failed: ${failedText}`);
+    }
+
+    if (parts.length === 0) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+
+    el.hidden = false;
+    el.textContent = parts.join(' · ');
   }
 
   /**
@@ -324,12 +501,13 @@ export class IncrementalPortfolioRenderer {
 
     this.isRendering = true;
     this.renderCount++;
+    this.renderProviderStatus();
     const { PositionsUI, HeroUI } = this.ui;
     const { positionsBody, mobileContainer, summaryEl } = this.containers;
 
     if (this.allPositions.length === 0) {
       if (positionsBody) {
-        positionsBody.innerHTML = '<tr><td colspan="8" class="loading">Fetching positions...</td></tr>';
+        positionsBody.innerHTML = '<tr><td colspan="9" class="loading">Fetching positions...</td></tr>';
       }
       if (summaryEl) {
         summaryEl.innerHTML = 'Loading portfolio...';
@@ -341,22 +519,25 @@ export class IncrementalPortfolioRenderer {
     // Aggregate + totals are memoized on the positions token. Toggle-driven renders
     // (hide amounts, edit mode, small-position filter) reuse the cached result.
     let sorted;
-    if (this._cachedAggregationToken === this._positionsToken && this._cachedAggregation) {
+    const baseCurrency = this.getBaseCurrency();
+    const aggregationToken = `${this._positionsToken}:${this._fxRatesToken}:${baseCurrency}`;
+    if (this._cachedAggregationToken === aggregationToken && this._cachedAggregation) {
       sorted = this._cachedAggregation;
     } else {
-      const aggregated = this.aggregatePositions(this.allPositions);
+      const converted = this.convertPositionsToBase(this.allPositions);
+      const aggregated = this.aggregatePositions(converted);
       sorted = aggregated.sort((a, b) => (b.value || 0) - (a.value || 0));
       this._cachedAggregation = sorted;
-      this._cachedAggregationToken = this._positionsToken;
+      this._cachedAggregationToken = aggregationToken;
     }
 
     let totals;
-    if (this._cachedTotalsToken === this._positionsToken && this._cachedTotals) {
+    if (this._cachedTotalsToken === aggregationToken && this._cachedTotals) {
       totals = this._cachedTotals;
     } else {
       totals = this.calculateTotals(sorted);
       this._cachedTotals = totals;
-      this._cachedTotalsToken = this._positionsToken;
+      this._cachedTotalsToken = aggregationToken;
     }
     const { totalValue, totalPnL, totalPnLPercent } = totals;
 
@@ -375,7 +556,7 @@ export class IncrementalPortfolioRenderer {
 
       const assetKey = `${p.asset}_${p.exchange}`;
       const isManuallyHidden = hiddenAssets.has(assetKey);
-      const isSmall = hideSmallPositions && (p.value || 0) < minThreshold;
+      const isSmall = !p.fxConversionMissing && hideSmallPositions && (p.value || 0) < minThreshold;
 
       // Clear flags first
       p.isHiddenPosition = false;
@@ -419,7 +600,8 @@ export class IncrementalPortfolioRenderer {
             minBalanceThreshold: minThreshold,
             showExactAmounts: this.settings.showExactAmounts || false,
             useColoredPnL: this.settings.useColoredPnL ?? true,
-            showPriceChart: this.settings.showPriceChart ?? true
+            showPriceChart: this.settings.showPriceChart ?? true,
+            portfolioBaseCurrency: baseCurrency
           }
         },
         previousPositions: this.previousRenderData || window._previousRenderData || []
@@ -439,6 +621,7 @@ export class IncrementalPortfolioRenderer {
         totalPnLPercent,
         totalDailyChange: 0,
         totalDailyChangePercent: 0,
+        baseCurrency,
         useColoredPnL: this.settings.useColoredPnL ?? true,
         highlightsHtml: [],
         weather: window.cachedWeather || null
@@ -504,6 +687,13 @@ export class IncrementalPortfolioRenderer {
 
       // Keep Manual positions separate (to allow deletion)
       if (row.exchange && typeof row.exchange === 'string' && row.exchange.startsWith('Manual')) {
+        aggregated.push(row);
+        continue;
+      }
+
+      // Keep brokerage positions separate; they may share tickers with manual/watchlist assets
+      // but carry account-specific value, P&L, and currency data.
+      if (row.exchange && typeof row.exchange === 'string' && row.exchange.startsWith('IBKR')) {
         aggregated.push(row);
         continue;
       }

@@ -6,15 +6,17 @@ import {
   getManualPositionAssetAliases,
   getManualPositionHiddenKeys,
   removeManualPositionByAsset,
-  renderedManualPositionMatches
+  renderedManualPositionMatches,
+  storedManualPositionMatches
 } from './modules/features/manual-positions.js';
 import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
 import { getRandomSpinner } from './modules/ui/unicode-animations.js';
+import { formatMoney, normalizeBaseCurrency } from './modules/utils/currency.js';
 
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.9.15';
+const APP_VERSION = '2.9.16';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
@@ -241,12 +243,13 @@ async function _doRenderPortfolioIncremental() {
   const zcashAddrs = (settings.zcashAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
 
   const hasManualPositions = settings.cryptoPositions && Array.isArray(settings.cryptoPositions) && settings.cryptoPositions.length > 0;
+  const hasIbkr = settings.ibkrEnabled && settings.ibkrGatewayUrl;
 
-  if (wallets.length === 0 && solanaAddrs.length === 0 && bitcoinAddrs.length === 0 && zcashAddrs.length === 0 && !hasManualPositions) {
+  if (wallets.length === 0 && solanaAddrs.length === 0 && bitcoinAddrs.length === 0 && zcashAddrs.length === 0 && !hasManualPositions && !hasIbkr) {
     const summaryEl = document.getElementById('newSummary');
     const positionsBody = document.getElementById('newPositionsBody');
     if (summaryEl) summaryEl.innerHTML = 'Your portfolio is empty. Add wallets in Settings or add manual positions.';
-    if (positionsBody) positionsBody.innerHTML = '<tr><td colspan="8" class="loading">No wallets or positions configured</td></tr>';
+    if (positionsBody) positionsBody.innerHTML = '<tr><td colspan="9" class="loading">No wallets or positions configured</td></tr>';
     return;
   }
 
@@ -272,6 +275,9 @@ async function _doRenderPortfolioIncremental() {
   }
   if (bitcoinAddrs.length > 0 || zcashAddrs.length > 0) {
     expectedProviders.push('Bitcoin/Zcash');
+  }
+  if (hasIbkr) {
+    expectedProviders.push('IBKR');
   }
   if (hasManualPositions) {
     expectedProviders.push('Manual');
@@ -359,6 +365,7 @@ async function _doRenderPortfolioIncremental() {
     const { CieloFetcher } = await import('./modules/data/fetchers/cielo-fetcher.js');
     const { AlchemyHeliusFetcher } = await import('./modules/data/fetchers/alchemy-helius-fetcher.js');
     const { BitcoinZcashFetcher } = await import('./modules/data/fetchers/bitcoin-fetcher.js');
+    const { IbkrFetcher } = await import('./modules/data/fetchers/ibkr-fetcher.js');
     const { ManualFetcher } = await import('./modules/data/fetchers/manual-fetcher.js');
 
     const renderer = new IncrementalPortfolioRenderer({
@@ -367,7 +374,8 @@ async function _doRenderPortfolioIncremental() {
       containers: {
         positionsBody: document.getElementById('newPositionsBody'),
         mobileContainer: document.getElementById('newMobilePositionsContainer'),
-        summaryEl: document.getElementById('newSummary')
+        summaryEl: document.getElementById('newSummary'),
+        providerStatusEl: document.getElementById('newProviderStatus')
       },
       ui: { HeroUI, PositionsUI },
       expectedProviders
@@ -383,6 +391,7 @@ async function _doRenderPortfolioIncremental() {
     manager.registerFetcher('Cielo', new CieloFetcher(providers, renderer, settings));
     manager.registerFetcher('AlchemyHelius', new AlchemyHeliusFetcher(providers, renderer, settings));
     manager.registerFetcher('BitcoinZcash', new BitcoinZcashFetcher(providers, renderer));
+    manager.registerFetcher('IBKR', new IbkrFetcher(providers, renderer, settings));
     manager.registerFetcher('Manual', new ManualFetcher(providers, renderer, settings));
 
     window._portfolioManager = manager;
@@ -391,6 +400,9 @@ async function _doRenderPortfolioIncremental() {
     window._portfolioManager.settings = settings;
     window._portfolioManager.renderer.settings = settings;
     window._portfolioManager.renderer.expectedProviders = expectedProviders;
+    Object.values(window._portfolioManager.fetchers || {}).forEach(fetcher => {
+      if (fetcher && 'settings' in fetcher) fetcher.settings = settings;
+    });
   }
 
   // Trigger Fetch
@@ -722,8 +734,15 @@ function setupControls() {
 
   function updateShowHiddenButton() {
     if (showHiddenBtn) {
-      // Use original format: [SHOW <$X] / [HIDE <$X]
-      showHiddenBtn.textContent = showHiddenPositions ? `Hide <$${threshold}` : `Show <$${threshold}`;
+      const s = getSettings();
+      const thresholdValue = Number(s.minBalanceThreshold || threshold);
+      const baseCurrency = normalizeBaseCurrency(s.portfolioBaseCurrency);
+      const thresholdLabel = formatMoney(thresholdValue, {
+        currency: baseCurrency,
+        visible: true,
+        compact: false
+      });
+      showHiddenBtn.textContent = showHiddenPositions ? `Hide <${thresholdLabel}` : `Show <${thresholdLabel}`;
     }
   }
 
@@ -815,6 +834,10 @@ function setupControls() {
           window._portfolioRenderer.removePositions(p => renderedManualPositionMatches(p, asset, manualType));
         }
       }
+    } else if (e.target.classList.contains('position-manual-edit-btn')) {
+      const asset = e.target.getAttribute('data-asset');
+      const manualType = e.target.getAttribute('data-manual-type');
+      openManualPositionEdit(asset, manualType);
     } else if (e.target.classList.contains('position-restore-btn')) {
       // Restore hidden position (remove from hiddenAssets)
       const assetKey = e.target.getAttribute('data-asset-key');
@@ -977,6 +1000,9 @@ function setupControls() {
       const alchemyInput = document.getElementById('newAlchemyApiKey');
       const heliusInput = document.getElementById('newHeliusApiKey');
       const openseaInput = document.getElementById('newOpenSeaApiKey');
+      const ibkrEnabledInput = document.getElementById('newIbkrEnabled');
+      const ibkrGatewayUrlInput = document.getElementById('newIbkrGatewayUrl');
+      const ibkrAccountIdsInput = document.getElementById('newIbkrAccountIds');
       const cityInput = document.getElementById('newWeatherCity');
       const latInput = document.getElementById('newWeatherLat');
       const lonInput = document.getElementById('newWeatherLon');
@@ -987,6 +1013,7 @@ function setupControls() {
       const showPriceChartInput = document.getElementById('newShowPriceChart');
       const minBalanceInput = document.getElementById('newMinBalanceThreshold');
       const fontSelectInput = document.getElementById('newFontSelect');
+      const portfolioBaseCurrencyInput = document.getElementById('newPortfolioBaseCurrency');
 
       // Menu visibility controls
       const hideSnowBtnInput = document.getElementById('newHideSnowBtn');
@@ -1009,6 +1036,9 @@ function setupControls() {
       if (alchemyInput) alchemyInput.value = s.alchemyApiKey || '';
       if (heliusInput) heliusInput.value = s.heliusApiKey || '';
       if (openseaInput) openseaInput.value = s.openSeaApiKey || '';
+      if (ibkrEnabledInput) ibkrEnabledInput.checked = s.ibkrEnabled ?? false;
+      if (ibkrGatewayUrlInput) ibkrGatewayUrlInput.value = s.ibkrGatewayUrl || 'https://localhost:5000/v1/api';
+      if (ibkrAccountIdsInput) ibkrAccountIdsInput.value = s.ibkrAccountIds || '';
       if (cityInput) cityInput.value = s.weather?.label || '';
       if (latInput) latInput.value = s.weather?.lat ?? '';
       if (lonInput) lonInput.value = s.weather?.lon ?? '';
@@ -1019,6 +1049,7 @@ function setupControls() {
       if (showPriceChartInput) showPriceChartInput.checked = s.showPriceChart ?? true;
       if (minBalanceInput) minBalanceInput.value = s.minBalanceThreshold || 100;
       if (fontSelectInput) fontSelectInput.value = s.font || 'system';
+      if (portfolioBaseCurrencyInput) portfolioBaseCurrencyInput.value = s.portfolioBaseCurrency || 'USD';
 
 
       // Menu visibility checkboxes
@@ -1440,6 +1471,9 @@ function setupControls() {
       const alchemyInput = document.getElementById('newAlchemyApiKey');
       const heliusInput = document.getElementById('newHeliusApiKey');
       const openseaInput = document.getElementById('newOpenSeaApiKey');
+      const ibkrEnabledInput = document.getElementById('newIbkrEnabled');
+      const ibkrGatewayUrlInput = document.getElementById('newIbkrGatewayUrl');
+      const ibkrAccountIdsInput = document.getElementById('newIbkrAccountIds');
       const cityInput = document.getElementById('newWeatherCity');
       const latInput = document.getElementById('newWeatherLat');
       const lonInput = document.getElementById('newWeatherLon');
@@ -1450,6 +1484,7 @@ function setupControls() {
       const showPriceChartInput = document.getElementById('newShowPriceChart');
       const minBalanceInput = document.getElementById('newMinBalanceThreshold');
       const fontSelectInput = document.getElementById('newFontSelect');
+      const portfolioBaseCurrencyInput = document.getElementById('newPortfolioBaseCurrency');
 
       // Menu visibility controls
       const hideSnowBtnInput = document.getElementById('newHideSnowBtn');
@@ -1472,6 +1507,9 @@ function setupControls() {
       if (alchemyInput) newSettings.alchemyApiKey = alchemyInput.value;
       if (heliusInput) newSettings.heliusApiKey = heliusInput.value;
       if (openseaInput) newSettings.openSeaApiKey = openseaInput.value;
+      if (ibkrEnabledInput) newSettings.ibkrEnabled = ibkrEnabledInput.checked;
+      if (ibkrGatewayUrlInput) newSettings.ibkrGatewayUrl = ibkrGatewayUrlInput.value.trim() || 'https://localhost:5000/v1/api';
+      if (ibkrAccountIdsInput) newSettings.ibkrAccountIds = ibkrAccountIdsInput.value;
       if (coloredPnLInput) newSettings.useColoredPnL = coloredPnLInput.checked;
       if (hideWatchlistInput) newSettings.hideWatchlist = hideWatchlistInput.checked;
       if (hideComicInput) newSettings.hideComic = hideComicInput.checked;
@@ -1479,6 +1517,7 @@ function setupControls() {
       if (showPriceChartInput) newSettings.showPriceChart = showPriceChartInput.checked;
       if (minBalanceInput) newSettings.minBalanceThreshold = parseFloat(minBalanceInput.value) || 100;
       if (fontSelectInput) newSettings.font = fontSelectInput.value;
+      if (portfolioBaseCurrencyInput) newSettings.portfolioBaseCurrency = portfolioBaseCurrencyInput.value || 'USD';
 
       // Save menu visibility settings
       if (hideSnowBtnInput) newSettings.hideSnowBtn = hideSnowBtnInput.checked;
@@ -2161,6 +2200,7 @@ function setupControls() {
   const addPositionBtn = document.getElementById('newAddPositionBtn');
   const addPositionModal = document.getElementById('newAddPositionModal');
   const addPositionBackdrop = document.getElementById('newAddPositionBackdrop');
+  const addPositionTitle = document.getElementById('newAddPositionTitle');
   const closeAddPositionBtn = document.getElementById('newCloseAddPositionBtn');
   const addPositionTypePyth = document.getElementById('newAddPositionTypePyth');
   const addPositionTypeCustom = document.getElementById('newAddPositionTypeCustom');
@@ -2171,18 +2211,72 @@ function setupControls() {
   const addPositionPythSelection = document.getElementById('newAddPositionPythSelection');
   const addPositionPythAmount = document.getElementById('newAddPositionPythAmount');
   const addPositionPythEntryDate = document.getElementById('newAddPositionPythEntryDate');
+  const addPositionPythEntryPriceLabel = document.getElementById('newAddPositionPythEntryPriceLabel');
   const addPositionPythEntryPrice = document.getElementById('newAddPositionPythEntryPrice');
   const addPositionPythEntryPriceHint = document.getElementById('newAddPositionPythEntryPriceHint');
   const addPositionCustomName = document.getElementById('newAddPositionCustomName');
+  const addPositionCustomValueLabel = document.getElementById('newAddPositionCustomValueLabel');
   const addPositionCustomValue = document.getElementById('newAddPositionCustomValue');
   const savePositionBtn = document.getElementById('newSavePositionBtn');
 
   let selectedPositionType = 'pyth';
   let selectedPythFeed = null;
+  let editingManualPositionIndex = null;
+  let editingCustomCurrency = null;
+
+  function normalizeQuoteCurrency(value) {
+    const currency = String(value || '').trim();
+    if (!/^[A-Za-z]{3,5}$/.test(currency)) return '';
+    // Yahoo uses "GBp" for London instruments quoted in pence; uppercasing it to GBP would
+    // tell users to enter the wrong unit.
+    if (currency === 'GBp') return currency;
+    return currency.toUpperCase();
+  }
+
+  function quoteCurrencyForFeed(feed) {
+    if (!feed) return '';
+    const explicitCurrency = normalizeQuoteCurrency(feed.currency || feed.quoteCurrency);
+    if (explicitCurrency) return explicitCurrency;
+    // Pyth feeds are filtered to USD quotes by the provider. Yahoo symbols can be non-USD,
+    // so leave unknown Yahoo currencies generic unless Yahoo search supplied one.
+    if (feed.provider === 'pyth' || feed.id) return 'USD';
+    return '';
+  }
+
+  function formatPriceWithCurrency(price, currency) {
+    const formatted = Number(price).toLocaleString(undefined, { maximumFractionDigits: 4 });
+    return currency ? `${formatted} ${currency}` : formatted;
+  }
+
+  function updateEntryPriceCurrencyUi(feed, { showHint = false } = {}) {
+    const currency = quoteCurrencyForFeed(feed);
+    const labelCurrency = currency || 'ticker quote currency';
+    if (addPositionPythEntryPriceLabel) {
+      addPositionPythEntryPriceLabel.textContent = `Entry Price (${labelCurrency})`;
+    }
+    if (showHint && addPositionPythEntryPriceHint) {
+      if (currency) {
+        addPositionPythEntryPriceHint.textContent = `Use ${currency} for this entry price.`;
+      } else {
+        addPositionPythEntryPriceHint.textContent = 'Use the quote currency shown by the selected ticker.';
+      }
+    }
+  }
+
+  function updateCustomValueCurrencyUi(currencyOverride = null) {
+    const currency = currencyOverride || getSettings().portfolioBaseCurrency || 'USD';
+    if (addPositionCustomValueLabel) {
+      addPositionCustomValueLabel.textContent = `Value (${currency})`;
+    }
+  }
 
   function closeAddPosition() {
     if (addPositionModal) addPositionModal.style.display = 'none';
     if (addPositionBackdrop) addPositionBackdrop.style.display = 'none';
+    if (addPositionTitle) addPositionTitle.textContent = 'Add Position';
+    if (savePositionBtn) savePositionBtn.textContent = 'Save Position';
+    editingManualPositionIndex = null;
+    editingCustomCurrency = null;
 
     // Re-enable scroll on mobile
     document.body.classList.remove('modal-open');
@@ -2200,6 +2294,10 @@ function setupControls() {
       // Reset state
       selectedPositionType = 'pyth';
       selectedPythFeed = null;
+      editingManualPositionIndex = null;
+      editingCustomCurrency = null;
+      if (addPositionTitle) addPositionTitle.textContent = 'Add Position';
+      if (savePositionBtn) savePositionBtn.textContent = 'Save Position';
       if (addPositionPythSearch) addPositionPythSearch.value = '';
       if (addPositionPythAmount) addPositionPythAmount.value = '';
       if (addPositionPythEntryDate) addPositionPythEntryDate.value = '';
@@ -2208,6 +2306,8 @@ function setupControls() {
         delete addPositionPythEntryPrice.dataset.userEdited;
       }
       if (addPositionPythEntryPriceHint) addPositionPythEntryPriceHint.textContent = '';
+      updateEntryPriceCurrencyUi(null);
+      updateCustomValueCurrencyUi();
       if (addPositionCustomName) addPositionCustomName.value = '';
       if (addPositionCustomValue) addPositionCustomValue.value = '';
       if (addPositionPythResults) {
@@ -2234,6 +2334,73 @@ function setupControls() {
     });
   }
 
+  function openManualPositionEdit(asset, manualType) {
+    const s = getSettings();
+    const positions = Array.isArray(s.cryptoPositions) ? s.cryptoPositions : [];
+    const index = positions.findIndex(position => storedManualPositionMatches(position, asset, manualType));
+    if (index < 0) {
+      alert('Could not find that manual position in settings.');
+      return;
+    }
+
+    const position = positions[index];
+    editingManualPositionIndex = index;
+
+    if (addPositionModal) addPositionModal.style.display = 'block';
+    if (addPositionBackdrop) addPositionBackdrop.style.display = 'block';
+    document.body.classList.add('modal-open');
+    if (addPositionTitle) addPositionTitle.textContent = 'Edit Position';
+    if (savePositionBtn) savePositionBtn.textContent = 'Save Changes';
+
+    if (addPositionPythResults) {
+      addPositionPythResults.innerHTML = '';
+      addPositionPythResults.style.display = 'none';
+    }
+
+    if (position.type === 'custom') {
+      selectedPositionType = 'custom';
+      selectedPythFeed = null;
+      if (addPositionPythSection) addPositionPythSection.style.display = 'none';
+      if (addPositionCustomSection) addPositionCustomSection.style.display = 'block';
+      if (addPositionTypeCustom) addPositionTypeCustom.classList.add('active');
+      if (addPositionTypePyth) addPositionTypePyth.classList.remove('active');
+      editingCustomCurrency = position.currency || s.portfolioBaseCurrency || 'USD';
+      updateCustomValueCurrencyUi(editingCustomCurrency);
+      if (addPositionCustomName) addPositionCustomName.value = position.name || position.symbol || '';
+      if (addPositionCustomValue) addPositionCustomValue.value = position.value || position.price || '';
+      if (addPositionPythSelection) {
+        addPositionPythSelection.innerHTML = '';
+        addPositionPythSelection.style.display = 'none';
+      }
+      return;
+    }
+
+    selectedPositionType = 'pyth';
+    selectedPythFeed = {
+      provider: position.type === 'stock' ? 'yahoo' : 'pyth',
+      symbol: position.symbol,
+      id: position.feedId || null,
+      category: position.category || (position.type === 'stock' ? 'equity' : 'crypto'),
+      name: position.name || position.symbol,
+      exchange: position.exchange || null,
+      currency: position.currency || (position.type === 'stock' ? null : 'USD')
+    };
+
+    if (addPositionPythSection) addPositionPythSection.style.display = 'block';
+    if (addPositionCustomSection) addPositionCustomSection.style.display = 'none';
+    if (addPositionTypePyth) addPositionTypePyth.classList.add('active');
+    if (addPositionTypeCustom) addPositionTypeCustom.classList.remove('active');
+    if (addPositionPythSearch) addPositionPythSearch.value = position.symbol || '';
+    if (addPositionPythAmount) addPositionPythAmount.value = position.amount || '';
+    if (addPositionPythEntryDate) addPositionPythEntryDate.value = position.entryDate || '';
+    if (addPositionPythEntryPrice) {
+      addPositionPythEntryPrice.value = position.entryPrice || '';
+      addPositionPythEntryPrice.dataset.userEdited = '1';
+    }
+    renderSelectedFeed(selectedPythFeed);
+    updateEntryPriceCurrencyUi(selectedPythFeed, { showHint: true });
+  }
+
   if (closeAddPositionBtn) {
     closeAddPositionBtn.addEventListener('click', closeAddPosition);
   }
@@ -2251,18 +2418,21 @@ function setupControls() {
       if (addPositionTypeCustom) {
         addPositionTypeCustom.classList.remove('active');
       }
+      updateCustomValueCurrencyUi();
     });
   }
 
   if (addPositionTypeCustom) {
     addPositionTypeCustom.addEventListener('click', () => {
       selectedPositionType = 'custom';
+      editingCustomCurrency = null;
       if (addPositionPythSection) addPositionPythSection.style.display = 'none';
       if (addPositionCustomSection) addPositionCustomSection.style.display = 'block';
       addPositionTypeCustom.classList.add('active');
       if (addPositionTypePyth) {
         addPositionTypePyth.classList.remove('active');
       }
+      updateCustomValueCurrencyUi();
     });
   }
 
@@ -2316,10 +2486,15 @@ function setupControls() {
       hint = '<div style="margin-top: 4px; opacity: 0.7;">Prices update only during US market hours (9:30–16:00 ET, Mon–Fri).</div>';
     }
     const exchange = feed.exchange ? `<span style="opacity: 0.6;"> · ${escapeHtml(feed.exchange)}</span>` : '';
+    const currency = quoteCurrencyForFeed(feed);
+    const currencyHint = currency
+      ? `<div style="margin-top: 4px; opacity: 0.7;">Entry price should be entered in ${escapeHtml(currency)}.</div>`
+      : '<div style="margin-top: 4px; opacity: 0.7;">Entry price should use this ticker’s quote currency.</div>';
     addPositionPythSelection.innerHTML =
       `<strong>${escapeHtml(feed.symbol)}</strong>${name}` +
       (label ? ` <span style="opacity: 0.6;">· ${label}</span>` : '') +
       exchange +
+      currencyHint +
       hint;
     addPositionPythSelection.style.display = 'block';
   }
@@ -2352,6 +2527,7 @@ function setupControls() {
         addPositionPythResults.innerHTML = '';
         addPositionPythResults.style.display = 'none';
         renderSelectedFeed(feed);
+        updateEntryPriceCurrencyUi(feed, { showHint: true });
         if (addPositionPythEntryDate?.value) {
           fetchHistoricalEntryPrice(feed, addPositionPythEntryDate.value).catch(() => {});
         }
@@ -2419,6 +2595,7 @@ function setupControls() {
 
     let price = null;
     let sourceLabel = '';
+    let currency = quoteCurrencyForFeed(feed);
     try {
       if (feed.provider === 'yahoo' || (!feed.id && feed.symbol)) {
         price = await mods.data?.providers?.stocks?.getHistoricalPrice?.(feed.symbol, dateStr);
@@ -2438,7 +2615,7 @@ function setupControls() {
           addPositionPythEntryPrice.value = price.toFixed(6).replace(/\.?0+$/, '');
         }
         if (hint) {
-          hint.textContent = `${sourceLabel} price on ${dateStr}: $${price.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
+          hint.textContent = `${sourceLabel} price on ${dateStr}: ${formatPriceWithCurrency(price, currency)}`;
         }
       } else if (hint) {
         hint.textContent = 'No historical price available — enter manually.';
@@ -2480,6 +2657,8 @@ function setupControls() {
         s.cryptoPositions = [];
       }
 
+      let savedPosition = null;
+
       if (selectedPositionType === 'pyth') {
         // Validate Pyth position
         if (!selectedPythFeed) {
@@ -2506,27 +2685,29 @@ function setupControls() {
         // Both share the same PnL math in manual-fetcher; only the price source differs.
         const provider = selectedPythFeed.provider || (selectedPythFeed.id ? 'pyth' : 'yahoo');
         if (provider === 'yahoo') {
-          s.cryptoPositions.push({
+          savedPosition = {
             type: 'stock',
             symbol: selectedPythFeed.symbol,
             amount,
             entryPrice,
             category: selectedPythFeed.category || 'equity',
+            currency: quoteCurrencyForFeed(selectedPythFeed) || null,
             name: selectedPythFeed.name || selectedPythFeed.symbol,
             exchange: selectedPythFeed.exchange || null,
             entryDate: addPositionPythEntryDate?.value || null
-          });
+          };
         } else {
-          s.cryptoPositions.push({
+          savedPosition = {
             type: 'pyth',
             symbol: selectedPythFeed.symbol,
             feedId: selectedPythFeed.id,
             amount,
             entryPrice,
             category: selectedPythFeed.category || 'crypto',
+            currency: 'USD',
             name: selectedPythFeed.name || selectedPythFeed.symbol,
             entryDate: addPositionPythEntryDate?.value || null
-          });
+          };
         }
       } else {
         // Validate custom position
@@ -2544,17 +2725,25 @@ function setupControls() {
         }
 
         // Add custom position
-        s.cryptoPositions.push({
+        savedPosition = {
           type: 'custom',
           name: name,
           symbol: name,
           amount: 1,
           price: value,
-          value: value
-        });
+          value: value,
+          currency: editingCustomCurrency || s.portfolioBaseCurrency || 'USD'
+        };
       }
 
       try {
+        if (savedPosition) {
+          if (editingManualPositionIndex !== null && s.cryptoPositions[editingManualPositionIndex]) {
+            s.cryptoPositions[editingManualPositionIndex] = savedPosition;
+          } else {
+            s.cryptoPositions.push(savedPosition);
+          }
+        }
         localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
         closeAddPosition();
 

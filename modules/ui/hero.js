@@ -1,25 +1,12 @@
 // UI helper for composing the hero summary string
+import { formatMoney, normalizeBaseCurrency } from '../utils/currency.js';
 
-function formatCurrency(value, amountsVisible) {
-  if (!amountsVisible) return '$••••';
-  const abs = Math.abs(value);
-
-  // Format large numbers compactly
-  if (abs >= 1000000) {
-    const formatted = (abs / 1000000).toFixed(1);
-    return `$${formatted.replace(/\.0$/, '')}M`;
-  } else if (abs >= 1000) {
-    const formatted = (abs / 1000).toFixed(1);
-    return `$${formatted.replace(/\.0$/, '')}k`;
-  } else if (abs >= 1) {
-    // Show cents, but remove unnecessary trailing zeros
-    return `$${abs.toFixed(2).replace(/\.00$/, '')}`;
-  } else if (abs === 0) {
-    return '$0';
-  } else {
-    // For small values, preserve significant digits (e.g., $0.0341 not $0.03)
-    return `$${abs.toPrecision(4)}`;
-  }
+function formatCurrency(value, amountsVisible, currency) {
+  return formatMoney(value, {
+    currency,
+    visible: amountsVisible,
+    compact: true
+  });
 }
 
 function classForChange(value, useColored) {
@@ -35,13 +22,15 @@ export function composeSummary({
   totalPnLPercent,
   totalDailyChange,
   totalDailyChangePercent,
+  baseCurrency,
   useColoredPnL,
   highlightsHtml, // array of already-escaped HTML strings
   weather // { temp, city, icon, moonText } | null
 }) {
   const summaryParts = [];
+  const currency = normalizeBaseCurrency(baseCurrency);
   // Always show portfolio value (it's a price/total, not a position size)
-  const valueText = formatCurrency(portfolioValue, amountsVisible);
+  const valueText = formatCurrency(portfolioValue, amountsVisible, currency);
 
   if (heroPnLMode === 'total') {
     if (totalPnL !== 0 && Math.abs(totalPnL) > 0.01) {
@@ -49,7 +38,7 @@ export function composeSummary({
       const sign = totalPnLPercent >= 0 ? '+' : '';
       // Always show percentage, but hide dollar amount when amountsVisible is false
       if (amountsVisible) {
-        summaryParts.push(`Your portfolio is worth ${valueText}, <strong class="${cls}">${totalPnL >= 0 ? 'up' : 'down'} ${formatCurrency(totalPnL, amountsVisible)} (${sign}${totalPnLPercent.toFixed(2)}%)</strong>`);
+        summaryParts.push(`Your portfolio is worth ${valueText}, <strong class="${cls}">${totalPnL >= 0 ? 'up' : 'down'} ${formatCurrency(totalPnL, amountsVisible, currency)} (${sign}${totalPnLPercent.toFixed(2)}%)</strong>`);
       } else {
         summaryParts.push(`Your portfolio is worth ${valueText}, <strong class="${cls}">${totalPnL >= 0 ? 'up' : 'down'} ${sign}${totalPnLPercent.toFixed(2)}%</strong>`);
       }
@@ -62,7 +51,7 @@ export function composeSummary({
       const sign = totalDailyChangePercent >= 0 ? '+' : '-';
       // Always show percentage, but hide dollar amount when amountsVisible is false
       if (amountsVisible) {
-        summaryParts.push(`Your portfolio is worth ${valueText}, <strong class="${cls}">${totalDailyChange >= 0 ? 'up' : 'down'} ${formatCurrency(totalDailyChange, amountsVisible)} (${sign}${Math.abs(totalDailyChangePercent).toFixed(2)}%)</strong> today`);
+        summaryParts.push(`Your portfolio is worth ${valueText}, <strong class="${cls}">${totalDailyChange >= 0 ? 'up' : 'down'} ${formatCurrency(totalDailyChange, amountsVisible, currency)} (${sign}${Math.abs(totalDailyChangePercent).toFixed(2)}%)</strong> today`);
       } else {
         summaryParts.push(`Your portfolio is worth ${valueText}, <strong class="${cls}">${totalDailyChange >= 0 ? 'up' : 'down'} ${sign}${Math.abs(totalDailyChangePercent).toFixed(2)}%</strong> today`);
       }
@@ -90,5 +79,4 @@ export function composeSummary({
 }
 
 export default { composeSummary };
-
 

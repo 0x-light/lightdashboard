@@ -1,6 +1,12 @@
 // Positions UI module (incremental extraction)
 // This module progressively takes over rendering of desktop table and mobile cards.
 import { manualTypeFromExchange } from '../features/manual-positions.js';
+import {
+  formatMoney,
+  formatPrice as formatCurrencyPrice,
+  normalizeBaseCurrency,
+  normalizeCurrencyCode
+} from '../utils/currency.js';
 
 const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
 
@@ -121,47 +127,18 @@ function formatAmount(num, visible, showExact = false) {
   }
 }
 
-function formatUsd(num, visible, showPlusSign = false) {
-  if (!visible) return '$••••';
-  const n = Number(num || 0);
-  if (!Number.isFinite(n)) return '—';
-
-  const abs = Math.abs(n);
-  const sign = n < 0 ? '−' : (showPlusSign && n > 0 ? '+' : '');
-
-  // Format large numbers compactly
-  if (abs >= 1000000) {
-    const formatted = (abs / 1000000).toFixed(1);
-    return `${sign}$${formatted.replace(/\.0$/, '')}M`;
-  } else if (abs >= 1000) {
-    const formatted = (abs / 1000).toFixed(1);
-    return `${sign}$${formatted.replace(/\.0$/, '')}k`;
-  } else if (abs >= 1) {
-    // Show cents, but remove unnecessary trailing zeros
-    return `${sign}$${abs.toFixed(2).replace(/\.00$/, '')}`;
-  } else if (abs === 0) {
-    return '$0';
-  } else {
-    // For small values, preserve significant digits (e.g., $0.0341 not $0.03)
-    return `${sign}$${abs.toPrecision(4)}`;
-  }
+function formatBaseMoney(num, visible, currency, showPlusSign = false) {
+  return formatMoney(num, {
+    currency,
+    visible,
+    compact: true,
+    showPlusSign
+  });
 }
 
 // Format price with full precision (no compact notation) - like watchlist
-function formatPrice(num, visible) {
-  if (!visible) return '$••••';
-  const n = Number(num || 0);
-  if (!Number.isFinite(n)) return '—';
-  if (n === 0) return '$0';
-
-  const abs = Math.abs(n);
-  // For small prices, use precision-based formatting to preserve significant digits
-  // e.g., 0.0341 should show as $0.0341, not $0.03
-  if (abs < 1) {
-    return `$${abs.toPrecision(4)}`;
-  }
-  // For larger prices, use 2 decimal places with comma separators
-  return `$${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function formatPrice(num, visible, currency) {
+  return formatCurrencyPrice(num, { currency, visible });
 }
 
 function formatPct(num, isLoading = false) {
@@ -174,27 +151,14 @@ function formatPct(num, isLoading = false) {
   return `${sign}${Math.abs(n).toFixed(2)}%`;
 }
 
-function formatFunding(num, visible, isLoading = false) {
-  if (!visible) return '$••••';
+function formatFunding(num, visible, currency, isLoading = false) {
+  if (!visible) return formatMoney(0, { currency, visible: false });
   if (num === null || num === undefined || Number.isNaN(num)) {
     return isLoading ? '<span class="cell-loading">—</span>' : '—';
   }
   const n = Number(num);
   if (!Number.isFinite(n)) return '—';
-  if (n === 0) return '$0';
-
-  const abs = Math.abs(n);
-  const sign = n > 0 ? '+' : '−';
-
-  // Format with appropriate precision
-  if (abs >= 1000) {
-    const formatted = (abs / 1000).toFixed(1);
-    return `${sign}$${formatted.replace(/\.0$/, '')}k`;
-  } else if (abs >= 1) {
-    return `${sign}$${abs.toFixed(2)}`;
-  } else {
-    return `${sign}$${abs.toFixed(4)}`;
-  }
+  return formatMoney(n, { currency, visible, compact: true, showPlusSign: true });
 }
 
 function formatFundingRate(rate) {
@@ -268,6 +232,8 @@ function createTableRow(doc, pos, opts, prevDataMap) {
 
   const amountVisible = !!opts.amountsVisible;
   const value = computeValue(pos);
+  const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
+  const quoteCurrency = normalizeCurrencyCode(pos.currency || pos.sourceCurrency || baseCurrency, baseCurrency);
   const assetKey = `${pos.asset}_${pos.exchange}`;
   const showExactAmounts = opts.settings?.showExactAmounts ?? false;
   const showPriceChart = opts.settings?.showPriceChart ?? true;
@@ -306,11 +272,11 @@ function createTableRow(doc, pos, opts, prevDataMap) {
   // Order: Asset, Price, Chart, Value, P&L, Funding, 24H%, Amount, Exchange
   const cells = [
     formatAssetLabelHtml(pos),
-    formatPrice(pos.price, true),
+    formatPrice(pos.price, true, quoteCurrency),
     chartCell,
-    formatUsd(value, amountVisible),
-    formatUsd(pos.pnl, amountVisible, true),
-    formatFunding(pos.funding, amountVisible, isFundingLoading),
+    pos.fxConversionMissing ? 'FX rate unavailable' : formatBaseMoney(value, amountVisible, baseCurrency),
+    pos.fxConversionMissing ? '—' : formatBaseMoney(pos.pnl, amountVisible, baseCurrency, true),
+    pos.fxConversionMissing ? '—' : formatFunding(pos.funding, amountVisible, baseCurrency, isFundingLoading),
     formatPct(pos.change24h, is24hLoading),
     formatAmount(pos.amount, amountVisible, showExactAmounts),
     pos.exchange || '—'
@@ -373,7 +339,7 @@ function createTableRow(doc, pos, opts, prevDataMap) {
           manualType = manualTypeFromExchange(pos.exchange);
         }
         const manualTypeAttr = manualType ? ` data-manual-type="${manualType}"` : '';
-        td.innerHTML = `<span class="edit-asset-cell"><button class="position-delete-btn" data-asset="${pos.asset}"${manualTypeAttr}>×</button>${String(cells[i])}</span>`;
+        td.innerHTML = `<span class="edit-asset-cell"><button class="position-delete-btn" data-asset="${pos.asset}"${manualTypeAttr}>×</button><button class="position-manual-edit-btn" data-asset="${pos.asset}"${manualTypeAttr}>edit</button>${String(cells[i])}</span>`;
       } else if (isManuallyHidden) {
         // Manually hidden positions show + to restore
         td.innerHTML = `<span class="edit-asset-cell"><button class="position-restore-btn" data-asset-key="${assetKey}">+</button>${String(cells[i])}</span>`;
@@ -421,6 +387,8 @@ function createMobileCard(doc, pos, opts) {
   const value = computeValue(pos);
   const useColoredPnL = opts.settings?.useColoredPnL ?? true;
   const showExactAmounts = opts.settings?.showExactAmounts ?? false;
+  const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
+  const quoteCurrency = normalizeCurrencyCode(pos.currency || pos.sourceCurrency || baseCurrency, baseCurrency);
 
   // Compute change flags for mobile flash animations (mirrors table logic)
   const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
@@ -447,13 +415,24 @@ function createMobileCard(doc, pos, opts) {
     <div class="card-row"><span class="card-label">Asset</span><span class="card-asset">${formatAssetLabelHtml(pos)}</span></div>
     <div class="card-row"><span class="card-label">Exchange</span><span class="card-value">${pos.exchange || '—'}</span></div>
     <div class="card-row"><span class="card-label">Amount</span><span class="card-value">${formatAmount(pos.amount, amountVisible, showExactAmounts)}</span></div>
-    <div class="card-row"><span class="card-label">Price</span><span class="card-value"${priceChanged ? ' data-flash="true"' : ''}>${formatPrice(pos.price, true)}</span></div>
-    <div class="card-row"><span class="card-label">Value</span><span class="card-value"${valueChanged ? ' data-flash="true"' : ''}>${formatUsd(value, amountVisible)}</span></div>
+    <div class="card-row"><span class="card-label">Price</span><span class="card-value"${priceChanged ? ' data-flash="true"' : ''}>${formatPrice(pos.price, true, quoteCurrency)}</span></div>
+    <div class="card-row"><span class="card-label">Value</span><span class="card-value"${valueChanged ? ' data-flash="true"' : ''}>${pos.fxConversionMissing ? 'FX rate unavailable' : formatBaseMoney(value, amountVisible, baseCurrency)}</span></div>
     <div class="card-row"><span class="card-label">24H%</span><span class="card-value ${changeClass}"${change24hChanged ? ' data-flash="true"' : ''}>${formatPct(pos.change24h)}</span></div>
-    <div class="card-row"><span class="card-label">P&L</span><span class="card-value ${pnlClass}"${pnlChanged ? ' data-flash="true"' : ''}>${formatUsd(pos.pnl, amountVisible, true)}</span></div>
-    <div class="card-row"><span class="card-label">Funding</span><span class="card-value ${fundingClass}"${fundingChanged ? ' data-flash="true"' : ''}>${formatFunding(pos.funding, amountVisible)}${fundingRateDisplay}</span></div>
+    <div class="card-row"><span class="card-label">P&L</span><span class="card-value ${pnlClass}"${pnlChanged ? ' data-flash="true"' : ''}>${pos.fxConversionMissing ? '—' : formatBaseMoney(pos.pnl, amountVisible, baseCurrency, true)}</span></div>
+    <div class="card-row"><span class="card-label">Funding</span><span class="card-value ${fundingClass}"${fundingChanged ? ' data-flash="true"' : ''}>${pos.fxConversionMissing ? '—' : formatFunding(pos.funding, amountVisible, baseCurrency)}${fundingRateDisplay}</span></div>
   `;
   return card;
+}
+
+function updateHeaders(tableBody, baseCurrency) {
+  const table = tableBody?.closest?.('table');
+  if (!table) return;
+  const valueHeader = table.querySelector('.th-value');
+  const pnlHeader = table.querySelector('.th-pnl');
+  const fundingHeader = table.querySelector('.th-funding');
+  if (valueHeader) valueHeader.textContent = `Value (${baseCurrency})`;
+  if (pnlHeader) pnlHeader.textContent = `P&L (${baseCurrency})`;
+  if (fundingHeader) fundingHeader.textContent = `Funding (${baseCurrency})`;
 }
 
 /**
@@ -465,6 +444,8 @@ export function renderPositions({ positions, containers, options, previousPositi
     if (!containers?.positionsBody) return positions;
     const doc = containers.positionsBody.ownerDocument || document;
     const opts = options || {};
+    const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
+    updateHeaders(containers.positionsBody, baseCurrency);
 
     const list = Array.isArray(positions) ? positions : [];
     const filtered = list.filter(p => !shouldHidePosition(p, opts));
