@@ -15,6 +15,7 @@ import * as ZEC from './data/providers/zcash.js';
 import * as ALCHEMY from './data/providers/alchemy.js';
 import * as HELIUS from './data/providers/helius.js';
 import * as STOCKS from './data/providers/stocks.js';
+import * as IBKR from './data/providers/ibkr.js';
 import * as HeroUI from './ui/hero.js';
 import * as PositionsUI from './ui/positions.js';
 import * as Settings from './core/settings.js';
@@ -46,6 +47,7 @@ window.AppModules.data.providers.zcash = ZEC;
 window.AppModules.data.providers.alchemy = ALCHEMY;
 window.AppModules.data.providers.helius = HELIUS;
 window.AppModules.data.providers.stocks = STOCKS;
+window.AppModules.data.providers.ibkr = IBKR;
 window.AppModules.ui = window.AppModules.ui || {};
 window.AppModules.ui.hero = HeroUI;
 window.AppModules.ui.positions = PositionsUI;
@@ -72,4 +74,3 @@ window.AppModules.features.rain = Rain;
 window.AppModules.features.weather = Weather;
 
 // Modules loaded
-
