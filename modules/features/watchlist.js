@@ -281,7 +281,7 @@ function renderRows(container, data, options) {
   const { useColoredPnL, editMode, showPriceChart, prevPriceMap } = options;
 
   if (!data || data.length === 0) {
-    container.innerHTML = '<tr><td colspan="4" class="text-center dimmed">Watchlist is empty</td></tr>';
+    container.innerHTML = '<tr class="watchlist-empty-row"><td colspan="4">Nothing on your watchlist yet.</td></tr>';
     return;
   }
 

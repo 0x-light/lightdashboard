@@ -244,18 +244,17 @@ async function _doRenderPortfolioIncremental() {
 
   const hasManualPositions = settings.cryptoPositions && Array.isArray(settings.cryptoPositions) && settings.cryptoPositions.length > 0;
 
-  if (wallets.length === 0 && solanaAddrs.length === 0 && bitcoinAddrs.length === 0 && zcashAddrs.length === 0 && !hasManualPositions) {
+  const isEmpty = wallets.length === 0 && solanaAddrs.length === 0 && bitcoinAddrs.length === 0 && zcashAddrs.length === 0 && !hasManualPositions;
+  // Empty portfolio: the hero sentence carries the call to action, so the (empty) positions
+  // section is hidden rather than showing headers and buttons with nothing behind them.
+  document.body.classList.toggle('portfolio-empty', isEmpty);
+
+  if (isEmpty) {
     const summaryEl = document.getElementById('newSummary');
     const positionsBody = document.getElementById('newPositionsBody');
     if (summaryEl) {
       summaryEl.innerHTML = `
-        <div class="hero-empty">
-          <p>Nothing to track yet. Connect a wallet or add a position by hand.</p>
-          <div class="button-row">
-            <button type="button" class="btn-text btn-primary" data-empty-action="newSettingsBtn">Add wallets</button>
-            <button type="button" class="btn-text" data-empty-action="newAddPositionBtn">+ Add position</button>
-          </div>
-        </div>`;
+        <p class="hero-sentence">Your portfolio is empty. <button type="button" class="link-button" data-empty-action="newSettingsBtn">Add a wallet</button> or <button type="button" class="link-button" data-empty-action="newAddPositionBtn">a position</button> to start tracking.</p>`;
       summaryEl.querySelectorAll('[data-empty-action]').forEach(btn => {
         btn.addEventListener('click', () => document.getElementById(btn.dataset.emptyAction)?.click());
       });
@@ -2950,8 +2949,8 @@ window.addEventListener('DOMContentLoaded', async () => {
       if (hour >= 12 && hour < 18) timeOfDay = 'Good afternoon';
       else if (hour >= 18) timeOfDay = 'Good evening';
 
-      const userName = settings.userName || 'there';
-      greetingEl.textContent = `${timeOfDay}, ${userName}.`;
+      const userName = (settings.userName || '').trim();
+      greetingEl.textContent = userName ? `${timeOfDay}, ${userName}.` : `${timeOfDay}.`;
     }
   }
   updateGreeting();

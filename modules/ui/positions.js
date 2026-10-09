@@ -532,7 +532,13 @@ export function renderPositions({ positions, containers, options, previousPositi
       emptyCell.textContent = 'No positions found';
       emptyRow.appendChild(emptyCell);
       containers.positionsBody.replaceChildren(emptyRow);
-      if (containers.mobilePositionsContainer) containers.mobilePositionsContainer.replaceChildren();
+      // The table is hidden on phones, so the cards area needs its own message.
+      if (containers.mobilePositionsContainer) {
+        const note = doc.createElement('p');
+        note.className = 'panel-empty';
+        note.textContent = 'No positions found.';
+        containers.mobilePositionsContainer.replaceChildren(note);
+      }
       return positions;
     }
 

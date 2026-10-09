@@ -657,20 +657,51 @@ h6 {
   outline: 1px solid var(--line-soft);
 }
 
-.hero-empty {
-  grid-column: 1 / -1;
-  padding: calc(var(--lh) * 0.5) 0 calc(var(--lh) * 0.25);
-}
-
-.hero-empty p {
-  margin: 0 0 var(--lh);
+/* Inline actions inside running text (empty-state sentence) */
+.link-button {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
   color: var(--text-bright);
+  font: inherit;
+  line-height: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 4px;
+  cursor: pointer;
 }
 
-.hero-empty .btn-primary {
-  width: auto;
-  margin-top: 0;
-  min-height: var(--lh);
+.link-button:hover {
+  text-decoration-color: currentColor;
+}
+
+/* Empty states: one quiet line, no headers or buttons with nothing behind them */
+body.portfolio-empty #positionsSection {
+  display: none;
+}
+
+.panel-empty {
+  margin: 0;
+  color: var(--muted);
+}
+
+#watchlistSection:has(.watchlist-empty-row) thead,
+#watchlistSection:has(.watchlist-empty-row) .panel-foot {
+  display: none;
+}
+
+#newWatchlistTable tr.watchlist-empty-row td {
+  padding: 0;
+  border: 0;
+  text-align: left;
+  color: var(--muted);
+}
+
+#newWatchlistTable tr.watchlist-empty-row:hover td {
+  background: transparent;
+  color: var(--muted);
 }
 
 /* --------------------------------------------------------------------------
