@@ -161,6 +161,13 @@ function formatFunding(num, visible, currency, isLoading = false) {
   return formatMoney(n, { currency, visible, compact: true, showPlusSign: true });
 }
 
+function formatQuoteBackedMoney(pos, value, visible, currency, showPlusSign = false) {
+  if (pos.quoteLoading) return '<span class="cell-loading">—</span>';
+  if (pos.quoteUnavailable) return 'Quote unavailable';
+  if (pos.fxConversionMissing) return showPlusSign ? '—' : 'FX rate unavailable';
+  return formatBaseMoney(value, visible, currency, showPlusSign);
+}
+
 function formatFundingRate(rate) {
   if (rate === null || rate === undefined || Number.isNaN(rate)) return null;
   const n = Number(rate);
@@ -207,10 +214,24 @@ function formatAssetLabel(pos) {
   return pos?.asset || '—';
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+}
+
 function formatAssetLabelHtml(pos) {
   const base = formatAssetLabel(pos);
   if (!isShortPosition(pos)) return base;
   return `${base}<span class="short-arrow"> ↓</span>`;
+}
+
+// Table variant: ticker plus the full name in muted text when the provider gives one.
+function formatAssetCellHtml(pos) {
+  const label = formatAssetLabelHtml(pos);
+  const name = String(pos?.assetName || '').trim();
+  if (!name || name.toUpperCase() === String(pos?.asset || '').toUpperCase()) return label;
+  return `${label}<span class="asset-name">${escapeHtml(name)}</span>`;
 }
 
 function shouldHidePosition(pos, opts) {
@@ -240,19 +261,21 @@ function createTableRow(doc, pos, opts, prevDataMap) {
 
   // Check if values changed (simple comparison like watchlist)
   const key = pos._changeDetectionKey || `${pos.asset}_${pos.exchange}`;
+  // Ignore transitions from a loading placeholder (price 0 / null) so the first quote doesn't flash.
   const prev = prevDataMap[key];
-  const priceChanged = prev && Math.abs((pos.price || 0) - (prev.price || 0)) > 0.0001;
-  const valueChanged = prev && Math.abs(value - (prev.value || 0)) > 0.01;
-  const pnlChanged = prev && Math.abs((pos.pnl || 0) - (prev.pnl || 0)) > 0.01;
-  const change24hChanged = prev && Math.abs((pos.change24h || 0) - (prev.change24h || 0)) > 0.01;
-  const fundingChanged = prev && Math.abs((pos.funding || 0) - (prev.funding || 0)) > 0.01;
+  const hadQuote = prev && Number(prev.price) > 0;
+  const priceChanged = hadQuote && Math.abs((pos.price || 0) - (prev.price || 0)) > 0.0001;
+  const valueChanged = hadQuote && Math.abs(value - (prev.value || 0)) > 0.01;
+  const pnlChanged = hadQuote && prev.pnl != null && Math.abs((pos.pnl || 0) - (prev.pnl || 0)) > 0.01;
+  const change24hChanged = hadQuote && prev.change24h != null && Math.abs((pos.change24h || 0) - (prev.change24h || 0)) > 0.01;
+  const fundingChanged = hadQuote && prev.funding != null && Math.abs((pos.funding || 0) - (prev.funding || 0)) > 0.01;
 
   // Change detection for flash animations
 
   // Create sparkline chart - stablecoins get static dash, others get pulsing loading indicator
   let chartCell;
-  if (isStablecoin(pos.asset)) {
-    // Stablecoins don't have charts - static dash (no animation)
+  if (isStablecoin(pos.asset) || pos.quoteUnavailable) {
+    // Static dash for assets without a usable chart.
     chartCell = '—';
   } else if (pos.priceHistory) {
     // Has chart data - render sparkline
@@ -265,18 +288,28 @@ function createTableRow(doc, pos, opts, prevDataMap) {
   // Determine loading states:
   // - 24H% is loading if null and not a stablecoin
   // - Funding is loading if null and position is leveraged (perps have funding)
-  const is24hLoading = pos.change24h == null && !isStablecoin(pos.asset);
+  const is24hLoading = pos.change24h == null && !isStablecoin(pos.asset) && !pos.quoteUnavailable;
   const isFundingLoading = pos.funding == null && pos.isLeveraged;
+  const priceCell = pos.quoteLoading
+    ? '<span class="cell-loading">—</span>'
+    : (pos.quoteUnavailable ? 'Quote unavailable' : formatPrice(pos.price, true, quoteCurrency));
+  const valueCell = formatQuoteBackedMoney(pos, value, amountVisible, baseCurrency);
+  const pnlCell = pos.quoteLoading || pos.quoteUnavailable || pos.fxConversionMissing || pos.pnl == null
+    ? '—'
+    : formatBaseMoney(pos.pnl, amountVisible, baseCurrency, true);
+  const fundingCell = pos.fxConversionMissing
+    ? '—'
+    : formatFunding(pos.funding, amountVisible, baseCurrency, isFundingLoading);
 
   // Use compact column order
   // Order: Asset, Price, Chart, Value, P&L, Funding, 24H%, Amount, Exchange
   const cells = [
-    formatAssetLabelHtml(pos),
-    formatPrice(pos.price, true, quoteCurrency),
+    formatAssetCellHtml(pos),
+    priceCell,
     chartCell,
-    pos.fxConversionMissing ? 'FX rate unavailable' : formatBaseMoney(value, amountVisible, baseCurrency),
-    pos.fxConversionMissing ? '—' : formatBaseMoney(pos.pnl, amountVisible, baseCurrency, true),
-    pos.fxConversionMissing ? '—' : formatFunding(pos.funding, amountVisible, baseCurrency, isFundingLoading),
+    valueCell,
+    pnlCell,
+    fundingCell,
     formatPct(pos.change24h, is24hLoading),
     formatAmount(pos.amount, amountVisible, showExactAmounts),
     pos.exchange || '—'
@@ -375,6 +408,11 @@ function createTableRow(doc, pos, opts, prevDataMap) {
         td.textContent = cellContent;
       }
     }
+    if (i === 0) td.classList.add('asset-cell');
+    if (i === cells.length - 1) {
+      td.classList.add('exchange-cell');
+      td.title = pos.exchange || '';
+    }
     tr.appendChild(td);
   }
   return tr;
@@ -386,7 +424,6 @@ function createMobileCard(doc, pos, opts) {
   const amountVisible = !!opts.amountsVisible;
   const value = computeValue(pos);
   const useColoredPnL = opts.settings?.useColoredPnL ?? true;
-  const showExactAmounts = opts.settings?.showExactAmounts ?? false;
   const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
   const quoteCurrency = normalizeCurrencyCode(pos.currency || pos.sourceCurrency || baseCurrency, baseCurrency);
 
@@ -396,30 +433,60 @@ function createMobileCard(doc, pos, opts) {
     ? window._previousRenderData.find(p => (p._changeDetectionKey || `${p.asset}_${p.exchange}`) === key)
     : null;
   const prevValue = prevGlobal ? computeValue(prevGlobal) : null;
-  const priceChanged = prevGlobal && Math.abs((pos.price || 0) - (prevGlobal.price || 0)) > 0.0001;
-  const valueChanged = prevGlobal && Math.abs(value - (prevValue || 0)) > 0.01;
-  const pnlChanged = prevGlobal && Math.abs((pos.pnl || 0) - (prevGlobal.pnl || 0)) > 0.01;
-  const change24hChanged = prevGlobal && Math.abs((pos.change24h || 0) - (prevGlobal.change24h || 0)) > 0.01;
-  const fundingChanged = prevGlobal && Math.abs((pos.funding || 0) - (prevGlobal.funding || 0)) > 0.01;
+  const hadQuote = prevGlobal && Number(prevGlobal.price) > 0;
+  const priceChanged = hadQuote && Math.abs((pos.price || 0) - (prevGlobal.price || 0)) > 0.0001;
+  const valueChanged = hadQuote && Math.abs(value - (prevValue || 0)) > 0.01;
+  const pnlChanged = hadQuote && prevGlobal.pnl != null && Math.abs((pos.pnl || 0) - (prevGlobal.pnl || 0)) > 0.01;
+  const change24hChanged = hadQuote && prevGlobal.change24h != null && Math.abs((pos.change24h || 0) - (prevGlobal.change24h || 0)) > 0.01;
+  const fundingChanged = hadQuote && prevGlobal.funding != null && Math.abs((pos.funding || 0) - (prevGlobal.funding || 0)) > 0.01;
+  const flash = (changed) => (changed ? ' data-flash="true"' : '');
 
   // Color classes for PnL, Funding, and 24H%
   const pnlClass = useColoredPnL && pos.pnl != null ? (pos.pnl >= 0 ? 'positive-pnl' : 'negative-pnl') : '';
   const changeClass = useColoredPnL && pos.change24h != null ? (pos.change24h >= 0 ? 'positive-pnl' : 'negative-pnl') : '';
   const fundingClass = useColoredPnL && pos.funding != null ? (pos.funding >= 0 ? 'positive-pnl' : 'negative-pnl') : '';
 
-  // Format funding rate for display (shown inline on mobile)
-  const fundingRateText = formatFundingRate(pos.fundingRate);
-  const fundingRateDisplay = fundingRateText ? ` <span class="funding-rate-inline">(${fundingRateText})</span>` : '';
+  const priceText = pos.quoteLoading
+    ? '<span class="cell-loading">—</span>'
+    : (pos.quoteUnavailable ? 'Quote unavailable' : formatPrice(pos.price, true, quoteCurrency));
+  const pnlText = pos.quoteLoading || pos.quoteUnavailable || pos.fxConversionMissing || pos.pnl == null
+    ? ''
+    : formatBaseMoney(pos.pnl, amountVisible, baseCurrency, true);
 
+  // Return on cost: entry notional when we know the entry price, else value minus P&L (spot).
+  let pnlPctText = '';
+  if (pnlText) {
+    const fx = Number(pos.fxRate) > 0 ? Number(pos.fxRate) : 1;
+    const entryBasis = Math.abs(Number(pos.amount) * Number(pos.entryPrice) * fx);
+    const basis = entryBasis > 0 ? entryBasis : (pos.isLeveraged ? 0 : value - pos.pnl);
+    if (Number.isFinite(basis) && basis > 0) pnlPctText = formatPct((pos.pnl / basis) * 100);
+  }
+
+  // Funding only matters for perps; skip the line entirely for spot holdings.
+  const hasFunding = pos.isLeveraged || pos.funding != null;
+  const fundingRateText = formatFundingRate(pos.fundingRate);
+  const fundingLine = hasFunding
+    ? `<span class="card-funding ${fundingClass}"${flash(fundingChanged)}>Funding ${pos.fxConversionMissing ? '—' : formatFunding(pos.funding, amountVisible, baseCurrency)}${fundingRateText ? ` <span class="funding-rate-inline">${fundingRateText}</span>` : ''}</span>`
+    : '';
+
+  // Ledger style:  ASSET ................ VALUE
+  //                price              P&L +46k +48%
+  //                source                24h +1.2%
+  //                                  Funding (perps)
   card.innerHTML = `
-    <div class="card-row"><span class="card-label">Asset</span><span class="card-asset">${formatAssetLabelHtml(pos)}</span></div>
-    <div class="card-row"><span class="card-label">Exchange</span><span class="card-value">${pos.exchange || '—'}</span></div>
-    <div class="card-row"><span class="card-label">Amount</span><span class="card-value">${formatAmount(pos.amount, amountVisible, showExactAmounts)}</span></div>
-    <div class="card-row"><span class="card-label">Price</span><span class="card-value"${priceChanged ? ' data-flash="true"' : ''}>${formatPrice(pos.price, true, quoteCurrency)}</span></div>
-    <div class="card-row"><span class="card-label">Value</span><span class="card-value"${valueChanged ? ' data-flash="true"' : ''}>${pos.fxConversionMissing ? 'FX rate unavailable' : formatBaseMoney(value, amountVisible, baseCurrency)}</span></div>
-    <div class="card-row"><span class="card-label">24H%</span><span class="card-value ${changeClass}"${change24hChanged ? ' data-flash="true"' : ''}>${formatPct(pos.change24h)}</span></div>
-    <div class="card-row"><span class="card-label">P&L</span><span class="card-value ${pnlClass}"${pnlChanged ? ' data-flash="true"' : ''}>${pos.fxConversionMissing ? '—' : formatBaseMoney(pos.pnl, amountVisible, baseCurrency, true)}</span></div>
-    <div class="card-row"><span class="card-label">Funding</span><span class="card-value ${fundingClass}"${fundingChanged ? ' data-flash="true"' : ''}>${pos.fxConversionMissing ? '—' : formatFunding(pos.funding, amountVisible, baseCurrency)}${fundingRateDisplay}</span></div>
+    <div class="card-line">
+      <span class="card-asset">${formatAssetLabelHtml(pos)}</span>
+      <span class="card-value card-total"${flash(valueChanged)}>${formatQuoteBackedMoney(pos, value, amountVisible, baseCurrency)}</span>
+    </div>
+    <div class="card-line card-sub">
+      <span class="card-meta"${flash(priceChanged)}>${priceText}</span>
+      ${pnlText ? `<span class="card-pnl ${pnlClass}"${flash(pnlChanged)}><span class="card-label">P&amp;L</span> ${pnlText}${pnlPctText ? ` <span class="card-pnl-pct">${pnlPctText}</span>` : ''}</span>` : ''}
+    </div>
+    <div class="card-line card-sub">
+      <span class="card-exchange">${pos.exchange || '—'}</span>
+      <span class="card-change"><span class="card-label">24h</span> <span class="${changeClass}"${flash(change24hChanged)}>${formatPct(pos.change24h)}</span></span>
+    </div>
+    ${fundingLine ? `<div class="card-line card-sub card-line-end">${fundingLine}</div>` : ''}
   `;
   return card;
 }
@@ -449,6 +516,13 @@ export function renderPositions({ positions, containers, options, previousPositi
 
     const list = Array.isArray(positions) ? positions : [];
     const filtered = list.filter(p => !shouldHidePosition(p, opts));
+
+    const table = containers.positionsBody.closest('table');
+    if (table) {
+      table.classList.toggle('has-funding', filtered.some(p => p.isLeveraged || p.funding != null));
+    }
+    const countEl = containers.positionsBody.closest('section')?.querySelector('.panel-count');
+    if (countEl) countEl.textContent = filtered.length > 0 ? String(filtered.length) : '';
 
     if (filtered.length === 0) {
       const emptyRow = doc.createElement('tr');

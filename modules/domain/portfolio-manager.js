@@ -56,12 +56,7 @@ export class PortfolioManager {
                 fetchPromises.push(this.fetchers['BitcoinZcash'].fetch(bitcoinAddrs, zcashAddrs));
             }
 
-            // 5. IBKR brokerage positions
-            if (this.fetchers['IBKR'] && this.settings.ibkrEnabled) {
-                fetchPromises.push(this.fetchers['IBKR'].fetch());
-            }
-
-            // 6. Manual
+            // 5. Manual
             if (this.fetchers['Manual'] && this.settings.cryptoPositions?.length > 0) {
                 fetchPromises.push(this.fetchers['Manual'].fetch(this.settings.cryptoPositions));
             }

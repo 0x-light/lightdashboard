@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
-import { calculatePortfolioTotals } from '../modules/domain/portfolio.js';
+import { calculatePortfolioBreakdown, calculatePortfolioTotals } from '../modules/domain/portfolio.js';
 import { ManualFetcher } from '../modules/data/fetchers/manual-fetcher.js';
 import { AlchemyHeliusFetcher } from '../modules/data/fetchers/alchemy-helius-fetcher.js';
 import { LighterFetcher } from '../modules/data/fetchers/lighter-fetcher.js';
-import { IbkrFetcher, _internal as ibkrFetcherInternal } from '../modules/data/fetchers/ibkr-fetcher.js';
 import * as StocksProvider from '../modules/data/providers/stocks.js';
-import * as IbkrProvider from '../modules/data/providers/ibkr.js';
 import { _internal as pythInternal } from '../modules/data/providers/pyth.js';
 import { normalizeEntries } from '../modules/features/watchlist.js';
 import {
@@ -21,6 +19,52 @@ import {
   removeManualPositionByAsset,
   renderedManualPositionMatches
 } from '../modules/features/manual-positions.js';
+
+function testPortfolioBreakdownAllocationAnd24h() {
+  const breakdown = calculatePortfolioBreakdown([
+    { asset: 'BTC', exchange: 'Wallet', value: 600, change24h: 20 },
+    { asset: 'BTC', exchange: 'Manual (Stock)', value: 0 },
+    { asset: 'ETH', exchange: 'Wallet', value: 300, change24h: null },
+    { asset: 'HL', exchange: 'Hyperliquid', isHlAccountEquity: true, value: 100 },
+    // Covered by HL equity: no allocation slice, but its exposure still moves the 24h number.
+    { asset: 'SOL', exchange: 'HL Perps', isLeveraged: true, amount: -10, price: 10, value: 100, change24h: 25 }
+  ]);
+
+  // HL equity is attributed to the perp it backs, never labelled "Hyperliquid".
+  assert.deepEqual(breakdown.allocation.map(s => s.label), ['BTC', 'ETH', 'SOL']);
+  assert.equal(breakdown.allocation[2].value, 100);
+  assert.ok(Math.abs(breakdown.allocation.reduce((sum, s) => sum + s.share, 0) - 1) < 1e-9);
+  // BTC: 600 * 20/120 = +100. Short SOL: -100 notional * 25/125 = -20.
+  assert.equal(Math.round(breakdown.change24h), 80);
+  assert.equal(Math.round(breakdown.change24hPercent * 100) / 100, 8.7);
+
+  // Venue spot keeps its value; remaining equity splits across perps by notional.
+  const venueSplit = calculatePortfolioBreakdown([
+    { asset: 'HL', exchange: 'Hyperliquid', isHlAccountEquity: true, value: 1000 },
+    { asset: 'HYPE', exchange: 'HL Spot', value: 400 },
+    { asset: 'ZRO', exchange: 'HL Perps', isLeveraged: true, amount: 100, price: 9, value: 900 },
+    { asset: 'LIT', exchange: 'HL Perps', isLeveraged: true, amount: -100, price: 3, value: 300 }
+  ]);
+  assert.deepEqual(
+    venueSplit.allocation.map(s => [s.label, Math.round(s.value)]),
+    [['ZRO', 450], ['HYPE', 400], ['LIT', 150]]
+  );
+
+  const idleMargin = calculatePortfolioBreakdown([
+    { asset: 'HL', exchange: 'Hyperliquid', isHlAccountEquity: true, value: 500 },
+    { asset: 'ETH', exchange: 'Wallet', value: 500 }
+  ]);
+  assert.deepEqual(idleMargin.allocation.map(s => s.label).sort(), ['Cash', 'ETH']);
+
+  const many = calculatePortfolioBreakdown(
+    ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map((asset, i) => ({ asset, exchange: 'Wallet', value: 100 - i }))
+  );
+  assert.equal(many.allocation.length, 6);
+  assert.equal(many.allocation.at(-1).label, 'Other');
+  assert.equal(many.change24h, null);
+
+  assert.deepEqual(calculatePortfolioBreakdown([]), { allocation: [], change24h: null, change24hPercent: null });
+}
 
 async function testManualCustomLegacySchema() {
   const calls = [];
@@ -69,7 +113,7 @@ function testLighterTotalsWithEquity() {
   ]);
 
   assert.equal(totals.totalValue, 525, 'lighter perps should be skipped when equity row exists');
-  assert.equal(totals.totalPnL, 50);
+  assert.equal(totals.totalPnL, 10, 'P&L comes from position rows, not the account-level field');
 }
 
 function testHyperliquidTotalsFallbackWhenNoEquity() {
@@ -102,6 +146,35 @@ function testNaNPnlIsSkipped() {
   assert.equal(totals.totalPnL, 10, 'NaN and missing pnl must not corrupt totalPnL');
 }
 
+function testPnlPercentIgnoresPositionsWithoutCostBasis() {
+  // $10k of cash/untracked tokens must not dilute the return on the $1k position we can measure.
+  const totals = calculatePortfolioTotals([
+    { exchange: 'Ethereum', value: 1200, pnl: 200 },
+    { exchange: 'Manual (Custom)', value: 10000, pnl: null },
+    { exchange: 'Base', value: 500 }
+  ]);
+  assert.equal(totals.totalValue, 11700);
+  assert.equal(totals.totalPnL, 200);
+  assert.equal(totals.costBasis, 1000);
+  assert.equal(totals.totalPnLPercent, 20);
+}
+
+function testHeadlinePnlMatchesPositionRows() {
+  // Real-world shape: HL perps + a Lighter account whose generic `pnl` field is lifetime P&L.
+  // The headline must equal the P&L column (+41.7k − 31k), not pick up the hidden −31.2k.
+  const totals = calculatePortfolioTotals([
+    { exchange: 'HL Perps', isHlAccountEquity: true, value: 110000, pnl: 10700 },
+    { asset: 'ZRO', exchange: 'HL Perps', isLeveraged: true, amount: 64870, price: 2.124, entryPrice: 1.481, value: 137800, pnl: 41700 },
+    { asset: 'LIT', exchange: 'HL Perps', isLeveraged: true, amount: 17930, price: 3.58, entryPrice: 5.31, value: 64200, pnl: -31000 },
+    { exchange: 'Lighter', isLighterAccountEquity: true, value: 300, pnl: -31229 },
+    { asset: 'MON', exchange: 'Monad', value: 3000, pnl: null }
+  ]);
+  assert.equal(totals.totalValue, 113300);
+  assert.equal(totals.totalPnL, 10700);
+  // Perp basis is entry notional: 64870 × 1.481 + 17930 × 5.31.
+  assert.equal(Math.round(totals.costBasis), Math.round(64870 * 1.481 + 17930 * 5.31));
+}
+
 function testMultiWalletHlEquityAggregates() {
   const totals = calculatePortfolioTotals([
     { exchange: 'HL Perps', isHlAccountEquity: true, value: 1000, pnl: 30 },
@@ -110,7 +183,7 @@ function testMultiWalletHlEquityAggregates() {
     { exchange: 'HL Spot', value: 150, pnl: 5 }     // spot row — must also be skipped
   ]);
   assert.equal(totals.totalValue, 1500, 'HL equity rows should sum across wallets');
-  assert.equal(totals.totalPnL, 10);
+  assert.equal(totals.totalPnL, 105, 'P&L is the sum of the per-position rows the table shows');
 }
 
 function testLighterLeverageDoesNotInflateTotals() {
@@ -539,7 +612,10 @@ async function testManualFetcherRoutesStockPositionsThroughYahoo() {
       name: 'SPDR S&P 500' }
   ]);
 
-  const manualCall = calls.find(c => c.source === 'Manual');
+  const manualCalls = calls.filter(c => c.source === 'Manual');
+  assert.equal(manualCalls[0].options.markCompleted, false, 'stock placeholders should not mark Manual complete');
+  assert.equal(manualCalls[0].rows[0].quoteLoading, true, 'stock positions should render while quotes load');
+  const manualCall = manualCalls.at(-1);
   assert.ok(manualCall, 'manual rows should be appended under "Manual" source');
   assert.equal(manualCall.rows.length, 2);
 
@@ -562,6 +638,132 @@ async function testManualFetcherRoutesStockPositionsThroughYahoo() {
 
   assert.equal(getQuotesCalls.length, 1, 'one batched quote call for both symbols');
   assert.deepEqual(new Set(getQuotesCalls[0]), new Set(['AAPL', 'SPY']));
+}
+
+async function testManualFetcherAppendsStockPlaceholderBeforeSlowQuote() {
+  const calls = [];
+  const renderer = {
+    appendPositions: (rows, source, options) => calls.push({ rows, source, options }),
+    markProviderFailed: (_, err) => { throw err; }
+  };
+
+  let resolveQuotes;
+  const quotePromise = new Promise(resolve => { resolveQuotes = resolve; });
+  const providers = {
+    stocks: {
+      getQuotes: async () => quotePromise,
+      get24hPriceHistory: async () => []
+    }
+  };
+  const fetcher = new ManualFetcher(providers, renderer, {
+    showPriceChart: false,
+    hiddenAssets: [],
+    minBalanceThreshold: 0
+  });
+
+  const fetchPromise = fetcher.fetch([
+    { type: 'stock', symbol: 'SIVEF', amount: 10, entryPrice: 3, category: 'equity', currency: 'USD' }
+  ]);
+  await Promise.resolve();
+
+  assert.equal(calls.length, 1, 'placeholder should append before Yahoo quote resolves');
+  assert.equal(calls[0].rows[0].asset, 'SIVEF');
+  assert.equal(calls[0].rows[0].quoteLoading, true);
+  assert.equal(calls[0].options.markCompleted, false);
+
+  resolveQuotes({
+    SIVEF: { symbol: 'SIVEF', price: 5.92, change24h: 0.68, currency: 'USD' }
+  });
+  await fetchPromise;
+
+  const finalCall = calls.at(-1);
+  assert.equal(finalCall.rows[0].quoteLoading, false);
+  assert.equal(finalCall.rows[0].quoteUnavailable, false);
+  assert.equal(finalCall.rows[0].price, 5.92);
+  assert.equal(finalCall.rows[0].value, 59.2);
+}
+
+async function testManualFetcherRefreshKeepsLastQuoteWhileLoading() {
+  const calls = [];
+  const renderer = {
+    appendPositions: (rows, source, options) => calls.push({ rows, source, options }),
+    markProviderFailed: (_, err) => { throw err; }
+  };
+
+  let resolveRefresh;
+  const quoteResponses = [
+    Promise.resolve({ SIVEF: { symbol: 'SIVEF', price: 5.92, change24h: 0.68, currency: 'USD' } }),
+    new Promise(resolve => { resolveRefresh = resolve; })
+  ];
+  const providers = {
+    stocks: {
+      getQuotes: async () => quoteResponses.shift(),
+      get24hPriceHistory: async () => []
+    }
+  };
+  const fetcher = new ManualFetcher(providers, renderer, {
+    showPriceChart: false,
+    hiddenAssets: [],
+    minBalanceThreshold: 0
+  });
+  const positions = [
+    { type: 'stock', symbol: 'SIVEF', amount: 10, entryPrice: 3, category: 'equity', currency: 'USD' }
+  ];
+
+  await fetcher.fetch(positions);
+  calls.length = 0;
+
+  const refresh = fetcher.fetch(positions);
+  await Promise.resolve();
+
+  // The refresh placeholder carries the previous quote instead of blanking the row.
+  assert.equal(calls[0].rows[0].quoteLoading, false);
+  assert.equal(calls[0].rows[0].price, 5.92);
+  assert.equal(calls[0].rows[0].value, 59.2);
+
+  resolveRefresh({ SIVEF: { symbol: 'SIVEF', price: 6.1, change24h: 1.2, currency: 'USD' } });
+  await refresh;
+  assert.equal(calls.at(-1).rows[0].price, 6.1);
+}
+
+async function testManualPythPositionsSurvivePythOutage() {
+  const calls = [];
+  const renderer = {
+    appendPositions: (rows, source, options) => calls.push({ rows, source, options }),
+    markProviderFailed: (_, err) => { throw err; }
+  };
+  const quoteRequests = [];
+  const providers = {
+    pyth: {
+      getLatestByFeedIds: async () => { throw new Error('HTTP 401 unauthorized'); },
+      getBatch24hPriceHistory: async () => ({})
+    },
+    stocks: {
+      getQuotes: async (symbols) => {
+        quoteRequests.push(...symbols);
+        return { NVDA: { symbol: 'NVDA', price: 230, change24h: -2.9, currency: 'USD', priceHistory: [] } };
+      },
+      get24hPriceHistory: async () => []
+    }
+  };
+  const fetcher = new ManualFetcher(providers, renderer, { showPriceChart: false, hiddenAssets: [], minBalanceThreshold: 0 });
+
+  await fetcher.fetch([
+    { type: 'pyth', symbol: 'NVDA', feedId: '0xnvda', amount: 56.79, entryPrice: 197, category: 'equity' },
+    { type: 'pyth', symbol: 'HYPE', feedId: '0xhype', amount: 10, entryPrice: 30, category: 'crypto' }
+  ]);
+
+  const rows = calls.at(-1).rows;
+  const nvda = rows.find(r => r.asset === 'NVDA');
+  assert.equal(nvda.price, 230, 'equity falls back to the Yahoo quote on the same ticker');
+  assert.equal(Math.round(nvda.value), Math.round(56.79 * 230));
+  assert.equal(Math.round(nvda.pnl), Math.round((230 - 197) * 56.79));
+  assert.equal(nvda.quoteUnavailable, false);
+
+  const hype = rows.find(r => r.asset === 'HYPE');
+  assert.equal(hype.quoteUnavailable, true, 'crypto is not guessed from Yahoo');
+  assert.equal(hype.pnl, null, 'no price must never read as a total loss');
+  assert.deepEqual(quoteRequests, ['NVDA']);
 }
 
 async function testManualFetcherPreservesCustomPositionCurrency() {
@@ -593,6 +795,13 @@ async function testStocksQuotesUseExtendedHoursSparkData() {
   globalThis.fetch = async (url) => {
     calls.push(String(url));
     const target = new URL(String(url), 'https://viewport.test').searchParams.get('url') || '';
+    if (target.includes('/v8/finance/chart/')) {
+      // Listing-currency lookup (spark omits currency).
+      return new Response(JSON.stringify({ chart: { result: [{ meta: { currency: 'USD' } }] } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
     assert.ok(target.includes('includePrePost=true'), 'quote request should include extended-hours candles');
 
     return new Response(JSON.stringify({
@@ -611,7 +820,8 @@ async function testStocksQuotesUseExtendedHoursSparkData() {
 
   try {
     const quotes = await StocksProvider.getQuotes(['CRWV'], { timeoutMs: 1000 });
-    assert.equal(calls.length, 1);
+    assert.equal(calls.filter(u => u.includes('spark')).length, 1);
+    assert.equal(quotes.CRWV.currency, 'USD');
     assert.equal(quotes.CRWV.price, 128.33);
     assert.equal(quotes.CRWV.previousClose, 119.01);
     assert.ok(quotes.CRWV.change24h > 7);
@@ -683,115 +893,6 @@ async function testCurrencyFormattingAndFxRates() {
   } finally {
     globalThis.fetch = originalFetch;
   }
-}
-
-async function testIbkrProviderUsesPortfolio2Positions() {
-  const originalFetch = globalThis.fetch;
-  const calls = [];
-  globalThis.fetch = async (url) => {
-    const textUrl = String(url);
-    calls.push(textUrl);
-    const target = textUrl.includes('/api/yahoo?url=')
-      ? decodeURIComponent(new URL(textUrl, 'https://viewport.test').searchParams.get('url') || '')
-      : textUrl;
-
-    if (target.endsWith('/portfolio/accounts')) {
-      return new Response(JSON.stringify([{ accountId: 'U1234567' }]), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-    if (target.includes('/portfolio2/U1234567/positions')) {
-      return new Response(JSON.stringify([
-        {
-          position: 12,
-          conid: '9408',
-          avgPrice: 266.2,
-          currency: 'USD',
-          description: 'MCD',
-          marketPrice: 258.83,
-          marketValue: 3105.96,
-          unrealizedPnl: 88.55,
-          secType: 'STK',
-          assetClass: 'STK'
-        }
-      ]), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-    return new Response('{}', { status: 404, headers: { 'Content-Type': 'application/json' } });
-  };
-
-  try {
-    const accounts = await IbkrProvider.getAccounts({ baseUrl: 'https://localhost:5000/v1/api', timeoutMs: 1000 });
-    const positions = await IbkrProvider.getPositions(accounts[0].accountId, {
-      baseUrl: 'https://localhost:5000/v1/api',
-      timeoutMs: 1000
-    });
-    assert.equal(accounts.length, 1);
-    assert.equal(positions.length, 1);
-    assert.equal(positions[0].description, 'MCD');
-    assert.ok(calls.some(url => url.includes('/portfolio2/U1234567/positions')));
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-}
-
-async function testIbkrFetcherMapsRowsForRenderer() {
-  const calls = [];
-  const renderer = {
-    appendPositions: (rows, source, options) => calls.push({ rows, source, options }),
-    markProviderFailed: (_, err) => { throw err; }
-  };
-  const providers = {
-    ibkr: {
-      getDefaultGatewayUrl: () => 'https://localhost:5000/v1/api',
-      getAccounts: async () => [{ accountId: 'U1234567' }, { accountId: 'U7654321' }],
-      getPositions: async (accountId) => accountId === 'U1234567'
-        ? [{
-            position: 12,
-            conid: '9408',
-            avgPrice: 266.2,
-            description: 'MCD',
-            marketPrice: 258.83,
-            marketValue: 3105.96,
-            unrealizedPnl: 88.55,
-            secType: 'STK',
-            assetClass: 'STK'
-          }]
-        : []
-    }
-  };
-  const fetcher = new IbkrFetcher(providers, renderer, {
-    ibkrEnabled: true,
-    ibkrGatewayUrl: 'https://localhost:5000/v1/api',
-    ibkrAccountIds: 'U1234567'
-  });
-
-  await fetcher.fetch();
-
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].source, 'IBKR');
-  assert.equal(calls[0].rows.length, 1);
-  assert.equal(calls[0].rows[0].asset, 'MCD');
-  assert.equal(calls[0].rows[0].exchange, 'IBKR STK');
-  assert.equal(calls[0].rows[0].amount, 12);
-  assert.equal(calls[0].rows[0].price, 258.83);
-  assert.equal(calls[0].rows[0].value, 3105.96);
-  assert.equal(calls[0].rows[0].pnl, 88.55);
-  assert.equal(calls[0].rows[0].ibkrAccountId, 'U1234567');
-  assert.equal(calls[0].options.removeFilter({ exchange: 'IBKR STK' }), true);
-  assert.equal(calls[0].options.removeFilter({ exchange: 'Manual (Stock)' }), false);
-
-  const optionRow = ibkrFetcherInternal.rowToPosition({
-    position: 1,
-    contractDesc: 'AAPL  260116C00200000',
-    mktPrice: 10,
-    mktValue: 1000,
-    secType: 'OPT'
-  }, 'U1234567');
-  assert.equal(optionRow.exchange, 'IBKR OPT');
 }
 
 function testManualPositionDeletionHandlesStocksAndCategoryKeys() {
@@ -880,20 +981,24 @@ async function run() {
   testHyperliquidTotalsFallbackWhenNoEquity();
   testCostBasisOnLosses();
   testNaNPnlIsSkipped();
+  testPnlPercentIgnoresPositionsWithoutCostBasis();
+  testHeadlinePnlMatchesPositionRows();
   testMultiWalletHlEquityAggregates();
   testLighterLeverageDoesNotInflateTotals();
   testShortPnlSignPreserved();
+  testPortfolioBreakdownAllocationAnd24h();
   testPythFeedParserRecognisesAllCategories();
   testWatchlistNormalizeEntriesAcceptsLegacyAndMixed();
   await testManualFetcherLabelsStockPositions();
   await testManualFetcherLegacyPythPositionFallsBackToCrypto();
   await testManualFetcherRoutesStockPositionsThroughYahoo();
+  await testManualFetcherAppendsStockPlaceholderBeforeSlowQuote();
+  await testManualFetcherRefreshKeepsLastQuoteWhileLoading();
+  await testManualPythPositionsSurvivePythOutage();
   await testManualFetcherPreservesCustomPositionCurrency();
   await testStocksQuotesUseExtendedHoursSparkData();
   await testStocksSearchCarriesQuoteCurrency();
   await testCurrencyFormattingAndFxRates();
-  await testIbkrProviderUsesPortfolio2Positions();
-  await testIbkrFetcherMapsRowsForRenderer();
   testManualPositionDeletionHandlesStocksAndCategoryKeys();
   testEmptyAndMalformedInputs();
   await testAlchemyHeliusRowShape();

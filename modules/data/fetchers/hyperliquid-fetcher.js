@@ -190,11 +190,14 @@ export class HyperliquidFetcher {
                     // Process Spot Balances
                     if (data?.spot?.balances) {
                         for (const bal of data.spot.balances) {
-                            const available = parseFloat(bal.total || 0) - parseFloat(bal.hold || 0);
+                            const total = parseFloat(bal.total || 0);
+                            const available = total - parseFloat(bal.hold || 0);
                             if (available > 0) {
                                 const price = parseFloat(spotPriceMap[bal.coin] || 0);
                                 const value = available * price;
-                                const entryNtl = parseFloat(bal.entryNtl || 0);
+                                // entryNtl is the cost of the whole balance; scale it to the
+                                // available part we value, or held tokens read as a loss.
+                                const entryNtl = parseFloat(bal.entryNtl || 0) * (total > 0 ? available / total : 0);
                                 const pnl = (entryNtl > 0 && value > 0) ? (value - entryNtl) : null;
 
                                 if (pnl !== null && !isNaN(pnl)) {

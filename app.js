@@ -243,12 +243,23 @@ async function _doRenderPortfolioIncremental() {
   const zcashAddrs = (settings.zcashAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
 
   const hasManualPositions = settings.cryptoPositions && Array.isArray(settings.cryptoPositions) && settings.cryptoPositions.length > 0;
-  const hasIbkr = settings.ibkrEnabled && settings.ibkrGatewayUrl;
 
-  if (wallets.length === 0 && solanaAddrs.length === 0 && bitcoinAddrs.length === 0 && zcashAddrs.length === 0 && !hasManualPositions && !hasIbkr) {
+  if (wallets.length === 0 && solanaAddrs.length === 0 && bitcoinAddrs.length === 0 && zcashAddrs.length === 0 && !hasManualPositions) {
     const summaryEl = document.getElementById('newSummary');
     const positionsBody = document.getElementById('newPositionsBody');
-    if (summaryEl) summaryEl.innerHTML = 'Your portfolio is empty. Add wallets in Settings or add manual positions.';
+    if (summaryEl) {
+      summaryEl.innerHTML = `
+        <div class="hero-empty">
+          <p>Nothing to track yet. Connect a wallet or add a position by hand.</p>
+          <div class="button-row">
+            <button type="button" class="btn-text btn-primary" data-empty-action="newSettingsBtn">Add wallets</button>
+            <button type="button" class="btn-text" data-empty-action="newAddPositionBtn">+ Add position</button>
+          </div>
+        </div>`;
+      summaryEl.querySelectorAll('[data-empty-action]').forEach(btn => {
+        btn.addEventListener('click', () => document.getElementById(btn.dataset.emptyAction)?.click());
+      });
+    }
     if (positionsBody) positionsBody.innerHTML = '<tr><td colspan="9" class="loading">No wallets or positions configured</td></tr>';
     return;
   }
@@ -275,9 +286,6 @@ async function _doRenderPortfolioIncremental() {
   }
   if (bitcoinAddrs.length > 0 || zcashAddrs.length > 0) {
     expectedProviders.push('Bitcoin/Zcash');
-  }
-  if (hasIbkr) {
-    expectedProviders.push('IBKR');
   }
   if (hasManualPositions) {
     expectedProviders.push('Manual');
@@ -365,7 +373,6 @@ async function _doRenderPortfolioIncremental() {
     const { CieloFetcher } = await import('./modules/data/fetchers/cielo-fetcher.js');
     const { AlchemyHeliusFetcher } = await import('./modules/data/fetchers/alchemy-helius-fetcher.js');
     const { BitcoinZcashFetcher } = await import('./modules/data/fetchers/bitcoin-fetcher.js');
-    const { IbkrFetcher } = await import('./modules/data/fetchers/ibkr-fetcher.js');
     const { ManualFetcher } = await import('./modules/data/fetchers/manual-fetcher.js');
 
     const renderer = new IncrementalPortfolioRenderer({
@@ -375,7 +382,8 @@ async function _doRenderPortfolioIncremental() {
         positionsBody: document.getElementById('newPositionsBody'),
         mobileContainer: document.getElementById('newMobilePositionsContainer'),
         summaryEl: document.getElementById('newSummary'),
-        providerStatusEl: document.getElementById('newProviderStatus')
+        providerStatusEl: document.getElementById('newProviderStatus'),
+        lastUpdatedEl: document.getElementById('lastUpdateTimestamp')
       },
       ui: { HeroUI, PositionsUI },
       expectedProviders
@@ -391,7 +399,6 @@ async function _doRenderPortfolioIncremental() {
     manager.registerFetcher('Cielo', new CieloFetcher(providers, renderer, settings));
     manager.registerFetcher('AlchemyHelius', new AlchemyHeliusFetcher(providers, renderer, settings));
     manager.registerFetcher('BitcoinZcash', new BitcoinZcashFetcher(providers, renderer));
-    manager.registerFetcher('IBKR', new IbkrFetcher(providers, renderer, settings));
     manager.registerFetcher('Manual', new ManualFetcher(providers, renderer, settings));
 
     window._portfolioManager = manager;
@@ -406,6 +413,9 @@ async function _doRenderPortfolioIncremental() {
   }
 
   // Trigger Fetch
+  if (!window._portfolioManager.isFetching) {
+    window._portfolioRenderer?.beginRefresh?.(expectedProviders);
+  }
   window._portfolioManager.fetchAll(wallets, solanaAddrs, bitcoinAddrs, zcashAddrs);
 
 
@@ -460,13 +470,13 @@ function applyFontSize(size) {
 
 function applyFont(fontName) {
   const body = document.body;
-  body.classList.remove('font-commit', 'font-departure');
+  body.classList.remove('font-berkeley', 'font-commit', 'font-departure');
 
-  if (fontName === 'commit') {
-    body.classList.add('font-commit');
-  } else if (fontName === 'departure') {
-    body.classList.add('font-departure');
+  if (fontName === 'berkeley' || fontName === 'commit' || fontName === 'departure') {
+    body.classList.add(`font-${fontName}`);
   }
+  // Mirrored on <html> so the pre-paint script in index.html can pick the font before modules load.
+  document.documentElement.dataset.font = fontName || 'system';
 }
 
 // ============================================================================
@@ -649,7 +659,7 @@ function setupControls() {
   const settings = getSettings();
 
   // Apply saved font
-  applyFont(settings.font || 'system');
+  applyFont(settings.font || 'berkeley');
 
 
 
@@ -1000,9 +1010,6 @@ function setupControls() {
       const alchemyInput = document.getElementById('newAlchemyApiKey');
       const heliusInput = document.getElementById('newHeliusApiKey');
       const openseaInput = document.getElementById('newOpenSeaApiKey');
-      const ibkrEnabledInput = document.getElementById('newIbkrEnabled');
-      const ibkrGatewayUrlInput = document.getElementById('newIbkrGatewayUrl');
-      const ibkrAccountIdsInput = document.getElementById('newIbkrAccountIds');
       const cityInput = document.getElementById('newWeatherCity');
       const latInput = document.getElementById('newWeatherLat');
       const lonInput = document.getElementById('newWeatherLon');
@@ -1036,9 +1043,6 @@ function setupControls() {
       if (alchemyInput) alchemyInput.value = s.alchemyApiKey || '';
       if (heliusInput) heliusInput.value = s.heliusApiKey || '';
       if (openseaInput) openseaInput.value = s.openSeaApiKey || '';
-      if (ibkrEnabledInput) ibkrEnabledInput.checked = s.ibkrEnabled ?? false;
-      if (ibkrGatewayUrlInput) ibkrGatewayUrlInput.value = s.ibkrGatewayUrl || 'https://localhost:5000/v1/api';
-      if (ibkrAccountIdsInput) ibkrAccountIdsInput.value = s.ibkrAccountIds || '';
       if (cityInput) cityInput.value = s.weather?.label || '';
       if (latInput) latInput.value = s.weather?.lat ?? '';
       if (lonInput) lonInput.value = s.weather?.lon ?? '';
@@ -1048,7 +1052,7 @@ function setupControls() {
       if (showExactAmountsInput) showExactAmountsInput.checked = s.showExactAmounts ?? false;
       if (showPriceChartInput) showPriceChartInput.checked = s.showPriceChart ?? true;
       if (minBalanceInput) minBalanceInput.value = s.minBalanceThreshold || 100;
-      if (fontSelectInput) fontSelectInput.value = s.font || 'system';
+      if (fontSelectInput) fontSelectInput.value = s.font || 'berkeley';
       if (portfolioBaseCurrencyInput) portfolioBaseCurrencyInput.value = s.portfolioBaseCurrency || 'USD';
 
 
@@ -1087,6 +1091,9 @@ function setupControls() {
       }
       settingsDialog.style.display = 'none';
       settingsBackdrop.style.display = 'none';
+
+      // Undo an unsaved live font preview; after Save this re-applies the saved value.
+      applyFont(getSettings().font || 'berkeley');
 
       // Re-enable scroll on mobile
       document.body.classList.remove('modal-open');
@@ -1471,9 +1478,6 @@ function setupControls() {
       const alchemyInput = document.getElementById('newAlchemyApiKey');
       const heliusInput = document.getElementById('newHeliusApiKey');
       const openseaInput = document.getElementById('newOpenSeaApiKey');
-      const ibkrEnabledInput = document.getElementById('newIbkrEnabled');
-      const ibkrGatewayUrlInput = document.getElementById('newIbkrGatewayUrl');
-      const ibkrAccountIdsInput = document.getElementById('newIbkrAccountIds');
       const cityInput = document.getElementById('newWeatherCity');
       const latInput = document.getElementById('newWeatherLat');
       const lonInput = document.getElementById('newWeatherLon');
@@ -1507,9 +1511,6 @@ function setupControls() {
       if (alchemyInput) newSettings.alchemyApiKey = alchemyInput.value;
       if (heliusInput) newSettings.heliusApiKey = heliusInput.value;
       if (openseaInput) newSettings.openSeaApiKey = openseaInput.value;
-      if (ibkrEnabledInput) newSettings.ibkrEnabled = ibkrEnabledInput.checked;
-      if (ibkrGatewayUrlInput) newSettings.ibkrGatewayUrl = ibkrGatewayUrlInput.value.trim() || 'https://localhost:5000/v1/api';
-      if (ibkrAccountIdsInput) newSettings.ibkrAccountIds = ibkrAccountIdsInput.value;
       if (coloredPnLInput) newSettings.useColoredPnL = coloredPnLInput.checked;
       if (hideWatchlistInput) newSettings.hideWatchlist = hideWatchlistInput.checked;
       if (hideComicInput) newSettings.hideComic = hideComicInput.checked;
@@ -1588,7 +1589,7 @@ function setupControls() {
         body.classList.toggle('mono-pnl', !(newSettings.useColoredPnL ?? false));
 
         // Apply font setting
-        applyFont(newSettings.font || 'system');
+        applyFont(newSettings.font || 'berkeley');
 
         // Apply keyboard shortcuts setting (dynamic enable/disable)
         if (newSettings.enableKeyboardShortcuts) {
@@ -2017,7 +2018,7 @@ function setupControls() {
         const label = categoryLabel(feed.category);
         const name = feed.name && feed.name !== feed.symbol ? ` <span style="opacity: 0.65;">— ${escapeHtml(feed.name)}</span>` : '';
         resultDiv.innerHTML = `
-          <span><strong>${escapeHtml(feed.symbol)}</strong>${name}${label ? ` <span style="opacity: 0.5; font-size: 0.85em;">${label}</span>` : ''}</span>
+          <span><strong>${escapeHtml(feed.symbol)}</strong>${name}${label ? ` <span style="opacity: 0.5;">${label}</span>` : ''}</span>
           <button class="btn-text ${isInWatchlist || isAdded ? 'added' : ''}" data-entry-key="${key}">
             ${isInWatchlist ? 'In List' : isAdded ? 'Added' : 'Add'}
           </button>
@@ -2517,10 +2518,10 @@ function setupControls() {
       resultDiv.style.gap = '8px';
       const label = categoryLabel(feed.category);
       const name = feed.name && feed.name !== feed.symbol ? escapeHtml(feed.name) : '';
-      const exchange = feed.exchange ? ` <span style="opacity: 0.5; font-size: 0.8em;">(${escapeHtml(feed.exchange)})</span>` : '';
+      const exchange = feed.exchange ? ` <span style="opacity: 0.5;">(${escapeHtml(feed.exchange)})</span>` : '';
       resultDiv.innerHTML =
         `<span><strong>${escapeHtml(feed.symbol)}</strong>${name ? ` <span style="opacity: 0.7;">— ${name}</span>` : ''}${exchange}</span>` +
-        (label ? `<span style="opacity: 0.6; font-size: 0.85em;">${label}</span>` : '');
+        (label ? `<span style="opacity: 0.6;">${label}</span>` : '');
       resultDiv.addEventListener('click', () => {
         selectedPythFeed = feed;
         addPositionPythSearch.value = feed.symbol;
@@ -3046,6 +3047,23 @@ window.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // Tapping the total hides/shows amounts — same toggle as the header button, so labels stay in sync.
+  // Delegated because the hero is re-rendered on every price update.
+  const summaryForToggle = document.getElementById('newSummary');
+  const toggleAmountsFromHero = (e) => {
+    if (!e.target.closest('.hero-amount-toggle')) return;
+    if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    document.getElementById('newToggleAmountsBtn')?.click();
+  };
+  summaryForToggle?.addEventListener('click', toggleAmountsFromHero);
+  summaryForToggle?.addEventListener('keydown', toggleAmountsFromHero);
+
+  // Header refresh chip shares the greeting's refresh path (spinner + hero pulse + watchlist)
+  document.getElementById('newRefreshBtn')?.addEventListener('click', () => {
+    document.querySelector('.greeting-container')?.click();
+  });
+
   // Setup header controls (non-blocking)
   setupControls();
 
@@ -3429,6 +3447,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     refreshInProgress = true;
 
     try {
+      updateGreeting();
       // Full re-fetch using the same path as initial load - this always works correctly
       await renderPortfolioIncremental();
 

@@ -9,6 +9,8 @@
 // Each rendered item carries a composite `key` (`pyth:<id>` or `yahoo:<SYM>`) used for
 // edit-mode removal, flash detection, and caching.
 
+import { formatPrice } from '../utils/currency.js';
+
 const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
 let lastGoodWatchlistData = null;
 
@@ -235,7 +237,8 @@ async function fetchYahooItems(yahooEntries, stocksProvider) {
         // Spark endpoint returns intraday sparkline data alongside the quote, so the row has
         // a chart from the first paint — no second request required.
         priceHistory: Array.isArray(q.priceHistory) && q.priceHistory.length > 1 ? q.priceHistory : null,
-        marketState: q.marketState || null
+        marketState: q.marketState || null,
+        currency: q.currency || null
       });
     }
     return results;
@@ -288,11 +291,10 @@ function renderRows(container, data, options) {
     const change24h = item.change24h;
     const key = item.key || (item.feedId ? `pyth:${item.feedId}` : `yahoo:${(symbol || '').toUpperCase()}`);
 
+    // Quote currency (EUR for VWCE.DE, GBp for LSE…); Pyth feeds are USD-quoted.
     const priceFormatted = price == null
       ? '—'
-      : price < 1
-        ? price.toPrecision(4)
-        : price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      : formatPrice(price, { currency: item.currency || 'USD' });
 
     let changeColor = '';
     let changeText = '—';
@@ -300,14 +302,14 @@ function renderRows(container, data, options) {
       const isPos = change24h >= 0;
       changeColor = useColoredPnL ? (isPos ? 'var(--green)' : 'var(--red)') : '';
       changeText = `${isPos ? '+' : ''}${change24h.toFixed(2)}%`;
-    } else if (!isStablecoin(symbol)) {
+    } else if (!isStablecoin(symbol) && !item.unavailable) {
       changeText = '<span class="cell-loading">—</span>';
     }
 
     let chartHtml;
     if (!showPriceChart) {
       chartHtml = '';
-    } else if (isStablecoin(symbol)) {
+    } else if (isStablecoin(symbol) || item.unavailable) {
       chartHtml = '—';
     } else if (item.priceHistory && item.priceHistory.length > 1) {
       chartHtml = createSparkline(item.priceHistory, 60, 24, change24h) || '<span class="cell-loading">—</span>';
@@ -328,7 +330,7 @@ function renderRows(container, data, options) {
     return `
       <tr class="${flashClass}">
         <td>${assetCellContent}</td>
-        <td class="text-right font-mono">$${priceFormatted}</td>
+        <td class="text-right font-mono"${item.unavailable ? ' title="Quote unavailable"' : ''}>${priceFormatted}</td>
         <td class="text-center chart">${chartHtml}</td>
         <td class="text-right font-mono" style="color: ${changeColor}">${changeText}</td>
       </tr>
@@ -375,8 +377,28 @@ export async function render(container, {
   }
 
   const updateUI = (data) => {
+    // Every saved entry gets a row, even when its quote failed — otherwise an entry whose feed
+    // is down has no remove button and can never be deleted. Rows for entries no longer saved
+    // (stale fallback data) are dropped.
+    const byKey = new Map();
+    for (const item of data || []) {
+      if (item?.key && orderIndex.has(item.key) && !byKey.has(item.key)) byKey.set(item.key, item);
+    }
+    for (const entry of normalized) {
+      const key = entryKey(entry);
+      if (byKey.has(key)) continue;
+      const id = String(entry.id || '');
+      byKey.set(key, {
+        key,
+        provider: entry.provider,
+        symbol: entry.symbol || (id ? `${id.replace(/^0x/i, '').slice(0, 6)}…` : '—'),
+        price: null,
+        change24h: null,
+        unavailable: true
+      });
+    }
     // Preserve the order the user added entries in, regardless of fetch completion order.
-    const sorted = [...data].sort((a, b) => (orderIndex.get(a.key) ?? 0) - (orderIndex.get(b.key) ?? 0));
+    const sorted = [...byKey.values()].sort((a, b) => (orderIndex.get(a.key) ?? 0) - (orderIndex.get(b.key) ?? 0));
     renderRows(container, sorted, { useColoredPnL, editMode, showPriceChart, prevPriceMap });
   };
   const getLastGoodData = () => {
@@ -408,7 +430,7 @@ export async function render(container, {
         persistLastGoodData(fallback);
         return fallback;
       }
-      container.innerHTML = `<tr><td colspan="4" class="loading">No data available</td></tr>`;
+      updateUI([]);
       return [];
     }
 

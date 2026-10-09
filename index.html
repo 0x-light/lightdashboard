@@ -33,6 +33,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
+    <link rel="preload" href="./BerkeleyMono-Regular.otf" as="font" type="font/otf" crossorigin>
     <link rel="stylesheet" href="./styles.css?v=2.9.16">
     <!-- Apply theme synchronously to prevent flash of wrong theme -->
     <script>
@@ -42,6 +43,7 @@
                 var settings = JSON.parse(rawSettings);
                 var theme = settings.theme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
                 document.documentElement.dataset.theme = theme;
+                document.documentElement.dataset.font = settings.font || 'berkeley';
 
                 // Theme background colors for status bar (must match CSS)
                 var themeColors = {
@@ -100,7 +102,7 @@
 
 
         <header class="app-header">
-            <div class="greeting-container">
+            <div class="greeting-container" title="Refresh">
                 <h1 id="newGreeting" class="greeting">Viewport</h1>
             </div>
             <button id="newMobileMenuBtn" class="btn-text mobile-menu-btn">Menu</button>
@@ -112,6 +114,7 @@
                     <span id="newFontSizeDisplay" class="btn-text">14px</span>
                     <button id="newIncreaseFontBtn" class="btn-text">+</button>
                 </div>
+                <button id="newRefreshBtn" class="btn-text">Refresh</button>
                 <button id="newToggleAmountsBtn" class="btn-text">Hide Amounts</button>
                 <span class="theme-select-wrapper">
                     <select id="newThemeSelect" class="theme-select-btn">
@@ -360,11 +363,11 @@
                 <button id="newSettingsBtnMobile" class="btn-text">Settings</button>
             </div>
             <div class="mobile-menu-footer">
-                <div id="healthMobile" class="status-info" style="margin-bottom: 16px; font-size: 13px;">
+                <div id="healthMobile" class="status-info" style="margin-bottom: 16px;">
                     <div style="margin-bottom: 4px;">Providers:</div>
                     <div style="white-space: pre-line; line-height: 1.6;">Initializing…</div>
                 </div>
-                <div class="status-info" style="margin-bottom: 16px; font-size: 13px; opacity: 0.6;">
+                <div class="status-info" style="margin-bottom: 16px; opacity: 0.6;">
                     <div id="versionDisplay">Version: Loading...</div>
                 </div>
             </div>
@@ -396,7 +399,7 @@
                             <button type="button" id="newImportSettingsBtn" class="btn-text">Import</button>
                         </div>
                         <textarea id="newSettingsExportArea" class="settings-input"
-                            style="display: none; font-family: monospace; font-size: 12px; min-height: 100px;"
+                            style="display: none; min-height: 100px;"
                             placeholder="Paste exported settings here, then click Save & Reload at the bottom"
                             readonly></textarea>
                     </div>
@@ -452,28 +455,6 @@
                                 placeholder="t1xxx"></textarea>
                         </label>
                         <div class="info" style="margin-top: 4px;">Zcash transparent addresses only (t-addr)</div>
-                    </fieldset>
-
-                    <fieldset>
-                        <legend>Brokerages</legend>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-                            <input id="newIbkrEnabled" type="checkbox" class="settings-input">
-                            Enable IBKR positions
-                        </label>
-                        <label>
-                            IBKR Gateway URL
-                            <input id="newIbkrGatewayUrl" type="text" class="settings-input"
-                                placeholder="https://localhost:5000/v1/api">
-                        </label>
-                        <div class="info" style="margin-top: 4px;">Run and sign in to Client Portal Gateway on this
-                            machine. The app stores only this local URL, not your IBKR password.</div>
-                        <label style="margin-top: 12px;">
-                            Account IDs (optional, comma-separated)
-                            <input id="newIbkrAccountIds" type="text" class="settings-input"
-                                placeholder="U1234567, U7654321">
-                        </label>
-                        <div class="info" style="margin-top: 4px;">Leave blank to include every account returned by
-                            IBKR.</div>
                     </fieldset>
 
                     <fieldset>
@@ -636,78 +617,83 @@
             </div>
         </div>
         <main class="container">
-            <section class="hero">
-                <p id="newSummary" class="hero-summary"><span class="loading-terminal">...</span></p>
-                <div id="newProviderStatus" class="provider-status" hidden></div>
+            <section class="hero panel">
+                <header class="panel-head">
+                    <h2 class="panel-title">Portfolio</h2>
+                    <span class="panel-rule"></span>
+                </header>
+                <div id="newSummary" class="hero-summary"><span class="loading-terminal">Loading</span></div>
             </section>
 
-            <section class="data-section" id="positionsSection" style="margin-top: 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h2 class="section-title" style="margin: 0;">Positions</h2>
-                    <button id="newAddPositionBtn" class="btn-text">+</button>
-                </div>
+            <section class="data-section panel" id="positionsSection">
+                <header class="panel-head">
+                    <h2 class="panel-title section-title">Positions</h2>
+                    <span class="panel-count"></span>
+                    <span class="panel-rule"></span>
+                    <button id="newAddPositionBtn" class="btn-text panel-action" aria-label="Add position">+ Add</button>
+                </header>
                 <div class="table-wrapper">
                     <table id="newPositionsTable" class="data-table">
                         <thead>
                             <tr>
                                 <th class="th-asset">Asset</th>
                                 <th class="th-price">Price</th>
-                                <th class="th-chart chart">Chart</th>
+                                <th class="th-chart chart">24h</th>
                                 <th class="th-value">Value</th>
                                 <th class="th-pnl">P&L</th>
                                 <th class="th-funding">Funding</th>
-                                <th class="th-change">24H %</th>
+                                <th class="th-change">24h %</th>
                                 <th class="th-amount">Amount</th>
-                                <th class="th-exchange">Exchange</th>
+                                <th class="th-exchange">Source</th>
                             </tr>
                         </thead>
                         <tbody id="newPositionsBody">
                             <tr>
-                                <td colspan="9" class="loading"><span class="loading-terminal">...</span></td>
+                                <td colspan="9" class="loading"><span class="loading-terminal">Loading</span></td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
                 <div id="newMobilePositionsContainer" class="mobile-positions-container"></div>
-                <div class="button-row">
+                <div class="button-row panel-foot">
                     <button id="newShowHiddenBtn" class="btn-text">Show &lt;$100</button>
                     <button id="newEditListBtn" class="btn-text">Edit</button>
                     <button id="newCancelEditBtn" class="btn-text" style="display: none;">Cancel</button>
                 </div>
             </section>
 
-
-            <section class="data-section" id="watchlistSection" style="margin-top: 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h2 class="section-title" style="margin: 0;">Watchlist</h2>
-                    <button id="newAddToWatchlistBtn" class="btn-text">+</button>
-                </div>
+            <section class="data-section panel" id="watchlistSection">
+                <header class="panel-head">
+                    <h2 class="panel-title section-title">Watchlist</h2>
+                    <span class="panel-rule"></span>
+                    <button id="newAddToWatchlistBtn" class="btn-text panel-action" aria-label="Add to watchlist">+ Add</button>
+                </header>
                 <div class="table-wrapper">
                     <table id="newWatchlistTable" class="data-table">
                         <thead>
                             <tr>
                                 <th>Asset</th>
                                 <th>Price</th>
-                                <th class="chart">Chart</th>
-                                <th>24H %</th>
+                                <th class="chart">24h</th>
+                                <th>24h %</th>
                             </tr>
                         </thead>
                         <tbody id="newWatchlistBody">
                             <tr>
-                                <td colspan="4" class="loading">Loading...</td>
+                                <td colspan="4" class="loading"><span class="loading-terminal">Loading</span></td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-                <div class="button-row">
+                <div class="button-row panel-foot">
                     <button id="newEditWatchlistBtn" class="btn-text">Edit</button>
                     <button id="newCancelWatchlistEditBtn" class="btn-text" style="display: none;">Cancel</button>
                 </div>
             </section>
 
-            <section class="data-section" id="comicSection" style="margin-top: 24px;">
-                <div class="comic-header">
-                    <div class="comic-tabs">
+            <section class="data-section panel" id="comicSection">
+                <header class="panel-head comic-header">
+                    <div class="comic-tabs" role="tablist">
                         <button id="newTabCalvin" class="comic-tab active" data-comic="calvinandhobbes">
                             <span class="tab-desktop">Calvin & Hobbes</span>
                             <span class="tab-mobile">C&H</span>
@@ -715,17 +701,18 @@
                         <button id="newTabPeanuts" class="comic-tab" data-comic="peanuts">Peanuts</button>
                         <button id="newTabFarside" class="comic-tab" data-comic="farside">The Far Side</button>
                     </div>
-                </div>
+                    <span class="panel-rule"></span>
+                </header>
                 <div class="comic-content">
                     <div class="calvin-container">
-                        <div id="newComic">Loading...</div>
+                        <div id="newComic"><span class="loading-terminal">Loading</span></div>
                     </div>
                     <div class="calvin-controls-mobile">
                         <button id="newComicPrevBtnMobile" class="btn-text">Prev</button>
                         <button id="newComicRandomBtnMobile" class="btn-text">Random</button>
                         <button id="newComicNextBtnMobile" class="btn-text">Next</button>
                     </div>
-                    <div class="calvin-controls">
+                    <div class="calvin-controls panel-foot">
                         <button id="newComicPrevBtn" class="btn-text">Prev</button>
                         <button id="newComicRandomBtn" class="btn-text">Random</button>
                         <button id="newComicNextBtn" class="btn-text">Next</button>
@@ -733,6 +720,10 @@
                 </div>
             </section>
         </main>
+        <footer class="status-bar">
+            <span id="lastUpdateTimestamp" class="last-update-timestamp"></span>
+            <span id="newProviderStatus" class="provider-status" hidden></span>
+        </footer>
     </div> <!-- Close main-content wrapper -->
 
     <!-- Watchlist Search Modal -->

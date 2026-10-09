@@ -217,7 +217,7 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
     container.innerHTML = `
       <div class="help" style="text-align: center; padding: 20px;">
         <p id="retryComicText" style="cursor: pointer; color: var(--accent);">Unable to load comic. Click to retry.</p>
-        <p style="font-size: 13px; margin-top: 12px;">
+        <p style="margin-top: 12px;">
           <a href="${url}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">View ${comic.name} online ↗</a>
         </p>
       </div>

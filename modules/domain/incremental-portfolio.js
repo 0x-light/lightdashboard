@@ -9,7 +9,7 @@ import {
   normalizeBaseCurrency,
   normalizeCurrencyCode
 } from '../utils/currency.js';
-import { calculatePortfolioTotals } from './portfolio.js';
+import { calculatePortfolioBreakdown, calculatePortfolioTotals } from './portfolio.js';
 
 export class IncrementalPortfolioRenderer {
   constructor({ providers, settings, containers, ui, expectedProviders = [], initialPositions = null }) {
@@ -162,10 +162,13 @@ export class IncrementalPortfolioRenderer {
    * When refreshing, removes old positions from the same source to prevent duplicates
    */
   appendPositions(newRows, source, options = {}) {
+    const markCompleted = options.markCompleted !== false;
     if (!Array.isArray(newRows) || newRows.length === 0) {
-      this.providerStatus.set(source, 'completed');
-      this.providerErrors.delete(source);
-      this.checkIfAllProvidersFinished();
+      if (markCompleted) {
+        this.providerStatus.set(source, 'completed');
+        this.providerErrors.delete(source);
+        this.checkIfAllProvidersFinished();
+      }
       this.renderProviderStatus();
       return;
     }
@@ -204,11 +207,13 @@ export class IncrementalPortfolioRenderer {
 
     this.allPositions.push(...newRows);
     this._positionsToken++;
-    this.providerStatus.set(source, 'completed');
     this.providerErrors.delete(source);
+    if (markCompleted) {
+      this.providerStatus.set(source, 'completed');
 
-    // Check if all providers finished
-    this.checkIfAllProvidersFinished();
+      // Check if all providers finished
+      this.checkIfAllProvidersFinished();
+    }
     const fxPromise = this.loadFxRatesForPositions(newRows);
 
     // Debouncing tuned for streaming providers: render first batch quickly, coalesce the rest.
@@ -235,6 +240,33 @@ export class IncrementalPortfolioRenderer {
     this.providerStatus.set(source, 'failed');
     this.providerErrors.set(source, error?.message || String(error || 'Unknown error'));
     this.checkIfAllProvidersFinished();
+    this.renderProviderStatus();
+  }
+
+  updateLastUpdatedLabel(state = 'updated') {
+    const el = this.containers?.lastUpdatedEl || document.getElementById('lastUpdateTimestamp');
+    if (!el) return;
+    el.dataset.state = state;
+    if (state === 'refreshing') {
+      el.textContent = 'Refreshing…';
+      return;
+    }
+    const updatedAt = new Date();
+    const time = updatedAt.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    el.textContent = `Updated ${time}`;
+    el.title = updatedAt.toLocaleString();
+  }
+
+  beginRefresh(expectedProviders = this.expectedProviders) {
+    this.expectedProviders = Array.from(new Set(expectedProviders || []));
+    this.providerStatus.clear();
+    this.providerErrors.clear();
+    this.isLoading = true;
+    this.showGreetingLoader();
+    this.updateLastUpdatedLabel('refreshing');
     this.renderProviderStatus();
   }
 
@@ -343,8 +375,9 @@ export class IncrementalPortfolioRenderer {
       fxRate: hasRate ? rate : null,
       fxConversionMissing: !hasRate,
       value: hasRate && Number.isFinite(sourceValue) ? sourceValue * rate : 0,
-      pnl: hasRate && Number.isFinite(Number(sourcePnl)) ? Number(sourcePnl) * rate : null,
-      funding: hasRate && Number.isFinite(Number(sourceFunding)) ? Number(sourceFunding) * rate : sourceFunding
+      // Number(null) is 0, so check for null first: unknown P&L/funding must stay unknown, not $0.
+      pnl: hasRate && sourcePnl != null && Number.isFinite(Number(sourcePnl)) ? Number(sourcePnl) * rate : null,
+      funding: hasRate && sourceFunding != null && Number.isFinite(Number(sourceFunding)) ? Number(sourceFunding) * rate : sourceFunding
     };
   }
 
@@ -382,10 +415,12 @@ export class IncrementalPortfolioRenderer {
     if (parts.length === 0) {
       el.hidden = true;
       el.textContent = '';
+      delete el.dataset.state;
       return;
     }
 
     el.hidden = false;
+    el.dataset.state = failed.length > 0 ? 'failed' : 'loading';
     el.textContent = parts.join(' · ');
   }
 
@@ -399,6 +434,7 @@ export class IncrementalPortfolioRenderer {
     if (this.expectedProviders.length === 0) {
       if (this.allPositions.length > 0) {
         this.hideGreetingLoader();
+        this.updateLastUpdatedLabel();
       }
       return;
     }
@@ -419,6 +455,7 @@ export class IncrementalPortfolioRenderer {
 
     if (allFinished) {
       this.hideGreetingLoader();
+      this.updateLastUpdatedLabel();
       // Trigger Pyth enrichment for positions missing 24h change
       this.enrichMissing24hWithPyth();
     }
@@ -535,11 +572,11 @@ export class IncrementalPortfolioRenderer {
     if (this._cachedTotalsToken === aggregationToken && this._cachedTotals) {
       totals = this._cachedTotals;
     } else {
-      totals = this.calculateTotals(sorted);
+      totals = { ...this.calculateTotals(sorted), ...calculatePortfolioBreakdown(sorted) };
       this._cachedTotals = totals;
       this._cachedTotalsToken = aggregationToken;
     }
-    const { totalValue, totalPnL, totalPnLPercent } = totals;
+    const { totalValue, totalPnL, totalPnLPercent, allocation, change24h, change24hPercent } = totals;
 
     // Filter for display (hide special positions + apply filters)
     // Edit mode: shows manually hidden positions (for editing), but NOT <$100 positions
@@ -556,7 +593,8 @@ export class IncrementalPortfolioRenderer {
 
       const assetKey = `${p.asset}_${p.exchange}`;
       const isManuallyHidden = hiddenAssets.has(assetKey);
-      const isSmall = !p.fxConversionMissing && hideSmallPositions && (p.value || 0) < minThreshold;
+      // Rows without a price are kept visible: hiding them would make the holding silently vanish.
+      const isSmall = !p.fxConversionMissing && !p.quoteLoading && !p.quoteUnavailable && hideSmallPositions && (p.value || 0) < minThreshold;
 
       // Clear flags first
       p.isHiddenPosition = false;
@@ -619,10 +657,11 @@ export class IncrementalPortfolioRenderer {
         heroPnLMode: 'total',
         totalPnL,
         totalPnLPercent,
-        totalDailyChange: 0,
-        totalDailyChangePercent: 0,
+        totalDailyChange: change24h,
+        totalDailyChangePercent: change24hPercent,
         baseCurrency,
         useColoredPnL: this.settings.useColoredPnL ?? true,
+        allocation,
         highlightsHtml: [],
         weather: window.cachedWeather || null
       });
@@ -691,13 +730,6 @@ export class IncrementalPortfolioRenderer {
         continue;
       }
 
-      // Keep brokerage positions separate; they may share tickers with manual/watchlist assets
-      // but carry account-specific value, P&L, and currency data.
-      if (row.exchange && typeof row.exchange === 'string' && row.exchange.startsWith('IBKR')) {
-        aggregated.push(row);
-        continue;
-      }
-
       // Group by asset
       const key = row.asset;
       if (!assetGroups.has(key)) {
@@ -713,12 +745,13 @@ export class IncrementalPortfolioRenderer {
       } else {
         const totalAmount = items.reduce((sum, p) => sum + (p.amount || 0), 0);
         const totalValue = items.reduce((sum, p) => sum + (p.value || 0), 0);
-        const totalPnL = items.reduce((sum, p) => sum + (p.pnl || 0), 0);
+        const knownPnL = items.filter(p => p.pnl != null && Number.isFinite(Number(p.pnl)));
+        const totalPnL = knownPnL.length > 0 ? knownPnL.reduce((sum, p) => sum + Number(p.pnl), 0) : null;
         const weightedPrice = totalAmount !== 0 ? totalValue / Math.abs(totalAmount) : 0;
         const exchanges = [...new Set(items.map(p => p.exchange))];
 
         // Use the first non-null change24h value from any of the items
-        const change24h = items.find(p => p.change24h !== null && p.change24h !== undefined)?.change24h || null;
+        const change24h = items.find(p => p.change24h !== null && p.change24h !== undefined)?.change24h ?? null;
 
         // Get priceHistory from first item that has it
         const priceHistory = items.find(p => p.priceHistory)?.priceHistory || null;

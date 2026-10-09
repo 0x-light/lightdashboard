@@ -84,6 +84,55 @@ function lastFiniteClose(closes) {
   return null;
 }
 
+// Spark doesn't say what currency a listing trades in, and without it every non-USD holding
+// (VWCE.DE in EUR, VOD.L in GBp…) would be valued as if its price were dollars. The chart
+// endpoint's meta does; a listing's currency never changes, so resolve once and keep it.
+const LISTING_CURRENCY_KEY = 'yahoo_listing_currency_v1';
+const listingCurrencies = new Map();
+
+function loadListingCurrencies() {
+  if (listingCurrencies.size > 0) return;
+  try {
+    const stored = JSON.parse(globalThis.window?.localStorage?.getItem(LISTING_CURRENCY_KEY) || '{}');
+    for (const [sym, currency] of Object.entries(stored)) {
+      if (typeof currency === 'string' && currency) listingCurrencies.set(sym, currency);
+    }
+  } catch (_) {
+    // Storage unavailable (private mode, tests) — resolve per session instead.
+  }
+}
+
+function saveListingCurrencies() {
+  try {
+    globalThis.window?.localStorage?.setItem(LISTING_CURRENCY_KEY, JSON.stringify(Object.fromEntries(listingCurrencies)));
+  } catch (_) {
+    // Best effort only.
+  }
+}
+
+async function resolveListingCurrencies(symbols, timeoutMs) {
+  loadListingCurrencies();
+  const missing = symbols.filter(sym => !listingCurrencies.has(sym));
+  if (missing.length === 0) return;
+  let found = false;
+  await Promise.all(missing.map(async (sym) => {
+    try {
+      const data = await HttpClient.getJson(
+        `${CHART_BASE}/${encodeURIComponent(sym)}?range=1d&interval=1d`,
+        { timeoutMs, ttlMs: 0, retries: 0 }
+      );
+      const currency = data?.chart?.result?.[0]?.meta?.currency;
+      if (typeof currency === 'string' && currency) {
+        listingCurrencies.set(sym, currency);
+        found = true;
+      }
+    } catch (_) {
+      // Leave unresolved; we retry on the next quote request.
+    }
+  }));
+  if (found) saveListingCurrencies();
+}
+
 /**
  * Batch quote lookup via Yahoo's `/v8/finance/spark` endpoint. Returns a map keyed by symbol
  * with current price, 24h change %, previous close, and sparkline data points. Missing or
@@ -103,16 +152,24 @@ export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
   for (let i = 0; i < unique.length; i += CHUNK) chunks.push(unique.slice(i, i + CHUNK));
 
   const merged = {};
+  const currenciesReady = resolveListingCurrencies(unique, timeoutMs);
   const results = await Promise.all(chunks.map(async (chunk) => {
-    const url = `${SPARK_BASE}?symbols=${encodeURIComponent(chunk.join(','))}&range=1d&interval=5m&includePrePost=true`;
+    const base = `${SPARK_BASE}?symbols=${encodeURIComponent(chunk.join(','))}&range=1d&interval=5m`;
     try {
       // Spark responds as { "<SYMBOL>": { close, timestamp, previousClose, ... } }
-      return await HttpClient.getJson(url, { timeoutMs, ttlMs: 15_000, retries: 1 });
+      return await HttpClient.getJson(`${base}&includePrePost=true`, { timeoutMs, ttlMs: 0, retries: 1, bypassCache: true });
     } catch (e) {
-      console.warn('[Stocks] Spark chunk failed:', e?.message || e);
-      return {};
+      // Yahoo intermittently 400s extended-hours spark requests (ClassCastException on "end");
+      // regular-session candles are still better than no quote at all.
+      try {
+        return await HttpClient.getJson(`${base}&includePrePost=false`, { timeoutMs, ttlMs: 0, retries: 0, bypassCache: true });
+      } catch (fallbackError) {
+        console.warn('[Stocks] Spark chunk failed:', fallbackError?.message || fallbackError);
+        return {};
+      }
     }
   }));
+  await currenciesReady;
 
   for (const data of results) {
     if (!data || typeof data !== 'object') continue;
@@ -145,7 +202,7 @@ export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
         price,
         change24h,
         previousClose: Number.isFinite(prevClose) ? prevClose : null,
-        currency: payload.currency || payload.meta?.currency || null,
+        currency: payload.currency || payload.meta?.currency || listingCurrencies.get(sym) || null,
         marketState: null, // spark doesn't expose this — caller can infer from time-of-day
         exchange: null,
         priceHistory

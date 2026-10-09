@@ -385,14 +385,13 @@ export function applyVisibilityClasses(settings) {
 
 export function applyFont(settings) {
   const body = document.body;
-  body.classList.remove('font-commit', 'font-departure');
+  body.classList.remove('font-berkeley', 'font-commit', 'font-departure');
 
-  if (settings.font === 'commit') {
-    body.classList.add('font-commit');
-  } else if (settings.font === 'departure') {
-    body.classList.add('font-departure');
+  if (settings.font === 'berkeley' || settings.font === 'commit' || settings.font === 'departure') {
+    body.classList.add(`font-${settings.font}`);
   }
-  // Default (berkeley) has no class
+  // Mirrored on <html> so the pre-paint script in index.html can pick the font before modules load.
+  document.documentElement.dataset.font = settings.font || 'system';
 }
 
 export function applyAlignment(settings) {

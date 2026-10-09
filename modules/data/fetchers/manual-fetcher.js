@@ -14,11 +14,104 @@ function labelForCategory(category) {
   }
 }
 
+function buildStockRow(pos, quote = null, { quoteLoading = false, quoteUnavailable = false } = {}) {
+  const amount = parseFloat(pos.amount || 0);
+  const entryPrice = parseFloat(pos.entryPrice || 0);
+  const currentPrice = Number.isFinite(quote?.price) ? quote.price : 0;
+  const value = amount * currentPrice;
+  const pnl = entryPrice > 0 && currentPrice > 0 ? (currentPrice - entryPrice) * amount : null;
+  const category = pos.category || 'equity';
+
+  return {
+    asset: pos.symbol,
+    exchange: labelForCategory(category),
+    amount,
+    price: currentPrice,
+    value,
+    change24h: Number.isFinite(quote?.change24h) ? quote.change24h : null,
+    pnl,
+    entryPrice: entryPrice || undefined,
+    entryDate: pos.entryDate || undefined,
+    assetName: pos.name || quote?.name || pos.symbol,
+    currency: pos.currency || quote?.currency || undefined,
+    marketState: quote?.marketState || null,
+    // Spark quote already includes sparkline data — use it so the row renders with a chart
+    // on first paint after the quote response, no follow-up fetch needed.
+    priceHistory: Array.isArray(quote?.priceHistory) && quote.priceHistory.length > 1
+      ? quote.priceHistory
+      : undefined,
+    category,
+    isManual: true,
+    manualType: 'stock',
+    quoteLoading,
+    quoteUnavailable,
+    _changeDetectionKey: `MANUAL_STOCK_${pos.symbol}`
+  };
+}
+
+function buildCustomRows(customPositions, settings) {
+  const rows = [];
+  for (const pos of customPositions) {
+    const asset = String(pos.symbol || pos.name || '').trim();
+    if (!asset) continue;
+
+    const rawAmount = Number(pos.amount);
+    const rawPrice = Number(pos.price);
+    const rawValue = Number(pos.value);
+
+    // Legacy custom entries are stored as { name, value }.
+    // Default to amount=1 and derive price from value when needed.
+    const amount = Number.isFinite(rawAmount) && rawAmount !== 0 ? rawAmount : 1;
+    let price = Number.isFinite(rawPrice) ? rawPrice : 0;
+    let value = Number.isFinite(rawValue) ? rawValue : 0;
+
+    if (value > 0 && (!Number.isFinite(rawPrice) || rawPrice <= 0)) {
+      price = value / Math.abs(amount);
+    } else if (value <= 0 && price > 0) {
+      value = Math.abs(amount) * price;
+    }
+
+    if (!Number.isFinite(value) || value <= 0) continue;
+    if (!Number.isFinite(price) || price < 0) price = 0;
+
+    rows.push({
+      asset,
+      exchange: 'Manual (Custom)',
+      amount,
+      price,
+      value,
+      change24h: null,
+      pnl: null,
+      currency: pos.currency || settings?.portfolioBaseCurrency || 'USD',
+      isManual: true,
+      manualType: 'custom',
+      _changeDetectionKey: `MANUAL_CUSTOM_${asset}`
+    });
+  }
+  return rows;
+}
+
+// Yahoo ticker for a Pyth-backed manual position, used only when Pyth has no price.
+// US equities/ETFs share tickers across both; crypto and FX/metals are deliberately excluded.
+function yahooSymbolForPythPosition(pos) {
+  const category = String(pos?.category || '').toLowerCase();
+  if (!['equity', 'etf', 'fund', 'stock'].includes(category)) return null;
+  const symbol = String(pos?.symbol || '').trim().toUpperCase();
+  return /^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol) ? symbol : null;
+}
+
+const MANUAL_REMOVE_OPTIONS = {
+  removeFilter: (p) => p.exchange && p.exchange.startsWith('Manual')
+};
+
 export class ManualFetcher {
     constructor(providers, renderer, settings) {
         this.providers = providers;
         this.renderer = renderer;
         this.settings = settings;
+        // Last good quote per symbol, so a refresh shows stale-but-real numbers while the new
+        // quote loads instead of blanking every row (and dropping them out of the total).
+        this._lastQuotes = new Map();
     }
 
     async fetch(cryptoPositions) {
@@ -27,143 +120,123 @@ export class ManualFetcher {
             const pythPositions = cryptoPositions.filter(p => p.type === 'pyth');
             const stockPositions = cryptoPositions.filter(p => p.type === 'stock');
             const customPositions = cryptoPositions.filter(p => p.type === 'custom');
+            const customRows = buildCustomRows(customPositions, this.settings);
+
+            if (stockPositions.length > 0) {
+                rows.push(...stockPositions.map(pos => {
+                    const lastQuote = this._lastQuotes.get(pos.symbol);
+                    return buildStockRow(pos, lastQuote || null, { quoteLoading: !lastQuote });
+                }));
+                rows.push(...customRows);
+                this.renderer.appendPositions(rows.map(row => ({ ...row })), 'Manual', {
+                    ...MANUAL_REMOVE_OPTIONS,
+                    markCompleted: false
+                });
+            }
 
             // Stock/ETF/FX/Index positions via Yahoo Finance. Single batched quote request
             // covers everything in one round-trip.
             if (stockPositions.length > 0 && this.providers.stocks?.getQuotes) {
                 try {
                     const symbols = stockPositions.map(p => p.symbol).filter(Boolean);
-                    const quotes = await this.providers.stocks.getQuotes(symbols, { timeoutMs: 5000 });
-
-                    for (const pos of stockPositions) {
-                        const amount = parseFloat(pos.amount || 0);
-                        const entryPrice = parseFloat(pos.entryPrice || 0);
+                    const quotes = await this.providers.stocks.getQuotes(symbols, { timeoutMs: 3500 });
+                    const stockRows = stockPositions.map(pos => {
                         const quote = quotes[pos.symbol];
-                        const currentPrice = Number.isFinite(quote?.price) ? quote.price : 0;
-                        const value = amount * currentPrice;
-                        const pnl = entryPrice > 0 ? (currentPrice - entryPrice) * amount : null;
-
-                        const category = pos.category || 'equity';
-                        rows.push({
-                            asset: pos.symbol,
-                            exchange: labelForCategory(category),
-                            amount,
-                            price: currentPrice,
-                            value,
-                            change24h: Number.isFinite(quote?.change24h) ? quote.change24h : null,
-                            pnl,
-                            entryPrice: entryPrice || undefined,
-                            entryDate: pos.entryDate || undefined,
-                            assetName: pos.name || quote?.name || pos.symbol,
-                            currency: pos.currency || quote?.currency || undefined,
-                            marketState: quote?.marketState || null,
-                            // Spark quote already includes sparkline data — use it so the row
-                            // renders with a chart on first paint, no follow-up fetch needed.
-                            priceHistory: Array.isArray(quote?.priceHistory) && quote.priceHistory.length > 1
-                              ? quote.priceHistory
-                              : undefined,
-                            category,
-                            isManual: true,
-                            manualType: 'stock',
-                            _changeDetectionKey: `MANUAL_STOCK_${pos.symbol}`
-                        });
-                    }
+                        if (quote) this._lastQuotes.set(pos.symbol, quote);
+                        return buildStockRow(pos, quote, { quoteUnavailable: !quote });
+                    });
+                    rows.splice(0, stockPositions.length, ...stockRows);
                 } catch (e) {
                     console.warn('[Manual] Failed to fetch stock quotes:', e);
+                    rows.splice(
+                        0,
+                        stockPositions.length,
+                        ...stockPositions.map(pos => buildStockRow(pos, null, { quoteUnavailable: true }))
+                    );
                 }
+            } else if (stockPositions.length > 0) {
+                rows.splice(
+                    0,
+                    stockPositions.length,
+                    ...stockPositions.map(pos => buildStockRow(pos, null, { quoteUnavailable: true }))
+                );
             }
 
             // Fetch prices for Pyth positions
             if (pythPositions.length > 0) {
                 const feedIds = pythPositions.map(p => p.feedId).filter(Boolean);
+                let pythPrices = {};
                 if (feedIds.length > 0) {
                     try {
-                        const pythPrices = await this.providers.pyth.getLatestByFeedIds(feedIds, 5000);
-
-                        for (const pos of pythPositions) {
-                            const currentPrice = pythPrices[pos.feedId] || 0;
-                            const amount = parseFloat(pos.amount || 0);
-                            const entryPrice = parseFloat(pos.entryPrice || 0);
-                            const value = amount * currentPrice;
-                            let pnl = null;
-
-                            if (entryPrice > 0) {
-                                pnl = (currentPrice - entryPrice) * amount;
-                            }
-
-                            // Category-aware exchange label distinguishes stocks from crypto in the
-                            // positions table. Legacy Pyth crypto positions saved before this change
-                            // lack `category` — treat them as crypto.
-                            const category = pos.category || 'crypto';
-                            const exchange = labelForCategory(category);
-
-                            rows.push({
-                                asset: pos.symbol,
-                                exchange,
-                                amount,
-                                price: currentPrice,
-                                value,
-                                change24h: null, // Could fetch if needed
-                                pnl,
-                                feedId: pos.feedId,
-                                entryPrice: entryPrice || undefined,
-                                entryDate: pos.entryDate || undefined,
-                                assetName: pos.name || pos.symbol,
-                                currency: pos.currency || 'USD',
-                                category,
-                                isManual: true,
-                                manualType: 'pyth',
-                                _changeDetectionKey: `MANUAL_PYTH_${pos.symbol}_${pos.feedId}`
-                            });
-                        }
+                        pythPrices = await this.providers.pyth.getLatestByFeedIds(feedIds, 5000) || {};
                     } catch (e) {
                         console.warn('[Manual] Failed to fetch Pyth prices:', e);
                     }
                 }
-            }
 
-            // Process custom positions (supports both legacy and current schema)
-            for (const pos of customPositions) {
-                const asset = String(pos.symbol || pos.name || '').trim();
-                if (!asset) continue;
-
-                const rawAmount = Number(pos.amount);
-                const rawPrice = Number(pos.price);
-                const rawValue = Number(pos.value);
-
-                // Legacy custom entries are stored as { name, value }.
-                // Default to amount=1 and derive price from value when needed.
-                const amount = Number.isFinite(rawAmount) && rawAmount !== 0 ? rawAmount : 1;
-                let price = Number.isFinite(rawPrice) ? rawPrice : 0;
-                let value = Number.isFinite(rawValue) ? rawValue : 0;
-
-                if (value > 0 && (!Number.isFinite(rawPrice) || rawPrice <= 0)) {
-                    price = value / Math.abs(amount);
-                } else if (value <= 0 && price > 0) {
-                    value = Math.abs(amount) * price;
+                // Pyth can be down or drop a feed. Equities/ETFs fall back to Yahoo on the same
+                // ticker; crypto tickers are ambiguous on Yahoo, so those stay unavailable rather
+                // than risk pricing the wrong coin.
+                const missing = pythPositions.filter(pos => !(Number(pythPrices[pos.feedId]) > 0));
+                const fallbackSymbols = missing.map(yahooSymbolForPythPosition).filter(Boolean);
+                let fallbackQuotes = {};
+                if (fallbackSymbols.length > 0 && this.providers.stocks?.getQuotes) {
+                    try {
+                        fallbackQuotes = await this.providers.stocks.getQuotes(fallbackSymbols, { timeoutMs: 3500 }) || {};
+                    } catch (e) {
+                        console.warn('[Manual] Yahoo fallback for Pyth positions failed:', e);
+                    }
                 }
 
-                if (!Number.isFinite(value) || value <= 0) continue;
-                if (!Number.isFinite(price) || price < 0) price = 0;
+                for (const pos of pythPositions) {
+                    const pythPrice = Number(pythPrices[pos.feedId]);
+                    const fallback = fallbackQuotes[yahooSymbolForPythPosition(pos)];
+                    const currentPrice = pythPrice > 0
+                        ? pythPrice
+                        : (Number(fallback?.price) > 0 ? Number(fallback.price) : 0);
+                    const amount = parseFloat(pos.amount || 0);
+                    const entryPrice = parseFloat(pos.entryPrice || 0);
+                    const value = amount * currentPrice;
+                    // Without a live price there is no P&L — never report "0 − entry" as a loss.
+                    const pnl = entryPrice > 0 && currentPrice > 0 ? (currentPrice - entryPrice) * amount : null;
 
-                rows.push({
-                    asset,
-                    exchange: 'Manual (Custom)',
-                    amount,
-                    price,
-                    value,
-                    change24h: null,
-                    pnl: null,
-                    currency: pos.currency || this.settings?.portfolioBaseCurrency || 'USD',
-                    isManual: true,
-                    manualType: 'custom',
-                    _changeDetectionKey: `MANUAL_CUSTOM_${asset}`
-                });
+                    // Category-aware exchange label distinguishes stocks from crypto in the
+                    // positions table. Legacy Pyth crypto positions saved before this change
+                    // lack `category` — treat them as crypto.
+                    const category = pos.category || 'crypto';
+                    const exchange = labelForCategory(category);
+                    const usedFallback = !(pythPrice > 0) && currentPrice > 0;
+
+                    rows.push({
+                        asset: pos.symbol,
+                        exchange,
+                        amount,
+                        price: currentPrice,
+                        value,
+                        change24h: usedFallback && Number.isFinite(fallback?.change24h) ? fallback.change24h : null,
+                        pnl,
+                        feedId: pos.feedId,
+                        entryPrice: entryPrice || undefined,
+                        entryDate: pos.entryDate || undefined,
+                        assetName: pos.name || pos.symbol,
+                        currency: pos.currency || (usedFallback ? fallback?.currency : null) || 'USD',
+                        priceHistory: usedFallback && Array.isArray(fallback?.priceHistory) && fallback.priceHistory.length > 1
+                            ? fallback.priceHistory
+                            : undefined,
+                        quoteUnavailable: !(currentPrice > 0),
+                        category,
+                        isManual: true,
+                        manualType: 'pyth',
+                        _changeDetectionKey: `MANUAL_PYTH_${pos.symbol}_${pos.feedId}`
+                    });
+                }
             }
 
-            this.renderer.appendPositions(rows, 'Manual', {
-                removeFilter: (p) => p.exchange && p.exchange.startsWith('Manual')
-            });
+            if (stockPositions.length === 0) {
+                rows.push(...customRows);
+            }
+
+            this.renderer.appendPositions(rows, 'Manual', MANUAL_REMOVE_OPTIONS);
 
             // Enrich asynchronously from the appropriate provider. Each enrichment re-pushes
             // the rows so the renderer picks up the updated price history for sparklines.
