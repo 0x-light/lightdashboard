@@ -470,9 +470,9 @@ function applyFontSize(size) {
 
 function applyFont(fontName) {
   const body = document.body;
-  body.classList.remove('font-berkeley', 'font-commit', 'font-departure');
+  body.classList.remove('font-berkeley', 'font-commit', 'font-departure', 'font-sf');
 
-  if (fontName === 'berkeley' || fontName === 'commit' || fontName === 'departure') {
+  if (fontName === 'berkeley' || fontName === 'commit' || fontName === 'departure' || fontName === 'sf') {
     body.classList.add(`font-${fontName}`);
   }
   // Mirrored on <html> so the pre-paint script in index.html can pick the font before modules load.
@@ -659,7 +659,7 @@ function setupControls() {
   const settings = getSettings();
 
   // Apply saved font
-  applyFont(settings.font || 'berkeley');
+  applyFont(settings.font || 'sf');
 
 
 
@@ -1052,7 +1052,7 @@ function setupControls() {
       if (showExactAmountsInput) showExactAmountsInput.checked = s.showExactAmounts ?? false;
       if (showPriceChartInput) showPriceChartInput.checked = s.showPriceChart ?? true;
       if (minBalanceInput) minBalanceInput.value = s.minBalanceThreshold || 100;
-      if (fontSelectInput) fontSelectInput.value = s.font || 'berkeley';
+      if (fontSelectInput) fontSelectInput.value = s.font || 'sf';
       if (portfolioBaseCurrencyInput) portfolioBaseCurrencyInput.value = s.portfolioBaseCurrency || 'USD';
 
 
@@ -1093,7 +1093,7 @@ function setupControls() {
       settingsBackdrop.style.display = 'none';
 
       // Undo an unsaved live font preview; after Save this re-applies the saved value.
-      applyFont(getSettings().font || 'berkeley');
+      applyFont(getSettings().font || 'sf');
 
       // Re-enable scroll on mobile
       document.body.classList.remove('modal-open');
@@ -1589,7 +1589,7 @@ function setupControls() {
         body.classList.toggle('mono-pnl', !(newSettings.useColoredPnL ?? false));
 
         // Apply font setting
-        applyFont(newSettings.font || 'berkeley');
+        applyFont(newSettings.font || 'sf');
 
         // Apply keyboard shortcuts setting (dynamic enable/disable)
         if (newSettings.enableKeyboardShortcuts) {

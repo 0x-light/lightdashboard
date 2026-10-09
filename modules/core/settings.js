@@ -78,7 +78,7 @@ export function getDefaultSettings() {
     zerionApiKey: '',
     cieloApiKey: '',
     onchainProvider: 'zerion', // 'zerion' or 'cielo'
-    font: 'berkeley',
+    font: 'sf',
     fontSize: 14,
     comicStrip: 'calvinandhobbes',
     hideComic: false,

@@ -194,6 +194,13 @@ body.font-departure {
   --font-main: 'DepartureMono', ui-monospace, Menlo, Consolas, monospace;
 }
 
+/* Apple's system mono. Not licensed for embedding, so it uses the copy installed on
+   macOS/iOS; other platforms fall through to their own monospace. */
+html[data-font="sf"],
+body.font-sf {
+  --font-main: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+}
+
 * {
   box-sizing: border-box;
   font-family: var(--font-main) !important;

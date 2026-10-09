@@ -33,7 +33,6 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="preload" href="./BerkeleyMono-Regular.otf" as="font" type="font/otf" crossorigin>
     <link rel="stylesheet" href="./styles.css?v=2.9.16">
     <!-- Apply theme synchronously to prevent flash of wrong theme -->
     <script>
@@ -43,7 +42,7 @@
                 var settings = JSON.parse(rawSettings);
                 var theme = settings.theme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
                 document.documentElement.dataset.theme = theme;
-                document.documentElement.dataset.font = settings.font || 'berkeley';
+                document.documentElement.dataset.font = settings.font || 'sf';
 
                 // Theme background colors for status bar (must match CSS)
                 var themeColors = {
@@ -527,6 +526,7 @@
                                 <option value="berkeley">Berkeley Mono</option>
                                 <option value="commit">Commit Mono</option>
                                 <option value="departure">Departure Mono</option>
+                                <option value="sf">SF Mono</option>
                             </select>
                         </label>
                         <label style="display: block; margin-bottom: 12px;">

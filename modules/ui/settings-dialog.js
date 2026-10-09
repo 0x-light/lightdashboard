@@ -385,9 +385,9 @@ export function applyVisibilityClasses(settings) {
 
 export function applyFont(settings) {
   const body = document.body;
-  body.classList.remove('font-berkeley', 'font-commit', 'font-departure');
+  body.classList.remove('font-berkeley', 'font-commit', 'font-departure', 'font-sf');
 
-  if (settings.font === 'berkeley' || settings.font === 'commit' || settings.font === 'departure') {
+  if (settings.font === 'berkeley' || settings.font === 'commit' || settings.font === 'departure' || settings.font === 'sf') {
     body.classList.add(`font-${settings.font}`);
   }
   // Mirrored on <html> so the pre-paint script in index.html can pick the font before modules load.
