@@ -418,6 +418,9 @@ function createTableRow(doc, pos, opts, prevDataMap) {
   return tr;
 }
 
+// Cards are rebuilt on every refresh, so remember which ones the user opened.
+const expandedCards = new Set();
+
 function createMobileCard(doc, pos, opts) {
   const card = doc.createElement('div');
   card.className = 'mobile-position-card';
@@ -462,32 +465,55 @@ function createMobileCard(doc, pos, opts) {
     if (Number.isFinite(basis) && basis > 0) pnlPctText = formatPct((pos.pnl / basis) * 100);
   }
 
-  // Funding only matters for perps; skip the line entirely for spot holdings.
+  // 24h change rides next to the price; left out when there's no 24h figure.
+  const changeText = pos.change24h != null
+    ? ` <span class="card-change ${changeClass}"${flash(change24hChanged)}>(${formatPct(pos.change24h)})</span>`
+    : '';
+
+  // Funding only matters for perps; skip it entirely for spot holdings.
   const hasFunding = pos.isLeveraged || pos.funding != null;
   const fundingRateText = formatFundingRate(pos.fundingRate);
-  const fundingLine = hasFunding
-    ? `<span class="card-funding ${fundingClass}"${flash(fundingChanged)}>Funding ${pos.fxConversionMissing ? '—' : formatFunding(pos.funding, amountVisible, baseCurrency)}${fundingRateText ? ` <span class="funding-rate-inline">${fundingRateText}</span>` : ''}</span>`
+  const fundingText = hasFunding
+    ? `<span class="card-funding ${fundingClass}"${flash(fundingChanged)}><span class="card-label">Funding</span> ${pos.fxConversionMissing ? '—' : formatFunding(pos.funding, amountVisible, baseCurrency)}${fundingRateText ? ` <span class="funding-rate-inline">${fundingRateText}</span>` : ''}</span>`
     : '';
 
   // Ledger style:  ASSET ................ VALUE
-  //                price              P&L +46k +48%
-  //                source                24h +1.2%
-  //                                  Funding (perps)
+  //                price (24h)        P&L +46k +48%
+  //   tap to show: venue          Funding (perps)
   card.innerHTML = `
     <div class="card-line">
       <span class="card-asset">${formatAssetLabelHtml(pos)}</span>
       <span class="card-value card-total"${flash(valueChanged)}>${formatQuoteBackedMoney(pos, value, amountVisible, baseCurrency)}</span>
     </div>
     <div class="card-line card-sub">
-      <span class="card-meta"${flash(priceChanged)}>${priceText}</span>
+      <span class="card-meta"><span${flash(priceChanged)}>${priceText}</span>${changeText}</span>
       ${pnlText ? `<span class="card-pnl ${pnlClass}"${flash(pnlChanged)}><span class="card-label">P&amp;L</span> ${pnlText}${pnlPctText ? ` <span class="card-pnl-pct">${pnlPctText}</span>` : ''}</span>` : ''}
     </div>
-    <div class="card-line card-sub">
+    <div class="card-line card-sub card-details">
       <span class="card-exchange">${pos.exchange || '—'}</span>
-      <span class="card-change"><span class="card-label">24h</span> <span class="${changeClass}"${flash(change24hChanged)}>${formatPct(pos.change24h)}</span></span>
+      ${fundingText}
     </div>
-    ${fundingLine ? `<div class="card-line card-sub card-line-end">${fundingLine}</div>` : ''}
   `;
+
+  card.setAttribute('role', 'button');
+  card.tabIndex = 0;
+  const setExpanded = (expanded) => {
+    card.classList.toggle('expanded', expanded);
+    card.setAttribute('aria-expanded', String(expanded));
+  };
+  setExpanded(expandedCards.has(key));
+  const toggle = () => {
+    const expanded = !expandedCards.has(key);
+    if (expanded) expandedCards.add(key); else expandedCards.delete(key);
+    setExpanded(expanded);
+  };
+  card.addEventListener('click', toggle);
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggle();
+    }
+  });
   return card;
 }
 

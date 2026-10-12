@@ -1070,18 +1070,24 @@ body.hide-comic #newComicSection {
   opacity: 0.8;
 }
 
-.card-change {
-  flex: none;
-}
-
 .card-label {
   color: var(--muted);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-.card-line-end {
-  justify-content: flex-end;
+.mobile-position-card {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Venue and funding stay folded away until the row is tapped */
+.card-details {
+  display: none;
+}
+
+.mobile-position-card.expanded .card-details {
+  display: flex;
 }
 
 .card-funding {
@@ -1716,8 +1722,12 @@ body.mobile-menu-open {
     grid-template-areas:
       'figure'
       'stats'
-      'alloc'
       'note';
+  }
+
+  /* The positions list already carries each holding's value; skip the allocation bar on phones */
+  .alloc {
+    display: none;
   }
 
   /* Positions become ledger cards; the watchlist stays a (tighter) table */
