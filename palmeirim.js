@@ -168,12 +168,12 @@
   window.addEventListener("scroll", function () { readout.hidden = true; }, { passive: true });
 
   // ── Account value chart: Hyperliquid's own history, so it's the same on every device ──
-  // Sits under the sentence: period choice on the left, change on the right, a line over
+  // Sits under the sentence: periods on the left (the chosen one inverted), change on the right, a line over
   // the dim dither. Pointing at it names the time and value on the card's bottom border.
   // Settings → Sections can hide it (html[data-value-chart="off"]).
   var PERIODS = [["day", "1D"], ["week", "1W"], ["month", "1M"], ["allTime", "All"]];
   var valueBox = el("div", { class: "pm-value", hidden: "" },
-    '<div class="pm-value__head"><span class="pm-value__label">HL account</span>' +
+    '<div class="pm-value__head">' +
     '<span class="pm-value__periods" role="radiogroup" aria-label="Period">' +
     PERIODS.map(function (p) { return '<button type="button" role="radio" class="pm-value__period" data-period="' + p[0] + '">' + p[1] + '</button>'; }).join("") +
     '</span><span class="pm-value__change"></span></div><div class="pm-value__chart"></div>');

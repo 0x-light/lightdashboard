@@ -1742,27 +1742,28 @@ html.pm:root .pm-value[hidden],
 html.pm:root[data-value-chart="off"] .pm-value { display: none; }
 
 html.pm:root .pm-value__head { display: flex; align-items: baseline; gap: 0 2ch; flex-wrap: wrap; }
-html.pm:root .pm-value__label { color: var(--pm-muted); text-transform: uppercase; }
-html.pm:root .pm-value__periods { display: flex; gap: 0 2ch; }
+html.pm:root .pm-value__periods { display: flex; gap: 0 1ch; }
 html.pm:root .pm-value__change { margin-left: auto; }
 
 html.pm:root .pm-value__period {
-  padding: 0;
+  padding: 0 1ch;
   border: 0;
   background: none;
-  color: var(--pm-ink);
+  color: var(--pm-muted);
   font: inherit;
   line-height: var(--pm-lh);
   text-transform: uppercase;
   cursor: pointer;
 }
 
-html.pm:root .pm-value__period::before { content: "( ) "; white-space: pre; }
-html.pm:root .pm-value__period[aria-checked="true"]::before { content: "(*) "; }
-html.pm:root .pm-value__period:focus-visible { background: var(--pm-ink); color: var(--bg); outline: none; }
+/* The first period's text lines up with the card's text above it. */
+html.pm:root .pm-value__period:first-child { margin-left: -1ch; }
+html.pm:root .pm-value__period[aria-checked="true"] { background: var(--pm-ink); color: var(--bg); }
+html.pm:root .pm-value__period:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 0; }
 
 @media (hover: hover) {
-  html.pm:root .pm-value__period:hover { background: var(--pm-ink); color: var(--bg); }
+  html.pm:root .pm-value__period:hover { color: var(--pm-ink); }
+  html.pm:root .pm-value__period[aria-checked="true"]:hover { color: var(--bg); }
 }
 
 html.pm:root .pm-value__chart { margin-top: calc(var(--pm-lh) / 2); cursor: crosshair; }
@@ -1778,34 +1779,67 @@ html.pm:root .pm-account-window { width: min(76ch, calc(100vw - 3ch)); }
 html.pm:root .pm-account-window .sticker-window-content { max-height: min(70vh, calc(var(--pm-lh) * 32)); overflow-y: auto; }
 
 html.pm:root .acct p { margin: 0; }
-html.pm:root .acct__wallet + .acct__wallet { margin-top: calc(var(--pm-lh) * 1.5); }
-html.pm:root .acct__address { margin: 0 0 calc(var(--pm-lh) / 2); font: inherit; color: var(--pm-ink); }
-html.pm:root .acct__section + .acct__section { margin-top: var(--pm-lh); }
-html.pm:root .acct__title { margin: 0; font: inherit; color: var(--pm-muted); text-transform: uppercase; }
-html.pm:root .acct strong { font-weight: inherit; }
 html.pm:root .acct__muted { color: var(--pm-muted); }
+html.pm:root .acct__section + .acct__section { margin-top: var(--pm-lh); }
+
+/* Head line: the section name muted on the left, its key figure on the right. */
+html.pm:root .acct__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 2ch;
+  margin: 0 0 calc(var(--pm-lh) / 3);
+  font: inherit;
+  text-transform: uppercase;
+}
+html.pm:root .acct__head > :first-child { color: var(--pm-muted); }
+
+/* Label / value rows, values on the right like the ladder legend. */
+html.pm:root .acct__rows { display: grid; grid-template-columns: 1fr max-content; gap: 0 2ch; margin: 0; }
+html.pm:root .acct__rows dt { color: var(--pm-muted); }
+html.pm:root .acct__rows dd { margin: 0; text-align: right; }
+
+/* More than one wallet: each in a frame with its address on the border. */
+html.pm:root .acct__wallet {
+  position: relative;
+  padding: var(--pm-lh) 1ch calc(var(--pm-lh) / 2);
+  border: 1px solid var(--pm-rule);
+}
+html.pm:root .acct__wallet + .acct__wallet { margin-top: var(--pm-lh); }
+html.pm:root .acct__address {
+  position: absolute;
+  top: calc(var(--pm-lh) / -2);
+  left: 1ch;
+  padding: 0 1ch !important;
+  background: var(--bg);
+  line-height: var(--pm-lh);
+}
 
 /* Margin meter: the solid share used on the dim dither. */
-html.pm:root .acct__meter { height: var(--pm-bar-h); margin: calc(var(--pm-lh) / 3) 0; background: var(--pm-dither-dim); }
+html.pm:root .acct__meter { height: var(--pm-bar-h); margin: 0 0 calc(var(--pm-lh) / 3); background: var(--pm-dither-dim); }
 html.pm:root .acct__meter > span { display: block; height: 100%; min-width: 2px; background: var(--pm-ink); }
 
-/* Funding bars around a middle line: received above, paid below. */
+/* Funding bars around a middle line: received above in ink, paid below in dither.
+   Pointing at a bar names its day and amount on the line under them. */
 html.pm:root .acct__bars {
-  position: relative;
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
   gap: 2px;
-  height: calc(var(--pm-lh) * 3);
-  margin: calc(var(--pm-lh) / 3) 0;
+  height: calc(var(--pm-lh) * 4);
   background: linear-gradient(var(--pm-rule), var(--pm-rule)) 0 50% / 100% 1px no-repeat;
 }
 
-html.pm:root .acct__bar { position: relative; }
-html.pm:root .acct__bar::after { content: ""; position: absolute; left: 0; right: 0; height: calc(var(--h) / 2); }
+html.pm:root .acct__bar { position: relative; cursor: crosshair; }
+html.pm:root .acct__bar::after { content: ""; position: absolute; left: 0; right: 0; height: calc(var(--h, 0%) / 2); }
 html.pm:root .acct__bar--up::after { bottom: 50%; background: var(--pm-ink); }
 html.pm:root .acct__bar--down::after { top: 50%; background: var(--pm-dither); }
-html.pm:root .acct__bar--unknown::after { display: none; }
+html.pm:root .acct__bar:hover { background: var(--pm-tint); }
+/* One-sided: the line moves to the bottom (all received) or top (all paid) edge. */
+html.pm:root .acct__bars--up { height: calc(var(--pm-lh) * 3); background-position: 0 100%; }
+html.pm:root .acct__bars--down { height: calc(var(--pm-lh) * 3); background-position: 0 0; }
+html.pm:root .acct__bars--up .acct__bar::after { bottom: 0; height: var(--h, 0%); }
+html.pm:root .acct__bars--down .acct__bar::after { top: 0; height: var(--h, 0%); }
+html.pm:root .acct__readout { min-height: var(--pm-lh); margin-top: calc(var(--pm-lh) / 3) !important; color: var(--pm-muted); }
 
 /* ── Strip readout: the hovered segment, named on the card's bottom border at its start ── */
 html.pm:root .pm-card__readout {

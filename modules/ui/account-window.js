@@ -56,60 +56,86 @@ function nextFunding() {
   return { usd, minutes };
 }
 
-function marginBlock(m) {
-  if (!m) return '<p class="acct__muted">No perp account.</p>';
-  const share = Math.min(1, Math.max(0, m.maintenanceShare));
-  return `<p>Using <strong>${pct(m.maintenanceShare, 1)}</strong> of maintenance margin · ${money(m.withdrawable)} withdrawable · ${m.leverage.toFixed(2)}× leverage</p>` +
-    `<div class="acct__meter" role="img" aria-label="Maintenance margin used: ${pct(m.maintenanceShare, 1)}">` +
-    `<span style="width:${(share * 100).toFixed(2)}%"></span></div>` +
-    `<p class="acct__muted">Liquidation starts when maintenance margin reaches 100% of account value.</p>`;
+const dayName = (day) => new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+
+// A section: its name on the left of the head line and its key figure on the right,
+// then label / value rows.
+function section(title, figure, body) {
+  return `<section class="acct__section"><h3 class="acct__head"><span>${title}</span>${figure ? `<span>${figure}</span>` : ''}</h3>${body}</section>`;
 }
 
-function fundingBlock(f) {
+function rows(list) {
+  const items = list.filter(Boolean);
+  return items.length ? `<dl class="acct__rows">${items.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>` : '';
+}
+
+function marginSection(m) {
+  if (!m) return '';
+  const share = Math.min(1, Math.max(0, m.maintenanceShare));
+  return section('Margin', `${pct(m.maintenanceShare, 1)} used`,
+    `<div class="acct__meter" role="img" aria-label="Maintenance margin used: ${pct(m.maintenanceShare, 1)}. Liquidation at 100%.">` +
+    `<span style="width:${(share * 100).toFixed(2)}%"></span></div>` +
+    rows([['Withdrawable', money(m.withdrawable)], ['Leverage', `${m.leverage.toFixed(2)}×`]]));
+}
+
+function fundingSection(f) {
   const days = f.days;
   const known = days.filter(d => d.known);
   const total = known.reduce((s, d) => s + d.usdc, 0);
-  const yesterday = days.length > 1 && days[days.length - 2].known ? days[days.length - 2].usdc : null;
   const next = nextFunding();
-  const max = Math.max(1, ...known.map(d => Math.abs(d.usdc)));
+  if (!known.some(d => d.usdc !== 0) && !next) return '';
+  const max = Math.max(1e-9, ...known.map(d => Math.abs(d.usdc)));
   // Bars around a middle line: received above, paid below; days not loaded are blank.
   const bars = days.map(d => {
-    if (!d.known) return '<span class="acct__bar acct__bar--unknown" title="Not loaded"></span>';
-    const h = Math.max(2, Math.round((Math.abs(d.usdc) / max) * 100));
+    const value = d.known ? money(d.usdc, true) : 'Not loaded';
+    if (!d.known) return `<span class="acct__bar" data-label="${esc(dayName(d.day))} · ${value}"></span>`;
+    const h = d.usdc === 0 ? 0 : Math.max(4, Math.round((Math.abs(d.usdc) / max) * 100));
     const cls = d.usdc >= 0 ? 'acct__bar--up' : 'acct__bar--down';
-    return `<span class="acct__bar ${cls}" style="--h:${h}%" title="${esc(d.day)}: ${esc(money(d.usdc, true))}"></span>`;
+    return `<span class="acct__bar ${cls}" style="--h:${h}%" data-label="${esc(dayName(d.day))} · ${esc(value)}"></span>`;
   }).join('');
-  const parts = [];
-  if (yesterday !== null) parts.push(`${money(yesterday, true)} yesterday`);
-  const span = known.length === days.length ? `${days.length} days` : known.length === 1 ? 'the last day' : `the last ${known.length} days`;
-  parts.push(`${money(total, true)} over ${span}`);
-  return `<p>${parts.join(' · ')}</p>` +
-    `<div class="acct__bars" role="img" aria-label="Funding per day, received above the line, paid below">${bars}</div>` +
-    (next ? `<p>Next payment ≈ <strong>${money(next.usd, true)}</strong> in ${next.minutes} min</p>` : '') +
-    (f.complete ? '' : '<p class="acct__muted">Older days are left out: this account has too many payments to load them all.</p>');
+  // Under the bars: the span they cover, or the day being pointed at.
+  const rest = known.length === days.length ? `Last ${days.length} days`
+    : `Last ${known.length === 1 ? '24 hours' : `${known.length} days`}. Older days are not loaded.`;
+  // All received (or all paid): the bars stand on one edge instead of a middle line.
+  // Fewer than 3 days loaded: no bars, they would say nothing.
+  const sides = (known.some(d => d.usdc > 0) ? 'up' : '') + (known.some(d => d.usdc < 0) ? 'down' : '');
+  return section('Funding', money(total, true),
+    (known.length < 3 ? '' : `<div class="acct__bars acct__bars--${sides || 'up'}" role="img" aria-label="Funding per day">${bars}</div>`) +
+    `<p class="acct__readout" data-rest="${esc(rest)}">${esc(rest)}</p>` +
+    rows([next && ['Next payment', `≈ ${money(next.usd, true)} in ${next.minutes} min`]]));
 }
 
-function feesBlock(fe) {
-  if (!fe) return '<p class="acct__muted">No fee data.</p>';
-  const bits = [];
-  if (fe.taker !== null) bits.push(`${pct(fe.taker, 4)} taker`);
-  if (fe.maker !== null) bits.push(`${fe.maker < 0 ? '−' : ''}${pct(Math.abs(fe.maker), 4)} maker`);
-  if (fe.stakingDiscount) bits.push(`${pct(fe.stakingDiscount, 0)} staking discount`);
-  if (fe.referralDiscount) bits.push(`${pct(fe.referralDiscount, 0)} referral discount`);
-  bits.push(`14-day volume ${money(fe.volume14d)}`);
-  return `<p>${bits.join(' · ')}</p>`;
+function feesSection(fe) {
+  if (!fe || !(fe.volume14d > 0)) return '';
+  return section('Fees', '', rows([
+    fe.taker !== null && ['Taker', pct(fe.taker, 4)],
+    fe.maker !== null && ['Maker', `${fe.maker < 0 ? '−' : ''}${pct(Math.abs(fe.maker), 4)}`],
+    fe.stakingDiscount && ['Staking discount', pct(fe.stakingDiscount, 0)],
+    fe.referralDiscount && ['Referral discount', pct(fe.referralDiscount, 0)],
+    ['Volume, 14 days', money(fe.volume14d)]
+  ]));
 }
 
-function stakingBlock(st) {
-  if (!st) return '<p class="acct__muted">No staked HYPE.</p>';
-  const bits = [`${amount(st.staked)} HYPE staked`];
-  if (st.unstaked > 0) bits.push(`${amount(st.unstaked)} not staked`);
-  if (st.withdrawing > 0) bits.push(`${amount(st.withdrawing)} withdrawing`);
-  return `<p>${bits.join(' · ')}</p><p>Rewards: ${amount(st.rewards30d)} HYPE in 30 days · ${amount(st.rewardsAllTime)} HYPE in all</p>`;
+function stakingSection(st) {
+  if (!st) return '';
+  return section('Staking', `${amount(st.staked)} HYPE`, rows([
+    st.unstaked > 0 && ['Not staked', `${amount(st.unstaked)} HYPE`],
+    st.withdrawing > 0 && ['Withdrawing', `${amount(st.withdrawing)} HYPE`],
+    ['Rewards, 30 days', `${amount(st.rewards30d)} HYPE`],
+    ['Rewards, all time', `${amount(st.rewardsAllTime)} HYPE`]
+  ]));
 }
 
-function section(title, body) {
-  return `<section class="acct__section"><h3 class="acct__title">${title}</h3>${body}</section>`;
+const failed = (title) => section(title, '', '<p class="acct__muted">Cannot load. Try again later.</p>');
+
+async function walletHtml(address) {
+  const [m, f, fe, st] = await Promise.allSettled([getMargin(address), getFundingByDay(address, 30), getFees(address), getStaking(address)]);
+  return [
+    m.status === 'fulfilled' ? marginSection(m.value) : failed('Margin'),
+    f.status === 'fulfilled' ? fundingSection(f.value) : failed('Funding'),
+    fe.status === 'fulfilled' ? feesSection(fe.value) : failed('Fees'),
+    st.status === 'fulfilled' ? stakingSection(st.value) : failed('Staking')
+  ].join('');
 }
 
 async function fill(content) {
@@ -118,25 +144,26 @@ async function fill(content) {
     content.innerHTML = '<p class="acct__muted">Add an EVM wallet in Settings to see your Hyperliquid account.</p>';
     return;
   }
-  content.innerHTML = list.map(a => `<div class="acct__wallet" data-address="${esc(a)}">` +
-    (list.length > 1 ? `<h3 class="acct__address">${esc(a.slice(0, 6))}…${esc(a.slice(-4))}</h3>` : '') +
-    ['Margin', 'Funding', 'Fees', 'Staking'].map(t => section(t, '<p class="acct__muted">Loading…</p>')).join('') +
-    '</div>').join('');
+  content.innerHTML = '<p class="acct__muted">Loading…</p>';
+  const blocks = await Promise.all(list.map(walletHtml));
+  // Wallets with nothing on Hyperliquid are left out. With more than one left, each
+  // gets a frame with its address on the border.
+  const shown = list.map((a, i) => [a, blocks[i]]).filter(([, html]) => html);
+  if (!shown.length) {
+    content.innerHTML = '<p class="acct__muted">Your wallets have no Hyperliquid account.</p>';
+    return;
+  }
+  content.innerHTML = shown.length === 1 ? shown[0][1] : shown.map(([a, html]) =>
+    `<div class="acct__wallet"><p class="acct__address">${esc(a.slice(0, 6))}…${esc(a.slice(-4))}</p>${html}</div>`).join('');
+}
 
-  await Promise.all(list.map(async (address) => {
-    const box = content.querySelector(`[data-address="${address}"]`);
-    const put = (index, html) => {
-      const s = box.querySelectorAll('.acct__section')[index];
-      if (s) s.innerHTML = s.querySelector('.acct__title').outerHTML + html;
-    };
-    const failed = '<p class="acct__muted">Cannot load this now. Try again in a minute.</p>';
-    await Promise.all([
-      getMargin(address).then(m => put(0, marginBlock(m)), () => put(0, failed)),
-      getFundingByDay(address, 30).then(f => put(1, fundingBlock(f)), () => put(1, failed)),
-      getFees(address).then(fe => put(2, feesBlock(fe)), () => put(2, failed)),
-      getStaking(address).then(st => put(3, stakingBlock(st)), () => put(3, failed))
-    ]);
-  }));
+// Pointing at a funding bar names its day and amount under the bars; leaving shows
+// yesterday again.
+function showDay(e) {
+  const bar = e.target.closest?.('.acct__bar');
+  const readout = e.target.closest?.('.acct__section')?.querySelector('.acct__readout');
+  if (!readout) return;
+  readout.textContent = bar ? bar.dataset.label : readout.dataset.rest;
 }
 
 function close() {
@@ -157,6 +184,9 @@ export function openAccountWindow() {
       '<div class="sticker-window-content acct"></div></div>');
     document.body.append(backdrop, win);
     backdrop.addEventListener('click', close);
+    const content = win.querySelector('.acct');
+    content.addEventListener('mouseover', showDay);
+    content.addEventListener('mouseleave', () => content.querySelectorAll('.acct__readout').forEach(r => { r.textContent = r.dataset.rest; }));
     win.querySelector('.js-acct-close').addEventListener('click', close);
     win.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
