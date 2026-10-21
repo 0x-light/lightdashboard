@@ -8,9 +8,9 @@
   
   # Content Security Policy - Allow all necessary APIs
   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.hyperliquid.xyz https://mainnet.zklighter.elliot.ai https://testnet.zklighter.elliot.ai https://api.opensea.io https://api.coingecko.com https://api.open-meteo.com https://api.bigdatacloud.net https://www.gocomics.com https://featureassets.gocomics.com https://assets.gocomics.com https://assets.amuniversal.com https://featureassets.amuniversal.com https://assets.coingecko.com https://api.allorigins.win https://corsproxy.io https://hermes.pyth.network https://*.g.alchemy.com https://mainnet.helius-rpc.com https://api.zerion.io https://api.zcha.in https://blockchain.info; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;
-  
-  # Cache control for static assets (1 hour with revalidation)
-  Cache-Control: public, max-age=3600, must-revalidate
+
+  # No Cache-Control here: Pages joins it with the rules below, and browsers can use the first
+  # max-age, so app.js and the modules stayed cached for an hour instead of 5 minutes.
 
 # HTML files - never cache to ensure iOS PWA updates
 /*.html

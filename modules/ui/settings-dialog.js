@@ -587,10 +587,26 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
       forceUpdateBtn.disabled = true;
       try {
         const savedSettings = localStorage.getItem(STORAGE_KEY);
-        if ('caches' in window) {
+        const clearCaches = async () => {
+          if (!('caches' in window)) return;
           const names = await caches.keys();
           await Promise.all(names.map(name => caches.delete(name)));
+        };
+        // Clearing the caches alone is not enough: the HTTP cache keeps app.js and the modules for
+        // up to an hour, and the reload would load them from there again. Fetch each file this page
+        // loaded with cache: 'reload' to replace those entries. Clear the caches first, so that the
+        // service worker answers from the network and not from its own copy.
+        await clearCaches();
+        const assets = new Set(['/']);
+        for (const entry of performance.getEntriesByType('resource')) {
+          const assetUrl = new URL(entry.name);
+          if (assetUrl.origin === location.origin && !assetUrl.pathname.startsWith('/api/')) {
+            assets.add(assetUrl.pathname + assetUrl.search);
+          }
         }
+        await Promise.all([...assets].map(asset => fetch(asset, { cache: 'reload' }).catch(() => { })));
+        // The service worker puts what it fetched back into its cache, so clear again.
+        await clearCaches();
         if ('serviceWorker' in navigator) {
           const registrations = await navigator.serviceWorker.getRegistrations();
           for (const reg of registrations) {
