@@ -104,6 +104,7 @@
                 // Layout options before first paint, so the page doesn't jump
                 document.documentElement.classList.toggle('pm-full', !!settings.fullWidth);
                 document.documentElement.classList.toggle('pm-center', !!settings.centerLayout);
+                document.documentElement.dataset.valueChart = settings.showValueChart === false ? 'off' : 'on';
 
                 // Theme background colors for status bar (must match CSS)
                 var themeColors = {
@@ -581,6 +582,10 @@
                             </label>
 
                             <h3 class="settings-group">Sections</h3>
+                            <label class="check">
+                                <input id="newShowValueChart" type="checkbox" class="settings-input">
+                                Show the account value chart
+                            </label>
                             <label class="check">
                                 <input id="newShowPriceChart" type="checkbox" class="settings-input">
                                 Show 24h price chart

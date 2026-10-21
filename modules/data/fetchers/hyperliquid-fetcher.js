@@ -25,7 +25,11 @@ export class HyperliquidFetcher {
                 : null;
             const spotMetaPromise = this.getSpotMeta();
 
+            // Staked HYPE isn't in the clearinghouse states; ask alongside them (kept 10 min).
+            const stakingPromises = wallets.map(wallet => this.getStaking(wallet));
             const results = await Promise.all(positionResults);
+            const staking = await Promise.all(stakingPromises);
+            results.forEach((r, i) => { if (r.data) r.data.staking = staking[i]; });
             const allPerps = results.flatMap(r => r.data?.perp?.assetPositions || [])
                 .filter(p => Math.abs(parseFloat(p.position?.szi || 0)) > 0);
             this.hasPerps = allPerps.length > 0;
@@ -112,6 +116,21 @@ export class HyperliquidFetcher {
             } catch (_) { /* quota: keep in memory only */ }
         }
         return this.spotMeta;
+    }
+
+    // Staked, unstaked-but-in-staking and withdrawing HYPE for one wallet, or null.
+    async getStaking(wallet) {
+        this.stakingCache ||= new Map();
+        const hit = this.stakingCache.get(wallet);
+        if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.value;
+        const summary = await this.providers.hyperliquid.fetchDelegatorSummary?.(wallet, 4000).catch(() => null);
+        const value = summary ? {
+            staked: parseFloat(summary.delegated || 0) || 0,
+            unstaked: parseFloat(summary.undelegated || 0) || 0,
+            withdrawing: parseFloat(summary.totalPendingWithdrawal || 0) || 0
+        } : null;
+        this.stakingCache.set(wallet, { at: Date.now(), value });
+        return value;
     }
 
     buildMarket(hlAllMids, hlMarketData, xyzMarketData, spotMeta) {
@@ -239,6 +258,11 @@ export class HyperliquidFetcher {
                     // Get current funding rate for this asset
                     const fundingRate = hlFundingRateMap[position.coin] ?? null;
 
+                    // Leverage ({ type: 'cross' | 'isolated', value }) and liquidation price come
+                    // with each position; shown in the row's detail line.
+                    const leverage = Number(position?.leverage?.value) || null;
+                    const liquidationPx = parseFloat(position?.liquidationPx);
+
                     rows.push({
                         asset: position.coin,
                         exchange: 'HL Perps',
@@ -250,7 +274,10 @@ export class HyperliquidFetcher {
                         entryPrice,
                         isLeveraged: true,
                         funding,
-                        fundingRate
+                        fundingRate,
+                        leverage,
+                        leverageType: position?.leverage?.type || null,
+                        liquidationPx: Number.isFinite(liquidationPx) && liquidationPx > 0 ? liquidationPx : null
                     });
                 }
             }
@@ -319,6 +346,23 @@ export class HyperliquidFetcher {
                     }
                 }
             }
+        }
+
+        // Staked HYPE as its own holding, valued at the HYPE price.
+        const staking = data?.staking;
+        const stakedTotal = staking ? staking.staked + staking.unstaked + staking.withdrawing : 0;
+        const hypePrice = parseFloat(hlPriceMap.HYPE || spotPriceMap.HYPE || 0);
+        if (stakedTotal > 0 && hypePrice > 0) {
+            const prev = hlPrevDayPxMap.HYPE;
+            rows.push({
+                asset: 'HYPE',
+                exchange: 'HL Staking',
+                amount: stakedTotal,
+                price: hypePrice,
+                value: stakedTotal * hypePrice,
+                change24h: prev > 0 ? ((hypePrice - prev) / prev) * 100 : null,
+                staking
+            });
         }
 
         return rows;

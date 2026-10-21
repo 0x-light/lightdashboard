@@ -821,6 +821,28 @@ function setupControls() {
     window.openPositionKey = window.openPositionKey === key ? null : key;
     rerenderPositions();
     focusPositionRow(key);
+    // A perp's ladder shows its TP/SL and limit orders; fetch them when one opens.
+    if (window.openPositionKey && /_HL Perps$/.test(key)) loadHlOrders();
+  }
+
+  // Open Hyperliquid orders for every EVM wallet, kept 30s by hl-account.js.
+  // window.hlOrders = { coin: [orders] }, read by the positions renderer.
+  async function loadHlOrders() {
+    const addresses = String(getSettings().walletAddresses || '').split(/[\s,]+/).filter(a => /^0x[0-9a-fA-F]{40}$/.test(a));
+    if (!addresses.length) return;
+    if (!window.hlOrders) {
+      window.hlOrdersState = 'loading';
+      rerenderPositions();
+    }
+    try {
+      const { getOpenOrders } = await import('./modules/data/hl-account.js');
+      window.hlOrders = await getOpenOrders(addresses);
+      window.hlOrdersState = 'ready';
+    } catch (e) {
+      console.warn('[Orders] Could not load open orders:', e?.message || e);
+      window.hlOrdersState = 'failed';
+    }
+    rerenderPositions();
   }
 
   function saveHiddenAssets() {

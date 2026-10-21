@@ -927,7 +927,7 @@ export class IncrementalPortfolioRenderer {
       }
 
       // Keep HL Perps/Spot and Lighter Spot separate
-      if (row.exchange === 'HL Perps' || row.exchange === 'HL Spot' || row.exchange === 'Lighter Spot') {
+      if (row.exchange === 'HL Perps' || row.exchange === 'HL Spot' || row.exchange === 'HL Staking' || row.exchange === 'Lighter Spot') {
         aggregated.push(row);
         continue;
       }

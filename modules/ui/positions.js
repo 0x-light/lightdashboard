@@ -83,6 +83,105 @@ function rowActionsHtml(pos, assetKey) {
     : action('position-edit-btn', keyAttr, 'h', 'H', 'Hide');
 }
 
+// A perp's price ladder: liquidation, entry, now, and its TP/SL and nearest limit
+// orders on one scale, with a legend of prices and distances from now. Orders come
+// from window.hlOrders (fetched by app.js when the row opens); `null` means loading.
+const LADDER_NAMES = {
+  liq: 'Liquidation', entry: 'Entry', now: 'Now', tp: 'Take profit', sl: 'Stop loss',
+  buy: 'Buy limit', sell: 'Sell limit'
+};
+const LADDER_KEYS = { liq: 'L', entry: 'E', now: '▼', tp: 'T', sl: 'S', buy: '·', sell: '·' };
+
+function ladderHtml(pos, quoteCurrency) {
+  const now = Number(pos.price);
+  if (!(now > 0)) return '';
+  const orders = typeof window !== 'undefined' ? window.hlOrders?.[pos.asset] : undefined;
+  const loading = typeof window !== 'undefined' && window.hlOrdersState === 'loading';
+  const levels = [{ kind: 'now', px: now }];
+  if (Number(pos.entryPrice) > 0) levels.push({ kind: 'entry', px: Number(pos.entryPrice) });
+  const triggers = (orders || []).filter(o => o.kind === 'tp' || o.kind === 'sl');
+  levels.push(...triggers.map(o => ({ kind: o.kind, px: o.px, sz: o.sz, whole: o.wholePosition })));
+  // Of the resting limits, only the nearest on each side; the legend gives the count.
+  const limits = (orders || []).filter(o => o.kind === 'buy' || o.kind === 'sell');
+  const nearest = (kind, cmp) => limits.filter(o => o.kind === kind && cmp(o.px)).sort((a, b) => Math.abs(a.px - now) - Math.abs(b.px - now))[0];
+  const nearBuy = nearest('buy', px => px <= now);
+  const nearSell = nearest('sell', px => px >= now);
+  if (nearBuy) levels.push({ kind: 'buy', px: nearBuy.px, count: limits.filter(o => o.kind === 'buy').length });
+  if (nearSell) levels.push({ kind: 'sell', px: nearSell.px, count: limits.filter(o => o.kind === 'sell').length });
+  const liq = Number(pos.liquidationPx) > 0 ? Number(pos.liquidationPx) : null;
+
+  // Scale: fit the levels around now; liquidation joins it unless it's far away, then it
+  // sits at the edge with an arrow so the near levels stay readable.
+  let lo = Math.min(...levels.map(l => l.px));
+  let hi = Math.max(...levels.map(l => l.px));
+  const span = Math.max(hi - lo, now * 0.02);
+  let liqOff = null;
+  if (liq) {
+    if (liq > hi + span * 3) liqOff = 'right';
+    else if (liq < lo - span * 3) liqOff = 'left';
+    else { lo = Math.min(lo, liq); hi = Math.max(hi, liq); }
+  }
+  const pad = Math.max(hi - lo, now * 0.02) * 0.08;
+  lo -= pad;
+  hi += pad;
+  const at = px => Math.max(0, Math.min(100, ((px - lo) / (hi - lo)) * 100));
+  const marks = [...levels];
+  if (liq) marks.push({ kind: 'liq', px: liq, off: liqOff });
+
+  const isShort = Number(pos.amount) < 0;
+  // The liquidated side: below liquidation for a long, above it for a short.
+  let zone = '';
+  if (liq) {
+    const x = liqOff === 'right' ? 100 : liqOff === 'left' ? 0 : at(liq);
+    zone = isShort
+      ? `<span class="ladder__zone" style="left:${x}%;right:0"></span>`
+      : `<span class="ladder__zone" style="left:0;right:${100 - x}%"></span>`;
+  }
+  // Letters sit above the track on rows: a letter too close to the one before it moves
+  // up a row, and its stem runs from just under it down to the track.
+  const placed = marks
+    .map(m => ({ ...m, x: m.off === 'right' ? 100 : m.off === 'left' ? 0 : at(m.px) }))
+    .sort((a, b) => a.x - b.x);
+  const rowEnds = [];
+  for (const m of placed) {
+    let row = rowEnds.findIndex(end => m.x - end >= 5);
+    if (row === -1) row = rowEnds.length;
+    rowEnds[row] = m.x;
+    m.row = row;
+  }
+  const rows = Math.max(1, rowEnds.length);
+  const markHtml = placed.map(m => {
+    const glyph = m.off === 'right' ? 'L→' : m.off === 'left' ? '←L' : LADDER_KEYS[m.kind];
+    const top = rows - 1 - m.row; // row 0 sits lowest, next to the track
+    return `<span class="ladder__mark ladder__mark--${m.kind}" style="left:${m.x}%;top:calc(var(--pm-lh) * ${top})">${glyph}</span>` +
+      `<span class="ladder__tick ladder__tick--${m.kind}" style="left:${m.x}%;top:calc(var(--pm-lh) * ${top + 1})"></span>`;
+  }).join('');
+
+  const pct = px => {
+    const d = ((px - now) / now) * 100;
+    return `${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(Math.abs(d) < 10 ? 2 : 1)}%`;
+  };
+  const legend = marks
+    .slice()
+    .sort((a, b) => b.px - a.px)
+    .map(m => {
+      const name = m.kind === 'buy' || m.kind === 'sell'
+        ? `${LADDER_NAMES[m.kind]}${m.count > 1 ? ` (nearest of ${m.count})` : ''}`
+        : LADDER_NAMES[m.kind] + ((m.kind === 'tp' || m.kind === 'sl') && m.whole ? ' (whole position)' : '');
+      const dist = m.kind === 'now' ? '' : pct(m.px);
+      return `<li class="ladder__row ladder__row--${m.kind}"><span class="ladder__key">${LADDER_KEYS[m.kind]}</span>` +
+        `<span class="ladder__name">${name}</span><span class="ladder__px">${formatPrice(m.px, true, quoteCurrency)}</span>` +
+        `<span class="ladder__dist">${dist}</span></li>`;
+    }).join('');
+  const status = loading && !orders
+    ? '<p class="ladder__note">Loading orders…</p>'
+    : (orders && !triggers.length && !limits.length ? '<p class="ladder__note">No open orders.</p>' : '');
+  const label = `Price levels for ${escapeAttr(pos.asset)} ${isShort ? 'short' : 'long'}` +
+    (liq ? `, liquidation ${pct(liq)} from now` : ', no liquidation price');
+  return `<div class="ladder" role="img" aria-label="${label}" style="--rows:${rows}"><div class="ladder__marks">${markHtml}</div>` +
+    `<div class="ladder__track">${zone}</div></div><ul class="ladder__legend">${legend}</ul>${status}`;
+}
+
 // The line that opens under a row: what the row can't fit, then its actions.
 function createDetailRow(doc, pos, opts, colSpan) {
   const amountVisible = !!opts.amountsVisible;
@@ -97,6 +196,19 @@ function createDetailRow(doc, pos, opts, colSpan) {
     const entry = `entry ${formatPrice(Number(pos.entryPrice), true, quoteCurrency)}`;
     facts.push(pos.entryDate ? `${entry} on ${escapeAttr(pos.entryDate)}` : entry);
   }
+  // Perps: leverage, and how far the price can move before liquidation.
+  if (Number(pos.leverage) > 0) {
+    facts.push(`${pos.leverage}× ${escapeAttr(pos.leverageType || '')}`.trim());
+  }
+  // Cross margin can leave no liquidation price: the account covers it.
+  if (pos.isLeveraged && !(Number(pos.liquidationPx) > 0)) facts.push('no liquidation price');
+  if (pos.staking) {
+    facts.length = 0;
+    facts.push(`${formatAmount(pos.staking.staked, amountVisible, showExactAmounts)} staked`);
+    if (pos.staking.unstaked > 0) facts.push(`${formatAmount(pos.staking.unstaked, amountVisible, showExactAmounts)} not staked`);
+    if (pos.staking.withdrawing > 0) facts.push(`${formatAmount(pos.staking.withdrawing, amountVisible, showExactAmounts)} withdrawing`);
+    facts.push('rewards in Account');
+  }
   if (pos.isManuallyHidden) facts.push('hidden');
 
   const tr = doc.createElement('tr');
@@ -104,6 +216,7 @@ function createDetailRow(doc, pos, opts, colSpan) {
   const td = doc.createElement('td');
   td.colSpan = colSpan;
   td.innerHTML = `<div class="position-detail__facts">${facts.filter(Boolean).join(' · ')}</div>` +
+    (pos.isLeveraged ? `<div class="position-detail__ladder">${ladderHtml(pos, quoteCurrency)}</div>` : '') +
     `<div class="position-detail__actions">${rowActionsHtml(pos, `${pos.asset}_${pos.exchange}`)}</div>`;
   tr.appendChild(td);
   return tr;

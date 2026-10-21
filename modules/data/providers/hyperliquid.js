@@ -245,7 +245,20 @@ export function buildSpotPriceMap(allMids, spotMeta) {
   return priceMap;
 }
 
+// Any read-only /info query (orders, portfolio, funding, fees, staking). Callers cache.
+export async function fetchInfo(body, timeoutMs = 10000) {
+  return await post(body, timeoutMs);
+}
+
+// Staked HYPE: { delegated, undelegated, totalPendingWithdrawal, nPendingWithdrawals }.
+export async function fetchDelegatorSummary(address, timeoutMs = 10000) {
+  if (!address) return null;
+  return await post({ type: 'delegatorSummary', user: address }, timeoutMs);
+}
+
 export default {
+  fetchInfo,
+  fetchDelegatorSummary,
   fetchPositions,
   fetchAllMids,
   fetchMetaAndAssetCtxs,

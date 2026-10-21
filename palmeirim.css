@@ -231,8 +231,30 @@ html.pm:root .app-header.pm-menu-open .header-actions::before {
 }
 
 /* Menu order: Settings first, then the everyday tools, then the decorations. */
-html.pm:root #pmTools #newSettingsBtn { order: -4; }
-html.pm:root #pmTools #pmThemeBtn { order: -3; }
+html.pm:root #pmTools #newSettingsBtn { order: -5; }
+html.pm:root #pmTools #pmThemeBtn { order: -4; }
+/* Account sits in the bar beside MENU: a key cell and a label, like the section chips. */
+html.pm:root .pm-account-btn {
+  flex: none;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: var(--pm-lh);
+  cursor: pointer;
+}
+
+html.pm:root .pm-account-btn + .pm-menu-btn { margin-left: 0; }
+html.pm:root .pm-account-btn:focus-visible kbd { background: var(--pm-ink); color: var(--bg); }
+
+@media (hover: hover) {
+  html.pm:root .pm-account-btn:hover kbd { background: var(--pm-ink); color: var(--bg); }
+}
+
+/* Without its key cell (touch), the label takes the stronger fill, like MENU. */
+@media (hover: none), (pointer: coarse), (max-width: 640px) {
+  html.pm:root .pm-account-btn .chip__label { background: var(--pm-tint-2); }
+}
 html.pm:root #pmTools #newRefreshBtn { order: -2; }
 html.pm:root #pmTools #newToggleAmountsBtn { order: -1; }
 html.pm:root #pmThemeBtn::before { content: "T"; }
@@ -882,6 +904,81 @@ html.pm:root .funding-cell[data-funding-rate] {
   text-decoration: underline dotted var(--pm-rule);
   text-underline-offset: 3px;
 }
+
+/* ── Perp price ladder (open row) ──
+   A dim dither track; the liquidated side in the bright dither; a tick and a key glyph
+   for each level (▼ now, E entry, L liquidation, T take profit, S stop loss, · limit).
+   The legend under it lists them high to low with price and distance from now. */
+/* Never wider than what's visible: the table can scroll sideways, the ladder stays put. */
+html.pm:root .position-detail__ladder {
+  position: sticky;
+  left: 1ch;
+  width: min(72ch, calc(100vw - 5ch));
+  margin-top: calc(var(--pm-lh) / 2);
+}
+
+html.pm:root .ladder {
+  position: relative;
+  height: calc(var(--pm-lh) * var(--rows, 1) + var(--pm-lh) * 0.6);
+  margin: 0 1ch;
+}
+
+html.pm:root .ladder__marks { position: absolute; inset: 0; }
+
+html.pm:root .ladder__mark {
+  position: absolute;
+  transform: translateX(-50%);
+  line-height: var(--pm-lh);
+  white-space: nowrap;
+}
+
+html.pm:root .ladder__mark--buy,
+html.pm:root .ladder__mark--sell,
+html.pm:root .ladder__mark--entry { color: var(--pm-muted); }
+
+html.pm:root .ladder__track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--pm-lh) * 0.5);
+  background: var(--pm-dither-dim);
+}
+
+html.pm:root .ladder__zone { position: absolute; top: 0; bottom: 0; background: var(--pm-dither); }
+
+/* Stem: from just under its letter down to the bottom of the track. */
+html.pm:root .ladder__tick {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  background: var(--pm-ink);
+  transform: translateX(-0.5px);
+}
+
+html.pm:root .ladder__tick--now { width: 2px; transform: translateX(-1px); }
+html.pm:root .ladder__tick--buy,
+html.pm:root .ladder__tick--sell,
+html.pm:root .ladder__tick--entry { background: var(--pm-muted); }
+
+/* Legend: key, name, price, distance from now, in fixed columns. */
+html.pm:root .ladder__legend {
+  display: grid;
+  grid-template-columns: 2ch minmax(0, 1fr) max-content 9ch;
+  gap: 0 1ch;
+  margin: calc(var(--pm-lh) / 2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+html.pm:root .ladder__row { display: contents; }
+html.pm:root .ladder__key { text-align: center; }
+html.pm:root .ladder__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.pm:root .ladder__px,
+html.pm:root .ladder__dist { text-align: right; }
+html.pm:root .ladder__dist { color: var(--pm-muted); }
+html.pm:root .ladder__row--liq .ladder__dist { color: var(--pm-ink); }
+html.pm:root .ladder__note { margin: calc(var(--pm-lh) / 4) 0 0; color: var(--pm-muted); }
 
 /* ── Undo line: framed like a window, low on the left, for a few seconds ── */
 html.pm:root .undo-line {
@@ -1704,6 +1801,77 @@ html.pm:root .pm-keys > div { display: grid; grid-template-columns: 6ch minmax(0
 html.pm:root .pm-keys dt { margin: 0; }
 html.pm:root .pm-keys dd { margin: 0; }
 html.pm:root .pm-keys kbd { display: inline-block !important; min-width: 3ch; text-align: center; }
+
+/* ── Account value chart (top of the portfolio card) ── */
+html.pm:root .pm-value { margin-top: var(--pm-lh); }
+html.pm:root .pm-value[hidden],
+html.pm:root[data-value-chart="off"] .pm-value { display: none; }
+
+html.pm:root .pm-value__head { display: flex; align-items: baseline; gap: 0 2ch; flex-wrap: wrap; }
+html.pm:root .pm-value__label { color: var(--pm-muted); text-transform: uppercase; }
+html.pm:root .pm-value__periods { display: flex; gap: 0 2ch; }
+html.pm:root .pm-value__change { margin-left: auto; }
+
+html.pm:root .pm-value__period {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: var(--pm-lh);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+html.pm:root .pm-value__period::before { content: "( ) "; white-space: pre; }
+html.pm:root .pm-value__period[aria-checked="true"]::before { content: "(*) "; }
+html.pm:root .pm-value__period:focus-visible { background: var(--pm-ink); color: var(--bg); outline: none; }
+
+@media (hover: hover) {
+  html.pm:root .pm-value__period:hover { background: var(--pm-ink); color: var(--bg); }
+}
+
+html.pm:root .pm-value__chart { margin-top: calc(var(--pm-lh) / 2); cursor: crosshair; }
+html.pm:root .pm-value__svg { display: block; }
+html.pm:root .pm-value__dot { fill: var(--pm-rule); }
+html.pm:root .pm-value__line { stroke: var(--pm-ink); stroke-width: 1.25; }
+html.pm:root .pm-value__empty { margin: 0; color: var(--pm-muted); }
+html.pm:root .pm-value__cursor { stroke: var(--pm-muted); stroke-width: 1; }
+html.pm:root .pm-value__point { fill: var(--pm-ink); stroke: var(--bg); stroke-width: 1; }
+
+/* ── Account window ── */
+html.pm:root .pm-account-window { width: min(76ch, calc(100vw - 3ch)); }
+html.pm:root .pm-account-window .sticker-window-content { max-height: min(70vh, calc(var(--pm-lh) * 32)); overflow-y: auto; }
+
+html.pm:root .acct p { margin: 0; }
+html.pm:root .acct__wallet + .acct__wallet { margin-top: calc(var(--pm-lh) * 1.5); }
+html.pm:root .acct__address { margin: 0 0 calc(var(--pm-lh) / 2); font: inherit; color: var(--pm-ink); }
+html.pm:root .acct__section + .acct__section { margin-top: var(--pm-lh); }
+html.pm:root .acct__title { margin: 0; font: inherit; color: var(--pm-muted); text-transform: uppercase; }
+html.pm:root .acct strong { font-weight: inherit; }
+html.pm:root .acct__muted { color: var(--pm-muted); }
+
+/* Margin meter: the solid share used on the dim dither. */
+html.pm:root .acct__meter { height: var(--pm-bar-h); margin: calc(var(--pm-lh) / 3) 0; background: var(--pm-dither-dim); }
+html.pm:root .acct__meter > span { display: block; height: 100%; min-width: 2px; background: var(--pm-ink); }
+
+/* Funding bars around a middle line: received above, paid below. */
+html.pm:root .acct__bars {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 2px;
+  height: calc(var(--pm-lh) * 3);
+  margin: calc(var(--pm-lh) / 3) 0;
+  background: linear-gradient(var(--pm-rule), var(--pm-rule)) 0 50% / 100% 1px no-repeat;
+}
+
+html.pm:root .acct__bar { position: relative; }
+html.pm:root .acct__bar::after { content: ""; position: absolute; left: 0; right: 0; height: calc(var(--h) / 2); }
+html.pm:root .acct__bar--up::after { bottom: 50%; background: var(--pm-ink); }
+html.pm:root .acct__bar--down::after { top: 50%; background: var(--pm-dither); }
+html.pm:root .acct__bar--unknown::after { display: none; }
 
 /* ── Strip readout: the hovered segment, named on the card's bottom border at its start ── */
 html.pm:root .pm-card__readout {

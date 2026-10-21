@@ -90,6 +90,7 @@ export function getDefaultSettings() {
     fullWidth: false, // Content column fills the window instead of stopping at a reading width
     centerLayout: false, // Content column sits in the middle of the window instead of on the left
     valueInTitle: true, // Portfolio value and today's change in the browser tab title
+    showValueChart: true, // Hyperliquid account value chart in the portfolio card
     comicStrip: 'calvinandhobbes',
     hideComic: false,
     hideWatchlist: false,

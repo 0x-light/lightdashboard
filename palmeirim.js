@@ -191,6 +191,152 @@
   strip.addEventListener("mouseleave", function () { readout.hidden = true; });
   window.addEventListener("scroll", function () { readout.hidden = true; }, { passive: true });
 
+  // ── Account value chart: Hyperliquid's own history, so it's the same on every device ──
+  // Sits under the sentence: period choice on the left, change on the right, a line over
+  // the dim dither. Pointing at it names the time and value on the card's bottom border.
+  // Settings → Sections can hide it (html[data-value-chart="off"]).
+  var PERIODS = [["day", "1D"], ["week", "1W"], ["month", "1M"], ["allTime", "All"]];
+  var valueBox = el("div", { class: "pm-value", hidden: "" },
+    '<div class="pm-value__head"><span class="pm-value__label">HL account</span>' +
+    '<span class="pm-value__periods" role="radiogroup" aria-label="Period">' +
+    PERIODS.map(function (p) { return '<button type="button" role="radio" class="pm-value__period" data-period="' + p[0] + '">' + p[1] + '</button>'; }).join("") +
+    '</span><span class="pm-value__change"></span></div><div class="pm-value__chart"></div>');
+  card.insertBefore(valueBox, allocWrap);
+  var valuePeriod = "week";
+  try { valuePeriod = localStorage.getItem("pmValuePeriod") || "week"; } catch (_e) {}
+  var valueData = null;
+  var valueSeries = [];
+
+  function hlAddresses() {
+    try {
+      var s = JSON.parse(localStorage.getItem("myDashboardSettings.v2") || "{}");
+      return String(s.walletAddresses || "").split(/[\s,]+/).filter(function (a) { return /^0x[0-9a-fA-F]{40}$/.test(a); });
+    } catch (_e) { return []; }
+  }
+
+  function money(v, signed) {
+    var abs = Math.abs(v);
+    var text = "$" + new Intl.NumberFormat(undefined, { notation: abs >= 10000 ? "compact" : "standard", maximumFractionDigits: abs >= 10000 ? 2 : 0 }).format(abs);
+    return (v < 0 ? "−" : signed ? "+" : "") + text;
+  }
+
+  // Several addresses: add their values up, step by step, on the first one's timestamps.
+  function combine(perAddress, period) {
+    var lists = perAddress.map(function (p) { return p && p[period]; }).filter(Boolean);
+    if (!lists.length) return null;
+    var base = lists[0].values;
+    var at = function (series, t) {
+      var v = 0;
+      for (var i = 0; i < series.length && series[i][0] <= t; i++) v = series[i][1];
+      return v;
+    };
+    var values = base.map(function (pt) {
+      return [pt[0], lists.reduce(function (sum, l) { return sum + at(l.values, pt[0]); }, 0)];
+    });
+    var pnl = lists.reduce(function (sum, l) { return sum + (l.pnl.length ? l.pnl[l.pnl.length - 1][1] : 0); }, 0);
+    return { values: values, pnl: pnl };
+  }
+
+  function drawValue() {
+    var chart = $(".pm-value__chart", valueBox);
+    $$(".pm-value__period", valueBox).forEach(function (b) { b.setAttribute("aria-checked", String(b.dataset.period === valuePeriod)); });
+    var data = valueData && combine(valueData, valuePeriod);
+    if (!data || data.values.length < 2) {
+      chart.innerHTML = '<p class="pm-value__empty">No history for this period.</p>';
+      $(".pm-value__change", valueBox).textContent = "";
+      valueSeries = [];
+      return;
+    }
+    var first = data.values[0][1];
+    var pct = first > 0 ? (data.pnl / first) * 100 : null;
+    $(".pm-value__change", valueBox).textContent = money(data.pnl, true) + (pct !== null ? " (" + (pct >= 0 ? "+" : "−") + Math.abs(pct).toFixed(1) + "%)" : "");
+
+    // Drawn at the box's real pixel size, so the 1px dither stays crisp.
+    var w = Math.max(100, Math.round(chart.clientWidth));
+    var h = Math.round((parseFloat(getComputedStyle(document.documentElement).getPropertyValue("font-size")) || 14) * 18 / 14 * 3);
+    var ts = data.values.map(function (p) { return p[0]; });
+    var vs = data.values.map(function (p) { return p[1]; });
+    var t0 = Math.min.apply(null, ts), t1 = Math.max.apply(null, ts);
+    var v0 = Math.min.apply(null, vs), v1 = Math.max.apply(null, vs);
+    if (v1 === v0) { v0 -= 1; v1 += 1; }
+    valueSeries = data.values.map(function (p) {
+      return { t: p[0], v: p[1], x: (p[0] - t0) / (t1 - t0 || 1) * (w - 1), y: 1 + (1 - (p[1] - v0) / (v1 - v0)) * (h - 3) };
+    });
+    var pts = valueSeries.map(function (p) { return p.x.toFixed(1) + "," + p.y.toFixed(1); }).join(" ");
+    chart.innerHTML =
+      '<svg class="pm-value__svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '" aria-hidden="true">' +
+      '<defs><pattern id="pmValueDz" width="2" height="2" patternUnits="userSpaceOnUse"><rect class="pm-value__dot" width="1" height="1"/><rect class="pm-value__dot" x="1" y="1" width="1" height="1"/></pattern></defs>' +
+      '<polygon points="0,' + h + " " + pts + " " + (w - 1) + "," + h + '" fill="url(#pmValueDz)"/>' +
+      '<polyline points="' + pts + '" class="pm-value__line" fill="none"/>' +
+      // Hover marker: moved by attributes (not style), which the page observer ignores.
+      '<line class="pm-value__cursor" x1="0" x2="0" y1="0" y2="' + h + '" visibility="hidden"/>' +
+      '<rect class="pm-value__point" width="5" height="5" x="0" y="0" visibility="hidden"/></svg>';
+    chart.setAttribute("role", "img");
+    chart.setAttribute("aria-label", "Hyperliquid account value, " + $(".pm-value__period[aria-checked=true]", valueBox).textContent + ": " + money(vs[0]) + " to " + money(vs[vs.length - 1]));
+  }
+
+  function loadValue() {
+    var off = document.documentElement.dataset.valueChart === "off";
+    var addresses = hlAddresses();
+    if (off || !addresses.length) { valueBox.hidden = true; return; }
+    import("./modules/data/hl-account.js").then(function (m) {
+      return Promise.all(addresses.map(function (a) { return m.getPortfolio(a).catch(function () { return null; }); }));
+    }).then(function (perAddress) {
+      var any = perAddress.some(function (p) { return p && p.allTime && p.allTime.values.some(function (pt) { return pt[1] > 0; }); });
+      valueBox.hidden = !any;
+      if (!any) return;
+      valueData = perAddress;
+      drawValue();
+    }).catch(function () { valueBox.hidden = true; });
+  }
+
+  $(".pm-value__periods", valueBox).addEventListener("click", function (e) {
+    var b = e.target.closest(".pm-value__period");
+    if (!b) return;
+    valuePeriod = b.dataset.period;
+    try { localStorage.setItem("pmValuePeriod", valuePeriod); } catch (_e) {}
+    drawValue();
+  });
+
+  $(".pm-value__chart", valueBox).addEventListener("mousemove", function (e) {
+    if (!valueSeries.length) return;
+    var x = e.clientX - this.getBoundingClientRect().left;
+    var near = valueSeries.reduce(function (best, p) { return Math.abs(p.x - x) < Math.abs(best.x - x) ? p : best; });
+    var cursor = $(".pm-value__cursor", this), point = $(".pm-value__point", this);
+    if (cursor && point) {
+      var cx = Math.round(near.x) + 0.5;
+      cursor.setAttribute("x1", cx);
+      cursor.setAttribute("x2", cx);
+      cursor.setAttribute("visibility", "visible");
+      point.setAttribute("x", (near.x - 2.5).toFixed(1));
+      point.setAttribute("y", (near.y - 2.5).toFixed(1));
+      point.setAttribute("visibility", "visible");
+    }
+    var when = new Date(near.t);
+    var label = valuePeriod === "day"
+      ? when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+      : when.toLocaleDateString(undefined, { month: "short", day: "numeric", year: valuePeriod === "allTime" ? "numeric" : undefined });
+    readout.textContent = label + " · " + money(near.v);
+    readout.hidden = false;
+    var box = card.getBoundingClientRect();
+    var left = this.getBoundingClientRect().left + near.x - readout.offsetWidth / 2;
+    readout.style.left = Math.max(box.left + 1, Math.min(box.right - readout.offsetWidth - 8, left)) + "px";
+    readout.style.top = (box.bottom - readout.offsetHeight / 2) + "px";
+  });
+  $(".pm-value__chart", valueBox).addEventListener("mouseleave", function () {
+    readout.hidden = true;
+    $$(".pm-value__cursor, .pm-value__point", this).forEach(function (n) { n.setAttribute("visibility", "hidden"); });
+  });
+
+  var valueResize = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(valueResize);
+    valueResize = setTimeout(function () { if (valueData) drawValue(); }, 150);
+  });
+  new MutationObserver(loadValue).observe(document.documentElement, { attributes: true, attributeFilter: ["data-value-chart"] });
+  loadValue();
+  setInterval(loadValue, 5 * 60 * 1000);
+
   function setAllocOpen(open) {
     strip.setAttribute("aria-expanded", String(open));
     allocList.hidden = !open;
@@ -416,6 +562,16 @@
   var keysItem = el("button", { type: "button", id: "pmKeysBtn", class: "btn-text", "aria-haspopup": "dialog" }, "Shortcuts");
   tools.appendChild(keysItem);
 
+  // Account: Hyperliquid margin, funding, fees and staking, in a window of its own.
+  // A chip of its own in the bar, beside MENU, so it's one click away.
+  var accountItem = el("button", { type: "button", id: "pmAccountBtn", class: "pm-account-btn chip", "aria-haspopup": "dialog" },
+    '<kbd>A</kbd><span class="chip__label">Account</span>');
+  header.insertBefore(accountItem, menuBtn);
+  function openAccount() {
+    import("./modules/ui/account-window.js").then(function (m) { m.openAccountWindow(); });
+  }
+  accountItem.addEventListener("click", openAccount);
+
   var keysBackdrop = el("div", { class: "settings-backdrop", style: "display: none;" });
   var keysWindow = el("div", { class: "sticker-window pm-keys-window", role: "dialog", "aria-modal": "true",
     "aria-labelledby": "pmKeysTitle", style: "display: none;" },
@@ -497,6 +653,7 @@
     if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || modalOpen()) return;
     if (/^[1-9]$/.test(e.key)) { e.preventDefault(); goTo(Number(e.key) - 1); return; }
     if (e.key === "?") { e.preventDefault(); openKeys(); return; }
+    if (e.key === "a" || e.key === "A") { e.preventDefault(); openAccount(); return; }
     if (e.key === "t" || e.key === "T") { e.preventDefault(); cycleTheme(e.shiftKey ? -1 : 1); return; }
     if (e.key === "h" || e.key === "H") {
       var btn = $("#newToggleAmountsBtn");
