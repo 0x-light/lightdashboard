@@ -44,8 +44,7 @@ html.pm:root .pm-nav a[aria-current] .chip__label,
 html.pm:root .header-actions .btn-text:focus-visible::before,
 html.pm:root .pm-btn:focus-visible,
 html.pm:root .panel-foot .btn-text:focus-visible,
-html.pm:root .panel-action:focus-visible,
-html.pm:root .comic-tab:focus-visible {
+html.pm:root .panel-action:focus-visible {
   background: var(--pm-ink);
   color: var(--bg);
 }
@@ -55,7 +54,6 @@ html.pm:root .comic-tab:focus-visible {
   html.pm:root .header-actions .btn-text:hover::before,
   html.pm:root .panel-foot .btn-text:hover,
   html.pm:root .panel-action:hover,
-  html.pm:root .comic-tab:hover,
   html.pm:root .data-table tbody tr:not(.position-detail, .watchlist-row, .watchlist-empty-row):hover td,
   html.pm:root .hero-amount-toggle:hover {
     background: var(--pm-ink);
@@ -996,26 +994,12 @@ html.pm:root .comic-tabs {
   position: static;
   display: flex;
   flex-wrap: wrap;
-  gap: 0 2ch;
+  gap: 0 1ch;
   margin: var(--pm-lh) 0 0;
   padding: 0;
   border: 0;
 }
 
-html.pm:root .comic-tab {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--pm-ink);
-  text-transform: uppercase;
-  text-decoration: none;
-  opacity: 1;
-  line-height: var(--pm-lh);
-  min-height: 0;
-}
-
-html.pm:root .comic-tab::before { content: "( ) "; white-space: pre; }
-html.pm:root .comic-tab.active::before { content: "(*) "; }
 html.pm:root .comic-tab .tab-mobile { display: none; }
 html.pm:root .comic-tab .tab-desktop { display: inline; }
 
@@ -1402,21 +1386,7 @@ html.pm:root .settings-panes input[type="checkbox"] {
 }
 
 /* Two-way choices as the site's radio line. */
-html.pm:root .sticker-window-content .segmented { gap: 0 2ch; }
-
-html.pm:root .sticker-window-content .segmented .btn-tab {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--pm-ink);
-  text-transform: uppercase;
-  text-decoration: none;
-  line-height: var(--pm-lh);
-  min-height: 0;
-}
-
-html.pm:root .sticker-window-content .segmented .btn-tab::before { content: "( ) "; white-space: pre; }
-html.pm:root .sticker-window-content .segmented .btn-tab.active::before { content: "(*) "; }
+html.pm:root .sticker-window-content .segmented { gap: 0 1ch; }
 
 /* Buttons: filled, uppercase, only as wide as their label. */
 html.pm:root .settings-panes .btn-text,
@@ -1701,25 +1671,7 @@ html.pm:root .pm-theme-grid {
   gap: 0 2ch;
 }
 
-html.pm:root .pm-theme-option {
-  padding: 0 1ch 0 0;
-  border: 0;
-  background: none;
-  color: var(--pm-ink);
-  line-height: var(--pm-lh);
-  text-align: left;
-  text-transform: uppercase;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-html.pm:root .pm-theme-option::before { content: "( ) "; white-space: pre; }
-html.pm:root .pm-theme-option[aria-selected="true"]::before { content: "(*) "; }
-html.pm:root .pm-theme-option:focus-visible { background: var(--pm-ink); color: var(--bg); outline: none; }
-
-@media (hover: hover) {
-  html.pm:root .pm-theme-option:hover { background: var(--pm-ink); color: var(--bg); }
-}
+html.pm:root .pm-theme-option { justify-self: start; text-align: left; white-space: nowrap; }
 
 /* ── Shortcuts window: key cell, then what it does, two columns when there's room ── */
 html.pm:root .pm-keys-window { width: min(72ch, calc(100vw - 3ch)); }
@@ -1745,7 +1697,10 @@ html.pm:root .pm-value__head { display: flex; align-items: baseline; gap: 0 2ch;
 html.pm:root .pm-value__periods { display: flex; gap: 0 1ch; }
 html.pm:root .pm-value__change { margin-left: auto; }
 
-html.pm:root .pm-value__period {
+/* ── Pickers: one look for every choose-one row (chart periods, comics, Settings
+   tabs, themes). Plain muted labels; the chosen one inverts; pointing brightens. ── */
+html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option) {
+  min-height: 0;
   padding: 0 1ch;
   border: 0;
   background: none;
@@ -1753,17 +1708,29 @@ html.pm:root .pm-value__period {
   font: inherit;
   line-height: var(--pm-lh);
   text-transform: uppercase;
+  text-decoration: none;
+  opacity: 1;
   cursor: pointer;
 }
 
-/* The first period's text lines up with the card's text above it. */
-html.pm:root .pm-value__period:first-child { margin-left: -1ch; }
-html.pm:root .pm-value__period[aria-checked="true"] { background: var(--pm-ink); color: var(--bg); }
-html.pm:root .pm-value__period:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 0; }
+/* The first label's text lines up with the text above it; theme options sit in a
+   grid, so each one does. */
+html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab):first-child,
+html.pm:root .pm-theme-option { margin-left: -1ch; }
+
+html.pm:root :is(.pm-value__period[aria-checked="true"], .comic-tab.active, .sticker-window-content .segmented .btn-tab.active, .pm-theme-option[aria-selected="true"]) {
+  background: var(--pm-ink);
+  color: var(--bg);
+}
+
+html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option):focus-visible {
+  outline: 1px solid var(--pm-ink);
+  outline-offset: 0;
+}
 
 @media (hover: hover) {
-  html.pm:root .pm-value__period:hover { color: var(--pm-ink); }
-  html.pm:root .pm-value__period[aria-checked="true"]:hover { color: var(--bg); }
+  html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option):hover { color: var(--pm-ink); }
+  html.pm:root :is(.pm-value__period[aria-checked="true"], .comic-tab.active, .sticker-window-content .segmented .btn-tab.active, .pm-theme-option[aria-selected="true"]):hover { color: var(--bg); }
 }
 
 html.pm:root .pm-value__chart { margin-top: calc(var(--pm-lh) / 2); cursor: crosshair; }
