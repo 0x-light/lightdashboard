@@ -100,7 +100,10 @@ function ladderHtml(pos, quoteCurrency) {
   const levels = [{ kind: 'now', px: now }];
   if (Number(pos.entryPrice) > 0) levels.push({ kind: 'entry', px: Number(pos.entryPrice) });
   const triggers = (orders || []).filter(o => o.kind === 'tp' || o.kind === 'sl');
-  levels.push(...triggers.map(o => ({ kind: o.kind, px: o.px, sz: o.sz, whole: o.wholePosition })));
+  // A TP/SL names how much of the position it closes: 100% for the whole position.
+  const held = Math.abs(Number(pos.amount));
+  const shareOf = (o) => o.wholePosition ? 1 : (held > 0 && o.sz > 0 ? Math.min(1, o.sz / held) : null);
+  levels.push(...triggers.map(o => ({ kind: o.kind, px: o.px, sz: o.sz, share: shareOf(o) })));
   // Of the resting limits, only the nearest on each side; the legend gives the count.
   const limits = (orders || []).filter(o => o.kind === 'buy' || o.kind === 'sell');
   const nearest = (kind, cmp) => limits.filter(o => o.kind === kind && cmp(o.px)).sort((a, b) => Math.abs(a.px - now) - Math.abs(b.px - now))[0];
@@ -167,7 +170,7 @@ function ladderHtml(pos, quoteCurrency) {
     .map(m => {
       const name = m.kind === 'buy' || m.kind === 'sell'
         ? `${LADDER_NAMES[m.kind]}${m.count > 1 ? ` (nearest of ${m.count})` : ''}`
-        : LADDER_NAMES[m.kind] + ((m.kind === 'tp' || m.kind === 'sl') && m.whole ? ' (whole position)' : '');
+        : LADDER_NAMES[m.kind] + ((m.kind === 'tp' || m.kind === 'sl') && m.share != null ? ` ${Math.round(m.share * 100)}%` : '');
       const dist = m.kind === 'now' ? '' : pct(m.px);
       return `<li class="ladder__row ladder__row--${m.kind}"><span class="ladder__key">${LADDER_KEYS[m.kind]}</span>` +
         `<span class="ladder__name">${name}</span><span class="ladder__px">${formatPrice(m.px, true, quoteCurrency)}</span>` +

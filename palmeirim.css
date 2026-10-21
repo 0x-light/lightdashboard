@@ -365,10 +365,14 @@ html.pm:root .hero > .panel-head { display: none; }
 html.pm:root .pm-card {
   position: relative;
   max-width: var(--pm-wide);
+  --pm-card-x: 2ch;
   margin-top: calc(var(--pm-lh) / 2);
-  padding: var(--pm-lh) 2ch;
+  padding: var(--pm-lh) var(--pm-card-x);
   border: 1px solid var(--pm-rule);
 }
+
+/* With the value chart at the bottom, the gap under it matches the gap at its sides. */
+html.pm:root:not([data-value-chart="off"]) .pm-card:has(> .pm-value:not([hidden])) { padding-bottom: var(--pm-card-x); }
 
 html.pm:root .pm-card__title,
 html.pm:root .pm-card__meta {
@@ -404,14 +408,14 @@ html.pm:root {
 }
 
 @media (max-width: 520px) {
-  html.pm:root .pm-card { padding: var(--pm-lh) 1ch; }
+  html.pm:root .pm-card { --pm-card-x: 1ch; }
 }
 
 html.pm:root .hero-sentence,
 html.pm:root .hero-summary > * {
   margin: 0;
   color: var(--pm-ink);
-  font-size: 1rem;
+  font-size: inherit;
   line-height: var(--pm-lh);
 }
 
@@ -1171,7 +1175,7 @@ html.pm:root .status-bar {
   border: 0;
   background: none;
   color: var(--pm-muted);
-  font-size: 1rem;
+  font-size: inherit;
 }
 
 html.pm:root .last-update-timestamp { color: var(--pm-muted); }
@@ -1348,7 +1352,7 @@ html.pm:root .sticker-window-content select {
   border-radius: 0;
   background: var(--pm-tint);
   color: var(--pm-ink);
-  font-size: 1rem !important;
+  font-size: inherit !important;
   line-height: var(--pm-lh);
   caret-color: var(--pm-ink);
   box-shadow: none;
@@ -1361,7 +1365,7 @@ html.pm:root .sticker-window-content textarea {
   border-radius: 0;
   background: transparent;
   color: var(--pm-ink);
-  font-size: 1rem !important;
+  font-size: inherit !important;
   line-height: var(--pm-lh);
   caret-color: var(--pm-ink);
 }
@@ -1733,7 +1737,15 @@ html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segment
   html.pm:root :is(.pm-value__period[aria-checked="true"], .comic-tab.active, .sticker-window-content .segmented .btn-tab.active, .pm-theme-option[aria-selected="true"]):hover { color: var(--bg); }
 }
 
-html.pm:root .pm-value__chart { margin-top: calc(var(--pm-lh) / 2); cursor: crosshair; }
+html.pm:root .pm-value__chart {
+  margin-top: calc(var(--pm-lh) / 2);
+  cursor: crosshair;
+  /* A sideways drag scrubs the line; an up or down swipe still scrolls the page. */
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
 html.pm:root .pm-value__svg { display: block; }
 html.pm:root .pm-value__dot { fill: var(--pm-rule); }
 html.pm:root .pm-value__line { stroke: var(--pm-ink); stroke-width: 1.25; }
@@ -1811,7 +1823,7 @@ html.pm:root .acct__readout { min-height: var(--pm-lh); margin-top: calc(var(--p
 /* ── Strip readout: the hovered segment, named on the card's bottom border at its start ── */
 html.pm:root .pm-card__readout {
   position: fixed;
-  z-index: 50;
+  z-index: 999; /* over #mainContent (998), like the undo line */
   pointer-events: none;
   margin: 0;
   padding: 0 1ch;

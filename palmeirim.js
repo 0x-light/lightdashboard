@@ -274,11 +274,15 @@
     drawValue();
   });
 
-  $(".pm-value__chart", valueBox).addEventListener("mousemove", function (e) {
+  // Pointing (mouse) or touching and dragging (finger) moves a cursor along the line.
+  // A mouse names the point on the card's bottom border, under the cursor; a finger
+  // would cover that, so touch names it on the head line, over the change.
+  var valueChart = $(".pm-value__chart", valueBox);
+  function scrub(e) {
     if (!valueSeries.length) return;
-    var x = e.clientX - this.getBoundingClientRect().left;
+    var x = e.clientX - valueChart.getBoundingClientRect().left;
     var near = valueSeries.reduce(function (best, p) { return Math.abs(p.x - x) < Math.abs(best.x - x) ? p : best; });
-    var cursor = $(".pm-value__cursor", this), point = $(".pm-value__point", this);
+    var cursor = $(".pm-value__cursor", valueChart), point = $(".pm-value__point", valueChart);
     if (cursor && point) {
       var cx = Math.round(near.x) + 0.5;
       cursor.setAttribute("x1", cx);
@@ -295,14 +299,34 @@
     readout.textContent = label + " · " + money(near.v);
     readout.hidden = false;
     var box = card.getBoundingClientRect();
-    var left = this.getBoundingClientRect().left + near.x - readout.offsetWidth / 2;
-    readout.style.left = Math.max(box.left + 1, Math.min(box.right - readout.offsetWidth - 8, left)) + "px";
-    readout.style.top = (box.bottom - readout.offsetHeight / 2) + "px";
-  });
-  $(".pm-value__chart", valueBox).addEventListener("mouseleave", function () {
+    if (e.pointerType === "touch") {
+      var change = $(".pm-value__change", valueBox).getBoundingClientRect();
+      var pad = parseFloat(getComputedStyle(readout).paddingRight) || 0;
+      readout.style.minWidth = (change.width + 2 * pad) + "px"; // covers the change it stands in for
+      readout.style.textAlign = "right";
+      readout.style.left = Math.max(box.left + 1, change.right + pad - readout.offsetWidth) + "px";
+      readout.style.top = (change.top + (change.height - readout.offsetHeight) / 2) + "px";
+    } else {
+      readout.style.minWidth = "";
+      readout.style.textAlign = "";
+      var left = valueChart.getBoundingClientRect().left + near.x - readout.offsetWidth / 2;
+      readout.style.left = Math.max(box.left + 1, Math.min(box.right - readout.offsetWidth - 8, left)) + "px";
+      readout.style.top = (box.bottom - readout.offsetHeight / 2) + "px";
+    }
+  }
+  function endScrub() {
     readout.hidden = true;
-    $$(".pm-value__cursor, .pm-value__point", this).forEach(function (n) { n.setAttribute("visibility", "hidden"); });
+    $$(".pm-value__cursor, .pm-value__point", valueChart).forEach(function (n) { n.setAttribute("visibility", "hidden"); });
+  }
+  valueChart.addEventListener("pointerdown", function (e) {
+    if (e.pointerType === "mouse") return;
+    try { valueChart.setPointerCapture(e.pointerId); } catch (_e) {}
+    scrub(e);
   });
+  valueChart.addEventListener("pointermove", scrub);
+  valueChart.addEventListener("pointerup", function (e) { if (e.pointerType !== "mouse") endScrub(); });
+  valueChart.addEventListener("pointercancel", endScrub);
+  valueChart.addEventListener("pointerleave", function (e) { if (e.pointerType === "mouse") endScrub(); });
 
   var valueResize = null;
   window.addEventListener("resize", function () {
