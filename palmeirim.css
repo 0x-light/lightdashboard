@@ -54,7 +54,7 @@ html.pm:root .panel-action:focus-visible {
   html.pm:root .header-actions .btn-text:hover::before,
   html.pm:root .panel-foot .btn-text:hover,
   html.pm:root .panel-action:hover,
-  html.pm:root .data-table tbody tr:not(.position-detail, .watchlist-row, .watchlist-empty-row):hover td,
+  html.pm:root .data-table tbody tr:not(.position-detail, .position-group, .watchlist-row, .watchlist-empty-row):hover td,
   html.pm:root .hero-amount-toggle:hover {
     background: var(--pm-ink);
     color: var(--bg);
@@ -62,8 +62,8 @@ html.pm:root .panel-action:focus-visible {
 
   /* Cells and their contents set their own colours (asset, muted amount and source,
      P&L); an inverted row overrides all of them so nothing disappears into the fill. */
-  html.pm:root .data-table tbody tr:not(.position-detail, .watchlist-row, .watchlist-empty-row):hover td,
-  html.pm:root .data-table tbody tr:not(.position-detail, .watchlist-row, .watchlist-empty-row):hover td * {
+  html.pm:root .data-table tbody tr:not(.position-detail, .position-group, .watchlist-row, .watchlist-empty-row):hover td,
+  html.pm:root .data-table tbody tr:not(.position-detail, .position-group, .watchlist-row, .watchlist-empty-row):hover td * {
     color: var(--bg) !important;
     text-decoration-color: currentColor;
   }
@@ -320,6 +320,21 @@ html.pm:root .settings-pane label.check:has(#newShowStickersBtn, #newShowSnowBtn
 @media (hover: hover) {
   html.pm:root .watchlist-search-result:hover * { color: inherit !important; }
 }
+
+/* ── Kinds of position ──
+   Spot, perps and options each run under a head row: the kind and its count muted,
+   its totals in ink under the Value, P&L and Funding heads. A head is not a row: it
+   neither opens nor inverts. An option reads as its underlying with the contract's
+   terms after it, muted: "ABCL 8 call · 15 Jan 27". */
+html.pm:root .data-table tr.position-group td {
+  border-top: 1px solid var(--pm-rule);
+  cursor: default;
+}
+html.pm:root .data-table tbody tr.position-group:first-child td { border-top: 0; }
+html.pm:root .position-group__label,
+html.pm:root .position-group__count { color: var(--pm-muted); }
+html.pm:root .position-group__count { margin-left: 1ch; }
+html.pm:root .asset-terms { margin-left: 1ch; color: var(--pm-muted); }
 
 /* A position hidden in edit mode reads as off: muted (the app's rule) and struck. */
 html.pm:root .position-row-hidden .asset-cell { text-decoration: line-through; text-decoration-color: var(--pm-muted); }
@@ -594,7 +609,7 @@ html.pm:root .pm-spark-dot { fill: var(--pm-rule); }
 
 /* On an inverted row, the dots and line flip to the background colour. */
 @media (hover: hover) {
-  html.pm:root .data-table tbody tr:not(.position-detail, .watchlist-row, .watchlist-empty-row):hover .pm-spark-dot { fill: color-mix(in srgb, var(--bg) 45%, var(--pm-ink)); }
+  html.pm:root .data-table tbody tr:not(.position-detail, .position-group, .watchlist-row, .watchlist-empty-row):hover .pm-spark-dot { fill: color-mix(in srgb, var(--bg) 45%, var(--pm-ink)); }
 }
 
 html.pm:root .data-table .loading,
@@ -855,9 +870,23 @@ html.pm:root .position-detail__ladder {
 
 html.pm:root .ladder {
   position: relative;
-  height: calc(var(--pm-lh) * var(--rows, 1) + var(--pm-lh) * 0.6);
+  height: calc(var(--pm-lh) * (var(--rows, 1) + var(--curve-rows, 0)) + var(--pm-lh) * 0.6);
   margin: 0 1ch;
 }
+
+/* An option's payoff at expiry, in rows of its own between the keys and the track: the
+   stems of now, strike and breakeven run through it as its reference lines. */
+html.pm:root .ladder__curve {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: calc(var(--pm-lh) * var(--curve-rows, 0));
+}
+
+html.pm:root .payoff { display: block; width: 100%; height: 100%; overflow: visible; }
+html.pm:root .payoff__line { stroke: var(--pm-ink); stroke-width: 1.5; stroke-linejoin: round; }
+html.pm:root .payoff__zero { stroke: var(--pm-muted); stroke-width: 1; stroke-dasharray: 2 3; }
+html.pm:root .payoff__gain { fill: var(--pm-tint-2); stroke: none; }
 
 html.pm:root .ladder__marks { position: absolute; inset: 0; }
 
@@ -870,6 +899,7 @@ html.pm:root .ladder__mark {
 
 html.pm:root .ladder__mark--buy,
 html.pm:root .ladder__mark--sell,
+html.pm:root .ladder__mark--leg,
 html.pm:root .ladder__mark--entry { color: var(--pm-muted); }
 
 html.pm:root .ladder__track {
@@ -895,7 +925,9 @@ html.pm:root .ladder__tick {
 html.pm:root .ladder__tick--now { width: 2px; transform: translateX(-1px); }
 html.pm:root .ladder__tick--buy,
 html.pm:root .ladder__tick--sell,
+html.pm:root .ladder__tick--leg,
 html.pm:root .ladder__tick--entry { background: var(--pm-muted); }
+html.pm:root .ladder__row--leg { color: var(--pm-muted); }
 
 /* Legend: key, name, price, distance from now, in fixed columns. */
 html.pm:root .ladder__legend {
@@ -1697,6 +1729,31 @@ html.pm:root .settings-pane > .settings-group:first-child { margin-top: 0; paddi
 html.pm:root .settings-pane label.check { margin: 0; }
 html.pm:root .settings-pane label.check + label.check { margin-top: 0; }
 
+/* Column order: one line per column, its name then ↑ ↓ keys; an end key is muted. */
+html.pm:root .column-order li {
+  display: flex;
+  align-items: baseline;
+  gap: 1ch;
+  line-height: var(--pm-lh);
+}
+html.pm:root .column-order__name { flex: 0 0 10ch; }
+html.pm:root .column-order__move {
+  min-width: 0;
+  min-height: 0;
+  padding: 0 1ch;
+  border: 0;
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: var(--pm-lh);
+  cursor: pointer;
+}
+html.pm:root .column-order__move:disabled { background: none; color: var(--pm-muted); cursor: default; }
+html.pm:root .column-order__move:focus-visible { outline: none; background: var(--pm-ink); color: var(--bg); }
+@media (hover: hover) {
+  html.pm:root .column-order__move:not(:disabled):hover { background: var(--pm-ink); color: var(--bg); }
+}
+
 /* Wallet addresses: the box is wide; its label sits above it. */
 html.pm:root #settingsPane-wallets > label:not(.check) { grid-template-columns: minmax(0, 1fr); }
 html.pm:root #settingsPane-wallets > label:not(.check) > * { grid-column: 1; }
@@ -2058,7 +2115,7 @@ html.pm:root .table-wrapper.more-right { -webkit-mask-image: none; mask-image: n
 /* Phones: the sparkline is the one column dropped (24h % says the same), so P&L
    still lands on the first screen; the rest is a swipe away. */
 @media (max-width: 520px) {
-  html.pm:root #newPositionsTable :is(th, td):nth-child(3) { display: none; }
+  html.pm:root #newPositionsTable :is(.th-chart, .col-chart) { display: none; }
 }
 
 /* Allocation in place: the Asset cell fills from the left to the row's share of the

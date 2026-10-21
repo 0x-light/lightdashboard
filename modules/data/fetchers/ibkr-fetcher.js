@@ -1,4 +1,5 @@
 import { getFxCurrency, getQuoteUnitScale } from '../../utils/currency.js';
+import { parseOptionSymbol } from '../../domain/instruments.js';
 
 // IBKR listing exchange -> Yahoo ticker suffix. US venues take no suffix. Anything missing here
 // keeps IBKR's own mark price from the statement.
@@ -43,7 +44,20 @@ function livePriceFor(pos, quote) {
   return quote.price * getQuoteUnitScale(quote.currency);
 }
 
-function buildPositionRow(pos, quote) {
+// The contract an option row is on, read from its OCC symbol or IBKR's description.
+function optionOf(pos) {
+  if (!['OPT', 'FOP'].includes(pos.assetCategory)) return null;
+  return parseOptionSymbol(pos.symbol) || parseOptionSymbol(pos.description);
+}
+
+// The Yahoo ticker of an option's underlying, when it is a US stock quoted in dollars.
+function underlyingSymbolFor(pos) {
+  const option = optionOf(pos);
+  if (!option || pos.currency !== 'USD') return null;
+  return /^[A-Z0-9.\-]{1,12}$/.test(option.underlying) ? option.underlying : null;
+}
+
+function buildPositionRow(pos, quote, underlyingQuote) {
   const live = livePriceFor(pos, quote);
   const price = live ?? pos.markPrice;
   const value = live !== null
@@ -63,6 +77,9 @@ function buildPositionRow(pos, quote) {
   // ("SPY 18DEC26 550 P") reads better.
   const isDerivative = ['OPT', 'FOP', 'FUT', 'WAR'].includes(pos.assetCategory);
   const asset = isDerivative && pos.description ? pos.description.replace(/\s+/g, ' ').trim() : pos.symbol;
+  // Options carry their contract and, when Yahoo quotes the underlying, its price now.
+  const option = optionOf(pos);
+  const underlying = option ? livePriceFor(pos, underlyingQuote) : null;
 
   return {
     asset,
@@ -80,6 +97,12 @@ function buildPositionRow(pos, quote) {
       : undefined,
     category: CATEGORY[pos.assetCategory] || 'other',
     ibkrAccount: pos.accountId,
+    ...(option ? {
+      option,
+      multiplier: pos.multiplier,
+      underlyingPrice: underlying,
+      underlyingChange24h: underlying !== null && Number.isFinite(underlyingQuote?.change24h) ? underlyingQuote.change24h : null
+    } : {}),
     _changeDetectionKey: `IBKR_${pos.accountId}_${pos.conid || pos.symbol}`
   };
 }
@@ -130,21 +153,25 @@ export class IbkrFetcher {
             const cashRows = cash.map(buildCashRow);
 
             const symbols = new Map(); // position -> Yahoo symbol
+            const underlyings = new Map(); // option position -> Yahoo symbol of its underlying
             for (const pos of positions) {
                 const yahoo = yahooSymbolFor(pos);
                 if (yahoo) symbols.set(pos, yahoo);
+                const underlying = underlyingSymbolFor(pos);
+                if (underlying) underlyings.set(pos, underlying);
             }
 
             let quotes = {};
-            if (symbols.size > 0 && this.providers.stocks?.getQuotes) {
+            const wanted = [...new Set([...symbols.values(), ...underlyings.values()])];
+            if (wanted.length > 0 && this.providers.stocks?.getQuotes) {
                 try {
-                    quotes = await this.providers.stocks.getQuotes([...symbols.values()], { timeoutMs: 5000 }) || {};
+                    quotes = await this.providers.stocks.getQuotes(wanted, { timeoutMs: 5000 }) || {};
                 } catch (e) {
                     console.warn('[IBKR] Live quotes failed; using statement prices:', e);
                 }
             }
 
-            const rows = positions.map(pos => buildPositionRow(pos, quotes[symbols.get(pos)]));
+            const rows = positions.map(pos => buildPositionRow(pos, quotes[symbols.get(pos)], quotes[underlyings.get(pos)]));
             // When IBKR made the statement, so the Account window can say how old the holdings are.
             const asOf = flexTime(statement.generatedAt);
             const all = [...rows, ...cashRows];

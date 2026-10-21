@@ -11,6 +11,7 @@ import {
   normalizeCurrencyCode
 } from '../utils/currency.js';
 import { calculatePortfolioBreakdown, calculatePortfolioTotals } from './portfolio.js';
+import { recordPortfolioValue } from '../data/value-history.js';
 
 // Last finished portfolio, kept so the next page load can paint real numbers immediately instead
 // of "Loading portfolio..." while every provider round-trips. Rows from it are marked `_stale` and
@@ -788,7 +789,7 @@ export class IncrementalPortfolioRenderer {
       const assetKey = `${p.asset}_${p.exchange}`;
       const isManuallyHidden = hiddenAssets.has(assetKey);
       // Rows without a price are kept visible: hiding them would make the holding silently vanish.
-      const isSmall = !p.fxConversionMissing && !p.quoteLoading && !p.quoteUnavailable && hideSmallPositions && (p.value || 0) < minThreshold;
+      const isSmall = !p.fxConversionMissing && !p.quoteLoading && !p.quoteUnavailable && hideSmallPositions && Math.abs(p.value || 0) < minThreshold;
 
       // Clear flags first
       p.isHiddenPosition = false;
@@ -837,6 +838,8 @@ export class IncrementalPortfolioRenderer {
             showExactAmounts: this.settings.showExactAmounts || false,
             useColoredPnL: this.settings.useColoredPnL ?? true,
             showPriceChart: this.settings.showPriceChart ?? true,
+            groupPositions: this.settings.groupPositions ?? true,
+            positionColumns: this.settings.positionColumns,
             portfolioBaseCurrency: baseCurrency
           }
         },
@@ -880,6 +883,10 @@ export class IncrementalPortfolioRenderer {
     }
 
     if (!this.isLoading) this.scheduleSnapshotSave();
+    // A point for the value chart, once every provider has reported this round.
+    if (!this.isLoading && this.expectedProviders.every(name => this.providerStatus.has(name))) {
+      recordPortfolioValue({ positions: sorted, totalValue, currency: baseCurrency });
+    }
 
     // Store in global cache for other functions
     window.cachedPositions = sorted;
