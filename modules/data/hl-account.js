@@ -2,7 +2,7 @@
 // account value history, funding payments, fees, staking and margin. Each is fetched
 // when something on screen asks for it (an opened perp row, the Account window) and
 // kept for a while, so opening and closing things doesn't cost requests.
-import { fetchInfo } from './providers/hyperliquid.js';
+import { fetchInfo, fetchPerpDexs, getUserDexes } from './providers/hyperliquid.js';
 
 const cache = new Map(); // key -> { at, promise }
 
@@ -22,8 +22,14 @@ const num = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
-// HIP-3 dexes the app reads positions from; orders and margin follow the same list.
-const DEXES = ['', 'xyz'];
+// Orders and margin live on each HIP-3 dex separately. Ask the dexes the address had money
+// or positions on when its positions were last read (the main dex when that was none);
+// before that, every dex there is.
+async function dexesOf(address) {
+  const known = getUserDexes(address);
+  if (!known) return await fetchPerpDexs(8000);
+  return known.length ? known : [''];
+}
 
 /**
  * Open orders for every address, grouped by coin:
@@ -33,11 +39,14 @@ const DEXES = ['', 'xyz'];
 export function getOpenOrders(addresses) {
   const key = `orders:${addresses.join(',')}`;
   return cached(key, 30 * 1000, async () => {
-    const lists = await Promise.all(addresses.flatMap(user => DEXES.map(dex =>
-      fetchInfo(dex ? { type: 'frontendOpenOrders', user, dex } : { type: 'frontendOpenOrders', user }, 8000)
-        .catch(() => []))));
+    const lists = await Promise.all(addresses.map(async user => {
+      const dexes = await dexesOf(user);
+      return Promise.all(dexes.map(dex =>
+        fetchInfo(dex ? { type: 'frontendOpenOrders', user, dex } : { type: 'frontendOpenOrders', user }, 8000)
+          .catch(() => [])));
+    }));
     const byCoin = {};
-    for (const order of lists.flat()) {
+    for (const order of lists.flat(2)) {
       if (!order?.coin) continue;
       const type = String(order.orderType || '');
       const isTp = /take profit/i.test(type);
@@ -59,10 +68,11 @@ export function getOpenOrders(addresses) {
   });
 }
 
-/** Margin across the main and xyz dexes for one address. */
+/** Margin across every dex the address trades on. */
 export function getMargin(address) {
   return cached(`margin:${address}`, 30 * 1000, async () => {
-    const states = await Promise.all(DEXES.map(dex =>
+    const dexes = await dexesOf(address);
+    const states = await Promise.all(dexes.map(dex =>
       fetchInfo(dex ? { type: 'clearinghouseState', user: address, dex } : { type: 'clearinghouseState', user: address }, 8000)
         .catch(() => null)));
     // Every request failing is an error (shown as "Cannot load", not cached), not "no account".

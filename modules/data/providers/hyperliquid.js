@@ -44,76 +44,146 @@ export function resolvePerpAccountValue(state) {
   return best ?? withdrawable;
 }
 
+// HIP-3 dexes, named as the API names them ('' is the main dex). Positions, margin and
+// orders live on each dex separately, and the account's value on Hyperliquid is the sum
+// over all of them. The list rarely changes, so it's kept for a day (in localStorage too,
+// so a page load doesn't wait for it); when it can't be read, the main and xyz dexes are
+// assumed for a few minutes, then it's asked for again.
+const FALLBACK_DEXES = ['', 'xyz'];
+const PERP_DEXS_CACHE_KEY = 'hl_perp_dexs_v1';
+const PERP_DEXS_TTL_MS = 24 * 60 * 60 * 1000;
+const PERP_DEXS_RETRY_MS = 5 * 60 * 1000;
+let perpDexsCache = null; // { until, promise }
+// address -> { dexes, probedAt }: the dexes with money or positions on them at the last
+// look at every dex. Between those looks, only these are read.
+const activeDexesByUser = new Map();
+const PROBE_ALL_MS = 10 * 60 * 1000;
+
+/** Dex names out of a `perpDexs` response: null is the main dex, the rest carry a name. */
+export function perpDexNames(list) {
+  const names = (Array.isArray(list) ? list : [])
+    .map(d => (d === null ? '' : d?.name))
+    .filter(n => typeof n === 'string');
+  if (!names.includes('')) names.unshift('');
+  return names;
+}
+
+export async function fetchPerpDexs(timeoutMs = 10000) {
+  const now = Date.now();
+  if (perpDexsCache && now < perpDexsCache.until) return perpDexsCache.promise;
+  if (!perpDexsCache) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(PERP_DEXS_CACHE_KEY) || 'null');
+      if (cached && now - Number(cached.savedAt) < PERP_DEXS_TTL_MS && Array.isArray(cached.names)) {
+        perpDexsCache = { until: Number(cached.savedAt) + PERP_DEXS_TTL_MS, promise: Promise.resolve(cached.names) };
+        return perpDexsCache.promise;
+      }
+    } catch (_) { /* no storage: fetch */ }
+  }
+  const promise = post({ type: 'perpDexs' }, timeoutMs)
+    .then(list => {
+      const names = perpDexNames(list);
+      if (names.length < 2) throw new Error('perpDexs: empty');
+      try { localStorage.setItem(PERP_DEXS_CACHE_KEY, JSON.stringify({ savedAt: now, names })); } catch (_) { /* in memory only */ }
+      return names;
+    })
+    .catch(() => {
+      perpDexsCache = { until: now + PERP_DEXS_RETRY_MS, promise: Promise.resolve(FALLBACK_DEXES) };
+      return FALLBACK_DEXES;
+    });
+  perpDexsCache = { until: now + PERP_DEXS_TTL_MS, promise };
+  return promise;
+}
+
+/** Dexes `address` had money or positions on at the last fetchPositions, or null before that. */
+export function getUserDexes(address) {
+  return activeDexesByUser.get(String(address || '').toLowerCase())?.dexes ?? null;
+}
+
+/**
+ * Which dexes to read for an address: every one (dexes: null, the caller has the list) on a
+ * first look and every PROBE_ALL_MS after, since money can move to a dex nothing was on;
+ * otherwise only the ones known to hold something, or the main dex when that is none.
+ */
+export function planDexRead(known, now = Date.now()) {
+  if (!known || now - known.probedAt >= PROBE_ALL_MS) return { probeAll: true, dexes: null };
+  return { probeAll: false, dexes: known.dexes.length ? known.dexes : [''] };
+}
+
+/**
+ * Dexes whose missing answer makes the read unusable: any dex on a first look, and the dexes
+ * known to hold money after that. An equity that left one out would read as a loss. A dex
+ * that held nothing last time and didn't answer is taken as still empty.
+ */
+export function unansweredDexes(dexes, answered, known) {
+  return dexes.filter((dex, i) => !answered[i] && (!known || known.dexes.includes(dex)));
+}
+
+/**
+ * One perp state for the account out of each dex's clearinghouse state: equity summed,
+ * positions merged (the first dex to report a coin keeps it). `activeDexes` names the dexes
+ * with at least a dollar or a position on them, so orders and margin ask only those.
+ * `perp` is null only when no dex answered.
+ */
+export function combinePerpStates(states) {
+  let perp = null;
+  let equity = 0;
+  const activeDexes = [];
+  const seen = new Set();
+  for (const { dex, state } of states || []) {
+    if (!state) continue;
+    const value = resolvePerpAccountValue(state) ?? 0;
+    equity += value;
+    const positions = Array.isArray(state.assetPositions) ? state.assetPositions : [];
+    const open = positions.some(p => Math.abs(parseFloat(p?.position?.szi || 0)) > 0);
+    if (value >= 1 || open) activeDexes.push(dex);
+    if (!perp) {
+      perp = dex === '' ? state : { assetPositions: [] };
+      if (!Array.isArray(perp.assetPositions)) perp.assetPositions = [];
+      if (!perp.marginSummary || typeof perp.marginSummary !== 'object') perp.marginSummary = {};
+      if (dex === '') {
+        for (const p of perp.assetPositions) if (p?.position?.coin) seen.add(p.position.coin);
+        continue;
+      }
+    }
+    for (const p of positions) {
+      const coin = p?.position?.coin;
+      if (!coin || seen.has(coin)) continue;
+      perp.assetPositions.push(p);
+      seen.add(coin);
+    }
+  }
+  if (perp) perp.marginSummary.accountValue = equity.toString();
+  return { perp, activeDexes };
+}
+
+/**
+ * Spot and the perp state of the address's dexes, all at once. Throws when spot, or a dex
+ * that may hold money, doesn't answer: a lower equity would be recorded as a loss.
+ */
 export async function fetchPositions(address, timeoutMs = 10000) {
   if (!address) return null;
+  const key = String(address).toLowerCase();
+  const known = activeDexesByUser.get(key) ?? null;
+  const now = Date.now();
+  // `meta` has no dex list (it's { universe, marginTables, collateralToken }); perpDexs has.
+  const { probeAll, dexes: planned } = planDexRead(known, now);
+  const dexes = planned ?? await fetchPerpDexs(timeoutMs);
+  const settle = (promise) => promise.then(value => ({ value }), error => ({ error }));
+  const [spot, ...states] = await Promise.all([
+    settle(post({ type: 'spotClearinghouseState', user: address }, timeoutMs)),
+    ...dexes.map(dex => settle(post(dex ? { type: 'clearinghouseState', user: address, dex } : { type: 'clearinghouseState', user: address }, timeoutMs)))
+  ]);
 
-  // `meta` has no vault list (it's { universe, marginTables, collateralToken }), so the old
-  // "discover vaults from meta" step only delayed these by a round trip. HIP-3 positions come
-  // from the dex-specific clearinghouse query below.
-  const queries = [
-    // Standard dex (main Hyperliquid)
-    post({ type: 'clearinghouseState', user: address }, timeoutMs).catch(() => null),
-    post({ type: 'spotClearinghouseState', user: address }, timeoutMs).catch(() => null),
-    // Query xyz dex (trade.xyz HIP-3 markets)
-    post({ type: 'clearinghouseState', user: address, dex: 'xyz' }, timeoutMs).catch(() => null)
-  ];
-
-  const results = await Promise.all(queries);
-  let [perp, spot, xyzDex, ...vaultResults] = results;
-
-  // Merge xyz dex and vault positions into main perp response
-  // Track which coins we've already seen to avoid duplicates
-  const existingCoins = new Set((perp?.assetPositions || []).map(p => p.position?.coin).filter(Boolean));
-
-  const perpSources = [perp, xyzDex, ...vaultResults].filter(Boolean);
-  const combinedPerpEquity = perpSources.reduce((sum, source) => {
-    const value = resolvePerpAccountValue(source);
-    return sum + (value ?? 0);
-  }, 0);
-
-  if (!perp && (perpSources.length > 0 || combinedPerpEquity !== 0)) {
-    perp = { assetPositions: [] };
+  const missing = unansweredDexes(dexes, states.map(r => !r.error), known);
+  if (spot.error || missing.length) {
+    const what = [...(spot.error ? ['spot'] : []), ...missing.map(d => d || 'main')].join(', ');
+    throw new Error(`Hyperliquid: no answer from ${what}`);
   }
 
-  if (perp) {
-    if (!Array.isArray(perp.assetPositions)) {
-      perp.assetPositions = [];
-    }
-    if (!perp.marginSummary || typeof perp.marginSummary !== 'object') {
-      perp.marginSummary = {};
-    }
-    perp.marginSummary.accountValue = combinedPerpEquity.toString();
-  }
-
-  // Add xyz dex positions (trade.xyz equity perps)
-  if (xyzDex?.assetPositions) {
-    for (const pos of xyzDex.assetPositions) {
-      const coin = pos.position?.coin;
-      if (!existingCoins.has(coin)) {
-        if (!perp) perp = { assetPositions: [] };
-        if (!perp.assetPositions) perp.assetPositions = [];
-        perp.assetPositions.push(pos);
-        existingCoins.add(coin);
-      }
-    }
-  }
-
-  // Add positions from other HIP-3 vaults (if any discovered)
-  for (const vaultData of vaultResults) {
-    if (vaultData?.assetPositions) {
-      for (const pos of vaultData.assetPositions) {
-        const coin = pos.position?.coin;
-        if (!existingCoins.has(coin)) {
-          if (!perp) perp = { assetPositions: [] };
-          if (!perp.assetPositions) perp.assetPositions = [];
-          perp.assetPositions.push(pos);
-          existingCoins.add(coin);
-        }
-      }
-    }
-  }
-
-  return { perp, spot };
+  const { perp, activeDexes } = combinePerpStates(dexes.map((dex, i) => ({ dex, state: states[i].value })));
+  activeDexesByUser.set(key, { dexes: activeDexes, probedAt: probeAll ? now : known.probedAt });
+  return { perp, spot: spot.value, dexes: activeDexes };
 }
 
 export async function fetchAllMids(timeoutMs = 10000) {
@@ -124,8 +194,10 @@ export async function fetchMetaAndAssetCtxs(timeoutMs = 10000) {
   return await post({ type: 'metaAndAssetCtxs' }, timeoutMs).catch(() => null);
 }
 
-export async function fetchXyzDexMetaAndAssetCtxs(timeoutMs = 10000) {
-  return await post({ type: 'metaAndAssetCtxs', dex: 'xyz' }, timeoutMs).catch(() => null);
+/** Perp metadata and contexts (markPx, prevDayPx, funding) for one HIP-3 dex, e.g. 'xyz'. */
+export async function fetchDexMetaAndAssetCtxs(dex, timeoutMs = 10000) {
+  if (!dex) return await fetchMetaAndAssetCtxs(timeoutMs);
+  return await post({ type: 'metaAndAssetCtxs', dex }, timeoutMs).catch(() => null);
 }
 
 export async function fetchSpotMeta(timeoutMs = 10000) {
@@ -260,9 +332,15 @@ export default {
   fetchInfo,
   fetchDelegatorSummary,
   fetchPositions,
+  fetchPerpDexs,
+  getUserDexes,
+  combinePerpStates,
+  perpDexNames,
+  planDexRead,
+  unansweredDexes,
   fetchAllMids,
   fetchMetaAndAssetCtxs,
-  fetchXyzDexMetaAndAssetCtxs,
+  fetchDexMetaAndAssetCtxs,
   fetchSpotMeta,
   fetchSpotMetaAndAssetCtxs,
   fetchHistoricalPrice,

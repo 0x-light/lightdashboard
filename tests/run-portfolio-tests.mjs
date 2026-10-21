@@ -18,6 +18,8 @@ import {
 import { ManualFetcher } from '../modules/data/fetchers/manual-fetcher.js';
 import { AlchemyHeliusFetcher } from '../modules/data/fetchers/alchemy-helius-fetcher.js';
 import { LighterFetcher } from '../modules/data/fetchers/lighter-fetcher.js';
+import { HyperliquidFetcher } from '../modules/data/fetchers/hyperliquid-fetcher.js';
+import * as HyperliquidProvider from '../modules/data/providers/hyperliquid.js';
 import * as StocksProvider from '../modules/data/providers/stocks.js';
 import { _internal as pythInternal } from '../modules/data/providers/pyth.js';
 import { normalizeEntries } from '../modules/features/watchlist.js';
@@ -1145,6 +1147,131 @@ function testLighterAndZerionHistoryShapes() {
   assert.deepEqual(chartPoints({}), []);
 }
 
+function testHyperliquidDexListAndCombinedPerpState() {
+  const { perpDexNames, combinePerpStates } = HyperliquidProvider;
+
+  // perpDexs lists the main dex as null and each HIP-3 dex by name.
+  assert.deepEqual(perpDexNames([null, { name: 'xyz' }, { name: 'mkts' }, {}]), ['', 'xyz', 'mkts']);
+  assert.deepEqual(perpDexNames(null), ['']);
+
+  // The account's perp value is the sum over every dex, not just main and xyz. Positions
+  // merge into one list; dexes with dust and no position are left out of the active list.
+  const state = (accountValue, withdrawable, coins) => ({
+    marginSummary: { accountValue },
+    withdrawable,
+    assetPositions: coins.map(coin => ({ position: { coin, szi: '1' } }))
+  });
+  const combined = combinePerpStates([
+    { dex: '', state: state('43391420.53', '38167743.21', ['ETH']) },
+    { dex: 'xyz', state: state('67693583.99', '36219758.59', ['xyz:GOOGL']) },
+    { dex: 'mkts', state: state('4260882.50', '4010150.95', ['mkts:US500']) },
+    { dex: 'flx', state: state('0.001804', '0.001804', []) },
+    { dex: 'io', state: null }
+  ]);
+  assert.ok(Math.abs(Number(combined.perp.marginSummary.accountValue) - 115345887.021804) < 1e-6);
+  assert.deepEqual(combined.perp.assetPositions.map(p => p.position.coin), ['ETH', 'xyz:GOOGL', 'mkts:US500']);
+  assert.deepEqual(combined.activeDexes, ['', 'xyz', 'mkts']);
+
+  // Main dex down, a HIP-3 dex answering: still a perp state.
+  const noMain = combinePerpStates([
+    { dex: '', state: null },
+    { dex: 'xyz', state: state('10', '10', ['xyz:AAPL']) }
+  ]);
+  assert.equal(noMain.perp.marginSummary.accountValue, '10');
+  assert.deepEqual(noMain.perp.assetPositions.map(p => p.position.coin), ['xyz:AAPL']);
+  assert.deepEqual(noMain.activeDexes, ['xyz']);
+
+  // Nothing answered: no state at all (fetchPositions throws before this when a dex that
+  // may hold money is the one missing).
+  assert.deepEqual(combinePerpStates([{ dex: '', state: null }]), { perp: null, activeDexes: [] });
+}
+
+function testHyperliquidDexReadPlanAndMissingAnswers() {
+  const { planDexRead, unansweredDexes } = HyperliquidProvider;
+  const MIN = 60 * 1000;
+  const now = 100 * MIN;
+
+  // First look, and every ten minutes: every dex (the caller fetches the list).
+  assert.deepEqual(planDexRead(null, now), { probeAll: true, dexes: null });
+  assert.deepEqual(planDexRead({ dexes: ['', 'xyz'], probedAt: now - 10 * MIN }, now), { probeAll: true, dexes: null });
+  // In between: only the dexes with money or positions, or main when there are none.
+  assert.deepEqual(planDexRead({ dexes: ['', 'xyz', 'mkts'], probedAt: now - 3 * MIN }, now), { probeAll: false, dexes: ['', 'xyz', 'mkts'] });
+  assert.deepEqual(planDexRead({ dexes: [], probedAt: now - 3 * MIN }, now), { probeAll: false, dexes: [''] });
+
+  // A dex that doesn't answer matters on a first look, or when it held money last time.
+  const dexes = ['', 'xyz', 'mkts', 'flx'];
+  assert.deepEqual(unansweredDexes(dexes, [true, false, true, false], null), ['xyz', 'flx']);
+  assert.deepEqual(unansweredDexes(dexes, [true, false, true, false], { dexes: ['', 'xyz'] }), ['xyz']);
+  assert.deepEqual(unansweredDexes(dexes, [true, true, true, false], { dexes: ['', 'xyz'] }), []);
+}
+
+async function testHyperliquidStakingReadKeepsLastAnswerOrFails() {
+  let fail = false;
+  const providers = {
+    hyperliquid: {
+      fetchDelegatorSummary: async () => {
+        if (fail) throw new Error('timeout');
+        return { delegated: '4', undelegated: '1', totalPendingWithdrawal: '0' };
+      }
+    }
+  };
+  const fetcher = new HyperliquidFetcher(providers, {}, {});
+  assert.deepEqual(await fetcher.getStaking('0xabc'), { staked: 4, unstaked: 1, withdrawing: 0 });
+
+  // The exchange stops answering: the last answer stands in, once the cache has aged out.
+  fail = true;
+  fetcher.stakingCache.get('0xabc').at = 0;
+  assert.deepEqual(await fetcher.getStaking('0xabc'), { staked: 4, unstaked: 1, withdrawing: 0 });
+
+  // With no last answer, the failure reaches the caller instead of reading as "nothing staked".
+  await assert.rejects(() => fetcher.getStaking('0xdef'), /timeout/);
+}
+
+function testHyperliquidEquityRowIsTheAccountValue() {
+  // The equity row must equal what Hyperliquid itself reports as the account's value:
+  // perps on every dex, spot balances, and staked HYPE at the spot price.
+  const fetcher = new HyperliquidFetcher({ hyperliquid: HyperliquidProvider }, {}, {});
+  const spotMeta = {
+    tokens: [{ name: 'USDC', index: 0 }, { name: 'HYPE', index: 150 }],
+    universe: [{ name: '@107', tokens: [150, 0], index: 107 }]
+  };
+  const market = fetcher.buildMarket(
+    { HYPE: '2.1', '@107': '2' },
+    null,
+    [[{ universe: [{ name: 'mkts:US500' }] }, [{ funding: '0.0001', prevDayPx: '48' }]]],
+    spotMeta
+  );
+  assert.equal(Number(market.spotPriceMap.HYPE), 2);
+  assert.equal(market.hlFundingRateMap['mkts:US500'], 0.0001);
+
+  const rows = fetcher.buildWalletRows('0xabc', {
+    perp: {
+      marginSummary: { accountValue: '100' },
+      withdrawable: '80',
+      assetPositions: [{ position: { coin: 'mkts:US500', szi: '-2', entryPx: '50', positionValue: '100', unrealizedPnl: '5' } }]
+    },
+    spot: { balances: [{ coin: 'HYPE', total: '10', hold: '0', entryNtl: '15' }] },
+    staking: { staked: 4, unstaked: 1, withdrawing: 0 }
+  }, market);
+
+  const equity = rows.find(r => r.isHlAccountEquity);
+  assert.equal(equity.value, 130, 'perps 100 + spot 10 HYPE at 2 + staked 5 HYPE at 2');
+  const staking = rows.find(r => r.exchange === 'HL Staking');
+  assert.equal(staking.value, 10);
+  assert.equal(staking.price, 2, 'staked HYPE is valued at the spot mid, as Hyperliquid does');
+  const perp = rows.find(r => r.exchange === 'HL Perps' && !r.isHlAccountEquity);
+  assert.equal(perp.fundingRate, 0.0001, 'a HIP-3 dex other than xyz gets its funding rate');
+  assert.ok(Math.abs(perp.change24h - (50 - 48) / 48 * 100) < 1e-9, 'and its 24h change');
+
+  // Staked HYPE is inside the equity: the headline counts it once.
+  assert.equal(calculatePortfolioTotals(rows).totalValue, 130);
+  const breakdown = calculatePortfolioBreakdown(rows);
+  assert.deepEqual(
+    breakdown.allocation.map(s => [s.label, Math.round(s.value)]),
+    [['mkts:US500', 100], ['HYPE', 30]]
+  );
+}
+
 async function run() {
   testPortfolioHistorySeriesMath();
   testPortfolioHistoryPlanAndPriceKeys();
@@ -1154,6 +1281,10 @@ async function run() {
   testLighterTotalsWithoutEquity();
   testLighterTotalsWithEquity();
   testHyperliquidTotalsFallbackWhenNoEquity();
+  testHyperliquidDexListAndCombinedPerpState();
+  testHyperliquidDexReadPlanAndMissingAnswers();
+  await testHyperliquidStakingReadKeepsLastAnswerOrFails();
+  testHyperliquidEquityRowIsTheAccountValue();
   testCostBasisOnLosses();
   testNaNPnlIsSkipped();
   testPnlPercentIgnoresPositionsWithoutCostBasis();

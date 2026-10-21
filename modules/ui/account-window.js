@@ -151,13 +151,13 @@ const ACCOUNTS = [
 const isEquity = p => p.isHlAccountEquity || p.isLighterAccountEquity;
 const num = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
-// The same rule as the portfolio total: a venue's equity row stands for its perps and
-// its spot balances there, so those rows don't count twice.
+// The same rule as the portfolio total: a venue's equity row stands for its perps, its
+// spot balances and its staked HYPE there, so those rows don't count twice.
 function accountValue(rows) {
   const hasEquity = rows.some(isEquity);
   return rows.reduce((sum, p) => {
     if (isEquity(p)) return sum + num(p.value);
-    if (hasEquity && ['HL Perps', 'HL Spot', 'Lighter'].includes(p.exchange)) return sum;
+    if (hasEquity && ['HL Perps', 'HL Spot', 'HL Staking', 'Lighter'].includes(p.exchange)) return sum;
     return num(p.value) > 0 ? sum + num(p.value) : sum;
   }, 0);
 }
