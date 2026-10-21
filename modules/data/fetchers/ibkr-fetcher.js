@@ -1,5 +1,5 @@
 import { getFxCurrency, getQuoteUnitScale } from '../../utils/currency.js';
-import { parseOptionSymbol } from '../../domain/instruments.js';
+import { occSymbol, parseOptionSymbol } from '../../domain/instruments.js';
 
 // IBKR listing exchange -> Yahoo ticker suffix. US venues take no suffix. Anything missing here
 // keeps IBKR's own mark price from the statement.
@@ -50,6 +50,15 @@ function optionOf(pos) {
   return parseOptionSymbol(pos.symbol) || parseOptionSymbol(pos.description);
 }
 
+// Yahoo quotes US options under their OCC symbol, so a contract can carry its own live
+// price and chart instead of the statement's mark.
+function optionSymbolFor(pos) {
+  const option = optionOf(pos);
+  if (!option || pos.currency !== 'USD') return null;
+  const symbol = occSymbol(option);
+  return symbol && /^[A-Z0-9.]{1,6}\d{6}[CP]\d{8}$/.test(symbol) ? symbol : null;
+}
+
 // The Yahoo ticker of an option's underlying, when it is a US stock quoted in dollars.
 function underlyingSymbolFor(pos) {
   const option = optionOf(pos);
@@ -57,18 +66,29 @@ function underlyingSymbolFor(pos) {
   return /^[A-Z0-9.\-]{1,12}$/.test(option.underlying) ? option.underlying : null;
 }
 
+// Shares per contract. A Flex query without the multiplier field reports 1, which would
+// make a contract's cost, breakeven and payoff a hundred times out; the statement's own
+// position value gives it away, and a US equity option is 100 shares otherwise.
+function multiplierOf(pos) {
+  if (Number(pos.multiplier) > 1) return pos.multiplier;
+  if (!['OPT', 'FOP'].includes(pos.assetCategory)) return Number(pos.multiplier) || 1;
+  const implied = pos.positionValue / (pos.markPrice * pos.position);
+  return Number.isFinite(implied) && implied > 1.5 ? Math.round(implied) : 100;
+}
+
 function buildPositionRow(pos, quote, underlyingQuote) {
+  const multiplier = multiplierOf(pos);
   const live = livePriceFor(pos, quote);
   const price = live ?? pos.markPrice;
   const value = live !== null
-    ? live * pos.position * pos.multiplier
-    : (pos.positionValue ?? pos.markPrice * pos.position * pos.multiplier);
+    ? live * pos.position * multiplier
+    : (pos.positionValue ?? pos.markPrice * pos.position * multiplier);
   const pnl = Number.isFinite(pos.costBasisMoney)
     ? value - pos.costBasisMoney
     : pos.unrealizedPnl;
   // Per-unit cost, in the same unit as price. Derived from the total so the option multiplier
   // can't be applied twice.
-  const units = pos.position * pos.multiplier;
+  const units = pos.position * multiplier;
   const entryPrice = Number.isFinite(pos.costBasisMoney) && units !== 0
     ? Math.abs(pos.costBasisMoney / units)
     : (Number(pos.costBasisPrice) > 0 ? pos.costBasisPrice : undefined);
@@ -99,9 +119,12 @@ function buildPositionRow(pos, quote, underlyingQuote) {
     ibkrAccount: pos.accountId,
     ...(option ? {
       option,
-      multiplier: pos.multiplier,
+      multiplier,
       underlyingPrice: underlying,
-      underlyingChange24h: underlying !== null && Number.isFinite(underlyingQuote?.change24h) ? underlyingQuote.change24h : null
+      underlyingChange24h: underlying !== null && Number.isFinite(underlyingQuote?.change24h) ? underlyingQuote.change24h : null,
+      underlyingPriceHistory: underlying !== null && Array.isArray(underlyingQuote?.priceHistory) && underlyingQuote.priceHistory.length > 1
+        ? underlyingQuote.priceHistory
+        : undefined
     } : {}),
     _changeDetectionKey: `IBKR_${pos.accountId}_${pos.conid || pos.symbol}`
   };
@@ -155,7 +178,7 @@ export class IbkrFetcher {
             const symbols = new Map(); // position -> Yahoo symbol
             const underlyings = new Map(); // option position -> Yahoo symbol of its underlying
             for (const pos of positions) {
-                const yahoo = yahooSymbolFor(pos);
+                const yahoo = yahooSymbolFor(pos) || optionSymbolFor(pos);
                 if (yahoo) symbols.set(pos, yahoo);
                 const underlying = underlyingSymbolFor(pos);
                 if (underlying) underlyings.set(pos, underlying);

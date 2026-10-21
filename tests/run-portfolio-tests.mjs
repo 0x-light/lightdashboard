@@ -1,5 +1,20 @@
 import assert from 'node:assert/strict';
 import { calculatePortfolioBreakdown, calculatePortfolioTotals } from '../modules/domain/portfolio.js';
+import {
+  breakevenOf,
+  daysToExpiry,
+  formatExpiry,
+  moneyness,
+  optionOf,
+  occSymbol,
+  parseOptionSymbol,
+  payoffAtExpiry,
+  positionKind,
+  strategyName,
+  netPremium,
+  payoffProfile,
+  breakevens
+} from '../modules/domain/instruments.js';
 import { ManualFetcher } from '../modules/data/fetchers/manual-fetcher.js';
 import { AlchemyHeliusFetcher } from '../modules/data/fetchers/alchemy-helius-fetcher.js';
 import { LighterFetcher } from '../modules/data/fetchers/lighter-fetcher.js';
@@ -22,6 +37,77 @@ import {
   removeManualPositionByAsset,
   renderedManualPositionMatches
 } from '../modules/features/manual-positions.js';
+
+function testInstrumentsReadOptionsAndKinds() {
+  // OCC codes, as IBKR's Flex symbol field carries them (root padded to six characters).
+  assert.deepEqual(parseOptionSymbol('ABCL  270115C00008000'), { underlying: 'ABCL', expiry: '2027-01-15', right: 'call', strike: 8 });
+  assert.deepEqual(parseOptionSymbol('SPY 261218P00550000'), { underlying: 'SPY', expiry: '2026-12-18', right: 'put', strike: 550 });
+  assert.equal(parseOptionSymbol('MU 270115C01300000').strike, 1300);
+  // IBKR's description of the same contract.
+  assert.deepEqual(parseOptionSymbol('SPY 18DEC26 550 P'), { underlying: 'SPY', expiry: '2026-12-18', right: 'put', strike: 550 });
+  assert.deepEqual(parseOptionSymbol('BRK.B 15JAN27 450.5 C'), { underlying: 'BRK.B', expiry: '2027-01-15', right: 'call', strike: 450.5 });
+  // Plain tickers are not options.
+  for (const t of ['VWCE', 'ETH', 'ABCL', 'USDE', 'VWCE.DE', '']) assert.equal(parseOptionSymbol(t), null, t);
+
+  assert.equal(positionKind({ asset: 'ZRO', exchange: 'HL Perps', isLeveraged: true }), 'perp');
+  assert.equal(positionKind({ asset: 'ABCL 270115C00008000', exchange: 'IBKR', category: 'option' }), 'option');
+  assert.equal(positionKind({ asset: 'VWCE', exchange: 'IBKR', category: 'etf' }), 'spot');
+  // A stock whose ticker happens to look like a code stays spot when the category says so.
+  assert.equal(positionKind({ asset: 'ABCL 270115C00008000', exchange: 'Manual (Stock)', category: 'equity' }), 'spot');
+  // An explicit contract wins over the asset text.
+  const explicit = { asset: 'ABCL 15JAN27 8 C', option: { underlying: 'ABCL', expiry: '2027-01-15', right: 'call', strike: 8 } };
+  assert.equal(optionOf(explicit).strike, 8);
+
+  const call = { underlying: 'ABCL', expiry: '2027-01-15', right: 'call', strike: 8 };
+  const put = { ...call, right: 'put' };
+  assert.equal(breakevenOf(call, 1.6), 9.6);
+  assert.equal(breakevenOf(put, 1.6), 6.4);
+  assert.equal(breakevenOf(call, null), null);
+  assert.equal(payoffAtExpiry(call, 1.6, 5), -1.6);   // worthless: the premium is lost
+  assert.ok(Math.abs(payoffAtExpiry(call, 1.6, 9.6)) < 1e-9);   // breakeven
+  assert.equal(payoffAtExpiry(call, 1.6, 12), 2.4);
+  assert.equal(payoffAtExpiry(call, 1.6, 12, -1), -2.4); // written: the mirror image
+  assert.equal(payoffAtExpiry(put, 1.6, 5), 1.4);
+  assert.equal(moneyness(call, 7.12), 'out');
+  assert.equal(moneyness(call, 9), 'in');
+  assert.equal(moneyness(put, 9), 'out');
+  assert.equal(moneyness(call, null), null);
+  assert.equal(daysToExpiry('2027-01-15', new Date('2026-10-21T23:30:00Z')), 86);
+  assert.equal(daysToExpiry('2026-10-21', new Date('2026-10-21T03:00:00Z')), 0);
+  assert.equal(daysToExpiry('junk'), null);
+  assert.equal(formatExpiry('2027-01-15'), '15 Jan 27');
+  assert.equal(formatExpiry('2027-01-15', { year: 'long' }), '15 Jan 2027');
+  assert.equal(occSymbol(parseOptionSymbol('MU 270115C01300000')), 'MU270115C01300000');
+  assert.equal(occSymbol({ underlying: 'BRK.B', expiry: '2027-01-15', right: 'put', strike: 450.5 }), 'BRK.B270115P00450500');
+
+  // Legs on one name and expiry: what they make together.
+  const leg = (strike, qty, premium, right = 'call') => ({ option: { underlying: 'MU', expiry: '2027-01-15', right, strike }, qty, premium, atCost: true, multiplier: 100 });
+  const spread = [leg(1200, 1, 105), leg(1300, 2, 82), leg(1500, -3, 51)];
+  assert.equal(strategyName(spread), 'bull call spread');
+  assert.equal(netPremium(spread), 11600);
+  assert.deepEqual(payoffProfile(spread), { strikes: [1200, 1300, 1500], maxGain: 58400, maxLoss: -11600 });
+  assert.deepEqual(breakevens(spread, 800, 1800).map(x => Math.round(x * 10) / 10), [1305.3]);
+  assert.equal(strategyName([leg(1200, 1, 105)]), 'long call');
+  assert.equal(strategyName([leg(1500, -3, 51)]), 'short call');
+  assert.equal(strategyName([leg(8, 1, 2), leg(15, 1, 1)]), 'long calls');
+  assert.equal(strategyName([leg(100, 1, 5, 'put'), leg(90, -1, 2, 'put')]), 'bear put spread');
+  assert.equal(strategyName([leg(90, 1, 2, 'put'), leg(100, -1, 5, 'put')]), 'bull put spread');
+  assert.equal(strategyName([leg(100, 1, 5), leg(100, 1, 4, 'put')]), 'long straddle');
+  assert.equal(strategyName([leg(100, -1, 5), leg(90, -1, 4, 'put')]), 'short strangle');
+  assert.equal(strategyName([leg(90, 1, 1), leg(100, -2, 2), leg(110, 1, 1)]), 'call butterfly');
+  // A long call alone loses at most its premium and gains without limit.
+  assert.deepEqual(payoffProfile([leg(1200, 1, 105)]), { strikes: [1200], maxGain: Infinity, maxLoss: -10500 });
+  assert.deepEqual(payoffProfile([leg(1500, -3, 51)]), { strikes: [1500], maxGain: 15300, maxLoss: -Infinity });
+
+  // Allocation counts an option under its underlying, not its code.
+  const breakdown = calculatePortfolioBreakdown([
+    { asset: 'ABCL 270115C00008000', exchange: 'IBKR', category: 'option', value: 300 },
+    { asset: 'ABCL 280121C00007000', exchange: 'IBKR', category: 'option', value: 200 },
+    { asset: 'VWCE', exchange: 'IBKR', value: 500 }
+  ]);
+  assert.deepEqual(breakdown.allocation.map(s => [s.label, s.value]), [['ABCL', 500], ['VWCE', 500]]);
+  assert.equal(breakdown.shareByRow['ABCL 270115C00008000_IBKR'], 0.3);
+}
 
 function testPortfolioBreakdownAllocationAnd24h() {
   const breakdown = calculatePortfolioBreakdown([
@@ -1001,7 +1087,6 @@ function testPortfolioHistoryPlanAndPriceKeys() {
   const rows = [
     { asset: 'HL_ACCOUNT_EQUITY', exchange: 'HL Perps', isHlAccountEquity: true, value: 1000, _source: 'Hyperliquid_0xabc' },
     { asset: 'ETH', exchange: 'HL Perps', isLeveraged: true, value: 5000, _source: 'Hyperliquid_0xabc' },
-    { asset: 'HYPE', exchange: 'HL Staking', value: 200, _source: 'Hyperliquid_0xabc' },
     { asset: 'LIGHTER_ACCOUNT_EQUITY', exchange: 'Lighter', isLighterAccountEquity: true, value: 300, _source: 'Lighter_0xabc', _changeDetectionKey: 'LIGHTER_ACCOUNT_EQUITY_0xabc_42' },
     { asset: 'BTC', exchange: 'Lighter', value: 900, _source: 'Lighter_0xabc' },
     { asset: 'LIT', exchange: 'Lighter Spot', value: 40, _source: 'Lighter_0xabc' },
@@ -1019,8 +1104,8 @@ function testPortfolioHistoryPlanAndPriceKeys() {
   assert.deepEqual(Array.from(groups.lighter), [['42', 300]]);
   assert.deepEqual(Array.from(groups.zerion), [['0xabc', 800]]);
   assert.equal(groups.ibkr, 2500);
-  // Perps inside an equity row add nothing; staking, spot, Bitcoin and manual rows are priced.
-  assert.deepEqual(groups.priced.map(p => p.asset), ['HYPE', 'LIT', 'BTC', 'Vault']);
+  // Perps inside an equity row add nothing; spot, Bitcoin and manual rows are priced.
+  assert.deepEqual(groups.priced.map(p => p.asset), ['LIT', 'BTC', 'Vault']);
   assert.equal(plan([]).ibkr, null);
 
   assert.equal(priceKeyOf({ asset: 'HYPE', exchange: 'HL Staking' }), 'hl:HYPE');
@@ -1077,6 +1162,7 @@ async function run() {
   testLighterLeverageDoesNotInflateTotals();
   testShortPnlSignPreserved();
   testPortfolioBreakdownAllocationAnd24h();
+  testInstrumentsReadOptionsAndKinds();
   testPythFeedParserRecognisesAllCategories();
   testWatchlistNormalizeEntriesAcceptsLegacyAndMixed();
   await testManualFetcherLabelsStockPositions();

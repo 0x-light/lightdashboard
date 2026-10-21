@@ -1,5 +1,6 @@
 // Settings window. One field list drives filling the form, saving it and applying it.
 // Changes save as you go; anything that needs fresh data is refetched when the window closes.
+import { POSITION_COLUMNS, normalizeColumnOrder } from './positions.js';
 
 const STORAGE_KEY = 'myDashboardSettings.v2';
 
@@ -30,6 +31,8 @@ const FIELDS = [
   { id: 'newUseColoredPnL', key: 'useColoredPnL', type: 'check', fallback: true },
   { id: 'newShowExactAmounts', key: 'showExactAmounts', type: 'check', fallback: false, data: true },
   { id: 'newShowPriceChart', key: 'showPriceChart', type: 'check', fallback: true },
+  { id: 'newGroupPositions', key: 'groupPositions', type: 'check', fallback: true },
+  { id: 'newCombineOptionLegs', key: 'combineOptionLegs', type: 'check', fallback: true },
   { id: 'newShowWatchlist', key: 'hideWatchlist', type: 'check', invert: true, fallback: false },
   { id: 'newShowComic', key: 'hideComic', type: 'check', invert: true, fallback: false },
   { id: 'newShowStickersBtn', key: 'hideStickersBtn', type: 'check', invert: true, fallback: true },
@@ -57,6 +60,30 @@ const ADDRESS_PATTERNS = [
 ];
 
 const FONT_CLASSES = ['berkeley', 'commit', 'departure', 'sf'];
+
+// Column order: one line per column with ↑ ↓ keys; the list's order is the setting.
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
+function fillColumnOrder(order) {
+  const list = document.getElementById('newColumnOrder');
+  if (!list) return;
+  const keys = normalizeColumnOrder(order);
+  list.innerHTML = keys.map((key, i) => {
+    const label = escapeHtml(POSITION_COLUMNS.find(c => c.key === key)?.label || key);
+    const move = (dir, glyph, word, off) =>
+      `<button type="button" class="column-order__move" data-move="${dir}" aria-label="Move ${label} ${word}"${off ? ' disabled' : ''}>${glyph}</button>`;
+    return `<li data-key="${key}"><span class="column-order__name">${label}</span>` +
+      move(-1, '↑', 'up', i === 0) + move(1, '↓', 'down', i === keys.length - 1) + '</li>';
+  }).join('');
+}
+
+function readColumnOrder() {
+  const list = document.getElementById('newColumnOrder');
+  if (!list) return null;
+  return Array.from(list.querySelectorAll('li[data-key]')).map(li => li.dataset.key);
+}
 
 function listOf(value) {
   return String(value || '').split(/[\s,]+/).map(a => a.trim()).filter(Boolean);
@@ -125,6 +152,7 @@ function fillForm(settings) {
   if (addresses) addresses.value = joinAddresses(settings);
   const city = document.getElementById('newWeatherCity');
   if (city) city.value = placeText(settings.weather);
+  fillColumnOrder(settings.positionColumns);
 }
 
 function readForm(settings) {
@@ -143,6 +171,8 @@ function readForm(settings) {
   }
   const addresses = document.getElementById('newAddresses');
   if (addresses) Object.assign(next, sortAddresses(addresses.value));
+  const columns = readColumnOrder();
+  if (columns) next.positionColumns = columns;
   return next;
 }
 
@@ -177,6 +207,24 @@ export function applyAppearance(settings) {
   document.documentElement.dataset.titleValue = titleValue ? 'on' : 'off';
   document.documentElement.dataset.valueChart = (settings.showValueChart ?? true) ? 'on' : 'off';
   if (!titleValue) document.title = 'Viewport';
+  // The positions table reads these at render time; give it the new values and redraw.
+  const renderer = typeof window !== 'undefined' ? window._portfolioRenderer : null;
+  if (renderer?.settings) {
+    const next = {
+      groupPositions: settings.groupPositions ?? true,
+      combineOptionLegs: settings.combineOptionLegs ?? true,
+      positionColumns: normalizeColumnOrder(settings.positionColumns)
+    };
+    const current = {
+      groupPositions: renderer.settings.groupPositions ?? true,
+      combineOptionLegs: renderer.settings.combineOptionLegs ?? true,
+      positionColumns: normalizeColumnOrder(renderer.settings.positionColumns)
+    };
+    if (JSON.stringify(current) !== JSON.stringify(next)) {
+      Object.assign(renderer.settings, next);
+      renderer.forceRender?.();
+    }
+  }
   applyFont(settings.font || 'sf');
   const size = Number(settings.fontSize);
   document.documentElement.style.fontSize = `${Number.isFinite(size) && size > 0 ? size : 14}px`;
@@ -248,6 +296,20 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     if (e.target === addresses) showAddressesHint();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveForm, 250);
+  });
+  // ↑ ↓ on the column list: move the line, keep the key under the finger, save.
+  document.getElementById('newColumnOrder')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-move]');
+    const li = btn?.closest('li[data-key]');
+    if (!btn || !li || btn.disabled) return;
+    const dir = Number(btn.dataset.move);
+    const other = dir < 0 ? li.previousElementSibling : li.nextElementSibling;
+    if (!other) return;
+    other.insertAdjacentElement(dir < 0 ? 'beforebegin' : 'afterend', li);
+    fillColumnOrder(readColumnOrder());
+    const again = document.querySelector(`#newColumnOrder li[data-key="${li.dataset.key}"] button[data-move="${dir}"]`);
+    (again && !again.disabled ? again : document.querySelector(`#newColumnOrder li[data-key="${li.dataset.key}"] button:not(:disabled)`))?.focus();
+    saveForm();
   });
   dialog.querySelector('.settings-panes')?.addEventListener('change', (e) => {
     if (e.target === exportArea || e.target.id === 'newWeatherCity') return;

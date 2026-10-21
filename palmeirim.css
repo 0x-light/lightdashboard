@@ -335,6 +335,8 @@ html.pm:root .position-group__label,
 html.pm:root .position-group__count { color: var(--pm-muted); }
 html.pm:root .position-group__count { margin-left: 1ch; }
 html.pm:root .asset-terms { margin-left: 1ch; color: var(--pm-muted); }
+/* A leg under its underlying's row sits in from the edge. */
+html.pm:root .asset-leg { padding-left: 2ch; }
 
 /* A position hidden in edit mode reads as off: muted (the app's rule) and struck. */
 html.pm:root .position-row-hidden .asset-cell { text-decoration: line-through; text-decoration-color: var(--pm-muted); }
@@ -946,7 +948,13 @@ html.pm:root .ladder__px,
 html.pm:root .ladder__dist { text-align: right; }
 html.pm:root .ladder__dist { color: var(--pm-muted); }
 html.pm:root .ladder__row--liq .ladder__dist { color: var(--pm-ink); }
-html.pm:root .ladder__note { margin: calc(var(--pm-lh) / 4) 0 0; color: var(--pm-muted); }
+/* The note runs on one line as far as the window allows, past the ladder's own width. */
+html.pm:root .ladder__note {
+  width: max-content;
+  max-width: calc(100vw - 5ch);
+  margin: calc(var(--pm-lh) / 4) 0 0;
+  color: var(--pm-muted);
+}
 
 /* ── Undo line: framed like a window, low on the left, for a few seconds ── */
 html.pm:root .undo-line {

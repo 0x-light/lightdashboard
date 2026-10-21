@@ -844,12 +844,13 @@ body.portfolio-empty #positionsSection {
   stroke-width: 1.25;
 }
 
-/* Positions: Asset | Price | Chart | Value | P&L | Funding | 24h | Amount | Source */
-#newPositionsTable th:nth-child(1) {
+/* Positions: columns carry their key as a class (col-asset, col-value, ...) since
+   Settings can put them in any order; `num` marks the right-aligned ones. */
+#newPositionsTable th.th-asset {
   width: 100%;
 }
 
-#newPositionsTable td:nth-child(1) {
+#newPositionsTable td.col-asset {
   color: var(--text-bright);
 }
 
@@ -863,35 +864,43 @@ body.portfolio-empty #positionsSection {
   color: var(--muted);
 }
 
-#newPositionsTable th:nth-child(2),
-#newPositionsTable td:nth-child(2),
-#newPositionsTable th:nth-child(n+4):nth-child(-n+8),
-#newPositionsTable td:nth-child(n+4):nth-child(-n+8) {
+#newPositionsTable th.num,
+#newPositionsTable td.num {
   text-align: right;
 }
 
-#newPositionsTable th:nth-child(3) {
+#newPositionsTable th.th-chart {
   text-align: center;
 }
 
-#newPositionsTable td:nth-child(4) {
+#newPositionsTable td.col-value {
   color: var(--text-bright);
 }
 
-#newPositionsTable td:nth-child(8),
-#newPositionsTable td:nth-child(9) {
+#newPositionsTable td.col-amount,
+#newPositionsTable td.col-exchange {
   color: var(--muted);
 }
 
-#newPositionsTable td:nth-child(9) {
+#newPositionsTable td.col-exchange {
   max-width: 18ch;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* Expiry and Underlying only earn their columns when an option is held */
+#newPositionsTable td.col-expiry,
+#newPositionsTable td.col-underlying {
+  color: var(--muted);
+}
+
+#newPositionsTable:not(.has-options) :is(.th-expiry, .col-expiry, .th-underlying, .col-underlying) {
+  display: none;
+}
+
 /* Funding only earns its column when something actually pays funding */
-#newPositionsTable:not(.has-funding) th:nth-child(6),
-#newPositionsTable:not(.has-funding) td:nth-child(6) {
+#newPositionsTable:not(.has-funding) .th-funding,
+#newPositionsTable:not(.has-funding) .col-funding {
   display: none;
 }
 
@@ -1116,6 +1125,25 @@ body.hide-comic #newComicSection {
 .mobile-position-card {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-positions-group {
+  display: flex;
+  justify-content: space-between;
+  gap: 2ch;
+  padding: calc(var(--lh) * 0.6) 0 calc(var(--lh) * 0.2);
+  color: var(--muted);
+}
+
+.asset-terms {
+  margin-left: 1ch;
+  color: var(--muted);
+}
+
+.column-order {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 /* Venue and funding stay folded away until the row is tapped */

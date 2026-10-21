@@ -1,4 +1,5 @@
 // Pure portfolio math utilities (no side effects)
+import { optionOf } from './instruments.js';
 
 /**
  * Calculate portfolio 24h change using aggregated positions.
@@ -176,7 +177,7 @@ const finiteOrZero = (v) => (Number.isFinite(v) ? v : 0);
  * covers its venue. Keeps per-position rows visible in the UI while preventing notional/
  * leveraged value from leaking into portfolio totals.
  */
-function isCoveredByVenueEquity(p, hasHlEquity, hasLighterEquity) {
+export function isCoveredByVenueEquity(p, hasHlEquity, hasLighterEquity) {
   if (hasHlEquity && (p.exchange === 'HL Perps' || p.exchange === 'HL Spot')) return true;
   // Lighter Spot represents standalone token balances, NOT covered by account equity.
   if (hasLighterEquity && p.exchange === 'Lighter') return true;
@@ -246,6 +247,11 @@ function positionCostBasis(p, pnl) {
     return Math.max(value - direction * pnl, 0);
   }
   return value > 0 ? Math.max(value - pnl, 0) : 0;
+}
+
+// Allocation is by what a position is exposed to: an option counts under its underlying.
+function sliceLabel(p) {
+  return optionOf(p)?.underlying || p.asset || '—';
 }
 
 function venueOf(p) {
@@ -320,7 +326,7 @@ export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
       (p.isLeveraged || p.exchange === 'HL Perps' ? v.perps : v.spot).push(p);
       continue;
     }
-    addSlice(p.asset || '—', finiteOrZero(Number(p.value)), p);
+    addSlice(sliceLabel(p), finiteOrZero(Number(p.value)), p);
   }
 
   for (const { equity, spot, perps } of venues.values()) {

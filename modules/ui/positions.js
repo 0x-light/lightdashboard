@@ -7,6 +7,61 @@ import {
   normalizeBaseCurrency,
   normalizeCurrencyCode
 } from '../utils/currency.js';
+import {
+  KIND_LABELS,
+  KIND_ORDER,
+  breakevens,
+  combinedPayoff,
+  daysToExpiry,
+  formatExpiry,
+  formatStrike,
+  legOf,
+  legsByUnderlying,
+  moneyness,
+  netPremium,
+  optionOf,
+  payoffProfile,
+  positionKind,
+  strategyName
+} from '../domain/instruments.js';
+
+// The table's columns, in their default order. Settings can reorder them
+// (settings.positionColumns holds the keys); unknown keys are dropped and missing ones
+// come back at the end, so an old list keeps working when a column is added.
+export const POSITION_COLUMNS = [
+  { key: 'asset', label: 'Asset', sort: 'asset', cellClass: 'asset-cell' },
+  { key: 'expiry', label: 'Expiry', sort: 'expiry' },
+  { key: 'underlying', label: 'Underlying', sort: 'underlying', num: true },
+  { key: 'price', label: 'Price', sort: 'price', num: true },
+  { key: 'chart', label: '24h', headClass: 'chart', cellClass: 'chart-cell chart' },
+  { key: 'value', label: 'Value', sort: 'value', num: true },
+  { key: 'pnl', label: 'P&L', sort: 'pnl', num: true },
+  { key: 'funding', label: 'Funding', sort: 'funding', num: true },
+  { key: 'change', label: '24h %', sort: 'change', num: true },
+  { key: 'amount', label: 'Amount', sort: 'amount', num: true },
+  { key: 'exchange', label: 'Source', sort: 'exchange', cellClass: 'exchange-cell' }
+];
+
+export function normalizeColumnOrder(keys) {
+  const known = POSITION_COLUMNS.map(c => c.key);
+  const order = Array.isArray(keys) ? keys.filter((k, i, all) => known.includes(k) && all.indexOf(k) === i) : [];
+  // A column the saved order doesn't know goes where the default puts it: after the
+  // nearest default predecessor that is in the order.
+  known.forEach((key, i) => {
+    if (order.includes(key)) return;
+    const before = known.slice(0, i).reverse().find(k => order.includes(k));
+    order.splice(before ? order.indexOf(before) + 1 : 0, 0, key);
+  });
+  return order;
+}
+
+function columnsFor(opts) {
+  return normalizeColumnOrder(opts?.settings?.positionColumns).map(key => POSITION_COLUMNS.find(c => c.key === key));
+}
+
+function cellClassFor(col) {
+  return [`col-${col.key}`, col.num ? 'num' : '', col.cellClass || ''].filter(Boolean).join(' ');
+}
 
 const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
 
@@ -83,15 +138,70 @@ function rowActionsHtml(pos, assetKey) {
     : action('position-edit-btn', keyAttr, 'h', 'H', 'Hide');
 }
 
-// A perp's price ladder: liquidation, entry, now, and its TP/SL and nearest limit
-// orders on one scale, with a legend of prices and distances from now. Orders come
-// from window.hlOrders (fetched by app.js when the row opens); `null` means loading.
+// ── Price ladders (open rows) ──
+// One drawing for perps and options: levels on a price scale, each a key glyph on a row
+// above the track with a stem down to it, a dithered zone for the side that costs the
+// position, and a legend high to low with price and distance from now. Options also get
+// their payoff at expiry drawn on the same scale, so the stems become its reference lines.
 const LADDER_NAMES = {
   liq: 'Liquidation', entry: 'Entry', now: 'Now', tp: 'Take profit', sl: 'Stop loss',
-  buy: 'Buy limit', sell: 'Sell limit'
+  buy: 'Buy limit', sell: 'Sell limit', strike: 'Strike', short: 'Strike', breakeven: 'Breakeven', leg: 'Strike'
 };
-const LADDER_KEYS = { liq: 'L', entry: 'E', now: '▼', tp: 'T', sl: 'S', buy: '·', sell: '·' };
+const LADDER_KEYS = {
+  liq: 'L', entry: 'E', now: '▼', tp: 'T', sl: 'S', buy: '·', sell: '·',
+  strike: 'K', short: 'K', breakeven: 'B', leg: '·'
+};
 
+function pctFrom(now) {
+  return px => {
+    const d = ((px - now) / now) * 100;
+    return `${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(Math.abs(d) < 10 ? 2 : 1)}%`;
+  };
+}
+
+// marks: [{ kind, px, off?, name? }]; zone: { left, right } in percent; curve: SVG html
+// drawn in rows of its own between the keys and the track.
+function renderLadder({ marks, lo, hi, now, zones = [], label, quoteCurrency, curve = '', curveRows = 0, note = '' }) {
+  const at = px => Math.max(0, Math.min(100, ((px - lo) / (hi - lo)) * 100));
+  // Letters sit above the track on rows: a letter too close to the one before it moves
+  // up a row, and its stem runs from just under it down to the track.
+  const placed = marks
+    .map(m => ({ ...m, x: m.off === 'right' ? 100 : m.off === 'left' ? 0 : at(m.px) }))
+    .sort((a, b) => a.x - b.x);
+  const rowEnds = [];
+  for (const m of placed) {
+    let row = rowEnds.findIndex(end => m.x - end >= 5);
+    if (row === -1) row = rowEnds.length;
+    rowEnds[row] = m.x;
+    m.row = row;
+  }
+  const rows = Math.max(1, rowEnds.length);
+  const markHtml = placed.map(m => {
+    const glyph = m.off === 'right' ? 'L→' : m.off === 'left' ? '←L' : LADDER_KEYS[m.kind];
+    const top = rows - 1 - m.row; // row 0 sits lowest, next to the track (or the curve)
+    return `<span class="ladder__mark ladder__mark--${m.kind}" style="left:${m.x}%;top:calc(var(--pm-lh) * ${top})">${glyph}</span>` +
+      `<span class="ladder__tick ladder__tick--${m.kind}" style="left:${m.x}%;top:calc(var(--pm-lh) * ${top + 1})"></span>`;
+  }).join('');
+  const zoneHtml = zones.map(zone =>
+    `<span class="ladder__zone" style="left:${zone.left}%;right:${100 - zone.right}%"></span>`).join('');
+  const pct = now > 0 ? pctFrom(now) : () => '';
+  const legend = marks
+    .slice()
+    .sort((a, b) => b.px - a.px)
+    .map(m => {
+      const dist = m.kind === 'now' ? '' : pct(m.px);
+      return `<li class="ladder__row ladder__row--${m.kind}"><span class="ladder__key">${LADDER_KEYS[m.kind]}</span>` +
+        `<span class="ladder__name">${m.name || LADDER_NAMES[m.kind]}</span><span class="ladder__px">${formatPrice(m.px, true, quoteCurrency)}</span>` +
+        `<span class="ladder__dist">${dist}</span></li>`;
+    }).join('');
+  const curveHtml = curve ? `<div class="ladder__curve" style="top:calc(var(--pm-lh) * ${rows})">${curve}</div>` : '';
+  return `<div class="ladder${curve ? ' ladder--curve' : ''}" role="img" aria-label="${label}" style="--rows:${rows};--curve-rows:${curveRows}">` +
+    `<div class="ladder__marks">${markHtml}</div>${curveHtml}<div class="ladder__track">${zoneHtml}</div></div>` +
+    `<ul class="ladder__legend">${legend}</ul>${note}`;
+}
+
+// A perp's ladder: liquidation, entry, now, and its TP/SL and nearest limit orders.
+// Orders come from window.hlOrders (fetched by app.js when the row opens); `null` means loading.
 function ladderHtml(pos, quoteCurrency) {
   const now = Number(pos.price);
   if (!(now > 0)) return '';
@@ -103,14 +213,21 @@ function ladderHtml(pos, quoteCurrency) {
   // A TP/SL names how much of the position it closes: 100% for the whole position.
   const held = Math.abs(Number(pos.amount));
   const shareOf = (o) => o.wholePosition ? 1 : (held > 0 && o.sz > 0 ? Math.min(1, o.sz / held) : null);
-  levels.push(...triggers.map(o => ({ kind: o.kind, px: o.px, sz: o.sz, share: shareOf(o) })));
+  levels.push(...triggers.map(o => {
+    const share = shareOf(o);
+    return { kind: o.kind, px: o.px, name: LADDER_NAMES[o.kind] + (share != null ? ` ${Math.round(share * 100)}%` : '') };
+  }));
   // Of the resting limits, only the nearest on each side; the legend gives the count.
   const limits = (orders || []).filter(o => o.kind === 'buy' || o.kind === 'sell');
   const nearest = (kind, cmp) => limits.filter(o => o.kind === kind && cmp(o.px)).sort((a, b) => Math.abs(a.px - now) - Math.abs(b.px - now))[0];
   const nearBuy = nearest('buy', px => px <= now);
   const nearSell = nearest('sell', px => px >= now);
-  if (nearBuy) levels.push({ kind: 'buy', px: nearBuy.px, count: limits.filter(o => o.kind === 'buy').length });
-  if (nearSell) levels.push({ kind: 'sell', px: nearSell.px, count: limits.filter(o => o.kind === 'sell').length });
+  const limitName = (kind) => {
+    const count = limits.filter(o => o.kind === kind).length;
+    return `${LADDER_NAMES[kind]}${count > 1 ? ` (nearest of ${count})` : ''}`;
+  };
+  if (nearBuy) levels.push({ kind: 'buy', px: nearBuy.px, name: limitName('buy') });
+  if (nearSell) levels.push({ kind: 'sell', px: nearSell.px, name: limitName('sell') });
   const liq = Number(pos.liquidationPx) > 0 ? Number(pos.liquidationPx) : null;
 
   // Scale: fit the levels around now; liquidation joins it unless it's far away, then it
@@ -127,62 +244,127 @@ function ladderHtml(pos, quoteCurrency) {
   const pad = Math.max(hi - lo, now * 0.02) * 0.08;
   lo -= pad;
   hi += pad;
-  const at = px => Math.max(0, Math.min(100, ((px - lo) / (hi - lo)) * 100));
   const marks = [...levels];
   if (liq) marks.push({ kind: 'liq', px: liq, off: liqOff });
 
   const isShort = Number(pos.amount) < 0;
   // The liquidated side: below liquidation for a long, above it for a short.
-  let zone = '';
+  let zone = null;
   if (liq) {
-    const x = liqOff === 'right' ? 100 : liqOff === 'left' ? 0 : at(liq);
-    zone = isShort
-      ? `<span class="ladder__zone" style="left:${x}%;right:0"></span>`
-      : `<span class="ladder__zone" style="left:0;right:${100 - x}%"></span>`;
+    const x = liqOff === 'right' ? 100 : liqOff === 'left' ? 0 : ((liq - lo) / (hi - lo)) * 100;
+    zone = isShort ? { left: x, right: 100 } : { left: 0, right: x };
   }
-  // Letters sit above the track on rows: a letter too close to the one before it moves
-  // up a row, and its stem runs from just under it down to the track.
-  const placed = marks
-    .map(m => ({ ...m, x: m.off === 'right' ? 100 : m.off === 'left' ? 0 : at(m.px) }))
-    .sort((a, b) => a.x - b.x);
-  const rowEnds = [];
-  for (const m of placed) {
-    let row = rowEnds.findIndex(end => m.x - end >= 5);
-    if (row === -1) row = rowEnds.length;
-    rowEnds[row] = m.x;
-    m.row = row;
-  }
-  const rows = Math.max(1, rowEnds.length);
-  const markHtml = placed.map(m => {
-    const glyph = m.off === 'right' ? 'L→' : m.off === 'left' ? '←L' : LADDER_KEYS[m.kind];
-    const top = rows - 1 - m.row; // row 0 sits lowest, next to the track
-    return `<span class="ladder__mark ladder__mark--${m.kind}" style="left:${m.x}%;top:calc(var(--pm-lh) * ${top})">${glyph}</span>` +
-      `<span class="ladder__tick ladder__tick--${m.kind}" style="left:${m.x}%;top:calc(var(--pm-lh) * ${top + 1})"></span>`;
-  }).join('');
-
-  const pct = px => {
-    const d = ((px - now) / now) * 100;
-    return `${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(Math.abs(d) < 10 ? 2 : 1)}%`;
-  };
-  const legend = marks
-    .slice()
-    .sort((a, b) => b.px - a.px)
-    .map(m => {
-      const name = m.kind === 'buy' || m.kind === 'sell'
-        ? `${LADDER_NAMES[m.kind]}${m.count > 1 ? ` (nearest of ${m.count})` : ''}`
-        : LADDER_NAMES[m.kind] + ((m.kind === 'tp' || m.kind === 'sl') && m.share != null ? ` ${Math.round(m.share * 100)}%` : '');
-      const dist = m.kind === 'now' ? '' : pct(m.px);
-      return `<li class="ladder__row ladder__row--${m.kind}"><span class="ladder__key">${LADDER_KEYS[m.kind]}</span>` +
-        `<span class="ladder__name">${name}</span><span class="ladder__px">${formatPrice(m.px, true, quoteCurrency)}</span>` +
-        `<span class="ladder__dist">${dist}</span></li>`;
-    }).join('');
-  const status = loading && !orders
+  const pct = pctFrom(now);
+  const note = loading && !orders
     ? '<p class="ladder__note">Loading orders…</p>'
     : (orders && !triggers.length && !limits.length ? '<p class="ladder__note">No open orders.</p>' : '');
   const label = `Price levels for ${escapeAttr(pos.asset)} ${isShort ? 'short' : 'long'}` +
     (liq ? `, liquidation ${pct(liq)} from now` : ', no liquidation price');
-  return `<div class="ladder" role="img" aria-label="${label}" style="--rows:${rows}"><div class="ladder__marks">${markHtml}</div>` +
-    `<div class="ladder__track">${zone}</div></div><ul class="ladder__legend">${legend}</ul>${status}`;
+  return renderLadder({ marks, lo, hi, now, zones: zone ? [zone] : [], label, quoteCurrency, note });
+}
+
+// An option ladder, on the underlying's price: now, each strike, the breakevens, and
+// (for one contract) the strikes of the other contracts held on the same name. The zone
+// is where the legs together lose money at expiry. Above the track, the payoff at expiry
+// on the same scale, its profit tinted.
+const PAYOFF_ROWS = 3;
+
+function legsLadderHtml(legs, { quoteCurrency, siblings = [], underlying }) {
+  if (!legs.length) return '';
+  const nowOf = legs.map(l => Number(l.pos?.underlyingPrice)).find(v => v > 0);
+  const now = nowOf > 0 ? nowOf : null;
+  const single = legs.length === 1 ? legs[0] : null;
+  const name = underlying || legs[0].option.underlying;
+  const written = l => l.qty < 0;
+  const count = l => `${Math.abs(l.qty)} ${written(l) ? 'written' : 'held'}`;
+
+  const marks = [];
+  for (const leg of legs) {
+    marks.push({
+      kind: written(leg) ? 'short' : 'strike',
+      px: leg.option.strike,
+      name: single ? 'Strike' : `${formatStrike(leg.option.strike)} ${leg.option.right} · ${count(leg)}`
+    });
+  }
+  if (now) marks.push({ kind: 'now', px: now, name: `${escapeAttr(name)} now` });
+  for (const leg of siblings) {
+    if (legs.some(l => l.pos === leg.pos || (l.option.strike === leg.option.strike && l.option.expiry === leg.option.expiry))) continue;
+    marks.push({
+      kind: 'leg',
+      px: leg.option.strike,
+      name: `${formatStrike(leg.option.strike)} ${leg.option.right} ${formatExpiry(leg.option.expiry)} · ${count(leg)}`
+    });
+  }
+
+  // Scale: the strikes and now, with room past them so the payoff shows its bends;
+  // then the breakevens, which may sit outside the strikes.
+  const anchors = marks.map(m => m.px);
+  let lo = Math.min(...anchors);
+  let hi = Math.max(...anchors);
+  const pad = Math.max(hi - lo, lo * 0.05) * 0.25;
+  lo = Math.max(0, lo - pad);
+  hi += pad;
+  const evens = breakevens(legs, Math.max(0, lo - pad * 4), hi + pad * 4);
+  for (const px of evens) {
+    lo = Math.min(lo, Math.max(0, px - pad / 2));
+    hi = Math.max(hi, px + pad / 2);
+  }
+  const atCost = legs.every(l => l.atCost);
+  for (const px of evens) marks.push({ kind: 'breakeven', px, name: atCost ? 'Breakeven' : 'Breakeven at today’s premium' });
+  const at = px => ((px - lo) / (hi - lo)) * 100;
+
+  // Payoff at expiry across the scale: straight between its bends (the strikes and the
+  // breakevens), so the curve, the loss zones and the tinted profit all come from it.
+  const xs = [...new Set([lo, hi, ...legs.map(l => l.option.strike), ...evens])]
+    .filter(px => px >= lo && px <= hi)
+    .sort((a, b) => a - b);
+  const ys = xs.map(px => combinedPayoff(legs, px));
+  const yMin = Math.min(0, ...ys), yMax = Math.max(0, ...ys);
+  const y = v => yMax === yMin ? 50 : 92 - ((v - yMin) / (yMax - yMin)) * 84;
+  const pt = (px, v) => `${at(px).toFixed(2)},${y(v).toFixed(2)}`;
+  const zero = `<line class="payoff__zero" x1="0" x2="100" y1="${y(0).toFixed(2)}" y2="${y(0).toFixed(2)}" vector-effect="non-scaling-stroke"/>`;
+  // Runs of the line on each side of zero: profit tinted above the track, loss dithered on
+  // it. The line only crosses zero at a breakeven, and those are points of the line, so
+  // each stretch between two points has one sign.
+  const runs = [];
+  for (let i = 1; i < xs.length; i++) {
+    const mid = ys[i - 1] + ys[i];
+    const sign = mid > 1e-9 ? 1 : mid < -1e-9 ? -1 : 0;
+    if (sign === 0) continue;
+    const last = runs.at(-1);
+    if (last && last.sign === sign && last.end === i - 1) { last.end = i; continue; }
+    runs.push({ sign, start: i - 1, end: i });
+  }
+  for (const r of runs) {
+    r.from = xs[r.start];
+    r.to = xs[r.end];
+    r.pts = xs.slice(r.start, r.end + 1).map((px, k) => [px, ys[r.start + k]]);
+  }
+  const gain = runs.filter(r => r.sign > 0).map(r =>
+    `<polygon class="payoff__gain" points="${[pt(r.from, 0), ...r.pts.map(([px, v]) => pt(px, v)), pt(r.to, 0)].join(' ')}"/>`).join('');
+  const zones = runs.filter(r => r.sign < 0).map(r => ({ left: at(r.from), right: at(r.to) }));
+  const curve = `<svg class="payoff" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">${gain}${zero}` +
+    `<polyline class="payoff__line" points="${xs.map((px, i) => pt(px, ys[i])).join(' ')}" fill="none" vector-effect="non-scaling-stroke"/></svg>`;
+
+  const days = daysToExpiry(legs[0].option.expiry);
+  const when = days === null ? '' : days < 0 ? 'expired' : days === 0 ? 'expires today' : `${days} day${days === 1 ? '' : 's'} to ${formatExpiry(legs[0].option.expiry)}`;
+  const facts = [when];
+  if (single && now) {
+    const d = Math.abs((now - single.option.strike) / single.option.strike) * 100;
+    facts.push(`${d.toFixed(d < 10 ? 1 : 0)}% ${moneyness(single.option, now) === 'in' ? 'in' : 'out of'} the money`);
+  }
+  if (atCost) {
+    const profile = payoffProfile(legs);
+    const money = v => formatPrice(Math.abs(v), true, quoteCurrency);
+    facts.push(`max loss ${Number.isFinite(profile.maxLoss) ? money(profile.maxLoss) : 'unlimited'}`);
+    facts.push(`max gain ${Number.isFinite(profile.maxGain) ? money(profile.maxGain) : 'unlimited'}`);
+  }
+  const note = `<p class="ladder__note">${facts.filter(Boolean).join(' · ')}</p>`;
+  const what = single ? `${formatStrike(single.option.strike)} ${single.option.right}` : strategyName(legs);
+  const label = `${escapeAttr(name)} ${what}` +
+    (now ? `: ${escapeAttr(name)} at ${formatPrice(now, true, quoteCurrency)}` : '') +
+    (evens.length ? `, breakeven ${evens.map(px => formatPrice(px, true, quoteCurrency)).join(' and ')}` : '');
+  return renderLadder({ marks, lo, hi, now, zones, label, quoteCurrency, curve, curveRows: PAYOFF_ROWS, note });
 }
 
 // The line that opens under a row: what the row can't fit, then its actions.
@@ -191,12 +373,21 @@ function createDetailRow(doc, pos, opts, colSpan) {
   const showExactAmounts = opts.settings?.showExactAmounts ?? false;
   const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
   const quoteCurrency = normalizeCurrencyCode(pos.currency || pos.sourceCurrency || baseCurrency, baseCurrency);
-  const facts = [
-    `${formatAmount(pos.amount, amountVisible, showExactAmounts)} ${escapeAttr(pos.asset)}`,
-    escapeAttr(pos.exchange || '')
-  ];
+  const option = optionOf(pos);
+  const facts = [];
+  if (option) {
+    // Contracts, and the shares they are on; a negative amount is a contract written.
+    const contracts = Math.abs(Number(pos.amount)) || 0;
+    const shares = contracts * (Number(pos.multiplier) > 0 ? Number(pos.multiplier) : 100);
+    facts.push(`${formatAmount(contracts, amountVisible, showExactAmounts)} contract${contracts === 1 ? '' : 's'}` +
+      `${Number(pos.amount) < 0 ? ' written' : ''} (${formatAmount(shares, amountVisible, showExactAmounts)} shares)`);
+  } else {
+    facts.push(`${formatAmount(pos.amount, amountVisible, showExactAmounts)} ${escapeAttr(pos.asset)}`);
+  }
+  facts.push(escapeAttr(pos.exchange || ''));
   if (Number(pos.entryPrice) > 0) {
-    const entry = `entry ${formatPrice(Number(pos.entryPrice), true, quoteCurrency)}`;
+    const what = option ? (Number(pos.amount) < 0 ? 'premium received' : 'premium paid') : 'entry';
+    const entry = `${what} ${formatPrice(Number(pos.entryPrice), true, quoteCurrency)}`;
     facts.push(pos.entryDate ? `${entry} on ${escapeAttr(pos.entryDate)}` : entry);
   }
   // Perps: leverage, and how far the price can move before liquidation.
@@ -220,6 +411,7 @@ function createDetailRow(doc, pos, opts, colSpan) {
   td.colSpan = colSpan;
   td.innerHTML = `<div class="position-detail__facts">${facts.filter(Boolean).join(' · ')}</div>` +
     (pos.isLeveraged ? `<div class="position-detail__ladder">${ladderHtml(pos, quoteCurrency)}</div>` : '') +
+    (option ? `<div class="position-detail__ladder">${legsLadderHtml([legOf(pos)], { quoteCurrency, siblings: opts.optionLegs?.[option.underlying] || [] })}</div>` : '') +
     `<div class="position-detail__actions">${rowActionsHtml(pos, `${pos.asset}_${pos.exchange}`)}</div>`;
   tr.appendChild(td);
   return tr;
@@ -393,13 +585,28 @@ function computeValue(pos) {
   return amount * price;
 }
 
+// Short: a perp sold, or an option written.
 function isShortPosition(pos) {
   const amount = Number(pos?.amount);
-  return !!pos?.isLeveraged && Number.isFinite(amount) && amount < 0;
+  return (!!pos?.isLeveraged || !!optionOf(pos)) && Number.isFinite(amount) && amount < 0;
 }
 
 function formatAssetLabel(pos) {
-  return pos?.asset || '—';
+  const option = optionOf(pos);
+  return option ? option.underlying : (pos?.asset || '—');
+}
+
+// An option's strike and right after its underlying, short enough for the Asset column:
+// "8C". The expiry has a column of its own; the detail line and the ladder legend spell
+// the right out.
+function optionTerms(option) {
+  const strike = Number(option.strike).toLocaleString('en-US', { maximumFractionDigits: 3, useGrouping: false });
+  return `${strike}${option.right === 'put' ? 'P' : 'C'}`;
+}
+
+function optionTermsHtml(pos) {
+  const option = optionOf(pos);
+  return option ? `<span class="asset-terms">${escapeHtml(optionTerms(option))}</span>` : '';
 }
 
 function escapeHtml(value) {
@@ -409,16 +616,22 @@ function escapeHtml(value) {
 }
 
 function formatAssetLabelHtml(pos) {
-  const base = formatAssetLabel(pos);
-  if (!isShortPosition(pos)) return base;
-  return `${base}<span class="short-arrow"> ↓</span>`;
+  const base = escapeHtml(formatAssetLabel(pos));
+  const arrow = isShortPosition(pos) ? '<span class="short-arrow"> ↓</span>' : '';
+  return `${base}${arrow}${optionTermsHtml(pos)}`;
 }
 
 // Table variant: ticker plus the full name in muted text when the provider gives one.
-function formatAssetCellHtml(pos) {
+function formatAssetCellHtml(pos, { leg = false } = {}) {
+  // A leg under its underlying's row: the contract's terms stand in for the ticker.
+  if (leg) {
+    const option = optionOf(pos);
+    const arrow = isShortPosition(pos) ? '<span class="short-arrow"> ↓</span>' : '';
+    return `<span class="asset-leg">${escapeHtml(optionTerms(option))}${arrow}</span>`;
+  }
   const label = formatAssetLabelHtml(pos);
   const name = String(pos?.assetName || '').trim();
-  if (!name || name.toUpperCase() === String(pos?.asset || '').toUpperCase()) return label;
+  if (optionOf(pos) || !name || name.toUpperCase() === String(pos?.asset || '').toUpperCase()) return label;
   return `${label}<span class="asset-name">${escapeHtml(name)}</span>`;
 }
 
@@ -432,7 +645,9 @@ const SORT_VALUES = {
   funding: p => p.funding,
   change: p => p.change24h,
   amount: p => Math.abs(Number(p.amount)),
-  exchange: p => String(p.exchange || '').toLowerCase()
+  exchange: p => String(p.exchange || '').toLowerCase(),
+  expiry: p => optionOf(p)?.expiry || null,
+  underlying: p => (Number(p.underlyingPrice) > 0 ? Number(p.underlyingPrice) : null)
 };
 
 function sortPositions(list, sort) {
@@ -450,19 +665,24 @@ function sortPositions(list, sort) {
 // The search box above the table: matches ticker, name or source.
 function matchesQuery(pos, query) {
   if (!query) return true;
-  return [pos.asset, pos.name, pos.exchange].some(v => String(v || '').toLowerCase().includes(query));
+  const kind = positionKind(pos);
+  const option = optionOf(pos);
+  const terms = [pos.asset, pos.name, pos.exchange, KIND_LABELS[kind], kind];
+  if (option) terms.push(option.underlying, optionTerms(option), `${formatStrike(option.strike)} ${option.right}`, formatExpiry(option.expiry), 'option');
+  return terms.some(v => String(v || '').toLowerCase().includes(query));
 }
 
 function shouldHidePosition(pos, opts) {
   if (opts.hideNfts && pos.exchange === 'OpenSea') return true;
   if (opts.hideSmallPositions) {
     const threshold = Number(opts.settings?.minBalanceThreshold || 100);
-    if (computeValue(pos) < threshold) return true;
+    // A written option's value is negative: its size is what counts.
+    if (Math.abs(computeValue(pos)) < threshold) return true;
   }
   return false;
 }
 
-function createTableRow(doc, pos, opts, prevDataMap) {
+function createTableRow(doc, pos, opts, prevDataMap, { leg = false } = {}) {
   const tr = doc.createElement('tr');
 
   // Add class for hidden positions (shown with reduced opacity)
@@ -502,8 +722,10 @@ function createTableRow(doc, pos, opts, prevDataMap) {
 
   // Create sparkline chart - stablecoins get static dash, others get pulsing loading indicator
   let chartCell;
-  if (isStablecoin(pos.asset) || pos.quoteUnavailable) {
-    // Static dash for assets without a usable chart.
+  const option = optionOf(pos);
+  if (isStablecoin(pos.asset) || pos.quoteUnavailable || (option && !pos.priceHistory)) {
+    // Static dash for assets without a usable chart (an option without a live quote keeps
+    // its mark from the statement).
     chartCell = '—';
   } else if (pos.priceHistory) {
     // Has chart data - render sparkline
@@ -516,7 +738,7 @@ function createTableRow(doc, pos, opts, prevDataMap) {
   // Determine loading states:
   // - 24H% is loading if null and not a stablecoin
   // - Funding is loading if null and position is leveraged (perps have funding)
-  const is24hLoading = pos.change24h == null && !isStablecoin(pos.asset) && !pos.quoteUnavailable;
+  const is24hLoading = pos.change24h == null && !isStablecoin(pos.asset) && !pos.quoteUnavailable && !option;
   const isFundingLoading = pos.funding == null && pos.isLeveraged;
   const priceCell = pos.quoteLoading
     ? '<span class="cell-loading">—</span>'
@@ -529,76 +751,50 @@ function createTableRow(doc, pos, opts, prevDataMap) {
     ? '—'
     : formatFunding(pos.funding, amountVisible, baseCurrency, isFundingLoading);
 
-  // Use compact column order
-  // Order: Asset, Price, Chart, Value, P&L, Funding, 24H%, Amount, Exchange
-  const cells = [
-    formatAssetCellHtml(pos),
-    priceCell,
-    chartCell,
-    valueCell,
-    pnlCell,
-    fundingCell,
-    formatPct(pos.change24h, is24hLoading),
-    formatAmount(pos.amount, amountVisible, showExactAmounts),
-    pos.exchange || '—'
-  ];
-
+  const underlyingNow = Number(pos.underlyingPrice) > 0 ? Number(pos.underlyingPrice) : null;
+  const cells = {
+    asset: formatAssetCellHtml(pos, { leg }),
+    expiry: option ? formatExpiry(option.expiry) : '—',
+    underlying: underlyingNow ? formatPrice(underlyingNow, true, quoteCurrency) : '—',
+    price: priceCell,
+    chart: chartCell,
+    value: valueCell,
+    pnl: pnlCell,
+    funding: fundingCell,
+    change: formatPct(pos.change24h, is24hLoading),
+    amount: formatAmount(pos.amount, amountVisible, showExactAmounts),
+    exchange: pos.exchange || '—'
+  };
+  const flash = {
+    price: priceChanged,
+    value: valueChanged,
+    pnl: pnlChanged,
+    funding: fundingChanged,
+    chart: priceChanged || change24hChanged,
+    change: change24hChanged
+  };
   const useColoredPnL = opts.settings?.useColoredPnL ?? true;
-  const fundingRateTooltip = formatFundingRate(pos.fundingRate);
+  const signClass = v => (useColoredPnL && v != null ? (v >= 0 ? 'positive-pnl' : 'negative-pnl') : '');
+  const tone = { pnl: signClass(pos.pnl), funding: signClass(pos.funding), change: signClass(pos.change24h) };
   const fundingRateExt = formatFundingRateExtended(pos.fundingRate);
-  // Build extended tooltip text with hourly, monthly, yearly extrapolations
+  // Extended tooltip text with hourly, monthly, yearly extrapolations
   const fundingTooltipText = fundingRateExt
     ? `Hourly: ${fundingRateExt.hourly}\nMonthly: ${fundingRateExt.monthly}\nYearly: ${fundingRateExt.yearly}`
     : null;
 
-  for (let i = 0; i < cells.length; i++) {
+  for (const col of columnsFor(opts)) {
     const td = doc.createElement('td');
+    td.className = cellClassFor(col);
+    if (tone[col.key]) td.classList.add(tone[col.key]);
+    // Cells that flash on a change (like the watchlist)
+    if (flash[col.key]) td.setAttribute('data-flash', 'true');
+    // innerHTML only where the content carries markup (charts, loading placeholders)
+    const content = String(cells[col.key]);
+    if (col.key === 'chart' || col.key === 'asset' || content.includes('<span')) td.innerHTML = content;
+    else td.textContent = content;
 
-    // Column indices: Asset, Price, Chart, Value, P&L, Funding, 24H%, Amount, Exchange
-    const isPrice = (i === 1);
-    const isChart = (i === 2);
-    const isValue = (i === 3);
-    const isPnL = (i === 4);
-    const isFunding = (i === 5);
-    const isChange24h = (i === 6);
-
-    // Add color classes for PnL, Funding, and 24H%
-    if (useColoredPnL) {
-      if (isPnL && pos.pnl != null) {
-        td.className = pos.pnl >= 0 ? 'positive-pnl' : 'negative-pnl';
-      } else if (isFunding && pos.funding != null) {
-        td.className = pos.funding >= 0 ? 'positive-pnl' : 'negative-pnl';
-      } else if (isChange24h && pos.change24h != null) {
-        td.className = pos.change24h >= 0 ? 'positive-pnl' : 'negative-pnl';
-      }
-    }
-
-    // Mark cells that should flash on price changes (like watchlist)
-    const shouldFlash =
-      (isPrice && priceChanged) ||
-      (isValue && valueChanged) ||
-      (isPnL && pnlChanged) ||
-      (isFunding && fundingChanged) ||
-      (isChart && (priceChanged || change24hChanged)) ||
-      (isChange24h && change24hChanged);
-
-    if (shouldFlash) {
-      td.setAttribute('data-flash', 'true');
-    }
-
-    if (isChart) {
-      // Chart column uses innerHTML
-      td.innerHTML = cells[i];
-      td.className = 'chart-cell chart';
-    } else if (isFunding && fundingTooltipText) {
+    if (col.key === 'funding' && fundingTooltipText) {
       // Funding column with custom mouse-tracking tooltip for current rate
-      // Use innerHTML if content contains HTML (loading indicator)
-      const cellContent = String(cells[i]);
-      if (cellContent.includes('<span')) {
-        td.innerHTML = cellContent;
-      } else {
-        td.textContent = cellContent;
-      }
       td.classList.add('funding-cell');
       td.setAttribute('data-funding-rate', fundingTooltipText);
       // Tooltip follows the pointer; keyboard users reach the same rate by focusing the cell
@@ -609,17 +805,8 @@ function createTableRow(doc, pos, opts, prevDataMap) {
       td.addEventListener('mouseleave', hideFundingTooltip);
       td.addEventListener('focus', (e) => showFundingTooltipAt(e.currentTarget, fundingTooltipText));
       td.addEventListener('blur', hideFundingTooltip);
-    } else {
-      // Use innerHTML if content contains HTML (loading indicator), otherwise textContent
-      const cellContent = String(cells[i]);
-      if (cellContent.includes('<span')) {
-        td.innerHTML = cellContent;
-      } else {
-        td.textContent = cellContent;
-      }
     }
-    if (i === 0) {
-      td.classList.add('asset-cell');
+    if (col.key === 'asset') {
       // The cell fills to the row's share of the portfolio: the allocation, read in place.
       // The largest holding fills the cell, so small shares still show; the title has the
       // exact share.
@@ -629,13 +816,205 @@ function createTableRow(doc, pos, opts, prevDataMap) {
         td.title = `${share >= 0.1 ? Math.round(share * 100) : (share * 100).toFixed(1)}% of portfolio`;
       }
     }
-    if (i === cells.length - 1) {
-      td.classList.add('exchange-cell');
-      td.title = pos.exchange || '';
-    }
+    if (col.key === 'exchange') td.title = pos.exchange || '';
     tr.appendChild(td);
   }
   return tr;
+}
+
+// ── Several contracts on one underlying ──
+// They sit under a row for the underlying itself: its price now and 24h move, what the
+// legs make together ("bull call spread · 15 Jan 27"), their value and P&L summed. The
+// row opens to the legs' combined payoff, one ladder per expiry.
+function strategyKey(underlying, legs) {
+  return `options:${underlying}_${legs[0]?.pos?.exchange || ''}`;
+}
+
+// The one row that stands for several legs on a name. It sorts and totals like a
+// position: the name, the underlying's price and move, the legs' value and P&L summed.
+function strategyRowOf(underlying, legs) {
+  const first = legs[0].pos;
+  const quoted = legs.find(l => Number(l.pos.underlyingPrice) > 0)?.pos;
+  const totals = groupTotals(legs.map(l => l.pos));
+  return {
+    asset: underlying,
+    exchange: first.exchange,
+    currency: first.currency,
+    sourceCurrency: first.sourceCurrency,
+    price: quoted ? Number(quoted.underlyingPrice) : null,
+    value: totals.value ?? 0,
+    pnl: totals.pnl,
+    change24h: quoted?.underlyingChange24h ?? null,
+    amount: null,
+    category: 'option',
+    _strategy: { underlying, legs },
+    _changeDetectionKey: strategyKey(underlying, legs)
+  };
+}
+
+// Legs on one name fold into one row in the position list, where the first of them was.
+function combineLegs(positions) {
+  const byName = legsByUnderlying(positions);
+  const placed = new Set();
+  const out = [];
+  for (const pos of positions) {
+    const option = optionOf(pos);
+    const legs = option ? byName[option.underlying] : null;
+    if (!legs || legs.length < 2) { out.push(pos); continue; }
+    if (placed.has(option.underlying)) continue;
+    placed.add(option.underlying);
+    out.push(strategyRowOf(option.underlying, legs));
+  }
+  return out;
+}
+
+function legsByExpiry(legs) {
+  const out = new Map();
+  for (const leg of legs) {
+    if (!out.has(leg.option.expiry)) out.set(leg.option.expiry, []);
+    out.get(leg.option.expiry).push(leg);
+  }
+  return out;
+}
+
+// What the legs make: "bull call spread" for one expiry; across expiries, "long calls"
+// when they are all one way, else each expiry's name in turn.
+function strategyDescription(legs) {
+  const groups = [...legsByExpiry(legs).values()];
+  if (groups.length === 1) return strategyName(legs);
+  const rights = new Set(legs.map(l => l.option.right));
+  if (rights.size === 1 && legs.every(l => l.qty > 0)) return `long ${[...rights][0]}s`;
+  if (rights.size === 1 && legs.every(l => l.qty < 0)) return `short ${[...rights][0]}s`;
+  return [...new Set(groups.map(strategyName))].join(', ');
+}
+
+// The expiries a set of legs runs to: dates for one or two, a count past that.
+function expiriesText(legs) {
+  const dates = [...legsByExpiry(legs).keys()];
+  return dates.length > 2 ? `${dates.length} expiries` : dates.map(d => formatExpiry(d)).join(', ');
+}
+
+function createStrategyRow(doc, underlying, legs, opts) {
+  const tr = doc.createElement('tr');
+  const rowKey = strategyKey(underlying, legs);
+  const isOpen = opts.openKey === rowKey;
+  tr.className = 'position-row position-strategy';
+  if (isOpen) tr.classList.add('is-open');
+  tr.dataset.key = rowKey;
+  tr.tabIndex = 0;
+  tr.setAttribute('aria-expanded', String(isOpen));
+
+  const amountVisible = !!opts.amountsVisible;
+  const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
+  const first = legs[0].pos;
+  const quoteCurrency = normalizeCurrencyCode(first.currency || first.sourceCurrency || baseCurrency, baseCurrency);
+  const now = legs.map(l => Number(l.pos.underlyingPrice)).find(v => v > 0);
+  const withQuote = legs.find(l => Number(l.pos.underlyingPrice) > 0)?.pos;
+  const change = withQuote?.underlyingChange24h ?? null;
+  const totals = groupTotals(legs.map(l => l.pos));
+  const chart = withQuote?.underlyingPriceHistory ? createSparkline(withQuote.underlyingPriceHistory, 60, 24, change) : null;
+  const useColoredPnL = opts.settings?.useColoredPnL ?? true;
+  const signClass = v => (useColoredPnL && v != null ? (v >= 0 ? 'positive-pnl' : 'negative-pnl') : '');
+
+  const cells = {
+    asset: `${escapeHtml(underlying)}<span class="asset-terms">${escapeHtml(strategyDescription(legs))}</span>`,
+    expiry: escapeHtml(expiriesText(legs)),
+    underlying: now ? formatPrice(now, true, quoteCurrency) : '—',
+    price: '',
+    chart: chart || '—',
+    value: totals.value !== null ? formatBaseMoney(totals.value, amountVisible, baseCurrency) : '—',
+    pnl: totals.pnl !== null ? formatBaseMoney(totals.pnl, amountVisible, baseCurrency, true) : '—',
+    funding: '',
+    change: formatPct(change),
+    amount: `${legs.length} legs`,
+    exchange: first.exchange || '—'
+  };
+  const tone = { pnl: signClass(totals.pnl), change: signClass(change) };
+  for (const col of columnsFor(opts)) {
+    const td = doc.createElement('td');
+    td.className = cellClassFor(col);
+    if (tone[col.key]) td.classList.add(tone[col.key]);
+    td.innerHTML = cells[col.key] || '';
+    if (col.key === 'asset') {
+      const share = legs.reduce((acc, l) => acc + (opts.shares?.[`${l.pos.asset}_${l.pos.exchange}`] || 0), 0);
+      if (share > 0) {
+        td.style.setProperty('--share', `${(Math.min(1, share / (opts.largestShare || share)) * 100).toFixed(2)}%`);
+        td.title = `${share >= 0.1 ? Math.round(share * 100) : (share * 100).toFixed(1)}% of portfolio`;
+      }
+    }
+    if (col.key === 'exchange') td.title = first.exchange || '';
+    tr.appendChild(td);
+  }
+  return tr;
+}
+
+function createStrategyDetailRow(doc, underlying, legs, opts, colSpan) {
+  const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
+  const first = legs[0].pos;
+  const quoteCurrency = normalizeCurrencyCode(first.currency || first.sourceCurrency || baseCurrency, baseCurrency);
+  const facts = [`${legs.length} legs`, escapeAttr(first.exchange || '')];
+  if (legs.every(l => l.atCost)) {
+    const net = netPremium(legs);
+    facts.push(`net premium ${net < 0 ? 'received' : 'paid'} ${formatPrice(Math.abs(net), true, quoteCurrency)}`);
+  }
+  const ladders = [...legsByExpiry(legs)].map(([, group]) =>
+    `<div class="position-detail__ladder">${legsLadderHtml(group, { quoteCurrency, underlying })}</div>`).join('');
+  const tr = doc.createElement('tr');
+  tr.className = 'position-detail';
+  const td = doc.createElement('td');
+  td.colSpan = colSpan;
+  td.innerHTML = `<div class="position-detail__facts">${facts.filter(Boolean).join(' · ')}</div>${ladders}`;
+  tr.appendChild(td);
+  return tr;
+}
+
+// How many positions a run of rows holds: a combined row counts each of its legs.
+function positionsIn(rows) {
+  return rows.reduce((n, p) => n + (p._strategy ? p._strategy.legs.length : 1), 0);
+}
+
+// A group's totals: value, P&L and funding over the rows that have a usable quote.
+function groupTotals(rows) {
+  const usable = rows.filter(p => !p.quoteLoading && !p.quoteUnavailable && !p.fxConversionMissing);
+  const sum = (get) => usable.reduce((acc, p) => {
+    const v = Number(get(p));
+    return Number.isFinite(v) ? (acc ?? 0) + v : acc;
+  }, null);
+  return { value: sum(computeValue), pnl: sum(p => p.pnl), funding: sum(p => p.funding) };
+}
+
+// The head of a run of rows: the kind on the left, its totals under the Value, P&L
+// and Funding heads. Not a position: it does not open.
+function createGroupRow(doc, group, opts) {
+  const amountVisible = !!opts.amountsVisible;
+  const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
+  const totals = groupTotals(group.rows);
+  const tr = doc.createElement('tr');
+  tr.className = `position-group position-group--${group.kind}`;
+  const cells = {
+    asset: `<span class="position-group__label">${KIND_LABELS[group.kind]}</span><span class="position-group__count">${positionsIn(group.rows)}</span>`
+  };
+  if (totals.value !== null) cells.value = formatBaseMoney(totals.value, amountVisible, baseCurrency);
+  if (totals.pnl !== null) cells.pnl = formatBaseMoney(totals.pnl, amountVisible, baseCurrency, true);
+  if (group.kind === 'perp' && totals.funding !== null) cells.funding = formatBaseMoney(totals.funding, amountVisible, baseCurrency, true);
+  for (const col of columnsFor(opts)) {
+    const td = doc.createElement('td');
+    td.className = cellClassFor(col);
+    td.innerHTML = cells[col.key] || '';
+    tr.appendChild(td);
+  }
+  return tr;
+}
+
+function createMobileGroupLine(doc, group, opts) {
+  const amountVisible = !!opts.amountsVisible;
+  const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
+  const totals = groupTotals(group.rows);
+  const line = doc.createElement('div');
+  line.className = 'mobile-positions-group';
+  line.innerHTML = `<span class="card-asset">${KIND_LABELS[group.kind]}</span>` +
+    (totals.value !== null ? `<span class="card-value">${formatBaseMoney(totals.value, amountVisible, baseCurrency)}</span>` : '');
+  return line;
 }
 
 // Cards are rebuilt on every refresh, so remember which ones the user opened.
@@ -745,23 +1124,34 @@ function createMobileCard(doc, pos, opts) {
   return card;
 }
 
-function updateHeaders(tableBody, baseCurrency) {
+// The head row follows the column order; it is rebuilt only when that changes. The
+// currency is on hover (the cells carry the symbol); the sort is marked for assistive tech.
+function updateHeaders(tableBody, baseCurrency, opts) {
   const table = tableBody?.closest?.('table');
-  if (!table) return;
-  const valueHeader = table.querySelector('.th-value');
-  const pnlHeader = table.querySelector('.th-pnl');
-  const fundingHeader = table.querySelector('.th-funding');
-  // The cells already carry the currency symbol, so the labels stay short; the code
-  // is there on hover for the odd case it isn't obvious.
-  const label = (th, text) => {
-    if (!th) return;
-    // Sortable headers hold a button; the label goes inside it.
-    (th.querySelector('.th-sort') || th).textContent = text;
-    th.title = `In ${baseCurrency}`;
-  };
-  label(valueHeader, 'Value');
-  label(pnlHeader, 'P&L');
-  label(fundingHeader, 'Funding');
+  const thead = table?.querySelector('thead');
+  if (!thead) return;
+  const columns = columnsFor(opts);
+  const signature = columns.map(c => c.key).join(',');
+  if (thead.dataset.columns !== signature) {
+    thead.innerHTML = '<tr>' + columns.map(col => {
+      const cls = [`th-${col.key}`, col.num ? 'num' : '', col.headClass || ''].filter(Boolean).join(' ');
+      const label = escapeHtml(col.label);
+      const inner = col.sort ? `<button type="button" class="th-sort" data-sort="${col.sort}">${label}</button>` : label;
+      return `<th class="${cls}">${inner}</th>`;
+    }).join('') + '</tr>';
+    thead.dataset.columns = signature;
+  }
+  for (const key of ['value', 'pnl', 'funding']) {
+    const th = thead.querySelector(`.th-${key}`);
+    if (th) th.title = `In ${baseCurrency}`;
+  }
+  const sort = opts?.sort;
+  thead.querySelectorAll('th').forEach(th => {
+    const key = th.querySelector('.th-sort')?.dataset.sort;
+    if (!key) return;
+    if (sort?.key === key) th.setAttribute('aria-sort', sort.dir === 'asc' ? 'ascending' : 'descending');
+    else th.removeAttribute('aria-sort');
+  });
 }
 
 /**
@@ -775,23 +1165,27 @@ export function renderPositions({ positions, containers, options, previousPositi
     const opts = { ...options };
     opts.largestShare = Math.max(0, ...Object.values(opts.shares || {}));
     const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
-    updateHeaders(containers.positionsBody, baseCurrency);
+    updateHeaders(containers.positionsBody, baseCurrency, opts);
 
     const list = Array.isArray(positions) ? positions : [];
     const query = String(opts.query || '').trim().toLowerCase();
-    const filtered = sortPositions(list.filter(p => !shouldHidePosition(p, opts) && matchesQuery(p, query)), opts.sort);
+    const matching = list.filter(p => !shouldHidePosition(p, opts) && matchesQuery(p, query));
+    // Several option legs on one name can show as one row that sorts by their total.
+    const combine = opts.settings?.combineOptionLegs ?? true;
+    const filtered = sortPositions(combine ? combineLegs(matching) : matching, opts.sort);
 
     const table = containers.positionsBody.closest('table');
     if (table) {
-      table.classList.toggle('has-funding', filtered.some(p => p.isLeveraged || p.funding != null));
+      table.classList.toggle('has-funding', matching.some(p => p.isLeveraged || p.funding != null));
+      table.classList.toggle('has-options', matching.some(p => !!optionOf(p)));
     }
     const countEl = containers.positionsBody.closest('section')?.querySelector('.panel-count');
-    if (countEl) countEl.textContent = filtered.length > 0 ? String(filtered.length) : '';
+    if (countEl) countEl.textContent = matching.length > 0 ? String(matching.length) : '';
 
     if (filtered.length === 0) {
       const emptyRow = doc.createElement('tr');
       const emptyCell = doc.createElement('td');
-      emptyCell.colSpan = 9;
+      emptyCell.colSpan = POSITION_COLUMNS.length;
       emptyCell.className = 'loading';
       emptyCell.textContent = query ? `No positions match “${opts.query.trim()}”.` : 'No positions.';
       emptyRow.appendChild(emptyCell);
@@ -831,13 +1225,42 @@ export function renderPositions({ positions, containers, options, previousPositi
     const frag = doc.createDocumentFragment();
     const mobileFrag = doc.createDocumentFragment();
     const colSpan = visibleColumnCount(table);
-    for (const pos of filtered) {
-      frag.appendChild(createTableRow(doc, pos, opts, prevDataMap));
-      if (opts.openKey === `${pos.asset}_${pos.exchange}`) {
-        frag.appendChild(createDetailRow(doc, pos, opts, colSpan));
+    // Spot, perps and options are different things: each kind gets its own run of rows
+    // under a head with its totals. One kind alone needs no head, and the setting can
+    // ask for one list in sort order instead.
+    const grouped = opts.settings?.groupPositions ?? true;
+    const groups = grouped
+      ? KIND_ORDER.map(kind => ({ kind, rows: filtered.filter(p => positionKind(p) === kind) })).filter(g => g.rows.length)
+      : [{ kind: 'all', rows: filtered }];
+    opts.optionLegs = legsByUnderlying(list);
+    for (const group of groups) {
+      if (groups.length > 1) {
+        frag.appendChild(createGroupRow(doc, group, opts));
+        if (containers.mobilePositionsContainer) mobileFrag.appendChild(createMobileGroupLine(doc, group, opts));
       }
-      if (containers.mobilePositionsContainer) {
-        mobileFrag.appendChild(createMobileCard(doc, pos, opts));
+      const addRow = (pos, leg) => {
+        frag.appendChild(createTableRow(doc, pos, opts, prevDataMap, { leg }));
+        if (opts.openKey === `${pos.asset}_${pos.exchange}`) {
+          frag.appendChild(createDetailRow(doc, pos, opts, colSpan));
+        }
+      };
+      for (const pos of group.rows) {
+        if (!pos._strategy) {
+          addRow(pos, false);
+          if (containers.mobilePositionsContainer) mobileFrag.appendChild(createMobileCard(doc, pos, opts));
+          continue;
+        }
+        // Legs on one name: their row, and when open, each leg as a row and the
+        // combined payoff under them.
+        const { underlying, legs } = pos._strategy;
+        frag.appendChild(createStrategyRow(doc, underlying, legs, opts));
+        if (opts.openKey === strategyKey(underlying, legs)) {
+          for (const leg of legs) addRow(leg.pos, true);
+          frag.appendChild(createStrategyDetailRow(doc, underlying, legs, opts, colSpan));
+        }
+        if (containers.mobilePositionsContainer) {
+          for (const leg of legs) mobileFrag.appendChild(createMobileCard(doc, leg.pos, opts));
+        }
       }
     }
 

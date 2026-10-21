@@ -838,6 +838,7 @@ export class IncrementalPortfolioRenderer {
             useColoredPnL: this.settings.useColoredPnL ?? true,
             showPriceChart: this.settings.showPriceChart ?? true,
             groupPositions: this.settings.groupPositions ?? true,
+            combineOptionLegs: this.settings.combineOptionLegs ?? true,
             positionColumns: this.settings.positionColumns,
             portfolioBaseCurrency: baseCurrency
           }

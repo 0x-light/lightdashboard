@@ -45,6 +45,15 @@ export function parseOptionSymbol(text) {
   return null;
 }
 
+/** The contract's OCC symbol without padding, as Yahoo quotes it: "MU270115C01300000". */
+export function occSymbol(option) {
+  if (!option) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(option.expiry || ''));
+  const strike = Math.round(Number(option.strike) * 1000);
+  if (!m || !(strike > 0)) return null;
+  return `${option.underlying}${m[1].slice(2)}${m[2]}${m[3]}${option.right === 'put' ? 'P' : 'C'}${String(strike).padStart(8, '0')}`;
+}
+
 /** The option contract behind a position, if it is one. */
 export function optionOf(pos) {
   if (!pos) return null;
@@ -56,6 +65,7 @@ export function optionOf(pos) {
 /** 'perp' | 'option' | 'spot' */
 export function positionKind(pos) {
   if (!pos) return 'spot';
+  if (pos._strategy) return 'option'; // several legs on one name, shown as one row
   if (pos.isLeveraged) return 'perp';
   if (optionOf(pos)) return 'option';
   return 'spot';
