@@ -1,0 +1,1126 @@
+/* palmeirim.com skin, layered over styles.css.
+   Monospace on a line grid: uppercase labels, box-drawn tables, chips made of
+   a key cell and a label cell. Colour comes only from the active theme;
+   emphasis is inversion. `html.pm:root` stays one step more specific than the
+   `html:root` rules it replaces. */
+
+/* ── Tokens ── */
+
+html.pm:root {
+  --pm-ink: var(--text-bright, var(--text));
+  --pm-tint:   color-mix(in srgb, var(--pm-ink) 8%, var(--bg));
+  --pm-tint-2: color-mix(in srgb, var(--pm-ink) 18%, var(--bg));
+  --pm-rule:   color-mix(in srgb, var(--pm-ink) 30%, var(--bg));
+  --pm-muted:  color-mix(in srgb, var(--pm-ink) 58%, var(--bg));
+  --pm-lh: calc(1rem * 18 / 14);
+  --pm-measure: 76ch;
+  --pm-wide: 112ch;
+
+  --lh: var(--pm-lh);
+  --muted: var(--pm-muted);
+  --line: var(--pm-rule);
+  --line-soft: var(--pm-rule);
+  --row-hover: var(--pm-tint);
+  --chip: var(--pm-tint);
+  --chip-hover: var(--pm-tint-2);
+  --field: var(--pm-tint);
+}
+
+html.pm:root,
+html.pm:root body {
+  background: var(--bg);
+  color: var(--pm-ink);
+  line-height: var(--pm-lh);
+  font-variant-ligatures: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+html.pm:root ::selection { background: var(--pm-ink); color: var(--bg); }
+html.pm:root :focus-visible { outline: none; }
+
+/* One emphasis everywhere: swap the theme's two colours. */
+html.pm:root .pm-nav a:focus-visible kbd,
+html.pm:root .pm-nav a[aria-current] .chip__label,
+html.pm:root .pm-theme:focus-visible kbd,
+html.pm:root .header-actions .btn-text:focus-visible::before,
+html.pm:root .pm-btn:focus-visible,
+html.pm:root .panel-foot .btn-text:focus-visible,
+html.pm:root .panel-action:focus-visible,
+html.pm:root .comic-tab:focus-visible {
+  background: var(--pm-ink);
+  color: var(--bg);
+}
+
+@media (hover: hover) {
+  html.pm:root .pm-nav a:hover kbd,
+  html.pm:root .pm-theme:hover kbd,
+  html.pm:root .header-actions .btn-text:hover::before,
+  html.pm:root .panel-foot .btn-text:hover,
+  html.pm:root .panel-action:hover,
+  html.pm:root .comic-tab:hover,
+  html.pm:root .data-table tbody tr:hover td,
+  html.pm:root .hero-amount-toggle:hover {
+    background: var(--pm-ink);
+    color: var(--bg);
+  }
+
+  /* Cells and their contents set their own colours (asset, muted amount and source,
+     P&L); an inverted row overrides all of them so nothing disappears into the fill. */
+  html.pm:root .data-table tbody tr:hover td,
+  html.pm:root .data-table tbody tr:hover td * {
+    color: var(--bg) !important;
+    text-decoration-color: currentColor;
+  }
+}
+
+/* ── Keys and chips ── */
+
+html.pm:root kbd {
+  font: inherit;
+  display: inline-block;
+  padding: 0 1ch;
+  background: var(--pm-tint-2);
+  color: var(--pm-ink);
+}
+
+html.pm:root .chip { display: inline-flex; text-transform: uppercase; }
+
+html.pm:root .chip__label {
+  padding: 0 1ch;
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+}
+
+/* ── Top bar ── */
+
+html.pm:root .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: calc(var(--pm-lh) / 3) 3ch;
+  max-width: calc(var(--pm-wide) + 2ch);
+  margin: 0;
+  padding: calc(var(--pm-lh) / 2) 1ch;
+  background: var(--bg);
+  border: 0;
+  min-height: 0;
+}
+
+html.pm:root .greeting-container,
+html.pm:root .mobile-menu-btn { display: none !important; }
+
+html.pm:root .pm-nav { display: flex; flex-wrap: wrap; gap: calc(var(--pm-lh) / 3) 1ch; }
+html.pm:root .pm-nav a { color: inherit; text-decoration: none; }
+
+/* Header tools as chips. The key cell is a pseudo-element, because the app
+   rewrites some of these labels (Hide/Show amounts). */
+html.pm:root .header-actions {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: calc(var(--pm-lh) / 3) 1ch;
+  margin: 0;
+}
+
+html.pm:root .header-actions .btn-text {
+  display: inline-flex;
+  gap: 1ch;
+  padding: 0 1ch 0 0;
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+  text-transform: uppercase;
+  text-decoration: none;
+  line-height: var(--pm-lh);
+  min-height: 0;
+  border: 0;
+}
+
+html.pm:root .header-actions .btn-text::before {
+  padding: 0 1ch;
+  background: var(--pm-tint-2);
+  color: var(--pm-ink);
+}
+
+html.pm:root #newRefreshBtn::before { content: "R"; }
+html.pm:root #newToggleAmountsBtn::before { content: "H"; }
+html.pm:root #newSettingsBtn::before { content: "S"; }
+html.pm:root #newStickersBtn::before { content: "★"; }
+html.pm:root #newDonateBtn::before { content: "♥"; }
+html.pm:root #newToggleSnowBtn::before { content: "❄"; }
+html.pm:root #newToggleRainBtn::before { content: "☂"; }
+
+/* Theme moves to the footer, as on the site. */
+html.pm:root .header-actions .theme-select-wrapper { display: none !important; }
+
+/* All tools live behind one MENU chip at the right of the bar: a framed popover
+   under it on desktop, a sheet above the bottom edge on phones. Every tool is always
+   listed (snow, rain, stickers and donate included), so nothing needs switching on. */
+html.pm:root .pm-menu-btn {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: var(--pm-lh);
+}
+
+html.pm:root .pm-menu-btn[aria-expanded="true"] .chip__label { background: var(--pm-ink); color: var(--bg); }
+
+@media (hover: hover) {
+  html.pm:root .pm-menu-btn:hover .chip__label { background: var(--pm-ink); color: var(--bg); }
+}
+
+html.pm:root .app-header { position: sticky; }
+html.pm:root .app-header:not(.pm-menu-open) .header-actions { display: none !important; }
+
+html.pm:root .app-header.pm-menu-open .header-actions {
+  position: absolute;
+  top: calc(100% + var(--pm-lh) / 2);
+  right: 1ch;
+  z-index: 60;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+  justify-items: stretch;
+  gap: calc(var(--pm-lh) / 3);
+  min-width: 30ch;
+  padding: var(--pm-lh) 1ch calc(var(--pm-lh) / 2 + 2px);
+  border: 1px solid var(--pm-ink);
+  background: var(--bg);
+  box-shadow: 1ch calc(var(--pm-lh) / 2) 0 var(--pm-tint-2);
+}
+
+html.pm:root .app-header.pm-menu-open .header-actions::before {
+  content: "MENU";
+  position: absolute;
+  top: calc(var(--pm-lh) / -2);
+  left: 1ch;
+  padding: 0 1ch;
+  background: var(--bg);
+  line-height: var(--pm-lh);
+}
+
+/* Full-width rows: easier to hit, and they line up like a list. */
+html.pm:root .app-header.pm-menu-open .header-actions .btn-text { width: 100%; }
+
+/* Always listed, whatever the old "Menu bar" settings say… */
+html.pm:root body #newToggleSnowBtn,
+html.pm:root body #newToggleRainBtn,
+html.pm:root body #newStickersBtn,
+html.pm:root body #newDonateBtn { display: inline-flex !important; }
+
+/* …so those settings have nothing left to do. */
+html.pm:root .settings-group:has(+ label.check #newShowStickersBtn),
+html.pm:root .settings-pane label.check:has(#newShowStickersBtn, #newShowSnowBtn, #newShowRainBtn, #newShowDonateBtn) { display: none; }
+
+/* Phones: sections in one swipeable line, and the menu opens as a sheet above the
+   bottom edge, closer to the thumb. */
+@media (max-width: 720px) {
+  html.pm:root .app-header { flex-wrap: nowrap; align-items: center; gap: 1ch; }
+
+  html.pm:root .pm-nav {
+    flex: 1;
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  html.pm:root .pm-nav::-webkit-scrollbar { display: none; }
+  html.pm:root .pm-nav .chip { flex: none; }
+
+  html.pm:root .app-header.pm-menu-open .header-actions {
+    position: fixed;
+    top: auto;
+    left: 1ch;
+    right: 2ch;
+    bottom: calc(var(--pm-lh) * 1.5 + env(safe-area-inset-bottom, 0px));
+    min-width: 0;
+  }
+}
+
+/* Search results and similar rows: an inverted row inverts everything in it. */
+@media (hover: hover) {
+  html.pm:root .watchlist-search-result:hover * { color: inherit !important; }
+}
+
+/* A position hidden in edit mode reads as off: muted (the app's rule) and struck. */
+html.pm:root .position-row-hidden .asset-cell { text-decoration: line-through; text-decoration-color: var(--pm-muted); }
+
+/* ── Page ── */
+
+html.pm:root .container {
+  width: 100%;
+  max-width: calc(var(--pm-wide) + 2ch);
+  /* app.js writes an inline `margin: 0 auto`; the site's column hugs the left edge. */
+  margin: 0 !important;
+  padding: var(--pm-lh) 1ch calc(var(--pm-lh) * 3);
+}
+
+html.pm:root .panel {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+html.pm:root .panel + .panel { margin-top: calc(var(--pm-lh) * 2); }
+html.pm:root #pmTop,
+html.pm:root .panel { scroll-margin-top: calc(var(--pm-lh) * 3); }
+
+/* ── Intro ── */
+
+html.pm:root .hero { margin: 0; }
+html.pm:root .hero > .panel-head { display: none; }
+
+/* A framed card: the title and the clock are cut into
+   the top border, so the frame reads ┌─ PORTFOLIO ──── 18:11 Lisbon · 18°C ─┐. */
+html.pm:root .pm-card {
+  position: relative;
+  max-width: var(--pm-wide);
+  margin-top: calc(var(--pm-lh) / 2);
+  padding: var(--pm-lh) 2ch;
+  border: 1px solid var(--pm-rule);
+}
+
+html.pm:root .pm-card__title,
+html.pm:root .pm-card__meta {
+  position: absolute;
+  top: calc(var(--pm-lh) / -2);
+  margin: 0;
+  padding: 0 1ch;
+  background: var(--bg);
+  line-height: var(--pm-lh);
+}
+
+html.pm:root .pm-card__title { left: 1ch; text-transform: uppercase; }
+html.pm:root .pm-card__meta { right: 1ch; color: var(--pm-muted); }
+
+html.pm:root .hero-summary {
+  display: block;
+  max-width: var(--pm-measure);
+  margin: 0;
+  padding: 0;
+}
+
+/* The card's allocation rows replace the app's single strip. */
+html.pm:root .hero-summary .alloc { display: none !important; }
+
+html.pm:root .pm-alloc-wrap { margin-top: var(--pm-lh); }
+
+/* One dither pattern for every chart, a 1px checkerboard, in two strengths: full ink
+   where it stands for a holding, and a dim one for empty track, so filled and empty
+   never read alike. */
+html.pm:root {
+  /* Strip and row bars share one height; rounded to whole pixels where supported. */
+  --pm-bar-h: calc(var(--pm-lh) * 0.7);
+  --pm-dither: repeating-conic-gradient(var(--pm-ink) 0 25%, transparent 0 50%) 0 0 / 2px 2px;
+  --pm-dither-dim: repeating-conic-gradient(var(--pm-rule) 0 25%, transparent 0 50%) 0 0 / 2px 2px;
+}
+
+/* Folded: a thin framed strip split by holding, 1px of rule between them. It is the
+   button that opens the rows. */
+html.pm:root .pm-strip {
+  display: flex;
+  gap: 1px;
+  width: 100%;
+  height: var(--pm-bar-h);
+  height: round(var(--pm-bar-h), 1px);
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid var(--pm-rule);
+  background: var(--pm-rule);
+  cursor: pointer;
+}
+
+html.pm:root .pm-strip__seg { min-width: 1px; }
+html.pm:root .pm-tone-0 { background: var(--pm-ink); }
+html.pm:root .pm-tone-1 { background: var(--pm-dither), var(--bg); }
+html.pm:root .pm-tone-2 { background: var(--pm-muted); }
+html.pm:root .pm-tone-3 { background: var(--pm-tint-2); }
+html.pm:root .pm-tone-other { background: var(--pm-tint); }
+
+html.pm:root .pm-strip:focus-visible { border-color: var(--pm-ink); }
+
+@media (hover: hover) {
+  html.pm:root .pm-strip:hover { border-color: var(--pm-ink); }
+}
+
+/* Open: a row per holding. Ticker, a solid bar on a dithered track, share, value. */
+html.pm:root .pm-alloc {
+  display: grid;
+  grid-template-columns: max-content minmax(8ch, 1fr) max-content max-content;
+  gap: 0 2ch;
+  margin: calc(var(--pm-lh) / 2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+html.pm:root .pm-alloc[hidden] { display: none; }
+html.pm:root .pm-alloc li { display: contents; }
+html.pm:root .pm-alloc__label { text-transform: uppercase; }
+html.pm:root .pm-alloc__share { text-align: right; color: var(--pm-muted); }
+html.pm:root .pm-alloc__value { text-align: right; }
+
+html.pm:root .pm-alloc__bar {
+  display: flex;
+  align-self: center;
+  height: var(--pm-bar-h);
+  height: round(var(--pm-bar-h), 1px);
+  background: var(--pm-dither-dim);
+}
+
+html.pm:root .pm-alloc__bar > span {
+  display: block;
+  min-width: 2px;
+  height: 100%;
+  background: var(--pm-ink);
+  /* A bg-coloured edge separates the fill from the dither. */
+  box-shadow: 2px 0 0 var(--bg);
+}
+
+@media (max-width: 520px) {
+  html.pm:root .pm-card { padding: var(--pm-lh) 1ch; }
+  /* The value cell leaves the grid, so the grid drops its column too. */
+  html.pm:root .pm-alloc { grid-template-columns: max-content minmax(6ch, 1fr) max-content; gap: 0 1ch; }
+}
+
+html.pm:root .hero-sentence,
+html.pm:root .hero-summary > * {
+  margin: 0;
+  color: var(--pm-ink);
+  font-size: 1rem;
+  line-height: var(--pm-lh);
+}
+
+html.pm:root .hero-sentence strong {
+  color: inherit;
+  font-weight: inherit;
+}
+
+html.pm:root .hero-amount-toggle {
+  text-decoration: underline;
+  text-decoration-color: var(--pm-rule);
+  text-underline-offset: 3px;
+}
+
+html.pm:root .hero-sentence-weather { display: none; }
+
+/* Allocation: a framed bar on the line grid, legend as plain text. */
+html.pm:root .alloc { margin-top: var(--pm-lh); }
+
+html.pm:root .alloc-bar {
+  display: flex;
+  height: var(--pm-lh);
+  gap: 1px;
+  padding: 0;
+  border: 1px solid var(--pm-rule);
+  background: var(--pm-rule);
+  border-radius: 0;
+}
+
+html.pm:root .alloc-seg { border-radius: 0; }
+html.pm:root .alloc-fill-0 { background: var(--pm-ink); }
+html.pm:root .alloc-fill-1 { background: color-mix(in srgb, var(--pm-ink) 72%, var(--bg)); }
+html.pm:root .alloc-fill-2 { background: color-mix(in srgb, var(--pm-ink) 50%, var(--bg)); }
+html.pm:root .alloc-fill-3 { background: color-mix(in srgb, var(--pm-ink) 32%, var(--bg)); }
+html.pm:root .alloc-fill-4 { background: color-mix(in srgb, var(--pm-ink) 18%, var(--bg)); }
+html.pm:root .alloc-fill-other { background: var(--pm-tint); }
+
+html.pm:root .alloc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2ch;
+  margin: calc(var(--pm-lh) / 2) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--pm-muted);
+}
+
+html.pm:root .alloc-legend li { display: inline-flex; align-items: baseline; gap: 1ch; }
+html.pm:root .alloc-swatch { width: 1ch; height: 1ch; border-radius: 0; flex: none; align-self: center; }
+html.pm:root .alloc-label { color: var(--pm-ink); text-transform: uppercase; }
+
+/* ── Section heads: uppercase title ── */
+
+html.pm:root .panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0 2ch;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  min-height: 0;
+}
+
+html.pm:root .panel-head::before,
+html.pm:root .panel-head::after,
+html.pm:root .panel-rule { display: none; }
+
+html.pm:root .panel-title,
+html.pm:root .panel-head h2 {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--pm-ink);
+  text-transform: uppercase;
+  letter-spacing: normal;
+  background: none;
+}
+
+html.pm:root .comic-header h2.sr-only {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  white-space: nowrap;
+}
+
+html.pm:root .panel-count { color: var(--pm-muted); }
+html.pm:root .panel-count:empty { display: none; }
+
+/* + Add sits at the end of the title line as a filled button. */
+html.pm:root .panel-action {
+  margin-left: auto;
+  padding: 0 1ch;
+  background: var(--pm-tint-2);
+  color: var(--pm-ink);
+  text-transform: uppercase;
+  text-decoration: none;
+  line-height: var(--pm-lh);
+  min-height: 0;
+  border: 0;
+}
+
+/* ── Tables: one frame, a rule between columns, a rule under the header ── */
+
+html.pm:root .table-wrapper {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* Margins on the table, so a wrapper whose table is hidden on phones takes no space. */
+html.pm:root .data-table {
+  width: 100%;
+  margin: var(--pm-lh) 0 calc(var(--pm-lh) / 2);
+  border-collapse: collapse;
+  border: 1px solid var(--pm-rule);
+  background: none;
+}
+
+html.pm:root .data-table th,
+html.pm:root .data-table td {
+  height: auto;
+  padding: 0 1ch !important;
+  line-height: var(--pm-lh);
+  vertical-align: top;
+  border: 0;
+  border-left: 1px solid var(--pm-rule);
+  border-bottom: 0 !important;
+  background: none;
+}
+
+html.pm:root .data-table th {
+  position: static;
+  font-weight: inherit;
+  text-transform: uppercase;
+  letter-spacing: normal;
+  color: var(--pm-muted);
+  border-bottom: 1px solid var(--pm-rule) !important;
+  background: none;
+}
+
+html.pm:root .data-table th::after,
+html.pm:root .data-table th::before { display: none; }
+
+html.pm:root .data-table td {
+  color: var(--pm-ink);
+  white-space: nowrap;
+}
+
+html.pm:root .data-table [data-funding-rate] {
+  text-decoration-color: var(--pm-rule);
+}
+
+/* Status colours give way to the theme's single ink; signs carry direction. */
+html.pm:root .positive-pnl,
+html.pm:root .negative-pnl,
+html.pm:root .positive-neutral,
+html.pm:root .negative-neutral,
+html.pm:root .card-change,
+html.pm:root .funding-cell { color: inherit !important; background: none; }
+
+html.pm:root .data-table .sparkline {
+  height: var(--pm-lh);
+  vertical-align: top;
+}
+
+html.pm:root .sparkline polyline { stroke: currentColor !important; }
+
+/* Dim dither under the line, the same one the allocation bars use for empty track. */
+html.pm:root .pm-spark-dot { fill: var(--pm-rule); }
+
+/* On an inverted row, the dots and line flip to the background colour. */
+@media (hover: hover) {
+  html.pm:root .data-table tbody tr:hover .pm-spark-dot { fill: color-mix(in srgb, var(--bg) 45%, var(--pm-ink)); }
+}
+
+html.pm:root .data-table .loading,
+html.pm:root .watchlist-empty-row td { color: var(--pm-muted); text-align: left; }
+
+html.pm:root .loading-terminal { color: var(--pm-muted); }
+
+/* ── Buttons under a table: the site's filled uppercase buttons ── */
+
+html.pm:root .panel-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--pm-lh) / 3) 1ch;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+html.pm:root .panel-foot .btn-text {
+  display: inline-flex;
+  gap: 1ch;
+  padding: 0 1ch;
+  background: var(--pm-tint-2);
+  color: var(--pm-ink);
+  text-transform: uppercase;
+  text-decoration: none;
+  line-height: var(--pm-lh);
+  min-height: 0;
+  border: 0;
+}
+
+/* Comic paging keeps its arrow keys visible, like the site's key hints. */
+html.pm:root #newComicPrevBtn::before { content: "←"; }
+html.pm:root #newComicNextBtn::before { content: "→"; }
+
+/* ── Comics: tabs as the site's radio-style sort line ── */
+
+html.pm:root .comic-header {
+  flex-direction: column;
+  align-items: flex-start;
+  height: auto;
+}
+
+html.pm:root .comic-tabs {
+  position: static;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2ch;
+  margin: var(--pm-lh) 0 0;
+  padding: 0;
+  border: 0;
+}
+
+html.pm:root .comic-tab {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pm-ink);
+  text-transform: uppercase;
+  text-decoration: none;
+  opacity: 1;
+  line-height: var(--pm-lh);
+  min-height: 0;
+}
+
+html.pm:root .comic-tab::before { content: "( ) "; white-space: pre; }
+html.pm:root .comic-tab.active::before { content: "(*) "; }
+html.pm:root .comic-tab .tab-mobile { display: none; }
+html.pm:root .comic-tab .tab-desktop { display: inline; }
+
+html.pm:root .comic-content { margin-top: var(--pm-lh); padding: 0; }
+
+html.pm:root .calvin-container {
+  border: 1px solid var(--pm-rule);
+  padding: 1ch;
+  margin-bottom: calc(var(--pm-lh) / 2);
+  background: none;
+}
+
+html.pm:root .calvin-container img { display: block; max-width: 100%; margin: 0 auto; }
+
+/* ── Comic switch: a dither dissolve ──
+   comics.js marks the strip `.fading` while the next one loads and swaps it in when
+   it's ready. Out: the strip fills with the checker a quarter of the pixels at a
+   time. Waiting: the checker flips phase, a slow two-frame shimmer. In: the same
+   four steps backwards over the new strip. Frames are 2px tiles whose quadrants
+   (from the tile centre, clockwise from the top) are ink, background or clear. */
+
+html.pm:root {
+  --pm-dz-1: conic-gradient(var(--pm-ink) 0 25%, transparent 0) 0 0 / 2px 2px;
+  --pm-dz-2: conic-gradient(var(--pm-ink) 0 25%, transparent 0 50%, var(--pm-ink) 0 75%, transparent 0) 0 0 / 2px 2px;
+  --pm-dz-3: conic-gradient(var(--pm-ink) 0 25%, var(--bg) 0 50%, var(--pm-ink) 0 75%, transparent 0) 0 0 / 2px 2px;
+  --pm-dz-4: conic-gradient(var(--pm-ink) 0 25%, var(--bg) 0 50%, var(--pm-ink) 0 75%, var(--bg) 0) 0 0 / 2px 2px;
+  --pm-dz-4b: conic-gradient(var(--bg) 0 25%, var(--pm-ink) 0 50%, var(--bg) 0 75%, var(--pm-ink) 0) 0 0 / 2px 2px;
+}
+
+@keyframes pm-dissolve {
+  0%   { background: none; }
+  25%  { background: var(--pm-dz-1); }
+  50%  { background: var(--pm-dz-2); }
+  75%  { background: var(--pm-dz-3); }
+  100% { background: var(--pm-dz-4); }
+}
+
+@keyframes pm-resolve {
+  0%   { background: var(--pm-dz-4); }
+  25%  { background: var(--pm-dz-3); }
+  50%  { background: var(--pm-dz-2); }
+  75%  { background: var(--pm-dz-1); }
+  100% { background: none; }
+}
+
+@keyframes pm-shimmer {
+  0%   { background: var(--pm-dz-4); }
+  50%  { background: var(--pm-dz-4b); }
+}
+
+/* The app's own soft pulse gives way to the dissolve. */
+html.pm:root #newComic.fading { animation: none !important; opacity: 1 !important; }
+
+html.pm:root #newComic { position: relative; }
+
+html.pm:root #newComic::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: pm-resolve 320ms step-end forwards;
+}
+
+html.pm:root #newComic.fading::after {
+  animation:
+    pm-dissolve 320ms step-end forwards,
+    pm-shimmer 900ms step-end 320ms infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.pm:root #newComic::after,
+  html.pm:root #newComic.fading::after { animation: none; }
+  html.pm:root #newComic.fading { opacity: 0.4 !important; }
+}
+
+/* ── Footer ── */
+
+html.pm:root .status-bar {
+  position: static;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0 2ch;
+  max-width: calc(var(--pm-wide) + 2ch);
+  margin: 0;
+  padding: var(--pm-lh) 1ch;
+  border: 0;
+  background: none;
+  color: var(--pm-muted);
+  font-size: 1rem;
+}
+
+html.pm:root .pm-theme {
+  display: inline-flex;
+  gap: 1ch;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pm-muted);
+  line-height: var(--pm-lh);
+}
+html.pm:root .pm-theme > span:last-child { color: var(--pm-ink); }
+html.pm:root .last-update-timestamp { color: var(--pm-muted); }
+
+/* ── Pop-ups: the page's own vocabulary in a frame ──
+   Everything sits on the line grid: one-line fields, uppercase muted labels,
+   help as plain muted text, choices as radio lines, filled uppercase buttons.
+   The window tokens from styles.css collapse onto the grid, so Settings and the
+   smaller windows follow without per-control rules. */
+
+html.pm:root {
+  --ctl-h: var(--pm-lh);
+  --ctl-pad-y: 0px;
+  --ctl-inset: 1ch;
+  --win-pad: calc(var(--pm-lh) / 2);
+  --win-gutter: var(--pm-lh);
+  --win-text: 1ch;
+  --stack-gap: 0px;
+  --text-gap: 0px;
+}
+
+/* Windows: a solid frame with a hard offset shadow; the title and the close key
+   sit on the top border, like the portfolio card:
+   ┌─ ADD POSITION ─────────────── ESC CLOSE ─┐ */
+html.pm:root .settings,
+html.pm:root .sticker-window {
+  border: 1px solid var(--pm-ink);
+  border-radius: 0;
+  box-shadow: 1ch calc(var(--pm-lh) / 2) 0 var(--pm-tint-2);
+  background: var(--bg);
+  color: var(--pm-ink);
+  overflow: visible;
+}
+
+html.pm:root .sticker-window { width: min(64ch, calc(100vw - 3ch)); padding: 0; }
+
+html.pm:root .settings-backdrop {
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  backdrop-filter: none;
+}
+
+html.pm:root .settings-form > header,
+html.pm:root .sticker-window-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2ch;
+  margin: calc(var(--pm-lh) / -2) 0 0;
+  padding: 0 1ch;
+  border: 0;
+  background: none;
+  letter-spacing: normal;
+}
+
+html.pm:root .settings-form > header :is(h2, h3),
+html.pm:root .window-title,
+html.pm:root .sticker-window-header > span {
+  margin: 0;
+  padding: 0 1ch;
+  font: inherit;
+  line-height: var(--pm-lh);
+  background: var(--bg);
+  color: var(--pm-ink);
+  text-transform: uppercase;
+}
+
+/* The close key sits on the border too; a 1ch gap of background each side cuts it in. */
+html.pm:root .settings-form > header .btn-text,
+html.pm:root .sticker-window-header .btn-text {
+  display: inline-flex;
+  gap: 1ch;
+  margin: 0;
+  padding: 0 1ch 0 0;
+  border: 0;
+  border-left: 1ch solid var(--bg);
+  border-right: 1ch solid var(--bg);
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+  text-transform: uppercase;
+  text-decoration: none;
+  line-height: var(--pm-lh);
+  min-height: 0;
+}
+
+html.pm:root .settings-form > header .btn-text::before,
+html.pm:root .sticker-window-header .btn-text::before {
+  content: "esc";
+  padding: 0 1ch;
+  background: var(--pm-tint-2);
+  text-transform: uppercase;
+}
+
+/* The window's main action: a key chip at the bottom right, Enter does the same. */
+html.pm:root .sticker-window-content .btn-text.btn-primary {
+  display: flex;
+  width: max-content;
+  gap: 1ch;
+  margin-left: auto;
+  padding: 0 1ch 0 0;
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+}
+
+html.pm:root .sticker-window-content .btn-text.btn-primary::before {
+  content: "↵";
+  padding: 0 1ch;
+  background: var(--pm-ink);
+  color: var(--bg);
+}
+
+html.pm:root .sticker-window-content .btn-text.btn-primary:disabled::before {
+  background: var(--pm-tint-2);
+  color: var(--pm-muted);
+}
+
+/* Windows fill a phone; inset them so the frame, its title and the shadow show. */
+@media (max-width: 870px) {
+  html.pm:root .settings,
+  html.pm:root .sticker-window:not(#stickerWindow) {
+    inset: var(--pm-lh) 2ch calc(var(--pm-lh) * 1.5) 1ch;
+    width: auto;
+    max-width: none;
+    height: auto;
+    max-height: none;
+    transform: none;
+    border: 1px solid var(--pm-ink);
+    box-shadow: 1ch calc(var(--pm-lh) / 2) 0 var(--pm-tint-2);
+  }
+
+  /* Short forms hug their content instead of stretching to the bottom inset. */
+  html.pm:root .sticker-window:not(#stickerWindow) { bottom: auto; max-height: calc(100dvh - var(--pm-lh) * 2.5); }
+
+  html.pm:root .settings-form { height: 100%; }
+}
+
+/* Same 1ch inset as the title bar at every width (phones otherwise widen it). */
+html.pm:root .sticker-window-content {
+  padding: var(--pm-lh) 1ch !important;
+  background: none;
+}
+
+/* Labels read like the site's table headers. */
+html.pm:root .modal-field > label,
+html.pm:root .modal-field > div:first-child:not([class]),
+html.pm:root .settings-pane label,
+html.pm:root .settings-field > label,
+html.pm:root .sticker-window-content > label {
+  color: var(--pm-muted);
+  text-transform: uppercase;
+}
+
+/* Checkbox rows are choices, not headings: keep them in the ink. */
+html.pm:root .settings-pane label.check { color: var(--pm-ink); text-transform: none; }
+
+html.pm:root .help,
+html.pm:root .info,
+html.pm:root .sticker-window-content .help {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pm-muted);
+  text-transform: none;
+}
+
+/* One-line fields: tint fill, no border, the text on the grid. */
+html.pm:root .settings-panes input:not([type="checkbox"]):not([type="range"]),
+html.pm:root .settings-panes select,
+html.pm:root .sticker-window-content input:not([type="checkbox"]):not([type="range"]),
+html.pm:root .sticker-window-content select {
+  height: var(--pm-lh);
+  min-height: 0;
+  padding: 0 1ch;
+  border: 0;
+  border-radius: 0;
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+  font-size: 1rem !important;
+  line-height: var(--pm-lh);
+  caret-color: var(--pm-ink);
+  box-shadow: none;
+}
+
+html.pm:root .settings-panes textarea,
+html.pm:root .sticker-window-content textarea {
+  padding: 0 1ch;
+  border: 1px solid var(--pm-rule);
+  border-radius: 0;
+  background: transparent;
+  color: var(--pm-ink);
+  font-size: 1rem !important;
+  line-height: var(--pm-lh);
+  caret-color: var(--pm-ink);
+}
+
+html.pm:root :is(.settings-panes, .sticker-window-content) :is(input, select, textarea):focus {
+  outline: none;
+  background: var(--pm-tint-2);
+}
+
+html.pm:root :is(.settings-panes, .sticker-window-content) textarea:focus {
+  background: transparent;
+  border-color: var(--pm-ink);
+}
+
+html.pm:root :is(.settings-panes, .sticker-window-content) ::placeholder { color: var(--pm-muted); opacity: 1; }
+
+html.pm:root .settings-panes input[type="date"],
+html.pm:root .sticker-window-content input[type="date"] { color-scheme: light dark; }
+
+html.pm:root .select::after { right: 1ch; background: var(--pm-muted); }
+
+html.pm:root .settings-panes input[type="checkbox"] {
+  accent-color: var(--pm-ink);
+  border-radius: 0;
+}
+
+/* Two-way choices as the site's radio line. */
+html.pm:root .sticker-window-content .segmented { gap: 0 2ch; }
+
+html.pm:root .sticker-window-content .segmented .btn-tab {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pm-ink);
+  text-transform: uppercase;
+  text-decoration: none;
+  line-height: var(--pm-lh);
+  min-height: 0;
+}
+
+html.pm:root .sticker-window-content .segmented .btn-tab::before { content: "( ) "; white-space: pre; }
+html.pm:root .sticker-window-content .segmented .btn-tab.active::before { content: "(*) "; }
+
+/* Buttons: filled, uppercase, only as wide as their label. */
+html.pm:root .settings-panes .btn-text,
+html.pm:root .sticker-window-content .btn-text {
+  display: inline-flex;
+  justify-self: start;
+  width: auto;
+  min-height: 0;
+  padding: 0 1ch;
+  border: 0;
+  border-radius: 0;
+  background: var(--pm-tint-2);
+  color: var(--pm-ink);
+  text-transform: uppercase;
+  text-decoration: none;
+  line-height: var(--pm-lh);
+}
+
+html.pm:root :is(.settings-panes, .sticker-window-content) .btn-text:disabled,
+html.pm:root :is(.settings-panes, .sticker-window-content) .btn-text[aria-disabled="true"] {
+  background: var(--pm-tint);
+  color: var(--pm-muted);
+  cursor: default;
+}
+
+/* Search results: rows of the same kind as the tables. */
+html.pm:root .search-results,
+html.pm:root #newWatchlistSearchResults {
+  border: 1px solid var(--pm-rule);
+  border-radius: 0;
+  background: none;
+}
+
+html.pm:root .watchlist-search-result {
+  padding: 0 1ch;
+  border-bottom: 0;
+  border-top: 1px solid var(--pm-rule);
+  line-height: var(--pm-lh);
+}
+
+html.pm:root .watchlist-search-result:first-child { border-top: 0; }
+
+/* Settings: tabs as a list, the current one inverted like the page chips. */
+@media (min-width: 871px) {
+  html.pm:root .settings-body { grid-template-columns: 18ch minmax(0, 1fr); }
+}
+
+html.pm:root .settings-nav {
+  gap: 0 1ch;
+  align-items: flex-start;
+  border-right-color: var(--pm-rule);
+  border-bottom-color: var(--pm-rule);
+}
+
+html.pm:root .settings-tab {
+  height: auto;
+  padding: 0 1ch;
+  color: var(--pm-ink);
+  text-transform: uppercase;
+  line-height: var(--pm-lh);
+}
+
+html.pm:root .settings-tab[aria-selected="true"] { background: var(--pm-ink); color: var(--bg); }
+
+html.pm:root .settings-group {
+  color: var(--pm-muted);
+  text-transform: uppercase;
+  border-top-color: var(--pm-rule);
+}
+
+html.pm:root .settings-row { border-bottom-color: var(--pm-rule); }
+html.pm:root .settings-row-title { color: var(--pm-ink); text-transform: uppercase; }
+
+@media (hover: hover) {
+  html.pm:root .settings-form > header .btn-text:hover::before,
+  html.pm:root .sticker-window-header .btn-text:hover::before,
+  html.pm:root .settings-panes .btn-text:not(:disabled):hover,
+  html.pm:root .sticker-window-content .btn-text:not(:disabled):hover,
+  html.pm:root .sticker-window-content .segmented .btn-tab:hover,
+  html.pm:root .watchlist-search-result:hover,
+  html.pm:root .settings-tab:hover {
+    background: var(--pm-ink);
+    color: var(--bg);
+  }
+}
+
+/* ── Small screens and touch: the site's 13/17 grid, no key cells ── */
+
+@media (hover: none), (pointer: coarse), (max-width: 640px) {
+  html.pm:root kbd { display: none !important; }
+  html.pm:root .header-actions .btn-text { padding-left: 1ch; }
+  html.pm:root .header-actions .btn-text::before,
+  html.pm:root #newComicPrevBtn::before,
+  html.pm:root #newComicNextBtn::before { display: none; }
+}
+
+/* Tables stay tables at every width, as on the site: when they don't fit, they
+   scroll sideways with Asset pinned on the left. Positions: Asset | Price | 24h |
+   Value | P&L | Funding | 24h % | Amount | Source. */
+
+html.pm:root #newPositionsTable { display: table !important; }
+html.pm:root .mobile-positions-container { display: none !important; }
+html.pm:root .calvin-controls { display: flex !important; }
+html.pm:root .calvin-controls-mobile { display: none !important; }
+
+html.pm:root .container { overflow-x: visible; }
+/* Sideways only. With overflow-x auto, overflow-y can't stay visible, so it's hidden
+   outright: otherwise a pixel of vertical slack lets a trackpad nudge the table. */
+html.pm:root .table-wrapper {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
+
+/* The pinned column needs borders that travel with it, which collapsed borders
+   don't. So these tables draw separate borders, each cell owning its own 1px edge:
+   the pinned cell has the frame's left edge and the rule on its right, the next
+   cell drops its left rule, and nothing doubles up. */
+html.pm:root .data-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border-left: 0;
+}
+
+html.pm:root .data-table :is(th, td):first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg);
+  border-left: 1px solid var(--pm-rule);
+  border-right: 1px solid var(--pm-rule);
+}
+
+html.pm:root .data-table :is(th, td):first-child + :is(th, td) { border-left: 0; }
+
+/* No fade at the scroll edges; the cut-off column is cue enough. */
+html.pm:root .table-wrapper.more-left,
+html.pm:root .table-wrapper.more-right { -webkit-mask-image: none; mask-image: none; }
+
+@media (max-width: 720px) {
+  html.pm:root { --pm-lh: calc(1rem * 17 / 13); }
+  html.pm:root body { font-size: calc(1rem * 13 / 14); }
+}
+
+/* Phones: the sparkline is the one column dropped (24h % says the same), so P&L
+   still lands on the first screen; the rest is a swipe away. */
+@media (max-width: 520px) {
+  html.pm:root #newPositionsTable :is(th, td):nth-child(3) { display: none; }
+}

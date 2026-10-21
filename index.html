@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="pm">
 
 <head>
     <meta charset="utf-8">
@@ -27,18 +27,20 @@
     <meta name="theme-color" content="#000000" id="themeColorMeta">
 
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json?v=2.9.16">
+    <link rel="manifest" href="/manifest.json?v=2.10.0">
 
     <!-- Cache busting: update version number on each deployment -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="./styles.css?v=2.9.16">
+    <link rel="stylesheet" href="./styles.css?v=2.10.0">
+    <!-- The palmeirim.com-style look, layered over the base styles (pm = palmeirim). -->
+    <link rel="stylesheet" href="./palmeirim.css?v=2.10.0">
     <!-- Preload the whole module graph so a cold load fetches it in one parallel wave instead of
          one round trip per import level (app.js → providers → http client → …). Keep in sync with
          the static imports of app.js / modules/app-init.js and the fetchers app.js imports at boot. -->
-    <link rel="modulepreload" href="./modules/app-init.js?v=2.9.16">
-    <link rel="modulepreload" href="./app.js?v=2.9.16">
+    <link rel="modulepreload" href="./modules/app-init.js?v=2.10.0">
+    <link rel="modulepreload" href="./app.js?v=2.10.0">
     <link rel="modulepreload" href="/modules/core/console-policy.js">
     <link rel="modulepreload" href="/modules/core/settings.js">
     <link rel="modulepreload" href="/modules/core/themes.js">
@@ -865,15 +867,16 @@
         </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.9.16" defer></script>
-    <script type="module" src="./app.js?v=2.9.16" defer></script>
+    <script type="module" src="./modules/app-init.js?v=2.10.0" defer></script>
+    <script type="module" src="./app.js?v=2.10.0" defer></script>
+    <script src="./palmeirim.js?v=2.10.0" defer></script>
 
     <!-- Service Worker Registration -->
     <script defer>
-        const EXPECTED_VERSION = 'v2.9.16';
+        const EXPECTED_VERSION = 'v2.10.0';
 
         // Skip service worker on localhost for easier development/debugging
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '[::1]';
 
         if ('serviceWorker' in navigator && !isLocalhost) {
             let refreshing = false;

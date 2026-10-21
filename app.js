@@ -19,7 +19,7 @@ import { formatMoney, normalizeBaseCurrency } from './modules/utils/currency.js'
 // ============================================================================
 // VERSION CHECKING
 // ============================================================================
-const APP_VERSION = '2.9.16';
+const APP_VERSION = '2.10.0';
 const FORCE_UPDATE_KEY = 'viewport_last_version';
 
 function checkVersion() {
