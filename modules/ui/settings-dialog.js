@@ -174,6 +174,7 @@ export function applyAppearance(settings) {
   const titleValue = settings.valueInTitle ?? true;
   document.documentElement.dataset.titleValue = titleValue ? 'on' : 'off';
   document.documentElement.dataset.valueChart = (settings.showValueChart ?? true) ? 'on' : 'off';
+  if (!titleValue) document.title = 'Viewport';
   applyFont(settings.font || 'sf');
   const size = Number(settings.fontSize);
   document.documentElement.style.fontSize = `${Number.isFinite(size) && size > 0 ? size : 14}px`;
