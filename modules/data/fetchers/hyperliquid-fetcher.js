@@ -17,12 +17,16 @@ export class HyperliquidFetcher {
             const positionResults = wallets.map(wallet => hl.fetchPositions(wallet, 4000)
                 .then(data => ({ wallet, data }), error => ({ wallet, error })));
             const midsPromise = hl.fetchAllMids(3000);
-            // Perp/xyz contexts (prevDayPx, funding) are 70KB and 60KB uncompressed. Skip them when
-            // the last fetch showed no positions there; they're fetched late if positions appear.
+            // Perp contexts (prevDayPx, funding) are 70KB uncompressed, and each HIP-3 dex has its
+            // own. Skip them when the last fetch showed no positions there; they're fetched late if
+            // positions appear.
             let perpCtxPromise = this.hasPerps !== false ? hl.fetchMetaAndAssetCtxs(3000) : null;
-            let xyzCtxPromise = this.hasXyzPerps !== false
-                ? (hl.fetchXyzDexMetaAndAssetCtxs?.(3000).catch(() => null) ?? null)
-                : null;
+            const dexCtxPromises = new Map(); // dex -> contexts promise
+            const startDexCtx = (dex) => {
+                if (dexCtxPromises.has(dex)) return;
+                dexCtxPromises.set(dex, hl.fetchDexMetaAndAssetCtxs?.(dex, 3000).catch(() => null) ?? Promise.resolve(null));
+            };
+            for (const dex of this.dexesWithPerps || []) startDexCtx(dex);
             const spotMetaPromise = this.getSpotMeta();
 
             // Staked HYPE isn't in the clearinghouse states; ask alongside them (kept 10 min).
@@ -33,9 +37,13 @@ export class HyperliquidFetcher {
             const allPerps = results.flatMap(r => r.data?.perp?.assetPositions || [])
                 .filter(p => Math.abs(parseFloat(p.position?.szi || 0)) > 0);
             this.hasPerps = allPerps.length > 0;
-            this.hasXyzPerps = allPerps.some(p => String(p.position?.coin || '').startsWith('xyz:'));
+            // A HIP-3 position's coin is 'dex:NAME'.
+            this.dexesWithPerps = [...new Set(allPerps
+                .map(p => String(p.position?.coin || ''))
+                .filter(coin => coin.includes(':'))
+                .map(coin => coin.slice(0, coin.indexOf(':'))))];
             if (this.hasPerps && !perpCtxPromise) perpCtxPromise = hl.fetchMetaAndAssetCtxs(3000);
-            if (this.hasXyzPerps && !xyzCtxPromise) xyzCtxPromise = hl.fetchXyzDexMetaAndAssetCtxs?.(3000).catch(() => null) ?? null;
+            for (const dex of this.dexesWithPerps) startDexCtx(dex);
 
             // Spot balances in a token the cached map doesn't know yet (new listing) force a refresh.
             let spotMeta = await spotMetaPromise;
@@ -65,14 +73,14 @@ export class HyperliquidFetcher {
                 }
             };
 
-            const contextsPromise = Promise.all([perpCtxPromise, xyzCtxPromise]);
+            const contextsPromise = Promise.all([perpCtxPromise, Promise.all([...dexCtxPromises.values()])]);
             const contextsReady = await Promise.race([
                 contextsPromise.then(() => true),
                 new Promise(resolve => setTimeout(() => resolve(false), 0))
             ]);
-            if (!contextsReady) emit(this.buildMarket(hlAllMids, null, null, spotMeta), { enrich: false });
-            const [hlMarketData, xyzMarketData] = await contextsPromise;
-            emit(this.buildMarket(hlAllMids, hlMarketData, xyzMarketData, spotMeta), { enrich: true });
+            if (!contextsReady) emit(this.buildMarket(hlAllMids, null, [], spotMeta), { enrich: false });
+            const [hlMarketData, dexMarketData] = await contextsPromise;
+            emit(this.buildMarket(hlAllMids, hlMarketData, dexMarketData, spotMeta), { enrich: true });
 
             // Mark the main 'Hyperliquid' provider as completed
             this.renderer.appendPositions([], 'Hyperliquid');
@@ -133,7 +141,7 @@ export class HyperliquidFetcher {
         return value;
     }
 
-    buildMarket(hlAllMids, hlMarketData, xyzMarketData, spotMeta) {
+    buildMarket(hlAllMids, hlMarketData, dexMarketData, spotMeta) {
         const hlPriceMap = {};
         const hlPrevDayPxMap = {};
         const hlFundingRateMap = {}; // Map of asset name to current funding rate
@@ -154,11 +162,13 @@ export class HyperliquidFetcher {
             }
         }
 
-        // Add xyz dex funding rates and prevDayPx (for xyz:GOOGL, xyz:AAPL, etc.)
-        if (xyzMarketData?.[0] && xyzMarketData?.[1]) {
-            for (let i = 0; i < xyzMarketData[1].length; i++) {
-                const ctx = xyzMarketData[1][i];
-                const assetName = xyzMarketData[0].universe[i]?.name;
+        // HIP-3 dex funding rates and prevDayPx (xyz:GOOGL, mkts:US500, ...). Names come
+        // dex-prefixed, as the positions do.
+        for (const dexData of dexMarketData || []) {
+            if (!dexData?.[0] || !dexData?.[1]) continue;
+            for (let i = 0; i < dexData[1].length; i++) {
+                const ctx = dexData[1][i];
+                const assetName = dexData[0].universe[i]?.name;
                 if (assetName) {
                     if (ctx?.funding !== undefined) {
                         hlFundingRateMap[assetName] = parseFloat(ctx.funding);
@@ -220,7 +230,16 @@ export class HyperliquidFetcher {
             }
         }
 
-        const hlAccountEquity = perpEquity + spotEquity;
+        // Staked HYPE counts in the account's value on Hyperliquid (its portfolio history has
+        // it, at the spot price), so it goes into the equity row; its own row below is covered
+        // by the equity, like spot. Stake sizes come with the positions; the price is the
+        // spot mid, with the perp mid as a stand-in.
+        const staking = data?.staking;
+        const stakedTotal = staking ? staking.staked + staking.unstaked + staking.withdrawing : 0;
+        const hypePrice = parseFloat(spotPriceMap.HYPE || hlPriceMap.HYPE || 0);
+        const stakingValue = stakedTotal > 0 && hypePrice > 0 ? stakedTotal * hypePrice : 0;
+
+        const hlAccountEquity = perpEquity + spotEquity + stakingValue;
         let totalHlPnL = 0;
 
         // Process Perp Positions
@@ -348,18 +367,15 @@ export class HyperliquidFetcher {
             }
         }
 
-        // Staked HYPE as its own holding, valued at the HYPE price.
-        const staking = data?.staking;
-        const stakedTotal = staking ? staking.staked + staking.unstaked + staking.withdrawing : 0;
-        const hypePrice = parseFloat(hlPriceMap.HYPE || spotPriceMap.HYPE || 0);
-        if (stakedTotal > 0 && hypePrice > 0) {
+        // Staked HYPE as its own holding, inside the equity above.
+        if (stakingValue > 0) {
             const prev = hlPrevDayPxMap.HYPE;
             rows.push({
                 asset: 'HYPE',
                 exchange: 'HL Staking',
                 amount: stakedTotal,
                 price: hypePrice,
-                value: stakedTotal * hypePrice,
+                value: stakingValue,
                 change24h: prev > 0 ? ((hypePrice - prev) / prev) * 100 : null,
                 staking
             });

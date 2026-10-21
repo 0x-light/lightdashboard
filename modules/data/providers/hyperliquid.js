@@ -44,76 +44,110 @@ export function resolvePerpAccountValue(state) {
   return best ?? withdrawable;
 }
 
+// HIP-3 dexes, named as the API names them ('' is the main dex). Positions, margin and
+// orders live on each dex separately, and the account's value on Hyperliquid is the sum
+// over all of them. The list rarely changes, so it's kept for a day (in localStorage too,
+// so a page load doesn't wait for it); without it, the main and xyz dexes are assumed.
+const FALLBACK_DEXES = ['', 'xyz'];
+const PERP_DEXS_CACHE_KEY = 'hl_perp_dexs_v1';
+const PERP_DEXS_TTL_MS = 24 * 60 * 60 * 1000;
+let perpDexsCache = null; // { at, promise }
+const activeDexesByUser = new Map(); // address -> dexes with money or positions, from the last fetchPositions
+
+/** Dex names out of a `perpDexs` response: null is the main dex, the rest carry a name. */
+export function perpDexNames(list) {
+  const names = (Array.isArray(list) ? list : [])
+    .map(d => (d === null ? '' : d?.name))
+    .filter(n => typeof n === 'string');
+  if (!names.includes('')) names.unshift('');
+  return names;
+}
+
+export async function fetchPerpDexs(timeoutMs = 10000) {
+  const now = Date.now();
+  if (perpDexsCache && now - perpDexsCache.at < PERP_DEXS_TTL_MS) return perpDexsCache.promise;
+  if (!perpDexsCache) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(PERP_DEXS_CACHE_KEY) || 'null');
+      if (cached && now - Number(cached.savedAt) < PERP_DEXS_TTL_MS && Array.isArray(cached.names)) {
+        perpDexsCache = { at: Number(cached.savedAt), promise: Promise.resolve(cached.names) };
+        return perpDexsCache.promise;
+      }
+    } catch (_) { /* no storage: fetch */ }
+  }
+  const promise = post({ type: 'perpDexs' }, timeoutMs)
+    .then(list => {
+      const names = perpDexNames(list);
+      if (names.length < 2) throw new Error('perpDexs: empty');
+      try { localStorage.setItem(PERP_DEXS_CACHE_KEY, JSON.stringify({ savedAt: now, names })); } catch (_) { /* in memory only */ }
+      return names;
+    })
+    .catch(() => {
+      perpDexsCache = null; // ask again next time
+      return FALLBACK_DEXES;
+    });
+  perpDexsCache = { at: now, promise };
+  return promise;
+}
+
+/** Dexes `address` had money or positions on at the last fetchPositions, or null before that. */
+export function getUserDexes(address) {
+  return activeDexesByUser.get(String(address || '').toLowerCase()) ?? null;
+}
+
+/**
+ * One perp state for the account out of each dex's clearinghouse state: equity summed,
+ * positions merged (the first dex to report a coin keeps it). `activeDexes` names the dexes
+ * with at least a dollar or a position on them, so orders and margin ask only those.
+ * `perp` is null only when no dex answered.
+ */
+export function combinePerpStates(states) {
+  let perp = null;
+  let equity = 0;
+  const activeDexes = [];
+  const seen = new Set();
+  for (const { dex, state } of states || []) {
+    if (!state) continue;
+    const value = resolvePerpAccountValue(state) ?? 0;
+    equity += value;
+    const positions = Array.isArray(state.assetPositions) ? state.assetPositions : [];
+    const open = positions.some(p => Math.abs(parseFloat(p?.position?.szi || 0)) > 0);
+    if (value >= 1 || open) activeDexes.push(dex);
+    if (!perp) {
+      perp = dex === '' ? state : { assetPositions: [] };
+      if (!Array.isArray(perp.assetPositions)) perp.assetPositions = [];
+      if (!perp.marginSummary || typeof perp.marginSummary !== 'object') perp.marginSummary = {};
+      if (dex === '') {
+        for (const p of perp.assetPositions) if (p?.position?.coin) seen.add(p.position.coin);
+        continue;
+      }
+    }
+    for (const p of positions) {
+      const coin = p?.position?.coin;
+      if (!coin || seen.has(coin)) continue;
+      perp.assetPositions.push(p);
+      seen.add(coin);
+    }
+  }
+  if (perp) perp.marginSummary.accountValue = equity.toString();
+  return { perp, activeDexes };
+}
+
 export async function fetchPositions(address, timeoutMs = 10000) {
   if (!address) return null;
 
-  // `meta` has no vault list (it's { universe, marginTables, collateralToken }), so the old
-  // "discover vaults from meta" step only delayed these by a round trip. HIP-3 positions come
-  // from the dex-specific clearinghouse query below.
-  const queries = [
-    // Standard dex (main Hyperliquid)
-    post({ type: 'clearinghouseState', user: address }, timeoutMs).catch(() => null),
+  // Spot and the clearinghouse state of every dex, all at once. `meta` has no dex list
+  // (it's { universe, marginTables, collateralToken }); perpDexs has.
+  const dexes = await fetchPerpDexs(timeoutMs);
+  const [spot, ...states] = await Promise.all([
     post({ type: 'spotClearinghouseState', user: address }, timeoutMs).catch(() => null),
-    // Query xyz dex (trade.xyz HIP-3 markets)
-    post({ type: 'clearinghouseState', user: address, dex: 'xyz' }, timeoutMs).catch(() => null)
-  ];
+    ...dexes.map(dex => post(dex ? { type: 'clearinghouseState', user: address, dex } : { type: 'clearinghouseState', user: address }, timeoutMs)
+      .catch(() => null))
+  ]);
 
-  const results = await Promise.all(queries);
-  let [perp, spot, xyzDex, ...vaultResults] = results;
-
-  // Merge xyz dex and vault positions into main perp response
-  // Track which coins we've already seen to avoid duplicates
-  const existingCoins = new Set((perp?.assetPositions || []).map(p => p.position?.coin).filter(Boolean));
-
-  const perpSources = [perp, xyzDex, ...vaultResults].filter(Boolean);
-  const combinedPerpEquity = perpSources.reduce((sum, source) => {
-    const value = resolvePerpAccountValue(source);
-    return sum + (value ?? 0);
-  }, 0);
-
-  if (!perp && (perpSources.length > 0 || combinedPerpEquity !== 0)) {
-    perp = { assetPositions: [] };
-  }
-
-  if (perp) {
-    if (!Array.isArray(perp.assetPositions)) {
-      perp.assetPositions = [];
-    }
-    if (!perp.marginSummary || typeof perp.marginSummary !== 'object') {
-      perp.marginSummary = {};
-    }
-    perp.marginSummary.accountValue = combinedPerpEquity.toString();
-  }
-
-  // Add xyz dex positions (trade.xyz equity perps)
-  if (xyzDex?.assetPositions) {
-    for (const pos of xyzDex.assetPositions) {
-      const coin = pos.position?.coin;
-      if (!existingCoins.has(coin)) {
-        if (!perp) perp = { assetPositions: [] };
-        if (!perp.assetPositions) perp.assetPositions = [];
-        perp.assetPositions.push(pos);
-        existingCoins.add(coin);
-      }
-    }
-  }
-
-  // Add positions from other HIP-3 vaults (if any discovered)
-  for (const vaultData of vaultResults) {
-    if (vaultData?.assetPositions) {
-      for (const pos of vaultData.assetPositions) {
-        const coin = pos.position?.coin;
-        if (!existingCoins.has(coin)) {
-          if (!perp) perp = { assetPositions: [] };
-          if (!perp.assetPositions) perp.assetPositions = [];
-          perp.assetPositions.push(pos);
-          existingCoins.add(coin);
-        }
-      }
-    }
-  }
-
-  return { perp, spot };
+  const { perp, activeDexes } = combinePerpStates(dexes.map((dex, i) => ({ dex, state: states[i] })));
+  activeDexesByUser.set(String(address).toLowerCase(), activeDexes);
+  return { perp, spot, dexes: activeDexes };
 }
 
 export async function fetchAllMids(timeoutMs = 10000) {
@@ -124,8 +158,10 @@ export async function fetchMetaAndAssetCtxs(timeoutMs = 10000) {
   return await post({ type: 'metaAndAssetCtxs' }, timeoutMs).catch(() => null);
 }
 
-export async function fetchXyzDexMetaAndAssetCtxs(timeoutMs = 10000) {
-  return await post({ type: 'metaAndAssetCtxs', dex: 'xyz' }, timeoutMs).catch(() => null);
+/** Perp metadata and contexts (markPx, prevDayPx, funding) for one HIP-3 dex, e.g. 'xyz'. */
+export async function fetchDexMetaAndAssetCtxs(dex, timeoutMs = 10000) {
+  if (!dex) return await fetchMetaAndAssetCtxs(timeoutMs);
+  return await post({ type: 'metaAndAssetCtxs', dex }, timeoutMs).catch(() => null);
 }
 
 export async function fetchSpotMeta(timeoutMs = 10000) {
@@ -260,9 +296,13 @@ export default {
   fetchInfo,
   fetchDelegatorSummary,
   fetchPositions,
+  fetchPerpDexs,
+  getUserDexes,
+  combinePerpStates,
+  perpDexNames,
   fetchAllMids,
   fetchMetaAndAssetCtxs,
-  fetchXyzDexMetaAndAssetCtxs,
+  fetchDexMetaAndAssetCtxs,
   fetchSpotMeta,
   fetchSpotMetaAndAssetCtxs,
   fetchHistoricalPrice,

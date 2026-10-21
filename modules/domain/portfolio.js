@@ -177,7 +177,7 @@ const finiteOrZero = (v) => (Number.isFinite(v) ? v : 0);
  * leveraged value from leaking into portfolio totals.
  */
 function isCoveredByVenueEquity(p, hasHlEquity, hasLighterEquity) {
-  if (hasHlEquity && (p.exchange === 'HL Perps' || p.exchange === 'HL Spot')) return true;
+  if (hasHlEquity && (p.exchange === 'HL Perps' || p.exchange === 'HL Spot' || p.exchange === 'HL Staking')) return true;
   // Lighter Spot represents standalone token balances, NOT covered by account equity.
   if (hasLighterEquity && p.exchange === 'Lighter') return true;
   return false;
@@ -249,7 +249,7 @@ function positionCostBasis(p, pnl) {
 }
 
 function venueOf(p) {
-  if (p.isHlAccountEquity || p.exchange === 'HL Perps' || p.exchange === 'HL Spot') return 'hl';
+  if (p.isHlAccountEquity || p.exchange === 'HL Perps' || p.exchange === 'HL Spot' || p.exchange === 'HL Staking') return 'hl';
   if (p.isLighterAccountEquity || p.exchange === 'Lighter') return 'lighter';
   return null;
 }
@@ -259,7 +259,8 @@ function venueOf(p) {
  * calculatePortfolioTotals, but are always labelled by asset, never by venue:
  *
  * - Venue equity rows (Hyperliquid / Lighter) are split back into what they hold. Spot balances
- *   on the venue keep their own value; the rest of the equity (perp margin + unrealized P&L) is
+ *   and staked HYPE on the venue keep their own value; the rest of the equity (perp margin +
+ *   unrealized P&L) is
  *   spread across the venue's open perps by notional size, or shown as "Cash" when none are open.
  * - allocation: [{ label, value, share }] sorted by value; tail folded into "Other" past maxSlices.
  * - shareByRow: { 'ASSET_EXCHANGE': share } for each row, on the same split, so a table row
