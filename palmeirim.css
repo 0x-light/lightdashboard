@@ -980,6 +980,87 @@ html.pm:root #newComic.fading::after {
   html.pm:root #newComic.fading { opacity: 0.4 !important; }
 }
 
+/* ── Comic, full screen ──
+   Fitted to the screen on open; tap for full size and pan by scrolling. The close
+   chip sits top right like the windows' ESC CLOSE. */
+html.pm:root #newComic { cursor: zoom-in; }
+html.pm:root #newComic:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 2px; }
+
+html.pm:root .comic-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+html.pm:root .comic-viewer[hidden] { display: none; }
+
+html.pm:root .comic-viewer__scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: calc(var(--pm-lh) + env(safe-area-inset-top, 0px)) 1ch var(--pm-lh);
+}
+
+/* Fitted: as large as the screen allows, centred. The zero minimums stop a flex
+   item from growing to the image's own width (seen on iOS), which cut it off. */
+html.pm:root .comic-viewer__img {
+  display: block;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  margin: auto;
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
+/* Zoomed: the image's own pixel size (never narrower than the screen), pan to read. */
+html.pm:root .comic-viewer.is-zoomed .comic-viewer__img {
+  width: max(var(--comic-natural, 200vw), 100%);
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  cursor: zoom-out;
+}
+
+/* Bottom bar: the hint on the left, Close on the right. */
+html.pm:root .comic-viewer__bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2ch;
+  padding: calc(var(--pm-lh) / 2) 1ch calc(var(--pm-lh) / 2 + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--pm-rule);
+}
+
+html.pm:root .comic-viewer__hint { margin: 0; color: var(--pm-muted); }
+
+html.pm:root .comic-viewer__close {
+  display: inline-flex;
+  gap: 1ch;
+  min-height: 0;
+  padding: 0 1ch 0 0;
+  border: 0;
+  background: var(--pm-tint-2);
+  color: var(--pm-ink);
+  line-height: var(--pm-lh);
+  text-transform: uppercase;
+}
+
+html.pm:root .comic-viewer__close::before { content: "esc"; padding: 0 1ch; background: var(--pm-rule); text-transform: uppercase; }
+
+@media (hover: none), (pointer: coarse), (max-width: 640px) {
+  html.pm:root .comic-viewer__close::before { display: none; }
+  html.pm:root .comic-viewer__close { padding-left: 1ch; }
+}
+
 /* ── Footer ── */
 
 html.pm:root .status-bar {

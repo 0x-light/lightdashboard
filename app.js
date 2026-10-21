@@ -2821,6 +2821,89 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
     });
 
+    // Tapping the strip opens it full screen: fitted to the screen first, tap again for
+    // its full size and pan around (Sunday strips are unreadable fitted to a phone's
+    // width). Esc or Close goes back.
+    const comicContainer = document.getElementById('newComic');
+    let comicViewer = null;
+    let comicViewerOpener = null;
+
+    const closeComicViewer = () => {
+      if (!comicViewer || comicViewer.hidden) return;
+      comicViewer.hidden = true;
+      document.body.classList.remove('modal-open');
+      comicViewerOpener?.focus?.({ preventScroll: true });
+    };
+
+    const openComicViewer = (img) => {
+      if (!comicViewer) {
+        comicViewer = document.createElement('div');
+        comicViewer.className = 'comic-viewer';
+        comicViewer.setAttribute('role', 'dialog');
+        comicViewer.setAttribute('aria-modal', 'true');
+        comicViewer.setAttribute('aria-label', 'Comic, full screen');
+        // Close sits in a bar at the bottom, next to the hint, within thumb reach.
+        comicViewer.innerHTML =
+          '<div class="comic-viewer__scroll"><img class="comic-viewer__img" alt=""></div>' +
+          '<div class="comic-viewer__bar"><p class="comic-viewer__hint" aria-hidden="true">Tap to zoom</p>' +
+          '<button type="button" class="btn-text comic-viewer__close">Close</button></div>';
+        document.body.appendChild(comicViewer);
+        comicViewer.querySelector('.comic-viewer__close').addEventListener('click', closeComicViewer);
+        comicViewer.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeComicViewer();
+          }
+        });
+        // Tap toggles fitted / full size, keeping the tapped spot under the finger.
+        const scroller = comicViewer.querySelector('.comic-viewer__scroll');
+        const big = comicViewer.querySelector('.comic-viewer__img');
+        big.addEventListener('click', (e) => {
+          const rect = big.getBoundingClientRect();
+          const fx = (e.clientX - rect.left) / rect.width;
+          const fy = (e.clientY - rect.top) / rect.height;
+          const zoomed = comicViewer.classList.toggle('is-zoomed');
+          comicViewer.querySelector('.comic-viewer__hint').textContent = zoomed ? 'Tap to fit' : 'Tap to zoom';
+          if (zoomed) {
+            requestAnimationFrame(() => {
+              scroller.scrollLeft = fx * big.offsetWidth - scroller.clientWidth / 2;
+              scroller.scrollTop = fy * big.offsetHeight - scroller.clientHeight / 2;
+            });
+          }
+        });
+      }
+      const big = comicViewer.querySelector('.comic-viewer__img');
+      // Zoom goes to the strip's own pixel width; the CSS keeps it at least screen-wide.
+      big.onload = () => big.style.setProperty('--comic-natural', `${big.naturalWidth}px`);
+      big.src = img.src;
+      big.alt = img.alt;
+      comicViewer.classList.remove('is-zoomed');
+      comicViewer.querySelector('.comic-viewer__hint').textContent = 'Tap to zoom';
+      comicViewerOpener = document.activeElement;
+      comicViewer.hidden = false;
+      document.body.classList.add('modal-open');
+      comicViewer.querySelector('.comic-viewer__close').focus({ preventScroll: true });
+    };
+
+    comicContainer?.addEventListener('click', (e) => {
+      const img = e.target.closest('img');
+      if (img) openComicViewer(img);
+    });
+    // The strip itself is reachable by keyboard: Enter or Space opens it.
+    comicContainer?.addEventListener('keydown', (e) => {
+      const img = comicContainer.querySelector('img');
+      if (img && (e.key === 'Enter' || e.key === ' ') && e.target === comicContainer) {
+        e.preventDefault();
+        openComicViewer(img);
+      }
+    });
+    if (comicContainer) {
+      comicContainer.tabIndex = 0;
+      comicContainer.setAttribute('role', 'button');
+      comicContainer.setAttribute('aria-label', 'Open the comic full screen');
+    }
+
     // Setup tab switching
     const tabCalvin = document.getElementById('newTabCalvin');
     const tabPeanuts = document.getElementById('newTabPeanuts');
