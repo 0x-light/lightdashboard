@@ -23,7 +23,8 @@ export async function onRequest(context) {
     'www.gocomics.com',
     'www.thefarside.com',
     'assets.amuniversal.com',
-    'featureassets.amuniversal.com'
+    'featureassets.amuniversal.com',
+    'featureassets.gocomics.com'
   ];
   
   let targetHostname;
@@ -53,8 +54,9 @@ export async function onRequest(context) {
       return new Response(`Failed to fetch: ${response.status}`, { status: response.status });
     }
     
-    // Get the response body
-    const body = await response.text();
+    // Images pass through as bytes (the comic download); pages as text
+    const contentType = response.headers.get('Content-Type') || '';
+    const body = contentType.startsWith('image/') ? await response.arrayBuffer() : await response.text();
     
     // Return with CORS headers
     return new Response(body, {

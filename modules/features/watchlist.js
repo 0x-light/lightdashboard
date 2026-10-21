@@ -293,7 +293,7 @@ function renderRows(container, data, options) {
   lastRender = { container, data, options: { ...options, prevPriceMap: {} } };
 
   if (!data || data.length === 0) {
-    container.innerHTML = '<tr class="watchlist-empty-row"><td colspan="4">Nothing on your watchlist yet.</td></tr>';
+    container.innerHTML = '<tr class="watchlist-empty-row"><td colspan="4">Your watchlist is empty.</td></tr>';
     return;
   }
 

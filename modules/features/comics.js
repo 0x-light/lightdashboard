@@ -204,7 +204,11 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
       ? date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
       : '';
     const alt = dateText ? `${comic.name} strip from ${dateText}` : `${comic.name} strip`;
-    let html = `<img src="${result.src}" alt="${alt}" data-comic-type="${comicKey}">`;
+    // The date travels with the image so a download can be named after it.
+    const isoDate = date instanceof Date && !Number.isNaN(date.getTime())
+      ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+      : '';
+    let html = `<img src="${result.src}" alt="${alt}" data-comic-type="${comicKey}"${isoDate ? ` data-date="${isoDate}"` : ''}>`;
 
     // Add caption if available (for The Far Side)
     if (result.caption) {
@@ -220,7 +224,7 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
     // Fallback: link to view online with retry option
     container.innerHTML = `
       <div class="help" style="text-align: center; padding: 20px;">
-        <p>Unable to load the comic. <button type="button" id="retryComicBtn" class="link-button">Try again</button></p>
+        <p>Cannot load the comic. <button type="button" id="retryComicBtn" class="link-button">Try again</button></p>
         <p style="margin-top: 12px;">
           <a href="${url}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">View ${comic.name} online ↗</a>
         </p>

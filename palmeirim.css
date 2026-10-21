@@ -71,6 +71,12 @@ html.pm:root .comic-tab:focus-visible {
   }
 }
 
+/* No visible scrollbars: the page, windows, lists and tables still scroll by
+   trackpad, wheel, touch and keyboard. */
+html.pm,
+html.pm * { scrollbar-width: none; }
+html.pm ::-webkit-scrollbar { display: none; }
+
 /* ── Keys and chips ── */
 
 html.pm:root kbd {
@@ -177,6 +183,10 @@ html.pm:root .pm-menu-btn {
   background: none;
   line-height: var(--pm-lh);
 }
+
+/* MENU and the phone section chip have no key cell beside them, so their label
+   takes the stronger fill that + ADD and SHOW use. */
+html.pm:root :is(.pm-menu-btn, .pm-section-btn) .chip__label { background: var(--pm-tint-2); }
 
 html.pm:root .pm-menu-btn[aria-expanded="true"] .chip__label { background: var(--pm-ink); color: var(--bg); }
 
@@ -860,6 +870,8 @@ html.pm:root .panel-foot .btn-text {
 /* Comic paging keeps its arrow keys visible, like the site's key hints. */
 html.pm:root #newComicPrevBtn::before { content: "←"; }
 html.pm:root #newComicNextBtn::before { content: "→"; }
+html.pm:root #newComicDownloadBtn::before { content: "↓"; }
+html.pm:root .calvin-controls .comic-download { margin-left: auto; }
 
 /* ── Comics: tabs as the site's radio-style sort line ── */
 
@@ -1516,11 +1528,11 @@ html.pm:root .pm-theme-option:focus-visible { background: var(--pm-ink); color: 
   html.pm:root .pm-theme-option:hover { background: var(--pm-ink); color: var(--bg); }
 }
 
-/* ── Strip readout: the hovered segment, named on the card's bottom border ── */
+/* ── Strip readout: the hovered segment, named on the card's bottom border at its start ── */
 html.pm:root .pm-card__readout {
-  position: absolute;
-  bottom: calc(var(--pm-lh) / -2);
-  left: 1ch;
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
   margin: 0;
   padding: 0 1ch;
   background: var(--bg);

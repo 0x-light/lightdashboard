@@ -171,20 +171,28 @@
   card.appendChild(allocWrap);
   var strip = $(".pm-strip", allocWrap);
 
-  // Pointing at a segment names it on the card's bottom border: "ZRO · 64% · $76.4k".
+  // Pointing at a segment names it on the card's bottom border, starting where that
+  // segment starts: "ZRO · 64% · $76.4k". It lives on <body>, outside the observed
+  // #main, so placing it doesn't re-run the observer.
   var readout = el("p", { class: "pm-card__readout", "aria-hidden": "true", hidden: "" });
-  card.appendChild(readout);
+  document.body.appendChild(readout);
   strip.addEventListener("mouseover", function (e) {
     var seg = e.target.closest(".pm-strip__seg");
     if (!seg) return;
-    readout.textContent = seg.dataset.readout;
+    if (readout.textContent !== seg.dataset.readout) readout.textContent = seg.dataset.readout;
     readout.hidden = false;
+    var box = card.getBoundingClientRect();
+    // The label's own 1ch padding lines its text up with the segment's left edge.
+    var pad = parseFloat(getComputedStyle(readout).paddingLeft) || 0;
+    var x = Math.min(seg.getBoundingClientRect().left - pad, box.right - readout.offsetWidth - 8);
+    readout.style.left = Math.max(box.left + 1, x) + "px";
+    readout.style.top = (box.bottom - readout.offsetHeight / 2) + "px";
   });
   strip.addEventListener("mouseleave", function () { readout.hidden = true; });
+  window.addEventListener("scroll", function () { readout.hidden = true; }, { passive: true });
 
   function setAllocOpen(open) {
     strip.setAttribute("aria-expanded", String(open));
-    strip.title = open ? "Hide allocation" : "Show allocation";
     allocList.hidden = !open;
     try { localStorage.setItem("pmAllocOpen", open ? "1" : "0"); } catch (_e) {}
   }

@@ -894,7 +894,7 @@ function setupControls() {
     } else if (btn.classList.contains('position-restore-btn')) {
       setPositionHidden(assetKey, false);
       if (rowKey) focusPositionRow(rowKey);
-      showUndo(`Showing ${asset} again`, () => setPositionHidden(assetKey, true));
+      showUndo(`Showed ${asset}`, () => setPositionHidden(assetKey, true));
     } else if (btn.classList.contains('position-delete-btn')) {
       window.openPositionKey = null;
       deleteManualPosition(asset, manualType);
@@ -1167,7 +1167,7 @@ function setupControls() {
       }, 1500);
     } catch (err) {
       console.error('Failed to copy:', err);
-      alert('Failed to copy to clipboard');
+      alert('Cannot copy. Select the address and copy it.');
     }
   }
 
@@ -1505,7 +1505,7 @@ function setupControls() {
       const watchlistKeys = currentWatchlistKeys();
 
       if (feeds.length === 0) {
-        watchlistSearchResults.innerHTML = '<p class="search-empty">No results found</p>';
+        watchlistSearchResults.innerHTML = '<p class="search-empty">No results.</p>';
         watchlistSearchResults.style.display = 'block';
         return;
       }
@@ -1562,7 +1562,7 @@ function setupControls() {
       clearTimeout(watchlistSearchDebounce);
 
       if (!query) {
-        watchlistSearchResults.innerHTML = '<p class="search-empty">Type to search tokens or stocks…</p>';
+        watchlistSearchResults.innerHTML = '<p class="search-empty">Enter a token or a stock.</p>';
         watchlistSearchResults.style.display = 'block';
         return;
       }
@@ -1730,7 +1730,7 @@ function setupControls() {
   const deletePositionBtn = document.getElementById('newDeletePositionBtn');
   const savePositionBtn = document.getElementById('newSavePositionBtn');
 
-  const ENTRY_NOTE = "A date fills in that day's price.";
+  const ENTRY_NOTE = 'Add a date to get the price on that day.';
 
   // kind: null (nothing picked yet) | 'live' | 'custom'
   let kind = null;
@@ -1805,7 +1805,7 @@ function setupControls() {
     if (kind === 'live' && selectedFeed.marketHours === 'us-equity') {
       const hours = document.createElement('span');
       hours.className = 'form-chosen__aside';
-      hours.textContent = ' · prices move 9:30–16:00 ET';
+      hours.textContent = ' · prices change 9:30–16:00 ET';
       chosenLine.appendChild(hours);
     }
     if (!editing) {
@@ -1886,7 +1886,7 @@ function setupControls() {
       li.setAttribute('aria-selected', 'false');
       if (option.custom) {
         li.className = 'form-option form-option--custom';
-        li.textContent = `Not listed? Add “${option.custom}” as a custom asset`;
+        li.textContent = `Add “${option.custom}” as a custom asset`;
       } else {
         const feed = option.feed;
         li.className = 'form-option';
@@ -2121,12 +2121,12 @@ function setupControls() {
     const mods = window.AppModules || {};
 
     const token = ++historicalLookupSeq;
-    setNote('Looking up the price on that day…');
+    setNote('Finding the price…');
 
     const [y, m, d] = dateStr.split('-').map(Number);
     if (!y || !m || !d) return;
     if (Date.UTC(y, m - 1, d) > Date.now()) {
-      setNote('Pick a day in the past.');
+      setNote('Use a date in the past.');
       return;
     }
 
@@ -2150,17 +2150,17 @@ function setupControls() {
         }
         setNote(`Price on ${dateStr}: ${formatPriceWithCurrency(price, currency)}`);
       } else {
-        setNote('No price found for that day. Enter it yourself.');
+        setNote('No price for that date. Enter the price.');
       }
     } catch (e) {
       if (token !== historicalLookupSeq) return;
-      setNote("Couldn't look up that day's price. Enter it yourself.");
+      setNote('Cannot get the price. Enter the price.');
     }
   }
 
   entryDateInput?.addEventListener('change', () => {
     if (!selectedFeed) {
-      setNote('Pick an asset first, then the date fills in its price.');
+      setNote('Select an asset first.');
       return;
     }
     // A new date may refill the price; typing over it afterwards still wins.
@@ -2210,11 +2210,11 @@ function setupControls() {
       const amount = parseFloat(amountInput.value);
       const entryPrice = parseFloat(entryPriceInput.value);
       if (!amount || amount <= 0) {
-        showPositionError(amountInput, 'Enter an amount greater than 0.');
+        showPositionError(amountInput, 'Enter an amount more than 0.');
         return;
       }
       if (entryPriceInput.value.trim() && !(entryPrice > 0)) {
-        showPositionError(entryPriceInput, 'Enter a price greater than 0, or leave it empty.');
+        showPositionError(entryPriceInput, 'Enter a price more than 0, or leave it empty.');
         return;
       }
       // Without an entry price the position still tracks value; it just shows no P&L.
@@ -2251,11 +2251,11 @@ function setupControls() {
       const name = assetInput.value.trim();
       const value = parseFloat(valueInput.value);
       if (!name) {
-        showPositionError(assetInput, 'Enter a name for the asset, for example "Gold bars".');
+        showPositionError(assetInput, 'Enter a name, for example "Gold bars".');
         return;
       }
       if (!value || value <= 0) {
-        showPositionError(valueInput, 'Enter a value greater than 0.');
+        showPositionError(valueInput, 'Enter a value more than 0.');
         return;
       }
       savedPosition = {
@@ -2269,8 +2269,8 @@ function setupControls() {
       };
     } else {
       showPositionError(assetInput, assetInput.value.trim()
-        ? 'Pick one of the matches, or the last option to add it as a custom asset.'
-        : 'Type a ticker or a name, then pick it from the list.');
+        ? 'Select an item in the list.'
+        : 'Enter a ticker or a name. Then select it in the list.');
       return;
     }
 
@@ -2287,7 +2287,7 @@ function setupControls() {
       await renderPortfolioIncremental();
     } catch (err) {
       console.error('[Add position] Save failed:', err);
-      showPositionError(savePositionBtn, "Couldn't save the position. Your browser storage may be full or blocked; free some space and try again.");
+      showPositionError(savePositionBtn, 'Cannot save. The browser storage is full or blocked.');
     }
   });
 }
@@ -2777,6 +2777,47 @@ window.addEventListener('DOMContentLoaded', async () => {
 
           await loadComic(currentComicStrip, randomDate);
         });
+      }
+    });
+
+    // Download saves the strip on screen as a file, named for the comic and its date
+    // (calvinandhobbes-1988-06-05.jpg). GoComics images allow a direct fetch; others go
+    // through our proxy; if both fail, the image opens in a new tab to save from there.
+    const downloadComicBtn = document.getElementById('newComicDownloadBtn');
+    downloadComicBtn?.addEventListener('click', async () => {
+      const img = document.querySelector('#newComic img');
+      if (!img?.src) return;
+      const idle = downloadComicBtn.textContent;
+      downloadComicBtn.disabled = true;
+      downloadComicBtn.textContent = 'Downloading…';
+      try {
+        let blob = null;
+        for (const url of [img.src, `/api/proxy?url=${encodeURIComponent(img.src)}`]) {
+          try {
+            const resp = await fetch(url, { mode: 'cors' });
+            const body = resp.ok ? await resp.blob() : null;
+            if (body?.type.startsWith('image/')) {
+              blob = body;
+              break;
+            }
+          } catch (_) { /* try the next source */ }
+        }
+        if (!blob) {
+          window.open(img.src, '_blank', 'noopener');
+          return;
+        }
+        const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg').replace(/\+.*$/, '');
+        const name = `${img.dataset.comicType || 'comic'}${img.dataset.date ? `-${img.dataset.date}` : ''}.${ext}`;
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      } finally {
+        downloadComicBtn.disabled = false;
+        downloadComicBtn.textContent = idle;
       }
     });
 

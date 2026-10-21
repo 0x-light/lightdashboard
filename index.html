@@ -455,7 +455,7 @@
                             <label>
                                 Hide balances below
                                 <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100" inputmode="decimal" class="settings-input settings-input-short">
-                                <span class="info">In your portfolio currency</span>
+                                <span class="info">In your portfolio currency.</span>
                             </label>
                             <div class="settings-field">
                                 <label for="newWeatherCity">City for weather</label>
@@ -464,7 +464,7 @@
                                     <button id="newUseMyLocationBtn" type="button" class="btn-text">Use my location</button>
                                 </div>
                                 <ul id="newWeatherCityList" class="city-options" role="listbox" aria-label="Matching places" hidden></ul>
-                                <span id="newWeatherCityHint" class="info" aria-live="polite">Optional. Only used to show the weather.</span>
+                                <span id="newWeatherCityHint" class="info" aria-live="polite">Optional. For the weather only.</span>
                             </div>
                         </div>
 
@@ -472,50 +472,50 @@
                             <label>
                                 Wallet addresses
                                 <textarea id="newAddresses" class="settings-input" rows="6" spellcheck="false" autocapitalize="off"
-                                    placeholder="Paste addresses, one per line or separated by commas"></textarea>
-                                <span id="newAddressesHint" class="info" aria-live="polite">EVM, Solana, Bitcoin and Zcash (t-addr) are detected automatically.</span>
+                                    placeholder="One address on each line"></textarea>
+                                <span id="newAddressesHint" class="info" aria-live="polite">EVM, Solana, Bitcoin or Zcash (t-addr).</span>
                             </label>
                         </div>
 
                         <div class="settings-pane" role="tabpanel" id="settingsPane-keys" aria-labelledby="settingsTab-keys" data-pane="keys" hidden>
-                            <div class="info">Wallet balances come from Zerion or Cielo, whichever key you add. Zerion is used if you add both.</div>
+                            <div class="info">Add a Zerion or Cielo key to see wallet balances.</div>
                             <label>
                                 Zerion
                                 <input id="newZerionApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
-                                    placeholder="Your Zerion API key">
+                                    placeholder="API key">
                                 <span class="info">Get a key at <a
                                     href="https://developers.zerion.io/reference/intro/getting-started" target="_blank"
-                                    rel="noopener noreferrer">Zerion</a></span>
+                                    rel="noopener noreferrer">Zerion</a>.</span>
                             </label>
                             <label>
                                 Cielo Finance
                                 <input id="newCieloApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
-                                    placeholder="Your Cielo API key">
-                                <span class="info">Free key at <a href="https://build.cielo.finance/" target="_blank"
-                                    rel="noopener noreferrer">Cielo</a> (5,000 credits/month)</span>
+                                    placeholder="API key">
+                                <span class="info">Get a free key at <a href="https://build.cielo.finance/" target="_blank"
+                                    rel="noopener noreferrer">Cielo</a>.</span>
                             </label>
 
-                            <h3 class="settings-group">Fallbacks and extras</h3>
+                            <h3 class="settings-group">Other keys</h3>
                             <label>
                                 Alchemy
                                 <input id="newAlchemyApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
-                                    placeholder="Your Alchemy API key">
-                                <span class="info">Fallback for EVM chains. Free key at <a href="https://www.alchemy.com/"
-                                    target="_blank" rel="noopener noreferrer">Alchemy</a></span>
+                                    placeholder="API key">
+                                <span class="info">Backup for EVM chains. Get a free key at <a href="https://www.alchemy.com/"
+                                    target="_blank" rel="noopener noreferrer">Alchemy</a>.</span>
                             </label>
                             <label>
                                 Helius
                                 <input id="newHeliusApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
-                                    placeholder="Your Helius API key">
-                                <span class="info">Fallback for Solana. Free key at <a href="https://www.helius.dev/"
-                                    target="_blank" rel="noopener noreferrer">Helius</a></span>
+                                    placeholder="API key">
+                                <span class="info">Backup for Solana. Get a free key at <a href="https://www.helius.dev/"
+                                    target="_blank" rel="noopener noreferrer">Helius</a>.</span>
                             </label>
                             <label>
                                 OpenSea
                                 <input id="newOpenSeaApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
-                                    placeholder="Your OpenSea API key">
-                                <span class="info">For NFT data. Get a key at <a href="https://opensea.io/account/developer"
-                                    target="_blank" rel="noopener noreferrer">OpenSea</a></span>
+                                    placeholder="API key">
+                                <span class="info">For NFTs. Get a key at <a href="https://opensea.io/account/developer"
+                                    target="_blank" rel="noopener noreferrer">OpenSea</a>.</span>
                             </label>
                         </div>
 
@@ -551,11 +551,11 @@
                             <h3 class="settings-group">Layout</h3>
                             <label class="check">
                                 <input id="newFullWidth" type="checkbox" class="settings-input">
-                                Use the full window width
+                                Full window width
                             </label>
                             <label class="check">
                                 <input id="newCenterLayout" type="checkbox" class="settings-input">
-                                Center the layout
+                                Center the page
                             </label>
 
                             <h3 class="settings-group">Numbers</h3>
@@ -605,14 +605,14 @@
                             <div class="settings-row">
                                 <div class="settings-row-text">
                                     <div class="settings-row-title">Export settings</div>
-                                    <div class="info">Copy your settings as text to back them up or move them to another device.</div>
+                                    <div class="info">Copy your settings as text.</div>
                                 </div>
                                 <button type="button" id="newExportSettingsBtn" class="btn-text">Export</button>
                             </div>
                             <div class="settings-row">
                                 <div class="settings-row-text">
                                     <div class="settings-row-title">Import settings</div>
-                                    <div class="info">Paste settings exported from another device. This replaces your current settings and reloads.</div>
+                                    <div class="info">Paste exported settings. They replace your current settings.</div>
                                 </div>
                                 <button type="button" id="newImportSettingsBtn" class="btn-text">Import</button>
                             </div>
@@ -621,11 +621,11 @@
                             <div class="settings-row">
                                 <div class="settings-row-text">
                                     <div class="settings-row-title">Force update</div>
-                                    <div class="info">Not seeing the latest version? Clears all caches and reloads. Your settings are kept.</div>
+                                    <div class="info">Clear the caches and reload. Your settings stay.</div>
                                 </div>
                                 <button type="button" id="newForceUpdateBtn" class="btn-text">Force update</button>
                             </div>
-                            <div class="info settings-footnote">All settings are stored locally in your browser. Nothing is sent to any server.</div>
+                            <div class="info settings-footnote">Your settings stay in this browser only.</div>
                         </div>
                     </section>
                 </div>
@@ -726,6 +726,7 @@
                         <button id="newComicPrevBtn" class="btn-text">Prev</button>
                         <button id="newComicRandomBtn" class="btn-text">Random</button>
                         <button id="newComicNextBtn" class="btn-text">Next</button>
+                        <button id="newComicDownloadBtn" class="btn-text comic-download">Download</button>
                     </div>
                 </div>
             </section>
@@ -745,7 +746,7 @@
         </div>
         <div class="sticker-window-content modal-form">
             <div class="modal-field">
-                <label for="newWatchlistSearchInput">Search for tokens</label>
+                <label for="newWatchlistSearchInput">Search</label>
                 <input type="text" id="newWatchlistSearchInput" class="settings-input" placeholder="BTC, AAPL, EUR/USD…"
                     autocomplete="off" spellcheck="false">
             </div>
@@ -762,8 +763,7 @@
             <button id="newCloseDonateBtn" class="btn-text">Close</button>
         </div>
         <div class="sticker-window-content">
-            <p class="help">Viewport is free for everyone, forever. If you'd like to support its development, you can
-                contribute to the addresses below. Thank you for using Viewport &lt;3</p>
+            <p class="help">Viewport is free. To support it, send a donation to an address below. Thank you.</p>
             <div class="donate-list">
                 <div class="donate-address-row">
                     <div class="donate-label">Bitcoin</div>
@@ -868,8 +868,8 @@
             <button id="closeStickerWindowBtn" class="btn-text">Close</button>
         </div>
         <div class="sticker-window-content">
-            <p class="help sticker-help-desktop">Drag stickers onto the page, or press Enter on one to place it.</p>
-            <p class="help sticker-help-mobile">Tap a sticker to place it on the page.</p>
+            <p class="help sticker-help-desktop">Drag a sticker onto the page, or select it and press Enter.</p>
+            <p class="help sticker-help-mobile">Tap a sticker to put it on the page.</p>
             <div id="stickerGrid" class="sticker-grid"></div>
         </div>
     </div>

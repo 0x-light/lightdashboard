@@ -78,7 +78,7 @@ function describeAddresses(text) {
     .map(k => [k, listOf(sorted[k]).length])
     .filter(([, count]) => count > 0)
     .map(([k, count]) => `${count} ${ADDRESS_LABELS[k]}`);
-  return parts.length ? parts.join(' · ') : 'EVM, Solana, Bitcoin and Zcash (t-addr) are detected automatically.';
+  return parts.length ? parts.join(' · ') : 'EVM, Solana, Bitcoin or Zcash (t-addr).';
 }
 
 // Places matching a typed name, most relevant first. Region is "Texas, United States",
@@ -248,7 +248,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     save(next);
   };
   let cityLookup = Promise.resolve();
-  const defaultCityHint = 'Optional. Only used to show the weather.';
+  const defaultCityHint = 'Optional. For the weather only.';
   const pickPlace = (place) => {
     saveWeather(place);
     cityInput.value = placeText(place);
@@ -268,12 +268,12 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     cityLookup = geocodeCity(name)
       .then(place => {
         if (!place) {
-          setCityHint(`Couldn't find "${name}". Try a nearby larger city.`);
+          setCityHint(`Cannot find "${name}". Try a larger city near it.`);
           return;
         }
         pickPlace(place);
       })
-      .catch(() => setCityHint("Couldn't look up the city. Check your connection."));
+      .catch(() => setCityHint('Cannot find the city. Check your connection.'));
     return cityLookup;
   };
 
@@ -402,7 +402,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     const idleLabel = useMyLocationBtn.textContent;
     useMyLocationBtn.addEventListener('click', async () => {
       if (!navigator.geolocation) {
-        setCityHint('Your browser does not support location.');
+        setCityHint('This browser cannot give your location.');
         return;
       }
       useMyLocationBtn.textContent = 'Locating…';
@@ -424,7 +424,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
         if (cityInput) cityInput.value = label;
         setCityHint(defaultCityHint);
       } catch (_) {
-        setCityHint('Could not get your location. Check your browser permissions.');
+        setCityHint('Cannot get your location. Check the browser permissions.');
       }
       useMyLocationBtn.textContent = idleLabel;
       useMyLocationBtn.disabled = false;
@@ -494,7 +494,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
         location.reload();
       } catch (err) {
         exportArea.focus();
-        alert('Those settings could not be read. Check that you pasted the whole exported text.');
+        alert('Cannot read these settings. Paste all of the exported text.');
         console.error('[Import] Failed to import settings:', err);
       }
     });
@@ -549,7 +549,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     const s = getSettings();
     fillForm(s);
     showAddressesHint();
-    setCityHint('Optional. Only used to show the weather.');
+    setCityHint(defaultCityHint);
     snapshotAtOpen = dataSnapshot(s);
     if (tab) selectTab(tab);
     dialog.style.display = 'block';
