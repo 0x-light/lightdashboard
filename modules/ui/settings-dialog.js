@@ -222,6 +222,12 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
 
   const addresses = document.getElementById('newAddresses');
   const addressesHint = document.getElementById('newAddressesHint');
+  // "Hide below 100 USD": the unit follows the currency picked above it.
+  const showCurrencyUnit = () => {
+    const unit = document.getElementById('newMinBalanceUnit');
+    const currency = document.getElementById('newPortfolioBaseCurrency');
+    if (unit && currency) unit.textContent = currency.value;
+  };
   const showAddressesHint = () => {
     if (addresses && addressesHint) addressesHint.textContent = describeAddresses(addresses.value);
   };
@@ -245,6 +251,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
   });
   dialog.querySelector('.settings-panes')?.addEventListener('change', (e) => {
     if (e.target === exportArea || e.target.id === 'newWeatherCity') return;
+    if (e.target.id === 'newPortfolioBaseCurrency') showCurrencyUnit();
     saveForm();
   });
 
@@ -257,7 +264,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     save(next);
   };
   let cityLookup = Promise.resolve();
-  const defaultCityHint = 'Optional. For the weather only.';
+  const defaultCityHint = '';
   const pickPlace = (place) => {
     saveWeather(place);
     cityInput.value = placeText(place);
@@ -558,6 +565,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     const s = getSettings();
     fillForm(s);
     showAddressesHint();
+    showCurrencyUnit();
     setCityHint(defaultCityHint);
     snapshotAtOpen = dataSnapshot(s);
     if (tab) selectTab(tab);

@@ -1293,7 +1293,6 @@ html.pm:root .sticker-window-content .btn-text.btn-primary:disabled::before {
 
 /* Windows fill a phone; inset them so the frame, its title and the shadow show. */
 @media (max-width: 870px) {
-  html.pm:root .settings,
   html.pm:root .sticker-window:not(#stickerWindow) {
     inset: var(--pm-lh) 2ch calc(var(--pm-lh) * 1.5) 1ch;
     width: auto;
@@ -1308,7 +1307,6 @@ html.pm:root .sticker-window-content .btn-text.btn-primary:disabled::before {
   /* Short forms hug their content instead of stretching to the bottom inset. */
   html.pm:root .sticker-window:not(#stickerWindow) { bottom: auto; max-height: calc(100dvh - var(--pm-lh) * 2.5); }
 
-  html.pm:root .settings-form { height: 100%; }
 }
 
 /* Same 1ch inset as the title bar at every width (phones otherwise widen it). */
@@ -1433,36 +1431,6 @@ html.pm:root .watchlist-search-result {
 
 html.pm:root .watchlist-search-result:first-child { border-top: 0; }
 
-/* Settings: tabs as a list, the current one inverted like the page chips. */
-@media (min-width: 871px) {
-  html.pm:root .settings-body { grid-template-columns: 18ch minmax(0, 1fr); }
-}
-
-html.pm:root .settings-nav {
-  gap: 0 1ch;
-  align-items: flex-start;
-  border-right-color: var(--pm-rule);
-  border-bottom-color: var(--pm-rule);
-}
-
-html.pm:root .settings-tab {
-  height: auto;
-  padding: 0 1ch;
-  color: var(--pm-ink);
-  text-transform: uppercase;
-  line-height: var(--pm-lh);
-}
-
-html.pm:root .settings-tab[aria-selected="true"] { background: var(--pm-ink); color: var(--bg); }
-
-html.pm:root .settings-group {
-  color: var(--pm-muted);
-  text-transform: uppercase;
-  border-top-color: var(--pm-rule);
-}
-
-html.pm:root .settings-row { border-bottom-color: var(--pm-rule); }
-html.pm:root .settings-row-title { color: var(--pm-ink); text-transform: uppercase; }
 
 @media (hover: hover) {
   html.pm:root .settings-form > header .btn-text:hover::before,
@@ -1620,12 +1588,55 @@ html.pm:root .form-actions .btn-text.btn-primary { margin-left: 0; }
   html.pm:root :is(.form-note, .form-chosen, .form-rows > .field-error, .form-row + .field-error) { margin-left: 0; }
 }
 
-/* ── Settings in the same rows ──
-   Each setting is label beside field, like the position window: the label's own
-   text is the left column, the control and its note sit in the right one. Wider
-   label column here, for "Portfolio currency" and the like; stacked on phones. */
-html.pm:root .settings-panes { --pm-label-w: 20ch; }
+/* ── Settings ──
+   One row of tabs under the title, the chosen one inverted like every picker. Each
+   setting is a row: its label muted on the left, the control on the right, sized to
+   what it holds. Groups start with a muted heading on a rule. The window starts near
+   the top and grows down to fit the pane, so switching tabs doesn't move it; on
+   phones it fills the screen. */
+html.pm:root .settings {
+  inset: calc(var(--pm-lh) * 3) auto auto 50%;
+  transform: translateX(-50%);
+  width: min(72ch, calc(100vw - 3ch));
+  height: auto;
+  max-height: calc(100dvh - var(--pm-lh) * 5);
+}
 
+html.pm:root .settings-form { height: auto; max-height: inherit; }
+html.pm:root .settings-body { display: flex; flex-direction: column; min-height: 0; }
+
+html.pm:root .settings-nav {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: calc(var(--pm-lh) / 4) 1ch;
+  padding: var(--pm-lh) 1ch calc(var(--pm-lh) / 2);
+  border: 0;
+  border-bottom: 1px solid var(--pm-rule);
+  overflow: visible;
+}
+
+html.pm:root .settings-tab {
+  width: auto;
+  height: auto;
+  padding: 0 1ch;
+  background: none;
+  color: var(--pm-muted);
+  line-height: var(--pm-lh);
+  text-transform: uppercase;
+}
+html.pm:root .settings-tab:first-child { margin-left: -1ch; }
+html.pm:root .settings-tab[aria-selected="true"] { background: var(--pm-ink); color: var(--bg); }
+html.pm:root .settings-tab:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 0; }
+
+@media (hover: hover) {
+  html.pm:root .settings-tab:hover { background: none; color: var(--pm-ink); }
+  html.pm:root .settings-tab[aria-selected="true"]:hover { background: var(--pm-ink); color: var(--bg); }
+}
+
+html.pm:root .settings-panes { --pm-label-w: 16ch; padding: var(--pm-lh) 1ch; }
+html.pm:root .settings-pane { gap: calc(var(--pm-lh) / 2); }
+
+/* A row: label | control (and its note under it). */
 html.pm:root .settings-pane > label:not(.check),
 html.pm:root .settings-pane .row > label,
 html.pm:root .settings-pane .settings-field {
@@ -1646,23 +1657,96 @@ html.pm:root .settings-pane .settings-field > :not(label) {
   text-transform: none;
 }
 
-html.pm:root .settings-pane .settings-field > label { grid-column: 1; margin: 0; }
-html.pm:root .settings-pane :is(label, .settings-field) .info { color: var(--pm-muted); }
+html.pm:root .settings-pane .settings-field > label { grid-column: 1; margin: 0; color: var(--pm-muted); text-transform: uppercase; }
+html.pm:root .settings-pane .info { color: var(--pm-muted); text-transform: none; }
+html.pm:root .settings-pane .info:empty { display: none; }
+html.pm:root .settings-pane .row { display: grid; gap: calc(var(--pm-lh) / 2); }
 
-/* Font and text size: two rows like the rest, not side by side. */
-html.pm:root .settings-pane .row { display: grid; gap: var(--win-gutter); }
+/* Controls hug their content: a name, a key, a number, a menu. */
+html.pm:root .settings-pane :is(input[type="text"], input:not([type])) { width: 100%; max-width: 32ch; }
+html.pm:root .settings-pane .settings-input-short { width: 10ch !important; max-width: 10ch; }
+html.pm:root .settings-pane .select { width: max-content; min-width: 16ch; max-width: 100%; }
+html.pm:root .settings-pane .select select { width: 100%; padding-right: 3ch; }
+
+/* A field with something beside it: a unit, a link, a button. Wraps under when narrow. */
+html.pm:root .settings-pane .settings-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: calc(var(--pm-lh) / 4) 2ch;
+}
+html.pm:root .settings-pane .settings-inline > input { flex: 1 1 20ch; }
+html.pm:root .settings-pane .settings-inline > .settings-input-short { flex: none; }
+html.pm:root .settings-pane .settings-link { color: var(--pm-muted); text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+html.pm:root .settings-pane .settings-link:hover,
+html.pm:root .settings-pane .settings-link:focus-visible { color: var(--pm-ink); }
+
+/* A note for a whole group sits in the control column, under its rows. */
+html.pm:root .settings-pane > .settings-note { margin: 0 0 0 calc(var(--pm-label-w) + 2ch); }
+
+/* Group headings: muted, on a rule; the first in a pane needs no rule. */
+html.pm:root .settings-pane .settings-group {
+  margin: calc(var(--pm-lh) / 2) 0 0;
+  padding: calc(var(--pm-lh) / 2) 0 0;
+  border-top: 1px solid var(--pm-rule);
+  color: var(--pm-muted);
+  font: inherit;
+  text-transform: uppercase;
+}
+html.pm:root .settings-pane > .settings-group:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+html.pm:root .settings-pane label.check { margin: 0; }
+html.pm:root .settings-pane label.check + label.check { margin-top: 0; }
 
 /* Wallet addresses: the box is wide; its label sits above it. */
 html.pm:root #settingsPane-wallets > label:not(.check) { grid-template-columns: minmax(0, 1fr); }
 html.pm:root #settingsPane-wallets > label:not(.check) > * { grid-column: 1; }
 
+/* Backup: what it does on the left, its button on the right. */
+html.pm:root .settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2ch;
+  padding: 0 0 calc(var(--pm-lh) / 2);
+  border-bottom: 1px solid var(--pm-rule);
+}
+html.pm:root .settings-row-title { color: var(--pm-ink); text-transform: uppercase; }
+html.pm:root .settings-row .btn-text { flex: none; }
+html.pm:root .settings-footnote { margin: 0; }
+
+/* Phones: the whole screen, the title on a bar at the top. */
 @media (max-width: 620px) {
-  html.pm:root :is(.settings-pane > label:not(.check), .settings-pane .row > label, .settings-pane .settings-field) {
-    grid-template-columns: minmax(0, 1fr);
+  html.pm:root .settings {
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    transform: none;
+    padding-top: env(safe-area-inset-top);
+    border: 0;
+    box-shadow: none;
   }
-  html.pm:root :is(.settings-pane > label:not(.check), .settings-pane .row > label) > *,
-  html.pm:root .settings-pane .settings-field > :not(label),
-  html.pm:root .settings-pane .settings-field > label { grid-column: 1; }
+  html.pm:root .settings-form { height: 100%; max-height: none; }
+  html.pm:root .settings-body { flex: 1; }
+  /* Full screen: a 2ch gutter on every side, so nothing touches the screen edge. */
+  html.pm:root .settings-form > header {
+    margin: 0;
+    padding: calc(var(--pm-lh) / 2) 1ch;
+    border-bottom: 1px solid var(--pm-rule);
+  }
+  /* Tabs stay one line and scroll sideways when they don't fit. */
+  html.pm:root .settings-nav {
+    flex-wrap: nowrap;
+    padding: calc(var(--pm-lh) / 2) 2ch;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  html.pm:root .settings-nav::-webkit-scrollbar { display: none; }
+  html.pm:root .settings-tab { flex: none; }
+  html.pm:root .settings-panes { flex: 1; padding: var(--pm-lh) 2ch calc(var(--pm-lh) * 2 + env(safe-area-inset-bottom)); }
+  html.pm:root .settings-panes { --pm-label-w: 15ch; }
+  html.pm:root .settings-pane > .settings-note { margin-left: 0; }
 }
 
 /* ── Theme window: every theme as a radio line; pointing previews it ── */
