@@ -1012,8 +1012,50 @@ function testHyperliquidDexListAndCombinedPerpState() {
   assert.deepEqual(noMain.perp.assetPositions.map(p => p.position.coin), ['xyz:AAPL']);
   assert.deepEqual(noMain.activeDexes, ['xyz']);
 
-  // Nothing answered: no state at all, so the fetcher reports the wallet as failed.
+  // Nothing answered: no state at all (fetchPositions throws before this when a dex that
+  // may hold money is the one missing).
   assert.deepEqual(combinePerpStates([{ dex: '', state: null }]), { perp: null, activeDexes: [] });
+}
+
+function testHyperliquidDexReadPlanAndMissingAnswers() {
+  const { planDexRead, unansweredDexes } = HyperliquidProvider;
+  const MIN = 60 * 1000;
+  const now = 100 * MIN;
+
+  // First look, and every ten minutes: every dex (the caller fetches the list).
+  assert.deepEqual(planDexRead(null, now), { probeAll: true, dexes: null });
+  assert.deepEqual(planDexRead({ dexes: ['', 'xyz'], probedAt: now - 10 * MIN }, now), { probeAll: true, dexes: null });
+  // In between: only the dexes with money or positions, or main when there are none.
+  assert.deepEqual(planDexRead({ dexes: ['', 'xyz', 'mkts'], probedAt: now - 3 * MIN }, now), { probeAll: false, dexes: ['', 'xyz', 'mkts'] });
+  assert.deepEqual(planDexRead({ dexes: [], probedAt: now - 3 * MIN }, now), { probeAll: false, dexes: [''] });
+
+  // A dex that doesn't answer matters on a first look, or when it held money last time.
+  const dexes = ['', 'xyz', 'mkts', 'flx'];
+  assert.deepEqual(unansweredDexes(dexes, [true, false, true, false], null), ['xyz', 'flx']);
+  assert.deepEqual(unansweredDexes(dexes, [true, false, true, false], { dexes: ['', 'xyz'] }), ['xyz']);
+  assert.deepEqual(unansweredDexes(dexes, [true, true, true, false], { dexes: ['', 'xyz'] }), []);
+}
+
+async function testHyperliquidStakingReadKeepsLastAnswerOrFails() {
+  let fail = false;
+  const providers = {
+    hyperliquid: {
+      fetchDelegatorSummary: async () => {
+        if (fail) throw new Error('timeout');
+        return { delegated: '4', undelegated: '1', totalPendingWithdrawal: '0' };
+      }
+    }
+  };
+  const fetcher = new HyperliquidFetcher(providers, {}, {});
+  assert.deepEqual(await fetcher.getStaking('0xabc'), { staked: 4, unstaked: 1, withdrawing: 0 });
+
+  // The exchange stops answering: the last answer stands in, once the cache has aged out.
+  fail = true;
+  fetcher.stakingCache.get('0xabc').at = 0;
+  assert.deepEqual(await fetcher.getStaking('0xabc'), { staked: 4, unstaked: 1, withdrawing: 0 });
+
+  // With no last answer, the failure reaches the caller instead of reading as "nothing staked".
+  await assert.rejects(() => fetcher.getStaking('0xdef'), /timeout/);
 }
 
 function testHyperliquidEquityRowIsTheAccountValue() {
@@ -1087,6 +1129,8 @@ async function run() {
   testLighterTotalsWithEquity();
   testHyperliquidTotalsFallbackWhenNoEquity();
   testHyperliquidDexListAndCombinedPerpState();
+  testHyperliquidDexReadPlanAndMissingAnswers();
+  await testHyperliquidStakingReadKeepsLastAnswerOrFails();
   testHyperliquidEquityRowIsTheAccountValue();
   testCostBasisOnLosses();
   testNaNPnlIsSkipped();

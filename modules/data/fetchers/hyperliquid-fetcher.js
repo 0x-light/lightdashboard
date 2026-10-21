@@ -30,10 +30,17 @@ export class HyperliquidFetcher {
             const spotMetaPromise = this.getSpotMeta();
 
             // Staked HYPE isn't in the clearinghouse states; ask alongside them (kept 10 min).
-            const stakingPromises = wallets.map(wallet => this.getStaking(wallet));
+            // It's part of the equity, so a wallet whose stake can't be read fails like one
+            // whose positions can't: a lower equity would be recorded as a loss.
+            const stakingPromises = wallets.map(wallet => this.getStaking(wallet)
+                .then(value => ({ value }), error => ({ error })));
             const results = await Promise.all(positionResults);
             const staking = await Promise.all(stakingPromises);
-            results.forEach((r, i) => { if (r.data) r.data.staking = staking[i]; });
+            results.forEach((r, i) => {
+                if (!r.data) return;
+                if (staking[i].error) { r.error = staking[i].error; r.data = null; }
+                else r.data.staking = staking[i].value;
+            });
             const allPerps = results.flatMap(r => r.data?.perp?.assetPositions || [])
                 .filter(p => Math.abs(parseFloat(p.position?.szi || 0)) > 0);
             this.hasPerps = allPerps.length > 0;
@@ -126,12 +133,20 @@ export class HyperliquidFetcher {
         return this.spotMeta;
     }
 
-    // Staked, unstaked-but-in-staking and withdrawing HYPE for one wallet, or null.
+    // Staked, unstaked-but-in-staking and withdrawing HYPE for one wallet, or null when the
+    // provider has no staking call. When the exchange doesn't answer, the last answer is
+    // kept (it's a stake, it moves slowly); with none, the error goes to the caller.
     async getStaking(wallet) {
         this.stakingCache ||= new Map();
         const hit = this.stakingCache.get(wallet);
         if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.value;
-        const summary = await this.providers.hyperliquid.fetchDelegatorSummary?.(wallet, 4000).catch(() => null);
+        let summary;
+        try {
+            summary = await this.providers.hyperliquid.fetchDelegatorSummary?.(wallet, 4000);
+        } catch (error) {
+            if (hit) return hit.value;
+            throw error;
+        }
         const value = summary ? {
             staked: parseFloat(summary.delegated || 0) || 0,
             unstaked: parseFloat(summary.undelegated || 0) || 0,

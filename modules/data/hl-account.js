@@ -23,9 +23,12 @@ const num = (v) => {
 };
 
 // Orders and margin live on each HIP-3 dex separately. Ask the dexes the address had money
-// or positions on when its positions were last read; before that, every dex there is.
+// or positions on when its positions were last read (the main dex when that was none);
+// before that, every dex there is.
 async function dexesOf(address) {
-  return getUserDexes(address) ?? await fetchPerpDexs(8000);
+  const known = getUserDexes(address);
+  if (!known) return await fetchPerpDexs(8000);
+  return known.length ? known : [''];
 }
 
 /**

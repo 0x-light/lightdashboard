@@ -47,12 +47,17 @@ export function resolvePerpAccountValue(state) {
 // HIP-3 dexes, named as the API names them ('' is the main dex). Positions, margin and
 // orders live on each dex separately, and the account's value on Hyperliquid is the sum
 // over all of them. The list rarely changes, so it's kept for a day (in localStorage too,
-// so a page load doesn't wait for it); without it, the main and xyz dexes are assumed.
+// so a page load doesn't wait for it); when it can't be read, the main and xyz dexes are
+// assumed for a few minutes, then it's asked for again.
 const FALLBACK_DEXES = ['', 'xyz'];
 const PERP_DEXS_CACHE_KEY = 'hl_perp_dexs_v1';
 const PERP_DEXS_TTL_MS = 24 * 60 * 60 * 1000;
-let perpDexsCache = null; // { at, promise }
-const activeDexesByUser = new Map(); // address -> dexes with money or positions, from the last fetchPositions
+const PERP_DEXS_RETRY_MS = 5 * 60 * 1000;
+let perpDexsCache = null; // { until, promise }
+// address -> { dexes, probedAt }: the dexes with money or positions on them at the last
+// look at every dex. Between those looks, only these are read.
+const activeDexesByUser = new Map();
+const PROBE_ALL_MS = 10 * 60 * 1000;
 
 /** Dex names out of a `perpDexs` response: null is the main dex, the rest carry a name. */
 export function perpDexNames(list) {
@@ -65,12 +70,12 @@ export function perpDexNames(list) {
 
 export async function fetchPerpDexs(timeoutMs = 10000) {
   const now = Date.now();
-  if (perpDexsCache && now - perpDexsCache.at < PERP_DEXS_TTL_MS) return perpDexsCache.promise;
+  if (perpDexsCache && now < perpDexsCache.until) return perpDexsCache.promise;
   if (!perpDexsCache) {
     try {
       const cached = JSON.parse(localStorage.getItem(PERP_DEXS_CACHE_KEY) || 'null');
       if (cached && now - Number(cached.savedAt) < PERP_DEXS_TTL_MS && Array.isArray(cached.names)) {
-        perpDexsCache = { at: Number(cached.savedAt), promise: Promise.resolve(cached.names) };
+        perpDexsCache = { until: Number(cached.savedAt) + PERP_DEXS_TTL_MS, promise: Promise.resolve(cached.names) };
         return perpDexsCache.promise;
       }
     } catch (_) { /* no storage: fetch */ }
@@ -83,16 +88,35 @@ export async function fetchPerpDexs(timeoutMs = 10000) {
       return names;
     })
     .catch(() => {
-      perpDexsCache = null; // ask again next time
+      perpDexsCache = { until: now + PERP_DEXS_RETRY_MS, promise: Promise.resolve(FALLBACK_DEXES) };
       return FALLBACK_DEXES;
     });
-  perpDexsCache = { at: now, promise };
+  perpDexsCache = { until: now + PERP_DEXS_TTL_MS, promise };
   return promise;
 }
 
 /** Dexes `address` had money or positions on at the last fetchPositions, or null before that. */
 export function getUserDexes(address) {
-  return activeDexesByUser.get(String(address || '').toLowerCase()) ?? null;
+  return activeDexesByUser.get(String(address || '').toLowerCase())?.dexes ?? null;
+}
+
+/**
+ * Which dexes to read for an address: every one (dexes: null, the caller has the list) on a
+ * first look and every PROBE_ALL_MS after, since money can move to a dex nothing was on;
+ * otherwise only the ones known to hold something, or the main dex when that is none.
+ */
+export function planDexRead(known, now = Date.now()) {
+  if (!known || now - known.probedAt >= PROBE_ALL_MS) return { probeAll: true, dexes: null };
+  return { probeAll: false, dexes: known.dexes.length ? known.dexes : [''] };
+}
+
+/**
+ * Dexes whose missing answer makes the read unusable: any dex on a first look, and the dexes
+ * known to hold money after that. An equity that left one out would read as a loss. A dex
+ * that held nothing last time and didn't answer is taken as still empty.
+ */
+export function unansweredDexes(dexes, answered, known) {
+  return dexes.filter((dex, i) => !answered[i] && (!known || known.dexes.includes(dex)));
 }
 
 /**
@@ -133,21 +157,33 @@ export function combinePerpStates(states) {
   return { perp, activeDexes };
 }
 
+/**
+ * Spot and the perp state of the address's dexes, all at once. Throws when spot, or a dex
+ * that may hold money, doesn't answer: a lower equity would be recorded as a loss.
+ */
 export async function fetchPositions(address, timeoutMs = 10000) {
   if (!address) return null;
-
-  // Spot and the clearinghouse state of every dex, all at once. `meta` has no dex list
-  // (it's { universe, marginTables, collateralToken }); perpDexs has.
-  const dexes = await fetchPerpDexs(timeoutMs);
+  const key = String(address).toLowerCase();
+  const known = activeDexesByUser.get(key) ?? null;
+  const now = Date.now();
+  // `meta` has no dex list (it's { universe, marginTables, collateralToken }); perpDexs has.
+  const { probeAll, dexes: planned } = planDexRead(known, now);
+  const dexes = planned ?? await fetchPerpDexs(timeoutMs);
+  const settle = (promise) => promise.then(value => ({ value }), error => ({ error }));
   const [spot, ...states] = await Promise.all([
-    post({ type: 'spotClearinghouseState', user: address }, timeoutMs).catch(() => null),
-    ...dexes.map(dex => post(dex ? { type: 'clearinghouseState', user: address, dex } : { type: 'clearinghouseState', user: address }, timeoutMs)
-      .catch(() => null))
+    settle(post({ type: 'spotClearinghouseState', user: address }, timeoutMs)),
+    ...dexes.map(dex => settle(post(dex ? { type: 'clearinghouseState', user: address, dex } : { type: 'clearinghouseState', user: address }, timeoutMs)))
   ]);
 
-  const { perp, activeDexes } = combinePerpStates(dexes.map((dex, i) => ({ dex, state: states[i] })));
-  activeDexesByUser.set(String(address).toLowerCase(), activeDexes);
-  return { perp, spot, dexes: activeDexes };
+  const missing = unansweredDexes(dexes, states.map(r => !r.error), known);
+  if (spot.error || missing.length) {
+    const what = [...(spot.error ? ['spot'] : []), ...missing.map(d => d || 'main')].join(', ');
+    throw new Error(`Hyperliquid: no answer from ${what}`);
+  }
+
+  const { perp, activeDexes } = combinePerpStates(dexes.map((dex, i) => ({ dex, state: states[i].value })));
+  activeDexesByUser.set(key, { dexes: activeDexes, probedAt: probeAll ? now : known.probedAt });
+  return { perp, spot: spot.value, dexes: activeDexes };
 }
 
 export async function fetchAllMids(timeoutMs = 10000) {
@@ -300,6 +336,8 @@ export default {
   getUserDexes,
   combinePerpStates,
   perpDexNames,
+  planDexRead,
+  unansweredDexes,
   fetchAllMids,
   fetchMetaAndAssetCtxs,
   fetchDexMetaAndAssetCtxs,
