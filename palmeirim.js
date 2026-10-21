@@ -161,34 +161,10 @@
   heroSection.insertBefore(card, summary);
   card.appendChild(summary);
 
-  // Folded, the allocation is one strip split by holding; the strip is the button
-  // that opens a row per holding. Closed by default: the positions table below
-  // already lists every holding.
-  var allocWrap = el("div", { class: "pm-alloc-wrap", hidden: "" },
-    '<button type="button" class="pm-strip" aria-expanded="false" aria-controls="pmAlloc"></button>');
-  var allocList = el("ul", { class: "pm-alloc", id: "pmAlloc", "aria-label": "Allocation", hidden: "" });
-  allocWrap.appendChild(allocList);
-  card.appendChild(allocWrap);
-  var strip = $(".pm-strip", allocWrap);
-
-  // Pointing at a segment names it on the card's bottom border, starting where that
-  // segment starts: "ZRO · 64% · $76.4k". It lives on <body>, outside the observed
-  // #main, so placing it doesn't re-run the observer.
+  // Pointing at the value chart names the point on the card's bottom border. It lives
+  // on <body>, outside the observed #main, so placing it doesn't re-run the observer.
   var readout = el("p", { class: "pm-card__readout", "aria-hidden": "true", hidden: "" });
   document.body.appendChild(readout);
-  strip.addEventListener("mouseover", function (e) {
-    var seg = e.target.closest(".pm-strip__seg");
-    if (!seg) return;
-    if (readout.textContent !== seg.dataset.readout) readout.textContent = seg.dataset.readout;
-    readout.hidden = false;
-    var box = card.getBoundingClientRect();
-    // The label's own 1ch padding lines its text up with the segment's left edge.
-    var pad = parseFloat(getComputedStyle(readout).paddingLeft) || 0;
-    var x = Math.min(seg.getBoundingClientRect().left - pad, box.right - readout.offsetWidth - 8);
-    readout.style.left = Math.max(box.left + 1, x) + "px";
-    readout.style.top = (box.bottom - readout.offsetHeight / 2) + "px";
-  });
-  strip.addEventListener("mouseleave", function () { readout.hidden = true; });
   window.addEventListener("scroll", function () { readout.hidden = true; }, { passive: true });
 
   // ── Account value chart: Hyperliquid's own history, so it's the same on every device ──
@@ -201,7 +177,7 @@
     '<span class="pm-value__periods" role="radiogroup" aria-label="Period">' +
     PERIODS.map(function (p) { return '<button type="button" role="radio" class="pm-value__period" data-period="' + p[0] + '">' + p[1] + '</button>'; }).join("") +
     '</span><span class="pm-value__change"></span></div><div class="pm-value__chart"></div>');
-  card.insertBefore(valueBox, allocWrap);
+  card.appendChild(valueBox);
   var valuePeriod = "week";
   try { valuePeriod = localStorage.getItem("pmValuePeriod") || "week"; } catch (_e) {}
   var valueData = null;
@@ -336,69 +312,6 @@
   new MutationObserver(loadValue).observe(document.documentElement, { attributes: true, attributeFilter: ["data-value-chart"] });
   loadValue();
   setInterval(loadValue, 5 * 60 * 1000);
-
-  function setAllocOpen(open) {
-    strip.setAttribute("aria-expanded", String(open));
-    allocList.hidden = !open;
-    try { localStorage.setItem("pmAllocOpen", open ? "1" : "0"); } catch (_e) {}
-  }
-
-  strip.addEventListener("click", function () {
-    setAllocOpen(strip.getAttribute("aria-expanded") !== "true");
-  });
-
-  setAllocOpen(false);
-  try { if (localStorage.getItem("pmAllocOpen") === "1") setAllocOpen(true); } catch (_e) {}
-
-  // Strip and rows share one vocabulary: solid ink, one dither pattern, then
-  // quieter shades. The strip splits the line by holding; each row is a solid bar on
-  // a dithered track.
-  var narrow = window.matchMedia("(max-width: 520px)");
-
-  function toneFor(it, i) { return it.label === "Other" ? "other" : String(Math.min(i, 3)); }
-
-  // Rebuilt from the app's legend, which already holds label, share and (when shown) value.
-  function syncAlloc() {
-    var items = $$("#newSummary .alloc-legend li").map(function (li) {
-      var label = $(".alloc-label", li), share = $(".alloc-share", li), value = $(".alloc-value", li);
-      return {
-        label: label ? label.textContent : "",
-        share: share ? share.textContent : "",
-        pct: share ? Math.max(0, Math.min(100, parseFloat(share.textContent) || 0)) : 0,
-        value: value ? value.textContent : ""
-      };
-    });
-    var showValue = !narrow.matches;
-
-    var segs = items.map(function (it, i) {
-      var readout = [it.label, it.share, it.value].filter(Boolean).join(" · ");
-      return '<span class="pm-strip__seg pm-tone-' + toneFor(it, i) + '" style="flex-grow:' + it.pct + '" data-readout="' + escapeHtml(readout) + '"></span>';
-    }).join("");
-    var label = "Allocation: " + items.map(function (it) { return it.label + " " + it.share; }).join(", ");
-    var rows = items.map(function (it) {
-      return '<li><span class="pm-alloc__label">' + escapeHtml(it.label) + '</span>' +
-        '<span class="pm-alloc__bar" aria-hidden="true"><span style="width:' + it.pct + '%"></span></span>' +
-        '<span class="pm-alloc__share">' + escapeHtml(it.share) + '</span>' +
-        (showValue ? '<span class="pm-alloc__value">' + escapeHtml(it.value) + '</span>' : '') + '</li>';
-    }).join("");
-
-    // Inside the observed subtree, so only write real changes. Compare against what we
-    // wrote, not innerHTML: the browser re-serialises styles, which would never match.
-    var key = segs + rows;
-    if (key === lastAlloc) return;
-    lastAlloc = key;
-    strip.innerHTML = segs;
-    strip.setAttribute("aria-label", label);
-    allocList.innerHTML = rows;
-    allocWrap.hidden = !rows;
-  }
-  var lastAlloc = null;
-
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; });
-  }
-
-  narrow.addEventListener("change", syncAlloc);
 
   function tick() {
     var now = new Date();
@@ -662,7 +575,7 @@
   });
 
   // The app renders asynchronously and hides sections from settings; follow along.
-  new MutationObserver(function () { syncWeather(); syncAlloc(); syncSparks(); renderNav(); }).observe($("#main"), { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "hidden", "class"] });
+  new MutationObserver(function () { syncWeather(); syncSparks(); renderNav(); }).observe($("#main"), { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "hidden", "class"] });
 
   // app.js sets the theme select's value after this runs.
   // ── 24h sparklines: the same dim dither as the allocation tracks, under the line ──
@@ -708,7 +621,7 @@
     });
   });
 
-  window.addEventListener("load", function () { syncThemeName(); syncWeather(); syncAlloc(); syncSparks(); renderNav(); });
+  window.addEventListener("load", function () { syncThemeName(); syncWeather(); syncSparks(); renderNav(); });
   syncThemeName();
   renderNav();
 })();

@@ -827,6 +827,7 @@ export class IncrementalPortfolioRenderer {
           hideSmallPositions: false, // Already filtered above
           editMode: window.editMode || false,
           openKey: window.openPositionKey || null,
+          shares: totals.shareByRow || {},
           sort: window.positionsSort || null,
           query: window.positionsQuery || '',
           settings: {

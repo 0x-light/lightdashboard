@@ -392,87 +392,21 @@ html.pm:root .hero-summary {
   padding: 0;
 }
 
-/* The card's allocation rows replace the app's single strip. */
+/* The allocation lives in the positions table (each Asset cell fills to its share),
+   so the card drops the app's strip. */
 html.pm:root .hero-summary .alloc { display: none !important; }
 
-html.pm:root .pm-alloc-wrap { margin-top: var(--pm-lh); }
-
 /* One dither pattern for every chart, a 1px checkerboard, in two strengths: full ink
-   where it stands for a holding, and a dim one for empty track, so filled and empty
+   where it stands for a value, and a dim one for empty track, so filled and empty
    never read alike. */
 html.pm:root {
-  /* Strip and row bars share one height; rounded to whole pixels where supported. */
   --pm-bar-h: calc(var(--pm-lh) * 0.7);
   --pm-dither: repeating-conic-gradient(var(--pm-ink) 0 25%, transparent 0 50%) 0 0 / 2px 2px;
   --pm-dither-dim: repeating-conic-gradient(var(--pm-rule) 0 25%, transparent 0 50%) 0 0 / 2px 2px;
 }
 
-/* Folded: a strip split by holding with plain background gaps, the same 2px
-   break that separates fill from track in the rows below. It is the button that
-   opens the rows. */
-html.pm:root .pm-strip {
-  display: flex;
-  gap: 2px;
-  width: 100%;
-  height: var(--pm-bar-h);
-  height: round(var(--pm-bar-h), 1px);
-  box-sizing: border-box;
-  padding: 0;
-  border: 0;
-  background: var(--bg);
-  cursor: pointer;
-}
-
-html.pm:root .pm-strip__seg { min-width: 2px; }
-html.pm:root .pm-tone-0 { background: var(--pm-ink); }
-html.pm:root .pm-tone-1 { background: var(--pm-dither), var(--bg); }
-html.pm:root .pm-tone-2 { background: var(--pm-muted); }
-html.pm:root .pm-tone-3 { background: var(--pm-tint-2); }
-html.pm:root .pm-tone-other { background: var(--pm-tint); }
-
-html.pm:root .pm-strip:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 2px; }
-
-@media (hover: hover) {
-  html.pm:root .pm-strip:hover { outline: 1px solid var(--pm-rule); outline-offset: 2px; }
-}
-
-/* Open: a row per holding. Ticker, a solid bar on a dithered track, share, value. */
-html.pm:root .pm-alloc {
-  display: grid;
-  grid-template-columns: max-content minmax(8ch, 1fr) max-content max-content;
-  gap: 0 2ch;
-  margin: calc(var(--pm-lh) / 2) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-html.pm:root .pm-alloc[hidden] { display: none; }
-html.pm:root .pm-alloc li { display: contents; }
-html.pm:root .pm-alloc__label { text-transform: uppercase; }
-html.pm:root .pm-alloc__share { text-align: right; color: var(--pm-muted); }
-html.pm:root .pm-alloc__value { text-align: right; }
-
-html.pm:root .pm-alloc__bar {
-  display: flex;
-  align-self: center;
-  height: var(--pm-bar-h);
-  height: round(var(--pm-bar-h), 1px);
-  background: var(--pm-dither-dim);
-}
-
-html.pm:root .pm-alloc__bar > span {
-  display: block;
-  min-width: 2px;
-  height: 100%;
-  background: var(--pm-ink);
-  /* A bg-coloured edge separates the fill from the dither. */
-  box-shadow: 2px 0 0 var(--bg);
-}
-
 @media (max-width: 520px) {
   html.pm:root .pm-card { padding: var(--pm-lh) 1ch; }
-  /* The value cell leaves the grid, so the grid drops its column too. */
-  html.pm:root .pm-alloc { grid-template-columns: max-content minmax(6ch, 1fr) max-content; gap: 0 1ch; }
 }
 
 html.pm:root .hero-sentence,
@@ -1982,4 +1916,25 @@ html.pm:root .table-wrapper.more-right { -webkit-mask-image: none; mask-image: n
    still lands on the first screen; the rest is a swipe away. */
 @media (max-width: 520px) {
   html.pm:root #newPositionsTable :is(th, td):nth-child(3) { display: none; }
+}
+
+/* Allocation in place: the Asset cell fills from the left to the row's share of the
+   portfolio. On an inverted (open, focused or pointed-at) row the fill inverts too. */
+html.pm:root .data-table td.asset-cell {
+  --pm-share-fill: var(--pm-tint-2);
+  background-image: linear-gradient(to right, var(--pm-share-fill) var(--share, 0%), transparent 0);
+}
+
+html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-cell {
+  --pm-share-fill: color-mix(in srgb, var(--bg) 30%, var(--pm-ink));
+}
+
+/* The text inside lets the fill show through instead of painting its own ink box. */
+html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-cell * { background-color: transparent; }
+
+@media (hover: hover) {
+  html.pm:root .data-table tbody tr.position-row:hover td.asset-cell {
+    --pm-share-fill: color-mix(in srgb, var(--bg) 30%, var(--pm-ink));
+    background-image: linear-gradient(to right, var(--pm-share-fill) var(--share, 0%), transparent 0);
+  }
 }

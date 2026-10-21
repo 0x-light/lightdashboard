@@ -615,7 +615,17 @@ function createTableRow(doc, pos, opts, prevDataMap) {
         td.textContent = cellContent;
       }
     }
-    if (i === 0) td.classList.add('asset-cell');
+    if (i === 0) {
+      td.classList.add('asset-cell');
+      // The cell fills to the row's share of the portfolio: the allocation, read in place.
+      // The largest holding fills the cell, so small shares still show; the title has the
+      // exact share.
+      const share = opts.shares?.[rowKey];
+      if (share > 0) {
+        td.style.setProperty('--share', `${(Math.min(1, share / (opts.largestShare || share)) * 100).toFixed(2)}%`);
+        td.title = `${share >= 0.1 ? Math.round(share * 100) : (share * 100).toFixed(1)}% of portfolio`;
+      }
+    }
     if (i === cells.length - 1) {
       td.classList.add('exchange-cell');
       td.title = pos.exchange || '';
@@ -759,7 +769,8 @@ export function renderPositions({ positions, containers, options, previousPositi
   try {
     if (!containers?.positionsBody) return positions;
     const doc = containers.positionsBody.ownerDocument || document;
-    const opts = options || {};
+    const opts = { ...options };
+    opts.largestShare = Math.max(0, ...Object.values(opts.shares || {}));
     const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
     updateHeaders(containers.positionsBody, baseCurrency);
 

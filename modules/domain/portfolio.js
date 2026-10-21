@@ -262,12 +262,14 @@ function venueOf(p) {
  *   on the venue keep their own value; the rest of the equity (perp margin + unrealized P&L) is
  *   spread across the venue's open perps by notional size, or shown as "Cash" when none are open.
  * - allocation: [{ label, value, share }] sorted by value; tail folded into "Other" past maxSlices.
+ * - shareByRow: { 'ASSET_EXCHANGE': share } for each row, on the same split, so a table row
+ *   can show its own part of the total.
  * - change24h / change24hPercent: price-driven move over the last 24h. Perps contribute their
  *   signed notional exposure (shorts gain when price falls); spot contributes its value.
  *   null when no position reports a 24h change.
  */
 export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
-  const empty = { allocation: [], change24h: null, change24hPercent: null };
+  const empty = { allocation: [], shareByRow: {}, change24h: null, change24hPercent: null };
   if (!Array.isArray(positions) || positions.length === 0) return empty;
 
   const hasHlEquity = positions.some(p => p?.isHlAccountEquity);
@@ -278,13 +280,18 @@ export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
     return venues.get(key);
   };
   const slices = new Map();
+  const rowValues = new Map();
   let totalValue = 0;
   let change = 0;
   let hasChange = false;
 
-  const addSlice = (label, value) => {
+  const addSlice = (label, value, p) => {
     if (!(value > 0)) return;
     slices.set(label, (slices.get(label) || 0) + value);
+    if (p) {
+      const key = `${p.asset}_${p.exchange}`;
+      rowValues.set(key, (rowValues.get(key) || 0) + value);
+    }
     totalValue += value;
   };
 
@@ -313,14 +320,14 @@ export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
       (p.isLeveraged || p.exchange === 'HL Perps' ? v.perps : v.spot).push(p);
       continue;
     }
-    addSlice(p.asset || '—', finiteOrZero(Number(p.value)));
+    addSlice(p.asset || '—', finiteOrZero(Number(p.value)), p);
   }
 
   for (const { equity, spot, perps } of venues.values()) {
     let remaining = equity;
     for (const p of spot) {
       const value = Math.min(Math.max(finiteOrZero(Number(p.value)), 0), Math.max(remaining, 0));
-      addSlice(p.asset || '—', value);
+      addSlice(p.asset || '—', value, p);
       remaining -= value;
     }
     if (!(remaining > 0)) continue;
@@ -328,7 +335,7 @@ export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
     const notional = perps.map(p => Math.abs(finiteOrZero(Number(p.value))));
     const totalNotional = notional.reduce((sum, n) => sum + n, 0);
     if (totalNotional > 0) {
-      perps.forEach((p, i) => addSlice(p.asset || '—', remaining * (notional[i] / totalNotional)));
+      perps.forEach((p, i) => addSlice(p.asset || '—', remaining * (notional[i] / totalNotional), p));
     } else {
       addSlice('Cash', remaining);
     }
@@ -344,9 +351,13 @@ export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
     ? head.map(s => ({ ...s, share: s.value / totalValue }))
     : [];
 
+  const shareByRow = {};
+  if (totalValue > 0) rowValues.forEach((value, key) => { shareByRow[key] = value / totalValue; });
+
   const previousValue = totalValue - change;
   return {
     allocation,
+    shareByRow,
     change24h: hasChange ? change : null,
     change24hPercent: hasChange && previousValue > 0 ? (change / previousValue) * 100 : null
   };
