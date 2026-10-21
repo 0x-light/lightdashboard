@@ -32,10 +32,10 @@
   var nav = el("nav", { class: "pm-nav", id: "pmNav", "aria-label": "Sections" });
   header.insertBefore(nav, header.firstChild);
 
-  // Phones: one chip naming the section in view ("▾ Positions") opens the list of
+  // Phones: one chip naming the section in view ("Positions") opens the list of
   // sections, framed like the menu. On wider screens the chips sit in the bar.
   var sectionBtn = el("button", { type: "button", class: "pm-section-btn chip", "aria-expanded": "false", "aria-controls": "pmNav" },
-    '<span class="chip__label">▾ <span class="js-pm-current">Portfolio</span></span>');
+    '<span class="chip__label"><span class="js-pm-current">Portfolio</span></span>');
   header.insertBefore(sectionBtn, nav);
 
   function visibleSections() {
@@ -96,7 +96,7 @@
     history.replaceState(null, "", index === 0 ? location.pathname + location.search : link.hash);
   }
 
-  // ── Tools fold into one MENU chip: a popover on desktop, a sheet on phones ──
+  // ── Tools fold into one MENU chip that drops down a framed list ──
   // It is the header's own tool row, restyled, so every button keeps the listeners
   // app.js gave it. Picking a tool, clicking outside or Esc closes it.
 

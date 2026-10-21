@@ -77,6 +77,12 @@ html.pm,
 html.pm * { scrollbar-width: none; }
 html.pm ::-webkit-scrollbar { display: none; }
 
+/* Fields use the page's text size on phones too; iOS auto-zoom is turned off in index.html
+   instead of forcing 16px (styles.css does that for the old layout). */
+@media (max-width: 870px) {
+  html.pm:root :is(input, select, textarea) { font-size: inherit !important; }
+}
+
 /* ── Keys and chips ── */
 
 html.pm:root kbd {
@@ -172,7 +178,7 @@ html.pm:root .pm-section-btn {
 html.pm:root .pm-section-btn[aria-expanded="true"] .chip__label { background: var(--pm-ink); color: var(--bg); }
 
 /* All tools live behind one MENU chip at the right of the bar: a framed popover
-   under it on desktop, a sheet above the bottom edge on phones. Every tool is always
+   that drops down under it. Every tool is always
    listed (snow, rain, stickers and donate included), so nothing needs switching on. */
 html.pm:root .pm-menu-btn {
   display: inline-flex;
@@ -245,8 +251,7 @@ html.pm:root body #newDonateBtn { display: inline-flex !important; }
 html.pm:root .settings-group:has(+ label.check #newShowStickersBtn),
 html.pm:root .settings-pane label.check:has(#newShowStickersBtn, #newShowSnowBtn, #newShowRainBtn, #newShowDonateBtn) { display: none; }
 
-/* Phones: sections in one swipeable line, and the menu opens as a sheet above the
-   bottom edge, closer to the thumb. */
+/* Phones: one chip for sections, one for the menu; both drop down from the bar. */
 @media (max-width: 720px) {
   html.pm:root .app-header { flex-wrap: nowrap; align-items: center; gap: 1ch; }
 
@@ -281,13 +286,11 @@ html.pm:root .settings-pane label.check:has(#newShowStickersBtn, #newShowSnowBtn
   html.pm:root .pm-nav .chip,
   html.pm:root .pm-nav .chip__label { width: 100%; }
 
+  /* MENU drops down under its chip, like the section list: as wide as its items. */
   html.pm:root .app-header.pm-menu-open .header-actions {
-    position: fixed;
-    top: auto;
-    left: 1ch;
-    right: 2ch;
-    bottom: calc(var(--pm-lh) * 1.5 + env(safe-area-inset-bottom, 0px));
-    min-width: 0;
+    right: 1ch;
+    min-width: 24ch;
+    max-width: calc(100vw - 3ch);
   }
 }
 
@@ -801,6 +804,23 @@ html.pm:root .wl-detail__facts + .wl-detail__actions { margin-top: calc(var(--pm
 /* Phones: two tiles a row. */
 @media (max-width: 520px) {
   html.pm:root #newWatchlistBody { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pm-lh) 1ch; }
+}
+
+/* ── Funding tooltip: framed like the windows, in the page's main colour ── */
+html.pm:root .funding-rate-tooltip {
+  padding: calc(var(--pm-lh) / 4) 1ch;
+  border: 1px solid var(--pm-ink);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--pm-ink);
+  box-shadow: 1ch calc(var(--pm-lh) / 3) 0 var(--pm-tint-2);
+  line-height: var(--pm-lh);
+}
+
+/* The funding figure's dotted underline (it has a tooltip) in the rule colour. */
+html.pm:root .funding-cell[data-funding-rate] {
+  text-decoration: underline dotted var(--pm-rule);
+  text-underline-offset: 3px;
 }
 
 /* ── Undo line: framed like a window, low on the left, for a few seconds ── */
@@ -1576,7 +1596,8 @@ html.pm:root #settingsPane-wallets > label:not(.check) > * { grid-column: 1; }
     grid-template-columns: minmax(0, 1fr);
   }
   html.pm:root :is(.settings-pane > label:not(.check), .settings-pane .row > label) > *,
-  html.pm:root .settings-pane .settings-field > * { grid-column: 1; }
+  html.pm:root .settings-pane .settings-field > :not(label),
+  html.pm:root .settings-pane .settings-field > label { grid-column: 1; }
 }
 
 /* ── Theme window: every theme as a radio line; pointing previews it ── */
