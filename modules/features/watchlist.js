@@ -277,19 +277,35 @@ async function enrichYahooWithHistory(yahooItems, stocksProvider, onProgress = n
 
 // --- Rendering ---
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+}
+
+// The last render, so opening or closing an item can redraw without refetching.
+let lastRender = null;
+
+// Each item opens in place (click, or Enter when focused) to show its name and a
+// Remove action. app.js sets `window.openWatchlistKey` and handles the clicks and keys.
 function renderRows(container, data, options) {
-  const { useColoredPnL, editMode, showPriceChart, prevPriceMap } = options;
+  const { useColoredPnL, showPriceChart, prevPriceMap } = options;
+  lastRender = { container, data, options: { ...options, prevPriceMap: {} } };
 
   if (!data || data.length === 0) {
     container.innerHTML = '<tr class="watchlist-empty-row"><td colspan="4">Nothing on your watchlist yet.</td></tr>';
     return;
   }
 
+  const openKey = typeof window !== 'undefined' ? window.openWatchlistKey : null;
+
   const html = data.map(item => {
-    const symbol = item.symbol;
+    const symbol = escapeHtml(item.symbol);
     const price = item.price;
     const change24h = item.change24h;
-    const key = item.key || (item.feedId ? `pyth:${item.feedId}` : `yahoo:${(symbol || '').toUpperCase()}`);
+    const key = item.key || (item.feedId ? `pyth:${item.feedId}` : `yahoo:${(item.symbol || '').toUpperCase()}`);
+    const keyAttr = escapeHtml(key);
+    const isOpen = openKey === key;
 
     // Quote currency (EUR for VWCE.DE, GBp for LSE…); Pyth feeds are USD-quoted.
     const priceFormatted = price == null
@@ -302,14 +318,14 @@ function renderRows(container, data, options) {
       const isPos = change24h >= 0;
       changeColor = useColoredPnL ? (isPos ? 'var(--green)' : 'var(--red)') : '';
       changeText = `${isPos ? '+' : ''}${change24h.toFixed(2)}%`;
-    } else if (!isStablecoin(symbol) && !item.unavailable) {
+    } else if (!isStablecoin(item.symbol) && !item.unavailable) {
       changeText = '<span class="cell-loading">—</span>';
     }
 
     let chartHtml;
     if (!showPriceChart) {
       chartHtml = '';
-    } else if (isStablecoin(symbol) || item.unavailable) {
+    } else if (isStablecoin(item.symbol) || item.unavailable) {
       chartHtml = '—';
     } else if (item.priceHistory && item.priceHistory.length > 1) {
       chartHtml = createSparkline(item.priceHistory, 60, 24, change24h) || '<span class="cell-loading">—</span>';
@@ -320,24 +336,44 @@ function renderRows(container, data, options) {
     const prevPrice = prevPriceMap[key];
     let flashClass = '';
     if (prevPrice && price !== prevPrice) {
-      flashClass = price > prevPrice ? 'flash-green' : 'flash-red';
+      flashClass = price > prevPrice ? ' flash-green' : ' flash-red';
     }
 
-    const assetCellContent = editMode
-      ? `<span class="edit-asset-cell"><button type="button" class="watchlist-edit-btn" data-entry-key="${key}" aria-label="Remove ${symbol} from watchlist">[X]</button>${symbol}</span>`
-      : `<span class="symbol">${symbol}</span>`;
+    const facts = [item.name, item.category, item.unavailable ? 'quote unavailable' : '']
+      .filter(Boolean).map(escapeHtml).join(' · ');
+    const detail = isOpen
+      ? `<td class="wl-detail">${facts ? `<div class="wl-detail__facts">${facts}</div>` : ''}` +
+        `<div class="wl-detail__actions"><button type="button" class="row-action watchlist-remove-btn" data-entry-key="${keyAttr}" data-shortcut="delete" aria-label="Remove ${symbol} from watchlist"><kbd>⌫</kbd><span>Remove</span></button></div></td>`
+      : '';
 
     return `
-      <tr class="${flashClass}">
-        <td>${assetCellContent}</td>
-        <td class="text-right font-mono"${item.unavailable ? ' title="Quote unavailable"' : ''}>${priceFormatted}</td>
-        <td class="text-center chart">${chartHtml}</td>
-        <td class="text-right font-mono" style="color: ${changeColor}">${changeText}</td>
+      <tr class="watchlist-row${flashClass}${isOpen ? ' is-open' : ''}" data-entry-key="${keyAttr}" tabindex="0" aria-expanded="${isOpen}">
+        <td class="wl-symbol"><span class="symbol">${symbol}</span></td>
+        <td class="wl-price text-right font-mono"${item.unavailable ? ' title="Quote unavailable"' : ''}>${priceFormatted}</td>
+        <td class="wl-chart text-center chart">${chartHtml}</td>
+        <td class="wl-change text-right font-mono" style="color: ${changeColor}">${changeText}</td>
+        ${detail}
       </tr>
     `;
   }).join('');
 
+  // Rows are rebuilt on every refresh; hand keyboard focus (an item or its action) back.
+  const active = container.ownerDocument?.activeElement;
+  const focusedKey = container.contains(active) ? active.closest('tr')?.dataset.entryKey : null;
+  const focusedAction = focusedKey ? active.dataset?.shortcut : null;
+
   container.innerHTML = html;
+
+  if (focusedKey) {
+    const row = Array.from(container.querySelectorAll('tr.watchlist-row')).find(r => r.dataset.entryKey === focusedKey);
+    const target = focusedAction ? row?.querySelector(`[data-shortcut="${focusedAction}"]`) : row;
+    target?.focus({ preventScroll: true });
+  }
+}
+
+// Redraw the last render with the current open item; no fetching.
+export function rerenderOpenState() {
+  if (lastRender) renderRows(lastRender.container, lastRender.data, lastRender.options);
 }
 
 export async function render(container, {
@@ -346,7 +382,7 @@ export async function render(container, {
   pythProvider,
   stocksProvider,
   useColoredPnL = true,
-  editMode = false,
+  editMode: _editMode = false, // accepted for older callers; items open in place instead
   cachedData = null,
   previousData = null,
   showPriceChart = true,
@@ -361,7 +397,7 @@ export async function render(container, {
 
   if (normalized.length === 0) {
     lastGoodWatchlistData = null;
-    renderRows(container, [], { useColoredPnL, editMode, showPriceChart, prevPriceMap: {} });
+    renderRows(container, [], { useColoredPnL, showPriceChart, prevPriceMap: {} });
     return [];
   }
 
@@ -399,7 +435,7 @@ export async function render(container, {
     }
     // Preserve the order the user added entries in, regardless of fetch completion order.
     const sorted = [...byKey.values()].sort((a, b) => (orderIndex.get(a.key) ?? 0) - (orderIndex.get(b.key) ?? 0));
-    renderRows(container, sorted, { useColoredPnL, editMode, showPriceChart, prevPriceMap });
+    renderRows(container, sorted, { useColoredPnL, showPriceChart, prevPriceMap });
   };
   const getLastGoodData = () => {
     if (Array.isArray(lastGoodWatchlistData) && lastGoodWatchlistData.length > 0) return lastGoodWatchlistData;

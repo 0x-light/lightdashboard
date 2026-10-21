@@ -87,6 +87,7 @@ export function getDefaultSettings() {
     cieloApiKey: '',
     font: 'sf',
     fontSize: 14,
+    fullWidth: false, // Content column fills the window instead of stopping at a reading width
     comicStrip: 'calvinandhobbes',
     hideComic: false,
     hideWatchlist: false,

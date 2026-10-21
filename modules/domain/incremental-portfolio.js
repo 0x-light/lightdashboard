@@ -823,6 +823,7 @@ export class IncrementalPortfolioRenderer {
           amountsVisible: !document.body.classList.contains('amounts-hidden'),
           hideSmallPositions: false, // Already filtered above
           editMode: window.editMode || false,
+          openKey: window.openPositionKey || null,
           settings: {
             minBalanceThreshold: minThreshold,
             showExactAmounts: this.settings.showExactAmounts || false,

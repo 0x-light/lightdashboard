@@ -59,23 +59,62 @@ function escapeAttr(value) {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
-// Edit-mode actions, shared by table rows and phone cards so both offer the same things.
-// The handler in app.js keys off the class names and data attributes.
-function editActionsHtml(pos, assetKey, { withText = false } = {}) {
-  const isManual = pos.isManual || (typeof pos.exchange === 'string' && pos.exchange.startsWith('Manual'));
+function isManualPosition(pos) {
+  return pos.isManual || (typeof pos.exchange === 'string' && pos.exchange.startsWith('Manual'));
+}
+
+// A position's actions, shown in the detail line under an open row (and on phone cards).
+// Manual positions can be edited or deleted; the rest can be hidden or shown again.
+// The handler in app.js keys off the class names, data attributes and data-shortcut.
+function rowActionsHtml(pos, assetKey) {
   const name = escapeAttr(pos.asset);
-  const button = (cls, attrs, glyph, label) =>
-    `<button type="button" class="${cls}" ${attrs} aria-label="${label}">${withText ? label.split(' ')[0] : glyph}</button>`;
-  if (isManual) {
+  const action = (cls, attrs, shortcut, glyph, label) =>
+    `<button type="button" class="row-action ${cls}" ${attrs} data-shortcut="${shortcut}" aria-label="${label} ${name}">` +
+    `<kbd>${glyph}</kbd><span>${label}</span></button>`;
+  if (isManualPosition(pos)) {
     const manualType = pos.manualType || (pos.exchange ? manualTypeFromExchange(pos.exchange) : '');
     const attrs = `data-asset="${name}"${manualType ? ` data-manual-type="${manualType}"` : ''}`;
-    return button('position-delete-btn', attrs, '×', `Delete ${name}`) +
-      button('position-manual-edit-btn', attrs, 'edit', `Edit ${name}`);
+    return action('position-manual-edit-btn', attrs, 'e', 'E', 'Edit') +
+      action('position-delete-btn', attrs, 'delete', '⌫', 'Delete');
   }
-  if (pos.isManuallyHidden) {
-    return button('position-restore-btn', `data-asset-key="${escapeAttr(assetKey)}"`, '+', `Show ${name}`);
+  const keyAttr = `data-asset-key="${escapeAttr(assetKey)}"`;
+  return pos.isManuallyHidden
+    ? action('position-restore-btn', keyAttr, 'h', 'H', 'Show')
+    : action('position-edit-btn', keyAttr, 'h', 'H', 'Hide');
+}
+
+// The line that opens under a row: what the row can't fit, then its actions.
+function createDetailRow(doc, pos, opts, colSpan) {
+  const amountVisible = !!opts.amountsVisible;
+  const showExactAmounts = opts.settings?.showExactAmounts ?? false;
+  const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
+  const quoteCurrency = normalizeCurrencyCode(pos.currency || pos.sourceCurrency || baseCurrency, baseCurrency);
+  const facts = [
+    `${formatAmount(pos.amount, amountVisible, showExactAmounts)} ${escapeAttr(pos.asset)}`,
+    escapeAttr(pos.exchange || '')
+  ];
+  if (Number(pos.entryPrice) > 0) {
+    const entry = `entry ${formatPrice(Number(pos.entryPrice), true, quoteCurrency)}`;
+    facts.push(pos.entryDate ? `${entry} on ${escapeAttr(pos.entryDate)}` : entry);
   }
-  return button('position-edit-btn', `data-asset-key="${escapeAttr(assetKey)}"`, '×', `Hide ${name}`);
+  if (pos.isManuallyHidden) facts.push('hidden');
+
+  const tr = doc.createElement('tr');
+  tr.className = 'position-detail';
+  const td = doc.createElement('td');
+  td.colSpan = colSpan;
+  td.innerHTML = `<div class="position-detail__facts">${facts.filter(Boolean).join(' · ')}</div>` +
+    `<div class="position-detail__actions">${rowActionsHtml(pos, `${pos.asset}_${pos.exchange}`)}</div>`;
+  tr.appendChild(td);
+  return tr;
+}
+
+// Columns a detail line should span: only the ones showing. Spanning a column that a
+// narrow screen hides would add a phantom column and shift the others.
+function visibleColumnCount(table) {
+  const heads = Array.from(table?.querySelectorAll('thead th') || []);
+  const shown = heads.filter(th => getComputedStyle(th).display !== 'none').length;
+  return shown || heads.length || 9;
 }
 
 function hideFundingTooltip() {
@@ -284,11 +323,20 @@ function createTableRow(doc, pos, opts, prevDataMap) {
     tr.className = 'position-row-hidden';
   }
 
+  // Each row opens in place (click, or Enter when focused) to show its detail line and
+  // actions; app.js handles that from these attributes.
+  const rowKey = `${pos.asset}_${pos.exchange}`;
+  const isOpen = opts.openKey === rowKey;
+  tr.classList.add('position-row');
+  if (isOpen) tr.classList.add('is-open');
+  tr.dataset.key = rowKey;
+  tr.tabIndex = 0;
+  tr.setAttribute('aria-expanded', String(isOpen));
+
   const amountVisible = !!opts.amountsVisible;
   const value = computeValue(pos);
   const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
   const quoteCurrency = normalizeCurrencyCode(pos.currency || pos.sourceCurrency || baseCurrency, baseCurrency);
-  const assetKey = `${pos.asset}_${pos.exchange}`;
   const showExactAmounts = opts.settings?.showExactAmounts ?? false;
   const showPriceChart = opts.settings?.showPriceChart ?? true;
 
@@ -391,9 +439,7 @@ function createTableRow(doc, pos, opts, prevDataMap) {
       td.setAttribute('data-flash', 'true');
     }
 
-    if (i === 0 && opts.editMode) {
-      td.innerHTML = `<span class="edit-asset-cell">${editActionsHtml(pos, assetKey)}${String(cells[i])}</span>`;
-    } else if (isChart) {
+    if (isChart) {
       // Chart column uses innerHTML
       td.innerHTML = cells[i];
       td.className = 'chart-cell chart';
@@ -510,7 +556,7 @@ function createMobileCard(doc, pos, opts) {
       <span class="card-exchange">${pos.exchange || '—'}</span>
       ${fundingText}
     </div>
-    ${opts.editMode ? `<div class="card-actions">${editActionsHtml(pos, `${pos.asset}_${pos.exchange}`, { withText: true })}</div>` : ''}
+    ${opts.editMode ? `<div class="card-actions">${rowActionsHtml(pos, `${pos.asset}_${pos.exchange}`)}</div>` : ''}
   `;
 
   // A button can't hold other buttons, so in edit mode the card stops being one and its
@@ -617,16 +663,38 @@ export function renderPositions({ positions, containers, options, previousPositi
     // Build fragments for atomic update
     const frag = doc.createDocumentFragment();
     const mobileFrag = doc.createDocumentFragment();
+    const colSpan = visibleColumnCount(table);
     for (const pos of filtered) {
       frag.appendChild(createTableRow(doc, pos, opts, prevDataMap));
+      if (opts.openKey === `${pos.asset}_${pos.exchange}`) {
+        frag.appendChild(createDetailRow(doc, pos, opts, colSpan));
+      }
       if (containers.mobilePositionsContainer) {
         mobileFrag.appendChild(createMobileCard(doc, pos, opts));
       }
     }
 
+    // Rows are rebuilt on every refresh; remember what had keyboard focus (a row or one
+    // of its actions) so it can be handed back to the new element.
+    const active = doc.activeElement;
+    const focusedRow = containers.positionsBody.contains(active)
+      ? (active.closest('tr.position-detail')?.previousElementSibling || active.closest('tr'))
+      : null;
+    const focusedKey = focusedRow?.dataset?.key || null;
+    const focusedAction = active?.dataset?.shortcut || null;
+
     // Atomic DOM update using replaceChildren() which is truly atomic
     // (no intermediate empty state visible to the user, unlike innerHTML = '' + appendChild)
     containers.positionsBody.replaceChildren(frag);
+
+    if (focusedKey) {
+      const row = Array.from(containers.positionsBody.querySelectorAll('tr.position-row'))
+        .find(r => r.dataset.key === focusedKey);
+      const target = focusedAction && row?.nextElementSibling?.classList.contains('position-detail')
+        ? row.nextElementSibling.querySelector(`[data-shortcut="${focusedAction}"]`)
+        : row;
+      target?.focus({ preventScroll: true });
+    }
     if (containers.mobilePositionsContainer) {
       containers.mobilePositionsContainer.replaceChildren(mobileFrag);
     }

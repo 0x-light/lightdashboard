@@ -13,6 +13,7 @@ import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
 import { setupSettingsDialog, applyAppearance } from './modules/ui/settings-dialog.js';
 import { setupDialogFocus } from './modules/ui/dialog-focus.js';
 import { setupTableScrollCues } from './modules/ui/table-scroll-cue.js';
+import { showUndo } from './modules/ui/undo.js';
 import { getRandomSpinner } from './modules/ui/unicode-animations.js';
 import { formatMoney, normalizeBaseCurrency } from './modules/utils/currency.js';
 
@@ -795,153 +796,163 @@ function setupControls() {
     });
   }
 
-  // Edit list mode
-  const editListBtn = document.getElementById('newEditListBtn');
-  const cancelEditBtn = document.getElementById('newCancelEditBtn');
+  // Positions: a row opens in place (click it, or Enter when it has focus) to show its
+  // details and actions. Actions save straight away and offer an undo line instead of
+  // asking first; there is no separate edit mode.
   const positionsBody = document.getElementById('newPositionsBody');
-  let editModeSnapshot = null; // Store state before edit mode for cancel functionality
-  const handlePositionEditClick = (e) => {
-    if (!editMode) return;
-    const btn = e.target.closest('button');
-    if (!btn) return;
+
+  function rerenderPositions() {
+    window._portfolioRenderer?.forceRender();
+  }
+
+  function positionRows() {
+    return Array.from(positionsBody?.querySelectorAll('tr.position-row') || []);
+  }
+
+  // Rows are rebuilt on render, so focus is handed over by key.
+  function focusPositionRow(key) {
+    requestAnimationFrame(() => {
+      positionRows().find(r => r.dataset.key === key)?.focus({ preventScroll: true });
+    });
+  }
+
+  function toggleOpenPosition(row) {
+    const key = row.dataset.key;
+    window.openPositionKey = window.openPositionKey === key ? null : key;
+    rerenderPositions();
+    focusPositionRow(key);
+  }
+
+  function saveHiddenAssets() {
+    window.hiddenAssets = hiddenAssets; // Update global for incremental renderer
+    const s = getSettings();
+    s.hiddenAssets = Array.from(hiddenAssets);
+    localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
+    invalidateSettingsCache();
+    window.updateShowHiddenButton?.();
+  }
+
+  function setPositionHidden(assetKey, hidden) {
+    if (hidden) hiddenAssets.add(assetKey); else hiddenAssets.delete(assetKey);
+    saveHiddenAssets();
+    rerenderPositions();
+  }
+
+  function deleteManualPosition(asset, manualType) {
+    const s = getSettings();
+    const before = Array.isArray(s.cryptoPositions) ? s.cryptoPositions : [];
+    // Keep each removed entry with its index so undo puts it back where it was.
+    const removed = before
+      .map((position, index) => ({ position, index }))
+      .filter(({ position }) => storedManualPositionMatches(position, asset, manualType));
+    if (removed.length === 0) return;
+
+    s.cryptoPositions = removeManualPositionByAsset(before, asset, manualType);
+    // Also drop its hiddenAssets keys so it doesn't linger as hidden
+    const manualKeys = getManualPositionHiddenKeys(asset);
+    if (Array.isArray(s.hiddenAssets)) {
+      s.hiddenAssets = s.hiddenAssets.filter(key => !manualKeys.includes(key));
+    }
+    localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
+    invalidateSettingsCache();
+    manualKeys.forEach(key => hiddenAssets.delete(key));
+    window.hiddenAssets = hiddenAssets;
+
+    // Remove it from the renderer's allPositions (the source of truth)
+    window._portfolioRenderer?.removePositions(p => renderedManualPositionMatches(p, asset, manualType));
+
+    showUndo(`Deleted ${asset}`, async () => {
+      const t = getSettings();
+      const list = Array.isArray(t.cryptoPositions) ? [...t.cryptoPositions] : [];
+      removed.forEach(({ position, index }) => list.splice(Math.min(index, list.length), 0, position));
+      t.cryptoPositions = list;
+      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(t));
+      invalidateSettingsCache();
+      await renderPortfolioIncremental();
+    });
+  }
+
+  function runPositionAction(btn) {
+    const asset = btn.getAttribute('data-asset') || '';
+    const assetKey = btn.getAttribute('data-asset-key');
+    const manualType = btn.getAttribute('data-manual-type');
+    const row = btn.closest('tr.position-detail')?.previousElementSibling;
+    const rowKey = row?.dataset.key;
 
     if (btn.classList.contains('position-edit-btn')) {
-      const assetKey = btn.getAttribute('data-asset-key');
-      if (hiddenAssets.has(assetKey)) {
-        hiddenAssets.delete(assetKey);
-      } else {
-        hiddenAssets.add(assetKey);
-      }
-      window.hiddenAssets = hiddenAssets; // Update global for incremental renderer
-
-      // Save to localStorage
-      const s = getSettings();
-      s.hiddenAssets = Array.from(hiddenAssets);
-      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
-      invalidateSettingsCache();
-
-      // Update show hidden button visibility
-      if (window.updateShowHiddenButton) {
-        window.updateShowHiddenButton();
-      }
-
-      // Re-render
-      if (window._portfolioRenderer) {
-        window._portfolioRenderer.forceRender();
-      }
-    } else if (btn.classList.contains('position-delete-btn')) {
-      // Delete manual position, after asking: there is no undo
-      const asset = btn.getAttribute('data-asset');
-      const manualType = btn.getAttribute('data-manual-type');
-      if (!window.confirm(`Delete ${asset}? This removes the position and can't be undone.`)) return;
-
-      const s = getSettings();
-      if (s.cryptoPositions && Array.isArray(s.cryptoPositions)) {
-        s.cryptoPositions = removeManualPositionByAsset(s.cryptoPositions, asset, manualType);
-
-        // Also remove from hiddenAssets if present (so it doesn't linger as hidden)
-        const manualKeys = getManualPositionHiddenKeys(asset);
-        if (s.hiddenAssets && Array.isArray(s.hiddenAssets)) {
-          s.hiddenAssets = s.hiddenAssets.filter(key => !manualKeys.includes(key));
-        }
-
-        // Save
-        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
-        invalidateSettingsCache();
-
-        // Also remove from hiddenAssets set in memory
-        manualKeys.forEach(key => hiddenAssets.delete(key));
-        window.hiddenAssets = hiddenAssets; // Update global for incremental renderer
-
-        // Remove position from renderer's allPositions (the source of truth)
-        if (window._portfolioRenderer) {
-          window._portfolioRenderer.removePositions(p => renderedManualPositionMatches(p, asset, manualType));
-        }
-      }
-    } else if (btn.classList.contains('position-manual-edit-btn')) {
-      const asset = btn.getAttribute('data-asset');
-      const manualType = btn.getAttribute('data-manual-type');
-      openManualPositionEdit(asset, manualType);
+      // Hiding takes the row away (unless hidden rows are showing): close it and move
+      // focus to the next row so the keyboard user keeps their place.
+      const rows = positionRows();
+      const next = rows[rows.indexOf(row) + 1] || rows[rows.indexOf(row) - 1];
+      window.openPositionKey = null;
+      setPositionHidden(assetKey, true);
+      if (next) focusPositionRow(next.dataset.key);
+      showUndo(`Hid ${asset}`, () => {
+        setPositionHidden(assetKey, false);
+        focusPositionRow(assetKey);
+      });
     } else if (btn.classList.contains('position-restore-btn')) {
-      // Restore hidden position (remove from hiddenAssets)
-      const assetKey = btn.getAttribute('data-asset-key');
-      hiddenAssets.delete(assetKey);
-      window.hiddenAssets = hiddenAssets;
-
-      // Save to localStorage
-      const s = getSettings();
-      s.hiddenAssets = Array.from(hiddenAssets);
-      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
-      invalidateSettingsCache();
-
-      // Update show hidden button visibility
-      if (window.updateShowHiddenButton) {
-        window.updateShowHiddenButton();
-      }
-
-      // Re-render
-      if (window._portfolioRenderer) {
-        window._portfolioRenderer.forceRender();
-      }
+      setPositionHidden(assetKey, false);
+      if (rowKey) focusPositionRow(rowKey);
+      showUndo(`Showing ${asset} again`, () => setPositionHidden(assetKey, true));
+    } else if (btn.classList.contains('position-delete-btn')) {
+      window.openPositionKey = null;
+      deleteManualPosition(asset, manualType);
+    } else if (btn.classList.contains('position-manual-edit-btn')) {
+      openManualPositionEdit(asset, manualType);
     }
-  };
-
-  // Table rows and phone cards carry the same edit actions; the handler ignores clicks outside edit mode
-  positionsBody?.addEventListener('click', handlePositionEditClick);
-  document.getElementById('newMobilePositionsContainer')?.addEventListener('click', handlePositionEditClick);
-
-  if (editListBtn) {
-    editListBtn.addEventListener('click', () => {
-      if (!editMode) {
-        // Entering edit mode - take snapshot
-        editModeSnapshot = {
-          hiddenAssets: new Set(hiddenAssets)
-        };
-      }
-
-      editMode = !editMode;
-      window.editMode = editMode; // Update global for incremental renderer
-      editListBtn.textContent = editMode ? 'Save' : 'Edit';
-
-      // Show/hide cancel button
-      if (cancelEditBtn) {
-        cancelEditBtn.style.display = editMode ? 'inline' : 'none';
-      }
-
-      // Re-render with edit mode
-      if (window._portfolioRenderer) {
-        window._portfolioRenderer.forceRender();
-      }
-    });
   }
 
-  // Cancel edit mode - restore snapshot
-  if (cancelEditBtn) {
-    cancelEditBtn.addEventListener('click', () => {
-      if (editModeSnapshot) {
-        // Restore hidden assets from snapshot
-        hiddenAssets = new Set(editModeSnapshot.hiddenAssets);
-        window.hiddenAssets = hiddenAssets;
+  positionsBody?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button.row-action');
+    if (btn) {
+      runPositionAction(btn);
+      return;
+    }
+    // Selecting text to copy a number shouldn't open or close the row
+    if (window.getSelection()?.toString()) return;
+    const row = e.target.closest('tr.position-row');
+    if (row) toggleOpenPosition(row);
+  });
 
-        // Save restored state
-        const s = getSettings();
-        s.hiddenAssets = Array.from(hiddenAssets);
-        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
-        invalidateSettingsCache();
-      }
+  // ↑ ↓ move between rows, Enter opens, Esc closes; on an open row its action keys work
+  // (E edit, H hide or show, Delete/Backspace delete). Handled here so they don't also
+  // reach the page-wide shortcuts.
+  positionsBody?.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const row = e.target.closest('tr.position-row');
+    const owner = row || e.target.closest('tr.position-detail')?.previousElementSibling;
+    if (!owner) return;
+    const rows = positionRows();
+    const index = rows.indexOf(owner);
 
-      // Exit edit mode
-      editMode = false;
-      window.editMode = editMode;
-      editListBtn.textContent = 'Edit';
-      cancelEditBtn.style.display = 'none';
-
-      // Re-render
-      if (window._portfolioRenderer) {
-        window._portfolioRenderer.forceRender();
-      }
-    });
-  }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      rows[index + (e.key === 'ArrowDown' ? 1 : -1)]?.focus();
+      return;
+    }
+    if ((e.key === 'Enter' || e.key === ' ') && e.target === row) {
+      e.preventDefault();
+      toggleOpenPosition(row);
+      return;
+    }
+    if (e.key === 'Escape' && window.openPositionKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.openPositionKey = null;
+      rerenderPositions();
+      focusPositionRow(owner.dataset.key);
+      return;
+    }
+    if (window.openPositionKey !== owner.dataset.key) return;
+    const shortcut = e.key === 'Backspace' || e.key === 'Delete' ? 'delete' : e.key.toLowerCase();
+    const btn = owner.nextElementSibling?.querySelector(`[data-shortcut="${shortcut}"]`);
+    if (btn) {
+      e.preventDefault();
+      e.stopPropagation();
+      runPositionAction(btn);
+    }
+  });
 
   // Sync mobile theme select
   const themeSelect = document.getElementById('newThemeSelect');
@@ -1360,10 +1371,6 @@ function setupControls() {
         cachedWatchlistData = prices;
       }
 
-      if (editMode) {
-        attachWatchlistEditListeners();
-      }
-
       return prices;
     } catch (e) {
       console.warn('[Watchlist] Render failed:', e?.message || e);
@@ -1585,16 +1592,36 @@ function setupControls() {
     });
   }
 
-  // Watchlist Edit functionality
-  const editWatchlistBtn = document.getElementById('newEditWatchlistBtn');
+  // Watchlist: an item opens in place (click it, or Enter when it has focus) to show its
+  // name and a Remove action. Removing saves straight away and offers an undo line.
+  const watchlistTable = document.getElementById('newWatchlistTable');
+
+  function watchlistItems() {
+    return Array.from(document.querySelectorAll('#newWatchlistBody tr.watchlist-row'));
+  }
+
+  function focusWatchlistItem(key) {
+    requestAnimationFrame(() => {
+      watchlistItems().find(r => r.dataset.entryKey === key)?.focus({ preventScroll: true });
+    });
+  }
+
+  async function setOpenWatchlistItem(key) {
+    window.openWatchlistKey = key;
+    const mod = await import('./modules/features/watchlist.js');
+    mod.rerenderOpenState();
+  }
 
   // Remove by composite key so mixed Pyth/Yahoo entries can all be deleted the same way.
   function removeFromWatchlist(targetKey) {
     if (!targetKey) return;
     const s = getSettings();
-    if (!s.watchlist) s.watchlist = [];
+    const before = Array.isArray(s.watchlist) ? s.watchlist : [];
+    const index = before.findIndex(e => watchlistEntryKey(e) === targetKey);
+    if (index === -1) return;
+    const entry = before[index];
 
-    s.watchlist = s.watchlist.filter(e => watchlistEntryKey(e) !== targetKey);
+    s.watchlist = before.filter(e => watchlistEntryKey(e) !== targetKey);
     try {
       localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
       invalidateSettingsCache();
@@ -1602,109 +1629,79 @@ function setupControls() {
       if (cachedWatchlistData) {
         cachedWatchlistData = cachedWatchlistData.filter(item => item.key !== targetKey);
       }
+      window.openWatchlistKey = null;
       renderWatchlistPanel({
         entriesOverride: s.watchlist,
         forceRefresh: false,
-        editMode: watchlistEditMode,
         preserveCurrentData: true
       });
     } catch (e) {
       console.error('Failed to remove from watchlist:', e);
-    }
-  }
-
-  function attachWatchlistEditListeners() {
-    const watchlistBody = document.getElementById('newWatchlistBody');
-    if (watchlistBody) {
-      // Remove old listeners by cloning
-      const newWatchlistBody = watchlistBody.cloneNode(true);
-      watchlistBody.parentNode.replaceChild(newWatchlistBody, watchlistBody);
-
-      newWatchlistBody.addEventListener('click', (e) => {
-        if (e.target.classList.contains('watchlist-edit-btn')) {
-          // Prefer the new composite key; fall back to legacy `data-feed-id` if an older
-          // render's buttons are still in the DOM (e.g. partial update races).
-          const key = e.target.getAttribute('data-entry-key')
-            || (e.target.getAttribute('data-feed-id') ? `pyth:${e.target.getAttribute('data-feed-id').toLowerCase()}` : null);
-          if (key) removeFromWatchlist(key);
-        }
-      });
-    }
-  }
-
-  const cancelWatchlistEditBtn = document.getElementById('newCancelWatchlistEditBtn');
-  let watchlistEditSnapshot = null;
-
-  async function toggleWatchlistEditMode() {
-    if (!watchlistEditMode) {
-      // Entering edit mode - take snapshot of current watchlist
-      const s = getSettings();
-      watchlistEditSnapshot = {
-        watchlist: [...(s.watchlist || [])]
-      };
+      return;
     }
 
-    watchlistEditMode = !watchlistEditMode;
-    if (editWatchlistBtn) {
-      editWatchlistBtn.textContent = watchlistEditMode ? 'Save' : 'Edit';
-    }
-
-    // Show/hide cancel button
-    if (cancelWatchlistEditBtn) {
-      cancelWatchlistEditBtn.style.display = watchlistEditMode ? 'inline' : 'none';
-    }
-
-    try {
-      const s = getSettings();
-      await renderWatchlistPanel({
-        feedIdsOverride: s.watchlist || [],
-        forceRefresh: false,
-        editMode: watchlistEditMode,
-        preserveCurrentData: true
-      });
-    } catch (e) {
-      console.error('Failed to toggle watchlist edit mode:', e);
-    }
-  }
-
-  if (editWatchlistBtn) {
-    editWatchlistBtn.addEventListener('click', toggleWatchlistEditMode);
-  }
-
-  // Cancel watchlist edit mode - restore snapshot
-  if (cancelWatchlistEditBtn) {
-    cancelWatchlistEditBtn.addEventListener('click', async () => {
-      if (watchlistEditSnapshot) {
-        // Restore watchlist from snapshot
-        const s = getSettings();
-        s.watchlist = [...watchlistEditSnapshot.watchlist];
-        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
-        invalidateSettingsCache();
-
-        // Clear cached data to force refetch
-        cachedWatchlistData = null;
-      }
-
-      // Exit edit mode
-      watchlistEditMode = false;
-      if (editWatchlistBtn) {
-        editWatchlistBtn.textContent = 'Edit';
-      }
-      cancelWatchlistEditBtn.style.display = 'none';
-
-      try {
-        const s = getSettings();
-        await renderWatchlistPanel({
-          feedIdsOverride: s.watchlist || [],
-          forceRefresh: true,
-          editMode: false,
-          preserveCurrentData: true
-        });
-      } catch (e) {
-        console.error('Failed to cancel watchlist edit mode:', e);
-      }
+    const label = entry?.symbol || targetKey.replace(/^(pyth|yahoo):/, '').toUpperCase();
+    showUndo(`Removed ${label}`, async () => {
+      const t = getSettings();
+      const list = Array.isArray(t.watchlist) ? [...t.watchlist] : [];
+      list.splice(Math.min(index, list.length), 0, entry);
+      t.watchlist = list;
+      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(t));
+      invalidateSettingsCache();
+      await renderWatchlistPanel({ entriesOverride: list, forceRefresh: true, preserveCurrentData: true });
+      focusWatchlistItem(targetKey);
     });
   }
+
+  watchlistTable?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button.watchlist-remove-btn');
+    if (btn) {
+      removeFromWatchlist(btn.getAttribute('data-entry-key'));
+      return;
+    }
+    if (window.getSelection()?.toString()) return;
+    const item = e.target.closest('tr.watchlist-row');
+    if (!item) return;
+    const key = item.dataset.entryKey;
+    setOpenWatchlistItem(window.openWatchlistKey === key ? null : key).then(() => focusWatchlistItem(key));
+  });
+
+  // ←/→ and ↑/↓ move between items, Enter opens, Esc closes, Delete/Backspace removes the
+  // open item. Handled here so the arrows don't also page the comic.
+  watchlistTable?.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const item = e.target.closest('tr.watchlist-row');
+    if (!item) return;
+    const items = watchlistItems();
+    const index = items.indexOf(item);
+    const key = item.dataset.entryKey;
+
+    if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+      const step = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : -1;
+      items[index + step]?.focus();
+      return;
+    }
+    if ((e.key === 'Enter' || e.key === ' ') && e.target === item) {
+      e.preventDefault();
+      setOpenWatchlistItem(window.openWatchlistKey === key ? null : key).then(() => focusWatchlistItem(key));
+      return;
+    }
+    if (e.key === 'Escape' && window.openWatchlistKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      setOpenWatchlistItem(null).then(() => focusWatchlistItem(key));
+      return;
+    }
+    if ((e.key === 'Backspace' || e.key === 'Delete') && window.openWatchlistKey === key) {
+      e.preventDefault();
+      e.stopPropagation();
+      const next = items[index + 1] || items[index - 1];
+      removeFromWatchlist(key);
+      if (next) focusWatchlistItem(next.dataset.entryKey);
+    }
+  });
 
   // Add Position functionality
   const addPositionBtn = document.getElementById('newAddPositionBtn');

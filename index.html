@@ -61,6 +61,7 @@
     <link rel="modulepreload" href="/modules/ui/settings-dialog.js">
     <link rel="modulepreload" href="/modules/ui/dialog-focus.js">
     <link rel="modulepreload" href="/modules/ui/table-scroll-cue.js">
+    <link rel="modulepreload" href="/modules/ui/undo.js">
     <link rel="modulepreload" href="/modules/features/manual-positions.js">
     <link rel="modulepreload" href="/modules/features/rain.js">
     <link rel="modulepreload" href="/modules/features/weather.js">
@@ -92,6 +93,8 @@
                 var theme = settings.theme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
                 document.documentElement.dataset.theme = theme;
                 document.documentElement.dataset.font = settings.font || 'sf';
+                // Full width before first paint, so the page doesn't jump wider
+                document.documentElement.classList.toggle('pm-full', !!settings.fullWidth);
 
                 // Theme background colors for status bar (must match CSS)
                 var themeColors = {
@@ -543,6 +546,12 @@
                                 </label>
                             </div>
 
+                            <h3 class="settings-group">Layout</h3>
+                            <label class="check">
+                                <input id="newFullWidth" type="checkbox" class="settings-input">
+                                Use the full window width
+                            </label>
+
                             <h3 class="settings-group">Numbers</h3>
                             <label class="check">
                                 <input id="newUseColoredPnL" type="checkbox" class="settings-input">
@@ -657,8 +666,6 @@
                 <div id="newMobilePositionsContainer" class="mobile-positions-container"></div>
                 <div class="button-row panel-foot">
                     <button id="newShowHiddenBtn" class="btn-text">Show &lt;$100</button>
-                    <button id="newEditListBtn" class="btn-text">Edit</button>
-                    <button id="newCancelEditBtn" class="btn-text" style="display: none;">Cancel</button>
                 </div>
             </section>
 
@@ -684,10 +691,6 @@
                             </tr>
                         </tbody>
                     </table>
-                </div>
-                <div class="button-row panel-foot">
-                    <button id="newEditWatchlistBtn" class="btn-text">Edit</button>
-                    <button id="newCancelWatchlistEditBtn" class="btn-text" style="display: none;">Cancel</button>
                 </div>
             </section>
 
