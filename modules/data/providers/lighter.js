@@ -737,37 +737,6 @@ export async function fetchFundingRates({ timeoutMs = 5000 } = {}) {
 }
 
 /**
- * Fetch cumulative funding for a position
- */
-export async function fetchCumFunding(accountIndex, symbol, isLong, { timeoutMs = 5000, days = 30 } = {}) {
-  const marketId = MARKET_ID_MAP[symbol];
-  if (!marketId || accountIndex === undefined || accountIndex === null || accountIndex === '') return null;
-
-  try {
-    const now = Math.floor(Date.now() / 1000);
-    const startTimestamp = now - (days * 24 * 60 * 60);
-    const url = `${MAINNET}/fundings?account_index=${accountIndex}&market_id=${marketId}&resolution=1h&start_timestamp=${startTimestamp}&end_timestamp=${now}&count_back=${days * 24}`;
-    const data = await getJsonWithDevCorsFallback(url, timeoutMs);
-
-    if (data?.fundings?.length) {
-      let cumFunding = 0;
-      for (const f of data.fundings) {
-        const value = parseFloat(f.value || 0);
-        // Long pays when direction is 'short', receives when 'long'
-        if (isLong) {
-          cumFunding += (f.direction === 'long') ? value : -value;
-        } else {
-          cumFunding += (f.direction === 'short') ? value : -value;
-        }
-      }
-      return cumFunding;
-    }
-  } catch (_) { }
-
-  return null;
-}
-
-/**
  * Fetch current price for a spot asset via candlesticks (last close price)
  */
 export async function fetchSpotPrice(symbol, { timeoutMs = 5000 } = {}) {
@@ -818,7 +787,6 @@ export default {
   fetchAccountByAddress,
   fetchCandlesticks,
   fetchFundingRates,
-  fetchCumFunding,
   fetchSpotPrice,
   getSpotAssetMap,
   getMarketId,

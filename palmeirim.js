@@ -167,10 +167,13 @@
   document.body.appendChild(readout);
   window.addEventListener("scroll", function () { readout.hidden = true; }, { passive: true });
 
-  // ── Account value chart: Hyperliquid's own history, so it's the same on every device ──
-  // Sits under the sentence: periods on the left (the chosen one inverted), change on the right, a line over
-  // the dim dither. Pointing at it names the time and value on the card's bottom border.
-  // Settings → Sections can hide it (html[data-value-chart="off"]).
+  // ── Portfolio value chart ──
+  // Hyperliquid's own history (the same on every device) plus what this device has recorded of
+  // everything else (modules/data/value-history.js), added up. Before the first record, the rest
+  // counts at its earliest known value, so the line starts as Hyperliquid's shape and fills in.
+  // Sits under the sentence: periods on the left (the chosen one inverted), the change over the
+  // period on the right, a line over the dim dither. Pointing at it names the time and value on
+  // the card's bottom border. Settings → Sections can hide it (html[data-value-chart="off"]).
   var PERIODS = [["day", "1D"], ["week", "1W"], ["month", "1M"], ["allTime", "All"]];
   var valueBox = el("div", { class: "pm-value", hidden: "" },
     '<div class="pm-value__head">' +
@@ -196,28 +199,51 @@
     return (v < 0 ? "−" : signed ? "+" : "") + text;
   }
 
-  // Several addresses: add their values up, step by step, on the first one's timestamps.
-  function combine(perAddress, period) {
-    var lists = perAddress.map(function (p) { return p && p[period]; }).filter(Boolean);
-    if (!lists.length) return null;
-    var base = lists[0].values;
-    var at = function (series, t) {
-      var v = 0;
-      for (var i = 0; i < series.length && series[i][0] <= t; i++) v = series[i][1];
+  var WINDOW = { day: 864e5, week: 7 * 864e5, month: 30 * 864e5, allTime: Infinity };
+
+  // A stepwise series read in time order: the last point at or before t, the first point before
+  // any. One pass over the series for the whole chart.
+  function stepper(series, index) {
+    var i = 0, v = series.length ? series[0][index] : 0;
+    return function (t) {
+      while (i < series.length && series[i][0] <= t) v = series[i++][index];
       return v;
     };
-    var values = base.map(function (pt) {
-      return [pt[0], lists.reduce(function (sum, l) { return sum + at(l.values, pt[0]); }, 0)];
+  }
+
+  // The portfolio over a period: Hyperliquid's series per address plus the rest recorded here,
+  // on every timestamp either has. Without Hyperliquid history (no address, or amounts in
+  // another currency than its dollars), the recorded totals stand alone.
+  function combine(data, period) {
+    var since = Date.now() - WINDOW[period];
+    var hl = [];
+    if (data.local.currency === "USD") {
+      data.hl.forEach(function (p) { if (p && p[period] && p[period].values.length) hl.push(p[period].values); });
+    }
+    var local = data.local.points.filter(function (p) { return p[0] >= since; });
+    var ts = local.map(function (p) { return p[0]; });
+    hl.forEach(function (list) { list.forEach(function (p) { ts.push(p[0]); }); });
+    ts.sort(function (a, b) { return a - b; });
+    // The rest, with the Hyperliquid part taken out when its own series stands in for it.
+    var rest = stepper(data.local.points.map(function (p) { return [p[0], hl.length ? p[1] - p[2] : p[1]]; }), 1);
+    var parts = hl.map(function (list) { return stepper(list, 1); });
+    var values = [], lastT = null;
+    ts.forEach(function (t) {
+      if (t === lastT) return;
+      lastT = t;
+      var v = rest(t);
+      for (var i = 0; i < parts.length; i++) v += parts[i](t);
+      values.push([t, v]);
     });
-    var pnl = lists.reduce(function (sum, l) { return sum + (l.pnl.length ? l.pnl[l.pnl.length - 1][1] : 0); }, 0);
-    return { values: values, pnl: pnl };
+    if (values.length < 2) return null;
+    return { values: values, pnl: values[values.length - 1][1] - values[0][1] };
   }
 
   function drawValue() {
     var chart = $(".pm-value__chart", valueBox);
     $$(".pm-value__period", valueBox).forEach(function (b) { b.setAttribute("aria-checked", String(b.dataset.period === valuePeriod)); });
     var data = valueData && combine(valueData, valuePeriod);
-    if (!data || data.values.length < 2) {
+    if (!data) {
       chart.innerHTML = '<p class="pm-value__empty">No history for this period.</p>';
       $(".pm-value__change", valueBox).textContent = "";
       valueSeries = [];
@@ -248,21 +274,25 @@
       '<line class="pm-value__cursor" x1="0" x2="0" y1="0" y2="' + h + '" visibility="hidden"/>' +
       '<rect class="pm-value__point" width="5" height="5" x="0" y="0" visibility="hidden"/></svg>';
     chart.setAttribute("role", "img");
-    chart.setAttribute("aria-label", "Hyperliquid account value, " + $(".pm-value__period[aria-checked=true]", valueBox).textContent + ": " + money(vs[0]) + " to " + money(vs[vs.length - 1]));
+    chart.setAttribute("aria-label", "Portfolio value, " + $(".pm-value__period[aria-checked=true]", valueBox).textContent + ": " + money(vs[0]) + " to " + money(vs[vs.length - 1]));
   }
 
   function loadValue() {
-    var off = document.documentElement.dataset.valueChart === "off";
+    if (document.documentElement.dataset.valueChart === "off") { valueBox.hidden = true; return; }
     var addresses = hlAddresses();
-    if (off || !addresses.length) { valueBox.hidden = true; return; }
-    import("./modules/data/hl-account.js").then(function (m) {
-      return Promise.all(addresses.map(function (a) { return m.getPortfolio(a).catch(function () { return null; }); }));
-    }).then(function (perAddress) {
-      var any = perAddress.some(function (p) { return p && p.allTime && p.allTime.values.some(function (pt) { return pt[1] > 0; }); });
-      valueBox.hidden = !any;
-      if (!any) return;
-      valueData = perAddress;
-      drawValue();
+    Promise.all([
+      import("./modules/data/value-history.js"),
+      addresses.length ? import("./modules/data/hl-account.js") : null
+    ]).then(function (mods) {
+      var history = mods[0].getValueHistory();
+      var hl = mods[1] ? Promise.all(addresses.map(function (a) { return mods[1].getPortfolio(a).catch(function () { return null; }); })) : Promise.resolve([]);
+      return hl.then(function (perAddress) {
+        valueData = { hl: perAddress, local: history };
+        var any = combine(valueData, "allTime");
+        valueBox.hidden = !any;
+        if (!any) return;
+        drawValue();
+      });
     }).catch(function () { valueBox.hidden = true; });
   }
 
@@ -334,6 +364,7 @@
     valueResize = setTimeout(function () { if (valueData) drawValue(); }, 150);
   });
   new MutationObserver(loadValue).observe(document.documentElement, { attributes: true, attributeFilter: ["data-value-chart"] });
+  window.addEventListener("viewport:valuehistory", loadValue); // a new point recorded: redraw with it
   loadValue();
   setInterval(loadValue, 5 * 60 * 1000);
 
