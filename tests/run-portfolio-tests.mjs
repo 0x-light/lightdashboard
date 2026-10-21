@@ -8,6 +8,7 @@ import * as HyperliquidProvider from '../modules/data/providers/hyperliquid.js';
 import * as StocksProvider from '../modules/data/providers/stocks.js';
 import { _internal as pythInternal } from '../modules/data/providers/pyth.js';
 import { normalizeEntries } from '../modules/features/watchlist.js';
+import { _internal as valueHistoryInternal } from '../modules/data/value-history.js';
 import {
   formatMoney,
   getFxCurrency,
@@ -1060,7 +1061,27 @@ function testHyperliquidEquityRowIsTheAccountValue() {
   );
 }
 
+function testValueHistoryThinsOldPoints() {
+  const { thin } = valueHistoryInternal;
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+  const now = Date.UTC(2026, 9, 21, 12, 0, 0);
+  const points = [];
+  // Forty days ago: four points in one day, then two days ago: four points in one hour,
+  // then today: four points five minutes apart. Oldest first, as stored.
+  for (let i = 0; i < 4; i++) points.push([now - 40 * DAY + i * HOUR, 100 + i, 10]);
+  for (let i = 0; i < 4; i++) points.push([now - 2 * DAY + i * 5 * 60 * 1000, 200 + i, 20]);
+  for (let i = 0; i < 4; i++) points.push([now - 15 * 60 * 1000 + i * 5 * 60 * 1000, 300 + i, 30]);
+  const thinned = thin(points, now);
+  // One a day beyond a month, one an hour beyond a day (the last of each), all of today's.
+  assert.deepEqual(thinned.map(p => p[1]), [103, 203, 300, 301, 302, 303]);
+  // Points in different buckets are all kept.
+  const spread = [[now - 3 * DAY, 1, 0], [now - 2 * DAY, 2, 0], [now - 1 * HOUR, 3, 0]];
+  assert.deepEqual(thin(spread, now).map(p => p[1]), [1, 2, 3]);
+}
+
 async function run() {
+  testValueHistoryThinsOldPoints();
   await testManualCustomLegacySchema();
   testLighterTotalsWithoutEquity();
   testLighterTotalsWithEquity();

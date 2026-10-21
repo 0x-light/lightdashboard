@@ -2,7 +2,6 @@
 import { getCoingeckoId } from '../../utils/asset-mapping.js';
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes for price data
-const CUM_FUNDING_CACHE_TTL = 15 * 60 * 1000; // 15 minutes for cumulative funding
 const WALLET_ROWS_CACHE_TTL = 30 * 60 * 1000; // 30 minutes stale fallback for transient API failures
 // Candles, funding and the CoinGecko fallback only decorate rows whose values come from the account
 // payload. Wait this long for them, then show the rows and rebuild once enrichment lands.
@@ -191,6 +190,12 @@ function getAccountFreeCollateral(account) {
     );
 }
 
+function getMaintenanceShare(account) {
+    const maintenance = firstFiniteNumber(account?.cross_maintenance_margin_requirement, account?.crossMaintenanceMarginRequirement);
+    const crossValue = firstFiniteNumber(account?.cross_asset_value, account?.crossAssetValue);
+    return maintenance !== null && crossValue > 0 ? maintenance / crossValue : null;
+}
+
 function getAccountPnl(account) {
     return firstFiniteNumber(
         account?.unrealized_pnl,
@@ -208,18 +213,12 @@ export class LighterFetcher {
         this.priceDataCache = new Map(); // { symbol -> { priceHistory, change24h, timestamp } }
         this.fundingRatesCache = null;
         this.fundingRatesCacheTime = 0;
-        this.cumFundingCache = new Map(); // { cacheKey -> { value, timestamp } }
         this.walletRowsCache = new Map(); // { wallet -> { rows, timestamp } }
     }
 
     // Check if cached data is still valid
     _isCacheValid(timestamp, ttl) {
         return timestamp && (Date.now() - timestamp) < ttl;
-    }
-
-    // Generate cache key for cumulative funding
-    _getCumFundingKey(accountIndex, symbol) {
-        return `${accountIndex}_${symbol}`;
     }
 
     _cloneRows(rows) {
@@ -398,33 +397,7 @@ export class LighterFetcher {
                 );
             }
 
-            // 3. Cumulative funding (only for positions not in cache or expired)
-            const cumFundingPromises = positionsData.map(async ({ accountIndex, pos, symbol, isLong }) => {
-                const accountKey = accountIndex ?? 'unknown';
-                const cacheKey = this._getCumFundingKey(accountKey, symbol);
-                const cached = this.cumFundingCache.get(cacheKey);
-
-                let cumFunding;
-                if (this._isCacheValid(cached?.timestamp, CUM_FUNDING_CACHE_TTL)) {
-                    cumFunding = cached.value;
-                } else {
-                    if (accountIndex !== null && accountIndex !== undefined && accountIndex !== '') {
-                        cumFunding = await this.providers.lighter.fetchCumFunding(
-                            accountIndex, symbol, isLong,
-                            { timeoutMs: 3000, days: 30 }
-                        ).catch(() => null);
-                    } else {
-                        cumFunding = null;
-                    }
-
-                    if (cumFunding !== null) {
-                        this.cumFundingCache.set(cacheKey, { value: cumFunding, timestamp: Date.now() });
-                    }
-                }
-                return { accountIndex, pos, symbol, isLong, cumFunding };
-            });
-
-            const enrichment = Promise.all([Promise.all(promises), Promise.all(cumFundingPromises)]);
+            const enrichment = Promise.all(promises);
             const enrichedInTime = enrichmentBudgetMs === Infinity || await Promise.race([
                 enrichment.then(() => true),
                 new Promise(resolve => setTimeout(() => resolve(false), enrichmentBudgetMs))
@@ -473,15 +446,12 @@ export class LighterFetcher {
                 }
             }
 
-            const positionsWithFunding = enrichedInTime
-                ? await Promise.all(cumFundingPromises)
-                : positionsData.map(({ accountIndex, pos, symbol, isLong }) => ({
-                    accountIndex,
-                    pos,
-                    symbol,
-                    isLong,
-                    cumFunding: this.cumFundingCache.get(this._getCumFundingKey(accountIndex ?? 'unknown', symbol))?.value ?? null
-                }));
+            // Funding comes with each position: total_funding_paid_out is what the account has
+            // paid on it (negative when it received), so the row's funding is its negative.
+            const positionsWithFunding = positionsData.map(({ accountIndex, pos, symbol, isLong }) => {
+                const paidOut = firstFiniteNumber(pos.total_funding_paid_out, pos.totalFundingPaidOut);
+                return { accountIndex, pos, symbol, isLong, cumFunding: paidOut === null ? null : -paidOut };
+            });
 
             // Track per-account unrealized PnL so the equity row reflects position PnL even when the
             // API omits a top-level pnl field.
@@ -586,6 +556,13 @@ export class LighterFetcher {
                     position.funding = cumFunding;
                     position.cumFunding = cumFunding;
                 }
+                // Liquidation and leverage, for the price ladder and the Account window. Lighter
+                // gives initial margin as a percentage (6.66 = 15×); 0 means no liquidation price.
+                const liquidationPx = firstFiniteNumber(pos.liquidation_price, pos.liquidationPrice);
+                if (liquidationPx > 0) position.liquidationPx = liquidationPx;
+                const imf = firstFiniteNumber(pos.initial_margin_fraction, pos.initialMarginFraction);
+                if (imf > 0) position.leverage = Math.round(100 / imf);
+                if (pos.margin_mode != null) position.leverageType = Number(pos.margin_mode) === 1 ? 'isolated' : 'cross';
 
                 walletRows.push(position);
             }
@@ -625,6 +602,10 @@ export class LighterFetcher {
                         pnl,
                         isLighterAccountEquity: true,
                         isLeveraged: false,
+                        // For the Account window: maintenance margin as a share of cross value
+                        // (liquidation starts at 100%) and what can be withdrawn.
+                        maintenanceShare: getMaintenanceShare(account),
+                        available: Number.isFinite(freeCollateral) ? freeCollateral : null,
                         _changeDetectionKey: `LIGHTER_ACCOUNT_EQUITY_${wallet}_${accountKey}`
                     });
                 }
