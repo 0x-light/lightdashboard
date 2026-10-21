@@ -888,6 +888,14 @@ function strategyDescription(legs) {
   return [...new Set(groups.map(strategyName))].join(', ');
 }
 
+// The row's tag, one word: "spread", "calls", "straddle", "butterfly"; "options" when the
+// legs make nothing standard. The open row's facts line has the whole name.
+function strategyTag(legs) {
+  const name = strategyDescription(legs);
+  if (name.includes(',')) return 'options';
+  return name.split(' ').at(-1);
+}
+
 // The expiries a set of legs runs to: dates for one or two, a count past that.
 function expiriesText(legs) {
   const dates = [...legsByExpiry(legs).keys()];
@@ -917,7 +925,7 @@ function createStrategyRow(doc, underlying, legs, opts) {
   const signClass = v => (useColoredPnL && v != null ? (v >= 0 ? 'positive-pnl' : 'negative-pnl') : '');
 
   const cells = {
-    asset: `${escapeHtml(underlying)}<span class="asset-terms">${escapeHtml(strategyDescription(legs))}</span>`,
+    asset: `${escapeHtml(underlying)}<span class="asset-terms">${escapeHtml(strategyTag(legs))}</span>`,
     expiry: escapeHtml(expiriesText(legs)),
     underlying: now ? formatPrice(now, true, quoteCurrency) : '—',
     price: '',
@@ -952,7 +960,7 @@ function createStrategyDetailRow(doc, underlying, legs, opts, colSpan) {
   const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
   const first = legs[0].pos;
   const quoteCurrency = normalizeCurrencyCode(first.currency || first.sourceCurrency || baseCurrency, baseCurrency);
-  const facts = [`${legs.length} legs`, escapeAttr(first.exchange || '')];
+  const facts = [`${legs.length} legs`, escapeHtml(strategyDescription(legs)), escapeAttr(first.exchange || '')];
   if (legs.every(l => l.atCost)) {
     const net = netPremium(legs);
     facts.push(`net premium ${net < 0 ? 'received' : 'paid'} ${formatPrice(Math.abs(net), true, quoteCurrency)}`);
