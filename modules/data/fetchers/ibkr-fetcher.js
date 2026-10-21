@@ -101,6 +101,15 @@ function buildCashRow(cash) {
   };
 }
 
+// Flex times read "20251020;101530" (or with dashes and colons); they are in the account's
+// time zone, which the statement doesn't give, so local time is close enough for a date.
+function flexTime(text) {
+  const m = String(text || '').match(/(\d{4})-?(\d{2})-?(\d{2})(?:[;, T]+(\d{2}):?(\d{2}):?(\d{2}))?/);
+  if (!m) return null;
+  const t = new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
 export class IbkrFetcher {
     constructor(providers, renderer, settings) {
         this.providers = providers;
@@ -136,7 +145,11 @@ export class IbkrFetcher {
             }
 
             const rows = positions.map(pos => buildPositionRow(pos, quotes[symbols.get(pos)]));
-            this.renderer.appendPositions([...rows, ...cashRows], 'IBKR');
+            // When IBKR made the statement, so the Account window can say how old the holdings are.
+            const asOf = flexTime(statement.generatedAt);
+            const all = [...rows, ...cashRows];
+            if (asOf) all.forEach(row => { row.asOf = asOf; });
+            this.renderer.appendPositions(all, 'IBKR');
         } catch (e) {
             this.renderer.markProviderFailed('IBKR', e);
         }

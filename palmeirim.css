@@ -1787,7 +1787,7 @@ html.pm:root .pm-value__change { margin-left: auto; }
 
 /* ── Pickers: one look for every choose-one row (chart periods, comics, Settings
    tabs, themes). Plain muted labels; the chosen one inverts; pointing brightens. ── */
-html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option) {
+html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option, .acct__tab) {
   min-height: 0;
   padding: 0 1ch;
   border: 0;
@@ -1803,22 +1803,22 @@ html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segment
 
 /* The first label's text lines up with the text above it; theme options sit in a
    grid, so each one does. */
-html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab):first-child,
+html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .acct__tab):first-child,
 html.pm:root .pm-theme-option { margin-left: -1ch; }
 
-html.pm:root :is(.pm-value__period[aria-checked="true"], .comic-tab.active, .sticker-window-content .segmented .btn-tab.active, .pm-theme-option[aria-selected="true"]) {
+html.pm:root :is(.pm-value__period[aria-checked="true"], .comic-tab.active, .sticker-window-content .segmented .btn-tab.active, .pm-theme-option[aria-selected="true"], .acct__tab[aria-selected="true"]) {
   background: var(--pm-ink);
   color: var(--bg);
 }
 
-html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option):focus-visible {
+html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option, .acct__tab):focus-visible {
   outline: 1px solid var(--pm-ink);
   outline-offset: 0;
 }
 
 @media (hover: hover) {
-  html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option):hover { color: var(--pm-ink); }
-  html.pm:root :is(.pm-value__period[aria-checked="true"], .comic-tab.active, .sticker-window-content .segmented .btn-tab.active, .pm-theme-option[aria-selected="true"]):hover { color: var(--bg); }
+  html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option, .acct__tab):hover { color: var(--pm-ink); }
+  html.pm:root :is(.pm-value__period[aria-checked="true"], .comic-tab.active, .sticker-window-content .segmented .btn-tab.active, .pm-theme-option[aria-selected="true"], .acct__tab[aria-selected="true"]):hover { color: var(--bg); }
 }
 
 html.pm:root .pm-value__chart {
@@ -1839,9 +1839,55 @@ html.pm:root .pm-value__point { fill: var(--pm-ink); stroke: var(--bg); stroke-w
 
 /* ── Account window ── */
 html.pm:root .pm-account-window { width: min(76ch, calc(100vw - 3ch)); }
+/* Anchored near the top, so switching tabs grows it downward instead of moving it. */
+@media (min-width: 871px) {
+  html.pm:root .pm-account-window { top: calc(var(--pm-lh) * 3); transform: translateX(-50%); }
+}
 html.pm:root .pm-account-window .sticker-window-content { max-height: min(70vh, calc(var(--pm-lh) * 32)); overflow-y: auto; }
 
 html.pm:root .acct p { margin: 0; }
+
+/* Account tabs: one row under the title, like Settings; they scroll sideways if needed. */
+html.pm:root .acct__tabs {
+  display: flex;
+  gap: 0 1ch;
+  padding: var(--pm-lh) 1ch calc(var(--pm-lh) / 2);
+  border-bottom: 1px solid var(--pm-rule);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+html.pm:root .acct__tabs[hidden] { display: none; }
+html.pm:root .acct__tabs::-webkit-scrollbar { display: none; }
+html.pm:root .acct__tab { flex: none; }
+
+/* All: a bar per account, the largest full; each opens its tab. */
+html.pm:root .acct__venues { display: grid; gap: calc(var(--pm-lh) / 4); margin-bottom: var(--pm-lh); }
+html.pm:root .acct__venue {
+  display: grid;
+  grid-template-columns: 12ch minmax(0, 1fr) 10ch;
+  gap: 2ch;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: var(--pm-lh);
+  text-align: right;
+  cursor: pointer;
+}
+html.pm:root .acct__venue-name { color: var(--pm-muted); text-align: left; text-transform: uppercase; }
+html.pm:root .acct__venue-bar { height: var(--pm-bar-h); background: var(--pm-dither-dim); }
+html.pm:root .acct__venue-bar > span { display: block; height: 100%; min-width: 2px; background: var(--pm-ink); }
+html.pm:root .acct__venue:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 2px; }
+@media (hover: hover) {
+  html.pm:root .acct__venue:hover .acct__venue-name { color: var(--pm-ink); }
+}
+html.pm:root .acct__look:empty { display: none; }
+html.pm:root .acct__look { margin-top: var(--pm-lh); }
+@media (max-width: 520px) {
+  html.pm:root .acct__venue { grid-template-columns: 11ch minmax(0, 1fr) max-content; gap: 1ch; }
+}
 html.pm:root .acct__muted { color: var(--pm-muted); }
 html.pm:root .acct__section + .acct__section { margin-top: var(--pm-lh); }
 

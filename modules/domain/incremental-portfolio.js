@@ -757,6 +757,8 @@ export class IncrementalPortfolioRenderer {
       const aggregated = this.aggregatePositions(converted);
       sorted = aggregated.sort((a, b) => (b.value || 0) - (a.value || 0));
       this._cachedAggregation = sorted;
+      // Before merging by asset, so each row still names its venue (the Account window).
+      this._cachedConverted = converted;
       this._cachedAggregationToken = aggregationToken;
     }
 
@@ -881,6 +883,7 @@ export class IncrementalPortfolioRenderer {
 
     // Store in global cache for other functions
     window.cachedPositions = sorted;
+    window.venuePositions = this._cachedConverted || [];
     window.cachedSummaryData = { totalValue, totalPnL, totalPnLPercent };
 
     // Store reference to renderer for external re-renders

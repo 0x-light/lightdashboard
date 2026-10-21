@@ -65,6 +65,8 @@ export function getMargin(address) {
     const states = await Promise.all(DEXES.map(dex =>
       fetchInfo(dex ? { type: 'clearinghouseState', user: address, dex } : { type: 'clearinghouseState', user: address }, 8000)
         .catch(() => null)));
+    // Every request failing is an error (shown as "Cannot load", not cached), not "no account".
+    if (states.every(st => st === null)) throw new Error('Cannot load margin');
     let accountValue = 0, maintenance = 0, marginUsed = 0, notional = 0, withdrawable = 0;
     let any = false;
     for (const s of states) {
@@ -185,7 +187,7 @@ export function getFees(address) {
 export function getStaking(address) {
   return cached(`staking:${address}`, 60 * 60 * 1000, async () => {
     const [summary, rewards] = await Promise.all([
-      fetchInfo({ type: 'delegatorSummary', user: address }, 10000).catch(() => null),
+      fetchInfo({ type: 'delegatorSummary', user: address }, 10000), // a failure here is an error, not "nothing staked"
       fetchInfo({ type: 'delegatorRewards', user: address }, 10000).catch(() => [])
     ]);
     const staked = num(summary?.delegated) || 0;
