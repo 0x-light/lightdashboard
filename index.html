@@ -93,8 +93,9 @@
                 var theme = settings.theme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
                 document.documentElement.dataset.theme = theme;
                 document.documentElement.dataset.font = settings.font || 'sf';
-                // Full width before first paint, so the page doesn't jump wider
+                // Layout options before first paint, so the page doesn't jump
                 document.documentElement.classList.toggle('pm-full', !!settings.fullWidth);
+                document.documentElement.classList.toggle('pm-center', !!settings.centerLayout);
 
                 // Theme background colors for status bar (must match CSS)
                 var themeColors = {
@@ -459,9 +460,10 @@
                             <div class="settings-field">
                                 <label for="newWeatherCity">City for weather</label>
                                 <div class="settings-inline">
-                                    <input id="newWeatherCity" type="text" class="settings-input" placeholder="Lisbon" autocomplete="address-level2" aria-describedby="newWeatherCityHint">
+                                    <input id="newWeatherCity" type="text" class="settings-input" placeholder="Lisbon" autocomplete="off" aria-describedby="newWeatherCityHint">
                                     <button id="newUseMyLocationBtn" type="button" class="btn-text">Use my location</button>
                                 </div>
+                                <ul id="newWeatherCityList" class="city-options" role="listbox" aria-label="Matching places" hidden></ul>
                                 <span id="newWeatherCityHint" class="info" aria-live="polite">Optional. Only used to show the weather.</span>
                             </div>
                         </div>
@@ -550,6 +552,10 @@
                             <label class="check">
                                 <input id="newFullWidth" type="checkbox" class="settings-input">
                                 Use the full window width
+                            </label>
+                            <label class="check">
+                                <input id="newCenterLayout" type="checkbox" class="settings-input">
+                                Center the layout
                             </label>
 
                             <h3 class="settings-group">Numbers</h3>
@@ -792,67 +798,65 @@
 
     <!-- Add Position Modal -->
     <div id="newAddPositionBackdrop" class="settings-backdrop" style="display: none;"></div>
-    <div id="newAddPositionModal" class="sticker-window" role="dialog" aria-modal="true" aria-labelledby="newAddPositionTitle" style="display: none;">
+    <div id="newAddPositionModal" class="sticker-window position-window" role="dialog" aria-modal="true" aria-labelledby="newAddPositionTitle" style="display: none;">
         <div class="sticker-window-header">
             <h2 id="newAddPositionTitle" class="window-title">Add position</h2>
             <button id="newCloseAddPositionBtn" class="btn-text">Close</button>
         </div>
-        <div class="sticker-window-content modal-form">
-            <p class="help">Add a manual position using a live price feed, or add a custom asset.</p>
-
-            <!-- Type Selection -->
-            <div class="modal-field">
-                <div id="newAddPositionTypeLabel">Position type</div>
-                <div class="button-row segmented" role="group" aria-labelledby="newAddPositionTypeLabel">
-                    <button type="button" id="newAddPositionTypePyth" class="btn-tab active" aria-pressed="true">Live price</button>
-                    <button type="button" id="newAddPositionTypeCustom" class="btn-tab" aria-pressed="false">Custom asset</button>
+        <div class="sticker-window-content">
+            <!-- One form, three states: choosing an asset, a live-priced asset, a custom asset.
+                 Editing skips the choice: the asset is fixed and shown as a line. -->
+            <form id="newPositionForm" class="form-rows" novalidate>
+                <div class="form-row" id="newPositionAssetRow">
+                    <label class="form-row__label" for="newPositionAsset" id="newPositionAssetLabel">Asset</label>
+                    <div class="form-row__field">
+                        <input id="newPositionAsset" type="text" class="settings-input" placeholder="BTC, AAPL, VWCE, gold bars…"
+                            autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list"
+                            aria-expanded="false" aria-controls="newPositionResults">
+                        <ul id="newPositionResults" class="form-options" role="listbox" aria-label="Matching assets" hidden></ul>
+                    </div>
                 </div>
-            </div>
+                <p id="newPositionChosen" class="form-chosen" aria-live="polite" hidden></p>
 
-            <!-- Pyth Oracle Section -->
-            <div id="newAddPositionPythSection" class="modal-form">
-                <div class="modal-field">
-                    <label for="newAddPositionPythSearch">Search ticker</label>
-                    <input type="text" id="newAddPositionPythSearch" class="settings-input"
-                        placeholder="AAPL, BTC, EUR/USD, XAU…" autocomplete="off" spellcheck="false">
-                    <div id="newAddPositionPythResults" class="search-results" style="display: none;"></div>
-                    <div id="newAddPositionPythSelection" class="help" aria-live="polite" style="display: none;"></div>
-                </div>
-
-                <div class="modal-field">
-                    <label for="newAddPositionPythAmount">Amount</label>
-                    <input type="number" id="newAddPositionPythAmount" class="settings-input" placeholder="0.00" step="any"
-                        inputmode="decimal">
-                </div>
-
-                <div class="modal-field">
-                    <label for="newAddPositionPythEntryDate">Entry date (optional, fills in the entry price)</label>
-                    <input type="date" id="newAddPositionPythEntryDate" class="settings-input">
-                </div>
-
-                <div class="modal-field">
-                    <label id="newAddPositionPythEntryPriceLabel" for="newAddPositionPythEntryPrice">Entry price (ticker quote currency)</label>
-                    <input type="number" id="newAddPositionPythEntryPrice" class="settings-input" placeholder="0.00" step="any"
-                        inputmode="decimal" aria-describedby="newAddPositionPythEntryPriceHint">
-                    <div id="newAddPositionPythEntryPriceHint" class="info" aria-live="polite"></div>
-                </div>
-            </div>
-
-            <!-- Custom Asset Section -->
-            <div id="newAddPositionCustomSection" class="modal-form" style="display: none;">
-                <div class="modal-field">
-                    <label for="newAddPositionCustomName">Asset name</label>
-                    <input type="text" id="newAddPositionCustomName" class="settings-input"
-                        placeholder="Gold bars, real estate…">
+                <div id="newPositionLiveFields" class="form-rows">
+                    <div class="form-row">
+                        <label class="form-row__label" for="newPositionAmount">Amount</label>
+                        <div class="form-row__field">
+                            <input id="newPositionAmount" type="number" class="settings-input" placeholder="0" step="any" inputmode="decimal">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-row__label" for="newPositionEntryPrice">Entry price</label>
+                        <div class="form-row__field form-row__field--affix">
+                            <span class="form-affix" id="newPositionCurrency" aria-hidden="true"></span>
+                            <input id="newPositionEntryPrice" type="number" class="settings-input" placeholder="optional" step="any"
+                                inputmode="decimal" aria-describedby="newPositionEntryNote">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label class="form-row__label" for="newPositionEntryDate">Bought on</label>
+                        <div class="form-row__field">
+                            <input id="newPositionEntryDate" type="date" class="settings-input" aria-describedby="newPositionEntryNote">
+                        </div>
+                    </div>
+                    <p id="newPositionEntryNote" class="form-note" aria-live="polite">A date fills in that day's price.</p>
                 </div>
 
-                <div class="modal-field">
-                    <label id="newAddPositionCustomValueLabel" for="newAddPositionCustomValue">Value (portfolio currency)</label>
-                    <input type="number" id="newAddPositionCustomValue" class="settings-input" placeholder="5000" step="any"
-                        inputmode="decimal">
+                <div id="newPositionCustomFields" class="form-rows" hidden>
+                    <div class="form-row">
+                        <label class="form-row__label" for="newPositionValue">Value</label>
+                        <div class="form-row__field form-row__field--affix">
+                            <span class="form-affix" id="newPositionValueCurrency" aria-hidden="true"></span>
+                            <input id="newPositionValue" type="number" class="settings-input" placeholder="0" step="any" inputmode="decimal">
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <button type="button" id="newSavePositionBtn" class="btn-text btn-primary">Save position</button>
+
+                <div class="form-actions">
+                    <button type="button" id="newDeletePositionBtn" class="btn-text form-delete" hidden>Delete</button>
+                    <button type="submit" id="newSavePositionBtn" class="btn-text btn-primary">Add</button>
+                </div>
+            </form>
         </div>
     </div>
 

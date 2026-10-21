@@ -88,6 +88,7 @@ export function getDefaultSettings() {
     font: 'sf',
     fontSize: 14,
     fullWidth: false, // Content column fills the window instead of stopping at a reading width
+    centerLayout: false, // Content column sits in the middle of the window instead of on the left
     comicStrip: 'calvinandhobbes',
     hideComic: false,
     hideWatchlist: false,

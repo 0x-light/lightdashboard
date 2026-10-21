@@ -594,9 +594,16 @@ function updateHeaders(tableBody, baseCurrency) {
   const valueHeader = table.querySelector('.th-value');
   const pnlHeader = table.querySelector('.th-pnl');
   const fundingHeader = table.querySelector('.th-funding');
-  if (valueHeader) valueHeader.textContent = `Value (${baseCurrency})`;
-  if (pnlHeader) pnlHeader.textContent = `P&L (${baseCurrency})`;
-  if (fundingHeader) fundingHeader.textContent = `Funding (${baseCurrency})`;
+  // The cells already carry the currency symbol, so the labels stay short; the code
+  // is there on hover for the odd case it isn't obvious.
+  const label = (th, text) => {
+    if (!th) return;
+    th.textContent = text;
+    th.title = `In ${baseCurrency}`;
+  };
+  label(valueHeader, 'Value');
+  label(pnlHeader, 'P&L');
+  label(fundingHeader, 'Funding');
 }
 
 /**

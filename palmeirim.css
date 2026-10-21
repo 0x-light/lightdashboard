@@ -41,7 +41,6 @@ html.pm:root :focus-visible { outline: none; }
 /* One emphasis everywhere: swap the theme's two colours. */
 html.pm:root .pm-nav a:focus-visible kbd,
 html.pm:root .pm-nav a[aria-current] .chip__label,
-html.pm:root .pm-theme:focus-visible kbd,
 html.pm:root .header-actions .btn-text:focus-visible::before,
 html.pm:root .pm-btn:focus-visible,
 html.pm:root .panel-foot .btn-text:focus-visible,
@@ -53,7 +52,6 @@ html.pm:root .comic-tab:focus-visible {
 
 @media (hover: hover) {
   html.pm:root .pm-nav a:hover kbd,
-  html.pm:root .pm-theme:hover kbd,
   html.pm:root .header-actions .btn-text:hover::before,
   html.pm:root .panel-foot .btn-text:hover,
   html.pm:root .panel-action:hover,
@@ -155,6 +153,18 @@ html.pm:root #newToggleRainBtn::before { content: "☂"; }
 /* Theme moves to the footer, as on the site. */
 html.pm:root .header-actions .theme-select-wrapper { display: none !important; }
 
+/* The section chip only exists on phones (see below). */
+html.pm:root .pm-section-btn {
+  display: none;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: var(--pm-lh);
+}
+
+html.pm:root .pm-section-btn[aria-expanded="true"] .chip__label { background: var(--pm-ink); color: var(--bg); }
+
 /* All tools live behind one MENU chip at the right of the bar: a framed popover
    under it on desktop, a sheet above the bottom edge on phones. Every tool is always
    listed (snow, rain, stickers and donate included), so nothing needs switching on. */
@@ -204,6 +214,14 @@ html.pm:root .app-header.pm-menu-open .header-actions::before {
   line-height: var(--pm-lh);
 }
 
+/* Menu order: Settings first, then the everyday tools, then the decorations. */
+html.pm:root #pmTools #newSettingsBtn { order: -4; }
+html.pm:root #pmTools #pmThemeBtn { order: -3; }
+html.pm:root #pmTools #newRefreshBtn { order: -2; }
+html.pm:root #pmTools #newToggleAmountsBtn { order: -1; }
+html.pm:root #pmThemeBtn::before { content: "T"; }
+html.pm:root .pm-theme-current { color: var(--pm-muted); text-transform: lowercase; }
+
 /* Full-width rows: easier to hit, and they line up like a list. */
 html.pm:root .app-header.pm-menu-open .header-actions .btn-text { width: 100%; }
 
@@ -222,17 +240,36 @@ html.pm:root .settings-pane label.check:has(#newShowStickersBtn, #newShowSnowBtn
 @media (max-width: 720px) {
   html.pm:root .app-header { flex-wrap: nowrap; align-items: center; gap: 1ch; }
 
-  html.pm:root .pm-nav {
-    flex: 1;
-    min-width: 0;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
+  /* Sections: one chip naming the one in view; it opens them as a framed list. */
+  html.pm:root .pm-section-btn { display: inline-flex; }
+  html.pm:root .app-header:not(.pm-sections-open) .pm-nav { display: none; }
+
+  html.pm:root .app-header.pm-sections-open .pm-nav {
+    position: absolute;
+    top: calc(100% + var(--pm-lh) / 2);
+    left: 1ch;
+    z-index: 60;
+    display: grid;
+    gap: calc(var(--pm-lh) / 3);
+    min-width: 24ch;
+    padding: var(--pm-lh) 1ch calc(var(--pm-lh) / 2 + 2px);
+    border: 1px solid var(--pm-ink);
+    background: var(--bg);
+    box-shadow: 1ch calc(var(--pm-lh) / 2) 0 var(--pm-tint-2);
   }
 
-  html.pm:root .pm-nav::-webkit-scrollbar { display: none; }
-  html.pm:root .pm-nav .chip { flex: none; }
+  html.pm:root .app-header.pm-sections-open .pm-nav::before {
+    content: "GO TO";
+    position: absolute;
+    top: calc(var(--pm-lh) / -2);
+    left: 1ch;
+    padding: 0 1ch;
+    background: var(--bg);
+    line-height: var(--pm-lh);
+  }
+
+  html.pm:root .pm-nav .chip,
+  html.pm:root .pm-nav .chip__label { width: 100%; }
 
   html.pm:root .app-header.pm-menu-open .header-actions {
     position: fixed;
@@ -277,6 +314,11 @@ html.pm:root .panel { scroll-margin-top: calc(var(--pm-lh) * 3); }
 /* Settings → Layout → full width: the column fills the window. The sentence keeps
    its reading measure; tables, tiles and the card use the room. */
 html.pm.pm-full:root :is(.app-header, .container, .status-bar, .pm-card) { max-width: none; }
+
+/* Settings → Layout → center: the column sits in the middle of the window. (The
+   app writes an inline margin on .container, hence the !important.) */
+html.pm.pm-center:root :is(.app-header, .status-bar) { margin-left: auto; margin-right: auto; }
+html.pm.pm-center:root .container { margin: 0 auto !important; }
 
 /* ── Intro ── */
 
@@ -620,7 +662,8 @@ html.pm:root :is(.position-detail, .watchlist-detail) :is([class$="__facts"], [c
   max-width: calc(100vw - 4ch);
 }
 
-html.pm:root :is(.position-detail, .watchlist-detail) [class$="__facts"] { color: var(--pm-muted); }
+/* Details read at full strength: they are what the row couldn't fit, not a hint. */
+html.pm:root :is(.position-detail, .watchlist-detail) [class$="__facts"] { color: var(--pm-ink); }
 
 html.pm:root :is(.position-detail, .watchlist-detail) [class$="__actions"] {
   display: flex;
@@ -735,7 +778,7 @@ html.pm:root #newWatchlistBody .wl-detail {
   cursor: default;
 }
 
-html.pm:root .wl-detail__facts { color: var(--pm-muted); }
+html.pm:root .wl-detail__facts { color: var(--pm-ink); }
 
 html.pm:root .wl-detail__actions {
   display: flex;
@@ -943,16 +986,6 @@ html.pm:root .status-bar {
   font-size: 1rem;
 }
 
-html.pm:root .pm-theme {
-  display: inline-flex;
-  gap: 1ch;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--pm-muted);
-  line-height: var(--pm-lh);
-}
-html.pm:root .pm-theme > span:last-child { color: var(--pm-ink); }
 html.pm:root .last-update-timestamp { color: var(--pm-muted); }
 
 /* ── Pop-ups: the page's own vocabulary in a frame ──
@@ -1157,9 +1190,6 @@ html.pm:root :is(.settings-panes, .sticker-window-content) textarea:focus {
 
 html.pm:root :is(.settings-panes, .sticker-window-content) ::placeholder { color: var(--pm-muted); opacity: 1; }
 
-html.pm:root .settings-panes input[type="date"],
-html.pm:root .sticker-window-content input[type="date"] { color-scheme: light dark; }
-
 html.pm:root .select::after { right: 1ch; background: var(--pm-muted); }
 
 html.pm:root .settings-panes input[type="checkbox"] {
@@ -1267,6 +1297,270 @@ html.pm:root .settings-row-title { color: var(--pm-ink); text-transform: upperca
     background: var(--pm-ink);
     color: var(--bg);
   }
+}
+
+/* ── Form rows: label beside field ──
+   Used by the position window (and Settings). A muted uppercase label column on
+   the left, one-line fields on the right, notes and errors under the field column.
+   On phones the label stacks above. */
+html.pm:root {
+  --pm-label-w: 14ch;
+}
+
+html.pm:root .form-rows { display: grid; gap: calc(var(--pm-lh) / 2); }
+html.pm:root .form-rows[hidden] { display: none; }
+
+html.pm:root .form-row {
+  display: grid;
+  grid-template-columns: var(--pm-label-w) minmax(0, 1fr);
+  gap: 0 2ch;
+  align-items: baseline;
+}
+
+html.pm:root .form-row[hidden] { display: none; }
+
+html.pm:root .form-row__label {
+  margin: 0;
+  color: var(--pm-muted);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+html.pm:root .form-row__field { min-width: 0; }
+html.pm:root .form-row__field > input { width: 100%; }
+
+/* Number fields without the browser's spinner arrows; they're typed, not stepped. */
+html.pm:root .form-rows input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+html.pm:root .form-rows input[type="number"]::-webkit-inner-spin-button,
+html.pm:root .form-rows input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Currency inside the field: "€" then the number, on the same tint. */
+html.pm:root .form-row__field--affix { display: flex; align-items: baseline; background: var(--pm-tint); }
+html.pm:root .form-row__field--affix > input { flex: 1; min-width: 0; background: transparent !important; }
+html.pm:root .form-affix { padding-left: 1ch; color: var(--pm-muted); }
+html.pm:root .form-affix:empty { display: none; }
+html.pm:root .form-row__field--affix:focus-within { background: var(--pm-tint-2); }
+
+/* Notes and errors line up with the fields, not the labels. */
+html.pm:root .form-note,
+html.pm:root .form-rows > .field-error,
+html.pm:root .form-row + .field-error {
+  margin: 0 0 0 calc(var(--pm-label-w) + 2ch);
+  color: var(--pm-muted);
+}
+
+html.pm:root .form-rows .field-error { color: var(--pm-ink); }
+html.pm:root .form-rows .field-error::before { content: "✕ "; }
+
+/* What was picked, on one line under the asset (or alone, when editing). */
+html.pm:root .form-chosen { margin: 0 0 0 calc(var(--pm-label-w) + 2ch); color: var(--pm-ink); }
+html.pm:root .form-chosen[hidden] { display: none; }
+html.pm:root .form-row[hidden] + .form-chosen { margin-left: 0; }
+html.pm:root .form-chosen__aside { color: var(--pm-muted); }
+
+html.pm:root .form-chosen__change {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pm-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  html.pm:root .form-chosen__change:hover { color: var(--pm-ink); }
+}
+
+/* Matches under the Asset field: a framed list, the active one inverted. */
+html.pm:root .form-options {
+  margin: calc(var(--pm-lh) / 4) 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--pm-rule);
+  max-height: calc(var(--pm-lh) * 8 + 2px);
+  overflow-y: auto;
+}
+
+html.pm:root .form-options[hidden] { display: none; }
+
+html.pm:root .form-option {
+  padding: 0 1ch;
+  line-height: var(--pm-lh);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+html.pm:root .form-option__meta,
+html.pm:root .form-option--custom { color: var(--pm-muted); }
+html.pm:root .form-option--custom { border-top: 1px solid var(--pm-rule); }
+
+html.pm:root .form-option[aria-selected="true"],
+html.pm:root .form-option[aria-selected="true"] * { background: var(--pm-ink); color: var(--bg); }
+
+@media (hover: hover) {
+  html.pm:root .form-option:hover,
+  html.pm:root .form-option:hover * { background: var(--pm-ink); color: var(--bg); }
+}
+
+/* Action bar: Delete on the left (editing only), the main action on the right. */
+html.pm:root .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1ch;
+  margin-top: calc(var(--pm-lh) / 2);
+  padding-top: calc(var(--pm-lh) / 2);
+  border-top: 1px solid var(--pm-rule);
+}
+
+html.pm:root .form-actions .form-delete { margin-right: auto; }
+html.pm:root .form-actions .form-delete[hidden] { display: none !important; }
+
+html.pm:root .sticker-window-content .btn-text.form-delete {
+  display: inline-flex;
+  gap: 1ch;
+  min-height: 0;
+  padding: 0 1ch 0 0;
+  background: var(--pm-tint);
+  line-height: var(--pm-lh);
+}
+
+html.pm:root .sticker-window-content .btn-text.form-delete::before {
+  content: "⌫";
+  padding: 0 1ch;
+  background: var(--pm-tint-2);
+}
+
+/* The primary action sits in the bar, not floated on its own line. */
+html.pm:root .form-actions .btn-text.btn-primary { margin-left: 0; }
+
+@media (max-width: 520px) {
+  html.pm:root .form-row { grid-template-columns: minmax(0, 1fr); }
+  html.pm:root :is(.form-note, .form-chosen, .form-rows > .field-error, .form-row + .field-error) { margin-left: 0; }
+}
+
+/* ── Settings in the same rows ──
+   Each setting is label beside field, like the position window: the label's own
+   text is the left column, the control and its note sit in the right one. Wider
+   label column here, for "Portfolio currency" and the like; stacked on phones. */
+html.pm:root .settings-panes { --pm-label-w: 20ch; }
+
+html.pm:root .settings-pane > label:not(.check),
+html.pm:root .settings-pane .row > label,
+html.pm:root .settings-pane .settings-field {
+  display: grid;
+  grid-template-columns: var(--pm-label-w) minmax(0, 1fr);
+  gap: calc(var(--pm-lh) / 4) 2ch;
+  align-items: baseline;
+  color: var(--pm-muted);
+  text-transform: uppercase;
+}
+
+html.pm:root .settings-pane > label:not(.check) > *,
+html.pm:root .settings-pane .row > label > *,
+html.pm:root .settings-pane .settings-field > :not(label) {
+  grid-column: 2;
+  min-width: 0;
+  color: var(--pm-ink);
+  text-transform: none;
+}
+
+html.pm:root .settings-pane .settings-field > label { grid-column: 1; margin: 0; }
+html.pm:root .settings-pane :is(label, .settings-field) .info { color: var(--pm-muted); }
+
+/* Font and text size: two rows like the rest, not side by side. */
+html.pm:root .settings-pane .row { display: grid; gap: var(--win-gutter); }
+
+/* Wallet addresses: the box is wide; its label sits above it. */
+html.pm:root #settingsPane-wallets > label:not(.check) { grid-template-columns: minmax(0, 1fr); }
+html.pm:root #settingsPane-wallets > label:not(.check) > * { grid-column: 1; }
+
+@media (max-width: 620px) {
+  html.pm:root :is(.settings-pane > label:not(.check), .settings-pane .row > label, .settings-pane .settings-field) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  html.pm:root :is(.settings-pane > label:not(.check), .settings-pane .row > label) > *,
+  html.pm:root .settings-pane .settings-field > * { grid-column: 1; }
+}
+
+/* ── Theme window: every theme as a radio line; pointing previews it ── */
+html.pm:root .pm-theme-window { width: min(76ch, calc(100vw - 3ch)); }
+html.pm:root .pm-theme-window .sticker-window-content { max-height: min(60vh, calc(var(--pm-lh) * 24)); overflow-y: auto; }
+
+html.pm:root .pm-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16ch, 1fr));
+  gap: 0 2ch;
+}
+
+html.pm:root .pm-theme-option {
+  padding: 0 1ch 0 0;
+  border: 0;
+  background: none;
+  color: var(--pm-ink);
+  line-height: var(--pm-lh);
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+html.pm:root .pm-theme-option::before { content: "( ) "; white-space: pre; }
+html.pm:root .pm-theme-option[aria-selected="true"]::before { content: "(*) "; }
+html.pm:root .pm-theme-option:focus-visible { background: var(--pm-ink); color: var(--bg); outline: none; }
+
+@media (hover: hover) {
+  html.pm:root .pm-theme-option:hover { background: var(--pm-ink); color: var(--bg); }
+}
+
+/* ── Strip readout: the hovered segment, named on the card's bottom border ── */
+html.pm:root .pm-card__readout {
+  position: absolute;
+  bottom: calc(var(--pm-lh) / -2);
+  left: 1ch;
+  margin: 0;
+  padding: 0 1ch;
+  background: var(--bg);
+  line-height: var(--pm-lh);
+  text-transform: uppercase;
+}
+
+html.pm:root .pm-card__readout[hidden] { display: none; }
+
+/* ── City suggestions (Settings → General) ──
+   A framed list under the field: the place in ink, its region muted; the active
+   option inverts. */
+html.pm:root .city-options {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--pm-rule);
+  max-height: calc(var(--pm-lh) * 6 + 2px);
+  overflow-y: auto;
+}
+
+html.pm:root .city-options[hidden] { display: none; }
+
+html.pm:root .city-options li {
+  padding: 0 1ch;
+  line-height: var(--pm-lh);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.pm:root .city-option__region { color: var(--pm-muted); }
+
+html.pm:root .city-options li[aria-selected="true"],
+html.pm:root .city-options li[aria-selected="true"] .city-option__region { background: var(--pm-ink); color: var(--bg); }
+
+@media (hover: hover) {
+  html.pm:root .city-options li:hover,
+  html.pm:root .city-options li:hover .city-option__region { background: var(--pm-ink); color: var(--bg); }
 }
 
 /* ── Small screens and touch: the site's 13/17 grid, no key cells ── */

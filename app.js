@@ -1703,33 +1703,42 @@ function setupControls() {
     }
   });
 
-  // Add Position functionality
+  // Add / edit position: one form in three states. While adding, a single Asset field
+  // searches live tickers (Pyth, then Yahoo); its last option adds what was typed as a
+  // custom asset. Picking decides the fields: amount, entry price and date for a live
+  // asset, a value for a custom one. Editing fixes the asset and offers Delete.
   const addPositionBtn = document.getElementById('newAddPositionBtn');
   const addPositionModal = document.getElementById('newAddPositionModal');
   const addPositionBackdrop = document.getElementById('newAddPositionBackdrop');
   const addPositionTitle = document.getElementById('newAddPositionTitle');
   const closeAddPositionBtn = document.getElementById('newCloseAddPositionBtn');
-  const addPositionTypePyth = document.getElementById('newAddPositionTypePyth');
-  const addPositionTypeCustom = document.getElementById('newAddPositionTypeCustom');
-  const addPositionPythSection = document.getElementById('newAddPositionPythSection');
-  const addPositionCustomSection = document.getElementById('newAddPositionCustomSection');
-  const addPositionPythSearch = document.getElementById('newAddPositionPythSearch');
-  const addPositionPythResults = document.getElementById('newAddPositionPythResults');
-  const addPositionPythSelection = document.getElementById('newAddPositionPythSelection');
-  const addPositionPythAmount = document.getElementById('newAddPositionPythAmount');
-  const addPositionPythEntryDate = document.getElementById('newAddPositionPythEntryDate');
-  const addPositionPythEntryPriceLabel = document.getElementById('newAddPositionPythEntryPriceLabel');
-  const addPositionPythEntryPrice = document.getElementById('newAddPositionPythEntryPrice');
-  const addPositionPythEntryPriceHint = document.getElementById('newAddPositionPythEntryPriceHint');
-  const addPositionCustomName = document.getElementById('newAddPositionCustomName');
-  const addPositionCustomValueLabel = document.getElementById('newAddPositionCustomValueLabel');
-  const addPositionCustomValue = document.getElementById('newAddPositionCustomValue');
+  const positionForm = document.getElementById('newPositionForm');
+  const assetRow = document.getElementById('newPositionAssetRow');
+  const assetLabel = document.getElementById('newPositionAssetLabel');
+  const assetInput = document.getElementById('newPositionAsset');
+  const assetResults = document.getElementById('newPositionResults');
+  const chosenLine = document.getElementById('newPositionChosen');
+  const liveFields = document.getElementById('newPositionLiveFields');
+  const customFields = document.getElementById('newPositionCustomFields');
+  const amountInput = document.getElementById('newPositionAmount');
+  const entryPriceInput = document.getElementById('newPositionEntryPrice');
+  const entryDateInput = document.getElementById('newPositionEntryDate');
+  const entryNote = document.getElementById('newPositionEntryNote');
+  const currencyAffix = document.getElementById('newPositionCurrency');
+  const valueInput = document.getElementById('newPositionValue');
+  const valueCurrencyAffix = document.getElementById('newPositionValueCurrency');
+  const deletePositionBtn = document.getElementById('newDeletePositionBtn');
   const savePositionBtn = document.getElementById('newSavePositionBtn');
 
-  let selectedPositionType = 'pyth';
-  let selectedPythFeed = null;
-  let editingManualPositionIndex = null;
-  let editingCustomCurrency = null;
+  const ENTRY_NOTE = "A date fills in that day's price.";
+
+  // kind: null (nothing picked yet) | 'live' | 'custom'
+  let kind = null;
+  let selectedFeed = null;
+  let editing = null; // { index, asset, manualType } while editing
+  let customCurrency = null;
+  let assetOptions = []; // [{ feed } | { custom: name }]
+  let activeOption = -1;
 
   function normalizeQuoteCurrency(value) {
     const currency = String(value || '').trim();
@@ -1750,197 +1759,153 @@ function setupControls() {
     return '';
   }
 
+  // "$", "€", "p" for pence; the code itself when there's no short symbol.
+  function currencySymbol(currency) {
+    if (!currency) return '';
+    if (currency === 'GBp') return 'p';
+    try {
+      const part = new Intl.NumberFormat(undefined, { style: 'currency', currency, currencyDisplay: 'narrowSymbol' })
+        .formatToParts(0).find(p => p.type === 'currency');
+      return part?.value || currency;
+    } catch (_) {
+      return currency;
+    }
+  }
+
+  // Feed names like "SOLANA / US DOLLAR" repeat the quote currency the line already shows.
+  function feedName(feed) {
+    const name = String(feed?.name || '').replace(/\s*\/\s*US DOLLAR$/i, '').trim();
+    return name && name.toUpperCase() !== String(feed?.symbol || '').toUpperCase() ? name : '';
+  }
+
   function formatPriceWithCurrency(price, currency) {
     const formatted = Number(price).toLocaleString(undefined, { maximumFractionDigits: 4 });
     return currency ? `${formatted} ${currency}` : formatted;
   }
 
-  function updateEntryPriceCurrencyUi(feed, { showHint = false } = {}) {
-    const currency = quoteCurrencyForFeed(feed);
-    const labelCurrency = currency || 'ticker quote currency';
-    if (addPositionPythEntryPriceLabel) {
-      addPositionPythEntryPriceLabel.textContent = `Entry price (${labelCurrency})`;
+  function setNote(text) {
+    if (entryNote) entryNote.textContent = text;
+  }
+
+  // The line under the asset: what was picked, in one row. While adding it ends in a
+  // Change link that brings the search back.
+  function renderChosen() {
+    if (!chosenLine) return;
+    chosenLine.innerHTML = '';
+    if (!kind) {
+      chosenLine.hidden = true;
+      return;
     }
-    if (showHint && addPositionPythEntryPriceHint) {
-      if (currency) {
-        addPositionPythEntryPriceHint.textContent = `Use ${currency} for this entry price.`;
+    const parts = kind === 'live'
+      ? [feedName(selectedFeed), categoryLabel(selectedFeed.category), selectedFeed.exchange, quoteCurrencyForFeed(selectedFeed)]
+      : ['Custom asset', `value in ${customCurrency}`];
+    const text = document.createElement('span');
+    text.textContent = parts.filter(Boolean).join(' · ');
+    chosenLine.appendChild(text);
+    if (kind === 'live' && selectedFeed.marketHours === 'us-equity') {
+      const hours = document.createElement('span');
+      hours.className = 'form-chosen__aside';
+      hours.textContent = ' · prices move 9:30–16:00 ET';
+      chosenLine.appendChild(hours);
+    }
+    if (!editing) {
+      const change = document.createElement('button');
+      change.type = 'button';
+      change.className = 'form-chosen__change';
+      change.textContent = 'Change';
+      change.addEventListener('click', () => {
+        setKind(null);
+        assetInput.select();
+        assetInput.focus();
+      });
+      chosenLine.append(' ', change);
+    }
+    chosenLine.hidden = false;
+  }
+
+  function setKind(next) {
+    kind = next;
+    if (next !== 'live') selectedFeed = null;
+    if (liveFields) liveFields.hidden = next === 'custom';
+    if (customFields) customFields.hidden = next !== 'custom';
+    if (currencyAffix) currencyAffix.textContent = next === 'live' ? currencySymbol(quoteCurrencyForFeed(selectedFeed)) : '';
+    if (valueCurrencyAffix) valueCurrencyAffix.textContent = currencySymbol(customCurrency);
+    renderChosen();
+  }
+
+  function closeAssetOptions() {
+    assetOptions = [];
+    activeOption = -1;
+    if (assetResults) {
+      assetResults.hidden = true;
+      assetResults.innerHTML = '';
+    }
+    assetInput?.setAttribute('aria-expanded', 'false');
+    assetInput?.removeAttribute('aria-activedescendant');
+  }
+
+  function setActiveOption(index) {
+    activeOption = index;
+    Array.from(assetResults.children).forEach((li, i) => li.setAttribute('aria-selected', String(i === index)));
+    if (index >= 0) {
+      assetInput.setAttribute('aria-activedescendant', `newPositionOption${index}`);
+      assetResults.children[index]?.scrollIntoView({ block: 'nearest' });
+    } else {
+      assetInput.removeAttribute('aria-activedescendant');
+    }
+  }
+
+  function pickOption(option) {
+    if (!option) return;
+    closeAssetOptions();
+    if (option.custom) {
+      customCurrency = getSettings().portfolioBaseCurrency || 'USD';
+      assetInput.value = option.custom;
+      setKind('custom');
+      valueInput?.focus();
+      return;
+    }
+    selectedFeed = option.feed;
+    assetInput.value = option.feed.symbol;
+    setKind('live');
+    setNote(ENTRY_NOTE);
+    if (entryDateInput?.value) fetchHistoricalEntryPrice(selectedFeed, entryDateInput.value).catch(() => {});
+    amountInput?.focus();
+  }
+
+  // Tickers first; the last option always adds the typed text as a custom asset.
+  function showAssetOptions(feeds, query) {
+    if (!assetResults) return;
+    assetOptions = feeds.map(feed => ({ feed }));
+    if (query) assetOptions.push({ custom: query });
+    assetResults.innerHTML = '';
+    assetOptions.forEach((option, i) => {
+      const li = document.createElement('li');
+      li.id = `newPositionOption${i}`;
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', 'false');
+      if (option.custom) {
+        li.className = 'form-option form-option--custom';
+        li.textContent = `Not listed? Add “${option.custom}” as a custom asset`;
       } else {
-        addPositionPythEntryPriceHint.textContent = 'Use the quote currency shown by the selected ticker.';
+        const feed = option.feed;
+        li.className = 'form-option';
+        const sym = document.createElement('span');
+        sym.className = 'form-option__name';
+        sym.textContent = feed.symbol;
+        const meta = document.createElement('span');
+        meta.className = 'form-option__meta';
+        meta.textContent = [feedName(feed), categoryLabel(feed.category), feed.exchange]
+          .filter(Boolean).join(' · ');
+        li.append(sym, ' ', meta);
       }
-    }
-  }
-
-  function updateCustomValueCurrencyUi(currencyOverride = null) {
-    const currency = currencyOverride || getSettings().portfolioBaseCurrency || 'USD';
-    if (addPositionCustomValueLabel) {
-      addPositionCustomValueLabel.textContent = `Value (${currency})`;
-    }
-  }
-
-  function closeAddPosition() {
-    if (addPositionModal) addPositionModal.style.display = 'none';
-    if (addPositionBackdrop) addPositionBackdrop.style.display = 'none';
-    if (addPositionTitle) addPositionTitle.textContent = 'Add position';
-    if (savePositionBtn) savePositionBtn.textContent = 'Save position';
-    editingManualPositionIndex = null;
-    editingCustomCurrency = null;
-
-    // Re-enable scroll on mobile
-    document.body.classList.remove('modal-open');
-  }
-
-  if (addPositionBtn) {
-    addPositionBtn.addEventListener('click', async () => {
-      // Show modal immediately (don't wait for feeds to load)
-      if (addPositionModal) addPositionModal.style.display = 'block';
-      if (addPositionBackdrop) addPositionBackdrop.style.display = 'block';
-
-      // Disable scroll on mobile when modal open
-      document.body.classList.add('modal-open');
-
-      // Reset state
-      selectedPositionType = 'pyth';
-      selectedPythFeed = null;
-      editingManualPositionIndex = null;
-      editingCustomCurrency = null;
-      if (addPositionTitle) addPositionTitle.textContent = 'Add position';
-      if (savePositionBtn) savePositionBtn.textContent = 'Save position';
-      if (addPositionPythSearch) addPositionPythSearch.value = '';
-      if (addPositionPythAmount) addPositionPythAmount.value = '';
-      if (addPositionPythEntryDate) addPositionPythEntryDate.value = '';
-      if (addPositionPythEntryPrice) {
-        addPositionPythEntryPrice.value = '';
-        delete addPositionPythEntryPrice.dataset.userEdited;
-      }
-      if (addPositionPythEntryPriceHint) addPositionPythEntryPriceHint.textContent = '';
-      updateEntryPriceCurrencyUi(null);
-      updateCustomValueCurrencyUi();
-      if (addPositionCustomName) addPositionCustomName.value = '';
-      if (addPositionCustomValue) addPositionCustomValue.value = '';
-      if (addPositionPythResults) {
-        addPositionPythResults.innerHTML = '';
-        addPositionPythResults.style.display = 'none';
-      }
-      if (addPositionPythSelection) {
-        addPositionPythSelection.innerHTML = '';
-        addPositionPythSelection.style.display = 'none';
-      }
-
-      // Set initial view
-      if (addPositionPythSection) addPositionPythSection.style.display = 'block';
-      if (addPositionCustomSection) addPositionCustomSection.style.display = 'none';
-      if (addPositionTypePyth) {
-        addPositionTypePyth.classList.add('active');
-      }
-      if (addPositionTypeCustom) {
-        addPositionTypeCustom.classList.remove('active');
-      }
-
-      // Load feeds in background (don't block modal display)
-      loadAllPythFeeds().catch(() => { });
+      li.addEventListener('mousedown', (e) => e.preventDefault());
+      li.addEventListener('click', () => pickOption(option));
+      assetResults.appendChild(li);
     });
-  }
-
-  function openManualPositionEdit(asset, manualType) {
-    const s = getSettings();
-    const positions = Array.isArray(s.cryptoPositions) ? s.cryptoPositions : [];
-    const index = positions.findIndex(position => storedManualPositionMatches(position, asset, manualType));
-    if (index < 0) {
-      alert('Could not find that manual position in settings.');
-      return;
-    }
-
-    const position = positions[index];
-    editingManualPositionIndex = index;
-
-    if (addPositionModal) addPositionModal.style.display = 'block';
-    if (addPositionBackdrop) addPositionBackdrop.style.display = 'block';
-    document.body.classList.add('modal-open');
-    if (addPositionTitle) addPositionTitle.textContent = 'Edit position';
-    if (savePositionBtn) savePositionBtn.textContent = 'Save changes';
-
-    if (addPositionPythResults) {
-      addPositionPythResults.innerHTML = '';
-      addPositionPythResults.style.display = 'none';
-    }
-
-    if (position.type === 'custom') {
-      selectedPositionType = 'custom';
-      selectedPythFeed = null;
-      if (addPositionPythSection) addPositionPythSection.style.display = 'none';
-      if (addPositionCustomSection) addPositionCustomSection.style.display = 'block';
-      if (addPositionTypeCustom) addPositionTypeCustom.classList.add('active');
-      if (addPositionTypePyth) addPositionTypePyth.classList.remove('active');
-      editingCustomCurrency = position.currency || s.portfolioBaseCurrency || 'USD';
-      updateCustomValueCurrencyUi(editingCustomCurrency);
-      if (addPositionCustomName) addPositionCustomName.value = position.name || position.symbol || '';
-      if (addPositionCustomValue) addPositionCustomValue.value = position.value || position.price || '';
-      if (addPositionPythSelection) {
-        addPositionPythSelection.innerHTML = '';
-        addPositionPythSelection.style.display = 'none';
-      }
-      return;
-    }
-
-    selectedPositionType = 'pyth';
-    selectedPythFeed = {
-      provider: position.type === 'stock' ? 'yahoo' : 'pyth',
-      symbol: position.symbol,
-      id: position.feedId || null,
-      category: position.category || (position.type === 'stock' ? 'equity' : 'crypto'),
-      name: position.name || position.symbol,
-      exchange: position.exchange || null,
-      currency: position.currency || (position.type === 'stock' ? null : 'USD')
-    };
-
-    if (addPositionPythSection) addPositionPythSection.style.display = 'block';
-    if (addPositionCustomSection) addPositionCustomSection.style.display = 'none';
-    if (addPositionTypePyth) addPositionTypePyth.classList.add('active');
-    if (addPositionTypeCustom) addPositionTypeCustom.classList.remove('active');
-    if (addPositionPythSearch) addPositionPythSearch.value = position.symbol || '';
-    if (addPositionPythAmount) addPositionPythAmount.value = position.amount || '';
-    if (addPositionPythEntryDate) addPositionPythEntryDate.value = position.entryDate || '';
-    if (addPositionPythEntryPrice) {
-      addPositionPythEntryPrice.value = position.entryPrice || '';
-      addPositionPythEntryPrice.dataset.userEdited = '1';
-    }
-    renderSelectedFeed(selectedPythFeed);
-    updateEntryPriceCurrencyUi(selectedPythFeed, { showHint: true });
-  }
-
-  if (closeAddPositionBtn) {
-    closeAddPositionBtn.addEventListener('click', closeAddPosition);
-  }
-
-  if (addPositionBackdrop) {
-    addPositionBackdrop.addEventListener('click', closeAddPosition);
-  }
-
-  if (addPositionTypePyth) {
-    addPositionTypePyth.addEventListener('click', () => {
-      selectedPositionType = 'pyth';
-      if (addPositionPythSection) addPositionPythSection.style.display = 'block';
-      if (addPositionCustomSection) addPositionCustomSection.style.display = 'none';
-      addPositionTypePyth.classList.add('active');
-      if (addPositionTypeCustom) {
-        addPositionTypeCustom.classList.remove('active');
-      }
-      updateCustomValueCurrencyUi();
-    });
-  }
-
-  if (addPositionTypeCustom) {
-    addPositionTypeCustom.addEventListener('click', () => {
-      selectedPositionType = 'custom';
-      editingCustomCurrency = null;
-      if (addPositionPythSection) addPositionPythSection.style.display = 'none';
-      if (addPositionCustomSection) addPositionCustomSection.style.display = 'block';
-      addPositionTypeCustom.classList.add('active');
-      if (addPositionTypePyth) {
-        addPositionTypePyth.classList.remove('active');
-      }
-      updateCustomValueCurrencyUi();
-    });
+    assetResults.hidden = assetOptions.length === 0;
+    assetInput.setAttribute('aria-expanded', String(assetOptions.length > 0));
+    setActiveOption(assetOptions.length > 0 ? 0 : -1);
   }
 
   // Rank local Pyth matches. Yahoo results arrive pre-ranked by their API and are interleaved
@@ -1966,8 +1931,9 @@ function setupControls() {
   }
 
   // Merge Pyth + Yahoo results, deduping by normalized symbol. Pyth wins ties because its
-  // crypto prices are real-time on-chain vs Yahoo's cached retail feed.
-  function mergeSearchResults(pythMatches, yahooMatches) {
+  // crypto prices are real-time on-chain vs Yahoo's cached retail feed. An exact symbol
+  // match always leads.
+  function mergeSearchResults(query, pythMatches, yahooMatches) {
     const seen = new Map();
     const add = (feed, fromPyth) => {
       const key = `${feed.category || ''}|${(feed.symbol || '').toUpperCase()}`;
@@ -1976,93 +1942,139 @@ function setupControls() {
     };
     for (const f of pythMatches) add(f, true);
     for (const f of yahooMatches) add(f, false);
-    return Array.from(seen.values()).slice(0, 25);
+    const q = query.trim().toUpperCase();
+    return Array.from(seen.values())
+      .sort((a, b) => ((b.symbol || '').toUpperCase() === q) - ((a.symbol || '').toUpperCase() === q))
+      .slice(0, 8);
   }
 
-  function renderSelectedFeed(feed) {
-    if (!addPositionPythSelection) return;
-    if (!feed) {
-      addPositionPythSelection.style.display = 'none';
-      addPositionPythSelection.innerHTML = '';
-      return;
+  function resetForm() {
+    clearPositionErrors();
+    closeAssetOptions();
+    editing = null;
+    customCurrency = null;
+    selectedFeed = null;
+    [assetInput, amountInput, entryPriceInput, entryDateInput, valueInput].forEach(input => {
+      if (input) input.value = '';
+    });
+    if (entryPriceInput) delete entryPriceInput.dataset.userEdited;
+    if (assetRow) assetRow.hidden = false;
+    if (assetInput) {
+      assetInput.readOnly = false;
+      assetInput.setAttribute('role', 'combobox');
     }
-    const label = categoryLabel(feed.category);
-    const name = feed.name && feed.name !== feed.symbol ? ` — ${escapeHtml(feed.name)}` : '';
-    let hint = '';
-    if (feed.marketHours === 'us-equity') {
-      hint = '<div style="margin-top: 4px; opacity: 0.7;">Prices update only during US market hours (9:30–16:00 ET, Mon–Fri).</div>';
-    }
-    const exchange = feed.exchange ? `<span style="opacity: 0.6;"> · ${escapeHtml(feed.exchange)}</span>` : '';
-    const currency = quoteCurrencyForFeed(feed);
-    const currencyHint = currency
-      ? `<div style="margin-top: 4px; opacity: 0.7;">Entry price should be entered in ${escapeHtml(currency)}.</div>`
-      : '<div style="margin-top: 4px; opacity: 0.7;">Entry price should use this ticker’s quote currency.</div>';
-    addPositionPythSelection.innerHTML =
-      `<strong>${escapeHtml(feed.symbol)}</strong>${name}` +
-      (label ? ` <span style="opacity: 0.6;">· ${label}</span>` : '') +
-      exchange +
-      currencyHint +
-      hint;
-    addPositionPythSelection.style.display = 'block';
+    if (assetLabel) assetLabel.textContent = 'Asset';
+    if (deletePositionBtn) deletePositionBtn.hidden = true;
+    setNote(ENTRY_NOTE);
+    setKind(null);
   }
 
-  function renderSearchResults(matches) {
-    if (!addPositionPythResults) return;
-    addPositionPythResults.innerHTML = '';
-    if (matches.length === 0) {
-      addPositionPythResults.style.display = 'none';
-      return;
-    }
-    addPositionPythResults.style.display = 'block';
-    matches.forEach(feed => {
-      // A real button, so results can be reached with Tab and picked with Enter
-      const resultDiv = document.createElement('button');
-      resultDiv.type = 'button';
-      resultDiv.className = 'watchlist-search-result';
-      const label = categoryLabel(feed.category);
-      const name = feed.name && feed.name !== feed.symbol ? escapeHtml(feed.name) : '';
-      const exchange = feed.exchange ? ` <span class="result-meta">(${escapeHtml(feed.exchange)})</span>` : '';
-      resultDiv.innerHTML =
-        `<span><strong>${escapeHtml(feed.symbol)}</strong>${name ? ` <span class="result-meta">— ${name}</span>` : ''}${exchange}</span>` +
-        (label ? `<span class="result-meta">${label}</span>` : '');
-      resultDiv.addEventListener('click', () => {
-        selectedPythFeed = feed;
-        addPositionPythSearch.value = feed.symbol;
-        addPositionPythResults.innerHTML = '';
-        addPositionPythResults.style.display = 'none';
-        renderSelectedFeed(feed);
-        updateEntryPriceCurrencyUi(feed, { showHint: true });
-        if (addPositionPythEntryDate?.value) {
-          fetchHistoricalEntryPrice(feed, addPositionPythEntryDate.value).catch(() => {});
-        }
-        // The picked result is gone; carry focus on to the next field
-        addPositionPythAmount?.focus();
-      });
-      addPositionPythResults.appendChild(resultDiv);
+  function openPositionWindow() {
+    if (addPositionModal) addPositionModal.style.display = 'block';
+    if (addPositionBackdrop) addPositionBackdrop.style.display = 'block';
+    // Disable scroll on mobile when modal open
+    document.body.classList.add('modal-open');
+  }
+
+  function closeAddPosition() {
+    if (addPositionModal) addPositionModal.style.display = 'none';
+    if (addPositionBackdrop) addPositionBackdrop.style.display = 'none';
+    editing = null;
+    // Re-enable scroll on mobile
+    document.body.classList.remove('modal-open');
+  }
+
+  if (addPositionBtn) {
+    addPositionBtn.addEventListener('click', () => {
+      resetForm();
+      if (addPositionTitle) addPositionTitle.textContent = 'Add position';
+      if (savePositionBtn) savePositionBtn.textContent = 'Add';
+      openPositionWindow();
+      assetInput?.focus();
+      // Load feeds in background (don't block modal display)
+      loadAllPythFeeds().catch(() => { });
     });
   }
+
+  function openManualPositionEdit(asset, manualType) {
+    const s = getSettings();
+    const positions = Array.isArray(s.cryptoPositions) ? s.cryptoPositions : [];
+    const index = positions.findIndex(position => storedManualPositionMatches(position, asset, manualType));
+    if (index < 0) return;
+
+    const position = positions[index];
+    resetForm();
+    editing = { index, asset, manualType };
+    if (deletePositionBtn) deletePositionBtn.hidden = false;
+    if (savePositionBtn) savePositionBtn.textContent = 'Save';
+
+    if (position.type === 'custom') {
+      // A custom asset keeps an editable name; there's no ticker to search.
+      customCurrency = position.currency || s.portfolioBaseCurrency || 'USD';
+      if (addPositionTitle) addPositionTitle.textContent = `Edit ${position.name || position.symbol || 'position'}`;
+      if (assetLabel) assetLabel.textContent = 'Name';
+      if (assetInput) {
+        assetInput.value = position.name || position.symbol || '';
+        assetInput.removeAttribute('role');
+      }
+      if (valueInput) valueInput.value = position.value || position.price || '';
+      setKind('custom');
+    } else {
+      selectedFeed = {
+        provider: position.type === 'stock' ? 'yahoo' : 'pyth',
+        symbol: position.symbol,
+        id: position.feedId || null,
+        category: position.category || (position.type === 'stock' ? 'equity' : 'crypto'),
+        name: position.name || position.symbol,
+        exchange: position.exchange || null,
+        currency: position.currency || (position.type === 'stock' ? null : 'USD')
+      };
+      if (addPositionTitle) addPositionTitle.textContent = `Edit ${position.symbol}`;
+      // The ticker is fixed while editing; it's in the title and described on one line.
+      if (assetRow) assetRow.hidden = true;
+      if (assetInput) assetInput.value = position.symbol || '';
+      if (amountInput) amountInput.value = position.amount || '';
+      if (entryDateInput) entryDateInput.value = position.entryDate || '';
+      if (entryPriceInput) {
+        entryPriceInput.value = position.entryPrice || '';
+        entryPriceInput.dataset.userEdited = '1';
+      }
+      setKind('live');
+    }
+    openPositionWindow();
+    (position.type === 'custom' ? valueInput : amountInput)?.focus();
+  }
+
+  closeAddPositionBtn?.addEventListener('click', closeAddPosition);
+  addPositionBackdrop?.addEventListener('click', closeAddPosition);
+
+  deletePositionBtn?.addEventListener('click', () => {
+    if (!editing) return;
+    const { asset, manualType } = editing;
+    closeAddPosition();
+    window.openPositionKey = null;
+    deleteManualPosition(asset, manualType);
+  });
 
   // Debounced merged search: local Pyth results show instantly, Yahoo results arrive ~250ms
   // later and are merged in. Each keystroke supersedes the previous Yahoo call via searchSeq.
   let searchDebounce = null;
   let searchSeq = 0;
 
-  if (addPositionPythSearch) {
-    addPositionPythSearch.addEventListener('input', (e) => {
-      const query = e.target.value.trim();
+  if (assetInput) {
+    assetInput.addEventListener('input', () => {
+      if (editing) return; // a custom asset's name, not a search
+      const query = assetInput.value.trim();
       clearTimeout(searchDebounce);
-
-      if (!query || !addPositionPythResults) {
-        if (addPositionPythResults) {
-          addPositionPythResults.innerHTML = '';
-          addPositionPythResults.style.display = 'none';
-        }
+      // Typing again means a new choice; never keep the old ticker behind new text.
+      if (kind) setKind(null);
+      if (!query) {
+        closeAssetOptions();
         return;
       }
 
-      const feeds = allPythFeeds || [];
-      const pythMatches = rankFeedMatches(query, feeds);
-      renderSearchResults(pythMatches);
+      const pythMatches = rankFeedMatches(query, allPythFeeds || []);
+      showAssetOptions(mergeSearchResults(query, pythMatches, []), query);
 
       const seq = ++searchSeq;
       searchDebounce = setTimeout(async () => {
@@ -2070,222 +2082,214 @@ function setupControls() {
         if (!stocksProvider?.searchSymbols) return;
         try {
           const yahoo = await stocksProvider.searchSymbols(query, { limit: 15 });
-          if (seq !== searchSeq) return; // newer query superseded this one
-          renderSearchResults(mergeSearchResults(pythMatches, yahoo));
+          if (seq !== searchSeq || assetInput.value.trim() !== query) return; // superseded
+          showAssetOptions(mergeSearchResults(query, pythMatches, yahoo), query);
         } catch (err) {
           console.warn('[Search] Yahoo search failed:', err?.message || err);
         }
       }, 250);
     });
+
+    assetInput.addEventListener('keydown', (e) => {
+      const open = assetOptions.length > 0;
+      if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        e.preventDefault();
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        setActiveOption((activeOption + step + assetOptions.length) % assetOptions.length);
+      } else if (e.key === 'Enter' && open) {
+        // Enter picks the highlighted option instead of submitting the form.
+        e.preventDefault();
+        e.stopPropagation();
+        pickOption(assetOptions[Math.max(0, activeOption)]);
+      } else if (e.key === 'Escape' && open) {
+        // Close the list, not the window.
+        e.preventDefault();
+        e.stopPropagation();
+        closeAssetOptions();
+      }
+    });
+
+    assetInput.addEventListener('blur', () => closeAssetOptions());
   }
 
   // Look up the close on a given date and pre-fill the entry-price field. Routed to the
   // appropriate provider based on the selected feed: Pyth for its on-chain crypto feeds,
   // Yahoo for stocks/ETFs/FX/indices. Pre-fill is non-authoritative — the user can override.
-  // Empty-hint collapse is handled by CSS (`.help:empty { display: none }`).
   let historicalLookupSeq = 0;
   async function fetchHistoricalEntryPrice(feed, dateStr) {
     if (!feed || !dateStr) return;
     const mods = window.AppModules || {};
-    const hint = addPositionPythEntryPriceHint;
 
     const token = ++historicalLookupSeq;
-    if (hint) hint.textContent = 'Looking up entry price…';
+    setNote('Looking up the price on that day…');
 
     const [y, m, d] = dateStr.split('-').map(Number);
     if (!y || !m || !d) return;
     if (Date.UTC(y, m - 1, d) > Date.now()) {
-      if (hint) hint.textContent = 'Date must be in the past.';
+      setNote('Pick a day in the past.');
       return;
     }
 
     let price = null;
-    let sourceLabel = '';
-    let currency = quoteCurrencyForFeed(feed);
+    const currency = quoteCurrencyForFeed(feed);
     try {
       if (feed.provider === 'yahoo' || (!feed.id && feed.symbol)) {
         price = await mods.data?.providers?.stocks?.getHistoricalPrice?.(feed.symbol, dateStr);
-        sourceLabel = 'Yahoo';
       } else if (feed.id) {
         // 16:00 UTC picks a liquid intraday moment for equities; crypto/FX/metal tick continuously.
         const ts = Math.floor(Date.UTC(y, m - 1, d, 16, 0, 0) / 1000);
         const prices = await mods.data?.providers?.pyth?.getAtTimestampByFeedIds?.([feed.id], ts, 10000);
         price = prices ? prices[feed.id.toLowerCase()] : null;
-        sourceLabel = 'Pyth';
       }
       if (token !== historicalLookupSeq) return;
 
       if (Number.isFinite(price) && price > 0) {
-        if (addPositionPythEntryPrice && !addPositionPythEntryPrice.dataset.userEdited) {
+        if (entryPriceInput && !entryPriceInput.dataset.userEdited) {
           // Keep meaningful precision but trim trailing zeros so the input stays readable.
-          addPositionPythEntryPrice.value = price.toFixed(6).replace(/\.?0+$/, '');
+          entryPriceInput.value = price.toFixed(6).replace(/\.?0+$/, '');
         }
-        if (hint) {
-          hint.textContent = `${sourceLabel} price on ${dateStr}: ${formatPriceWithCurrency(price, currency)}`;
-        }
-      } else if (hint) {
-        hint.textContent = 'No historical price available — enter manually.';
+        setNote(`Price on ${dateStr}: ${formatPriceWithCurrency(price, currency)}`);
+      } else {
+        setNote('No price found for that day. Enter it yourself.');
       }
     } catch (e) {
       if (token !== historicalLookupSeq) return;
-      if (hint) hint.textContent = 'Historical lookup failed — enter price manually.';
+      setNote("Couldn't look up that day's price. Enter it yourself.");
     }
   }
 
-  if (addPositionPythEntryDate) {
-    addPositionPythEntryDate.addEventListener('change', () => {
-      if (!selectedPythFeed) {
-        if (addPositionPythEntryPriceHint) {
-          addPositionPythEntryPriceHint.textContent = 'Pick a ticker first to auto-fill the price.';
-        }
-        return;
-      }
-      // Reset userEdited so a fresh lookup can populate when the user changes dates; they can
-      // still type over the value afterwards.
-      if (addPositionPythEntryPrice) delete addPositionPythEntryPrice.dataset.userEdited;
-      fetchHistoricalEntryPrice(selectedPythFeed, addPositionPythEntryDate.value).catch(() => {});
-    });
-  }
+  entryDateInput?.addEventListener('change', () => {
+    if (!selectedFeed) {
+      setNote('Pick an asset first, then the date fills in its price.');
+      return;
+    }
+    // A new date may refill the price; typing over it afterwards still wins.
+    if (entryPriceInput) delete entryPriceInput.dataset.userEdited;
+    fetchHistoricalEntryPrice(selectedFeed, entryDateInput.value).catch(() => {});
+  });
 
   // Respect manual edits to the entry-price field: once the user types, we stop overwriting it.
-  if (addPositionPythEntryPrice) {
-    addPositionPythEntryPrice.addEventListener('input', () => {
-      addPositionPythEntryPrice.dataset.userEdited = '1';
-    });
-  }
+  entryPriceInput?.addEventListener('input', () => {
+    entryPriceInput.dataset.userEdited = '1';
+  });
 
   // Errors sit under the field they belong to and say what to enter
-  const clearPositionErrors = () => {
-    document.querySelectorAll('#newAddPositionModal .field-error').forEach(el => el.remove());
-    document.querySelectorAll('#newAddPositionModal [aria-invalid]').forEach(el => {
-      el.removeAttribute('aria-invalid');
-      el.removeAttribute('aria-describedby');
+  function clearPositionErrors() {
+    document.querySelectorAll('#newAddPositionModal .field-error').forEach(el => {
+      const field = document.querySelector(`[aria-errormessage="${el.id}"]`);
+      field?.removeAttribute('aria-invalid');
+      field?.removeAttribute('aria-errormessage');
+      el.remove();
     });
-  };
-  const showPositionError = (field, message) => {
+  }
+  function showPositionError(field, message) {
     clearPositionErrors();
     const error = document.createElement('div');
     error.className = 'field-error';
     error.id = `${field.id}Error`;
     error.setAttribute('role', 'alert');
     error.textContent = message;
-    field.insertAdjacentElement('afterend', error);
+    (field.closest('.form-row') || field).insertAdjacentElement('afterend', error);
     if (field.matches('input, select, textarea')) {
       field.setAttribute('aria-invalid', 'true');
-      field.setAttribute('aria-describedby', error.id);
+      field.setAttribute('aria-errormessage', error.id);
     }
     field.focus();
-  };
-  document.getElementById('newAddPositionModal')?.addEventListener('input', clearPositionErrors);
-
-  if (savePositionBtn) {
-    savePositionBtn.addEventListener('click', async () => {
-      clearPositionErrors();
-      const s = getSettings();
-
-      // Ensure cryptoPositions array exists
-      if (!s.cryptoPositions) {
-        s.cryptoPositions = [];
-      }
-
-      let savedPosition = null;
-
-      if (selectedPositionType === 'pyth') {
-        // Validate Pyth position
-        if (!selectedPythFeed) {
-          showPositionError(addPositionPythSearch, 'Search for a ticker, then pick it from the results.');
-          return;
-        }
-
-        const amount = parseFloat(addPositionPythAmount.value);
-        const entryPrice = parseFloat(addPositionPythEntryPrice.value);
-
-        if (!amount || amount <= 0) {
-          showPositionError(addPositionPythAmount, 'Enter an amount greater than 0.');
-          return;
-        }
-
-        if (!entryPrice || entryPrice <= 0) {
-          showPositionError(addPositionPythEntryPrice, 'Enter an entry price greater than 0, or pick an entry date to fill it in.');
-          return;
-        }
-
-        // Route the saved position to the right provider:
-        //   - Pyth feed (has feed id): type: 'pyth'  → on-chain real-time price via Pyth
-        //   - Yahoo feed (no id):     type: 'stock' → Yahoo Finance quote lookup
-        // Both share the same PnL math in manual-fetcher; only the price source differs.
-        const provider = selectedPythFeed.provider || (selectedPythFeed.id ? 'pyth' : 'yahoo');
-        if (provider === 'yahoo') {
-          savedPosition = {
-            type: 'stock',
-            symbol: selectedPythFeed.symbol,
-            amount,
-            entryPrice,
-            category: selectedPythFeed.category || 'equity',
-            currency: quoteCurrencyForFeed(selectedPythFeed) || null,
-            name: selectedPythFeed.name || selectedPythFeed.symbol,
-            exchange: selectedPythFeed.exchange || null,
-            entryDate: addPositionPythEntryDate?.value || null
-          };
-        } else {
-          savedPosition = {
-            type: 'pyth',
-            symbol: selectedPythFeed.symbol,
-            feedId: selectedPythFeed.id,
-            amount,
-            entryPrice,
-            category: selectedPythFeed.category || 'crypto',
-            currency: 'USD',
-            name: selectedPythFeed.name || selectedPythFeed.symbol,
-            entryDate: addPositionPythEntryDate?.value || null
-          };
-        }
-      } else {
-        // Validate custom position
-        const name = addPositionCustomName.value.trim();
-        const value = parseFloat(addPositionCustomValue.value);
-
-        if (!name) {
-          showPositionError(addPositionCustomName, 'Enter a name for the asset, for example "Gold bars".');
-          return;
-        }
-
-        if (!value || value <= 0) {
-          showPositionError(addPositionCustomValue, 'Enter a value greater than 0.');
-          return;
-        }
-
-        // Add custom position
-        savedPosition = {
-          type: 'custom',
-          name: name,
-          symbol: name,
-          amount: 1,
-          price: value,
-          value: value,
-          currency: editingCustomCurrency || s.portfolioBaseCurrency || 'USD'
-        };
-      }
-
-      try {
-        if (savedPosition) {
-          if (editingManualPositionIndex !== null && s.cryptoPositions[editingManualPositionIndex]) {
-            s.cryptoPositions[editingManualPositionIndex] = savedPosition;
-          } else {
-            s.cryptoPositions.push(savedPosition);
-          }
-        }
-        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
-        closeAddPosition();
-
-        // Soft reload: re-fetch positions without full page refresh
-        await renderPortfolioIncremental();
-      } catch (e) {
-        console.error('[Add position] Save failed:', e);
-        showPositionError(savePositionBtn, "Couldn't save the position. Your browser storage may be full or blocked; free some space and try again.");
-      }
-    });
   }
+  positionForm?.addEventListener('input', clearPositionErrors);
+
+  positionForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearPositionErrors();
+    const s = getSettings();
+    if (!s.cryptoPositions) s.cryptoPositions = [];
+
+    let savedPosition = null;
+
+    if (kind === 'live') {
+      const amount = parseFloat(amountInput.value);
+      const entryPrice = parseFloat(entryPriceInput.value);
+      if (!amount || amount <= 0) {
+        showPositionError(amountInput, 'Enter an amount greater than 0.');
+        return;
+      }
+      if (entryPriceInput.value.trim() && !(entryPrice > 0)) {
+        showPositionError(entryPriceInput, 'Enter a price greater than 0, or leave it empty.');
+        return;
+      }
+      // Without an entry price the position still tracks value; it just shows no P&L.
+      const entry = entryPrice > 0 ? entryPrice : null;
+      // Route the saved position to the right provider:
+      //   - Pyth feed (has feed id): type: 'pyth'  → on-chain real-time price via Pyth
+      //   - Yahoo feed (no id):     type: 'stock' → Yahoo Finance quote lookup
+      // Both share the same PnL math in manual-fetcher; only the price source differs.
+      const provider = selectedFeed.provider || (selectedFeed.id ? 'pyth' : 'yahoo');
+      savedPosition = provider === 'yahoo'
+        ? {
+          type: 'stock',
+          symbol: selectedFeed.symbol,
+          amount,
+          entryPrice: entry,
+          category: selectedFeed.category || 'equity',
+          currency: quoteCurrencyForFeed(selectedFeed) || null,
+          name: selectedFeed.name || selectedFeed.symbol,
+          exchange: selectedFeed.exchange || null,
+          entryDate: entryDateInput?.value || null
+        }
+        : {
+          type: 'pyth',
+          symbol: selectedFeed.symbol,
+          feedId: selectedFeed.id,
+          amount,
+          entryPrice: entry,
+          category: selectedFeed.category || 'crypto',
+          currency: 'USD',
+          name: selectedFeed.name || selectedFeed.symbol,
+          entryDate: entryDateInput?.value || null
+        };
+    } else if (kind === 'custom') {
+      const name = assetInput.value.trim();
+      const value = parseFloat(valueInput.value);
+      if (!name) {
+        showPositionError(assetInput, 'Enter a name for the asset, for example "Gold bars".');
+        return;
+      }
+      if (!value || value <= 0) {
+        showPositionError(valueInput, 'Enter a value greater than 0.');
+        return;
+      }
+      savedPosition = {
+        type: 'custom',
+        name,
+        symbol: name,
+        amount: 1,
+        price: value,
+        value,
+        currency: customCurrency || s.portfolioBaseCurrency || 'USD'
+      };
+    } else {
+      showPositionError(assetInput, assetInput.value.trim()
+        ? 'Pick one of the matches, or the last option to add it as a custom asset.'
+        : 'Type a ticker or a name, then pick it from the list.');
+      return;
+    }
+
+    try {
+      if (editing && s.cryptoPositions[editing.index]) {
+        s.cryptoPositions[editing.index] = savedPosition;
+      } else {
+        s.cryptoPositions.push(savedPosition);
+      }
+      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
+      closeAddPosition();
+
+      // Soft reload: re-fetch positions without full page refresh
+      await renderPortfolioIncremental();
+    } catch (err) {
+      console.error('[Add position] Save failed:', err);
+      showPositionError(savePositionBtn, "Couldn't save the position. Your browser storage may be full or blocked; free some space and try again.");
+    }
+  });
 }
 
 window.addEventListener('DOMContentLoaded', async () => {

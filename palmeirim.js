@@ -29,8 +29,14 @@
   ];
 
   var header = $(".app-header");
-  var nav = el("nav", { class: "pm-nav", "aria-label": "Sections" });
+  var nav = el("nav", { class: "pm-nav", id: "pmNav", "aria-label": "Sections" });
   header.insertBefore(nav, header.firstChild);
+
+  // Phones: one chip naming the section in view ("▾ Positions") opens the list of
+  // sections, framed like the menu. On wider screens the chips sit in the bar.
+  var sectionBtn = el("button", { type: "button", class: "pm-section-btn chip", "aria-expanded": "false", "aria-controls": "pmNav" },
+    '<span class="chip__label">▾ <span class="js-pm-current">Portfolio</span></span>');
+  header.insertBefore(sectionBtn, nav);
 
   function visibleSections() {
     return SECTIONS.filter(function (s) {
@@ -62,13 +68,22 @@
     // At the very bottom the last short section may never reach the top.
     var scroller = document.scrollingElement;
     if (scroller.scrollTop > 0 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) current = links[links.length - 1];
+    // A section you just jumped to stays current until you scroll away from it, even
+    // when the page is too short for it to reach the top.
+    if (lastJump && Math.abs(scroller.scrollTop - lastJump.top) < 4 && links[lastJump.index]) current = links[lastJump.index];
     links.forEach(function (a) {
       if (a === current) a.setAttribute("aria-current", "true");
       else a.removeAttribute("aria-current");
     });
+    var name = current ? $(".chip__label", current).textContent : "";
+    var label = $(".js-pm-current", sectionBtn);
+    if (label.textContent !== name) label.textContent = name;
+    sectionBtn.setAttribute("aria-label", "Section: " + name + ". Go to another section");
   }
 
   document.addEventListener("scroll", markCurrent, { capture: true, passive: true });
+
+  var lastJump = null;
 
   function goTo(index) {
     var link = $$("a", nav)[index];
@@ -76,6 +91,8 @@
     var target = document.getElementById(link.hash.slice(1));
     if (index === 0) window.scrollTo({ top: 0 });
     else if (target) target.scrollIntoView();
+    lastJump = { index: index, top: document.scrollingElement.scrollTop };
+    markCurrent();
     history.replaceState(null, "", index === 0 ? location.pathname + location.search : link.hash);
   }
 
@@ -93,9 +110,17 @@
   function setMenu(open) {
     header.classList.toggle("pm-menu-open", open);
     menuBtn.setAttribute("aria-expanded", String(open));
+    if (open) setSections(false);
+  }
+
+  function setSections(open) {
+    header.classList.toggle("pm-sections-open", open);
+    sectionBtn.setAttribute("aria-expanded", String(open));
+    if (open) setMenu(false);
   }
 
   menuBtn.addEventListener("click", function () { setMenu(!header.classList.contains("pm-menu-open")); });
+  sectionBtn.addEventListener("click", function () { setSections(!header.classList.contains("pm-sections-open")); });
 
   // Close after the tool's own click handler has run.
   tools.addEventListener("click", function (e) {
@@ -104,20 +129,24 @@
 
   document.addEventListener("click", function (e) {
     if (header.classList.contains("pm-menu-open") && !tools.contains(e.target) && !menuBtn.contains(e.target)) setMenu(false);
+    if (header.classList.contains("pm-sections-open") && !nav.contains(e.target) && !sectionBtn.contains(e.target)) setSections(false);
   });
 
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && header.classList.contains("pm-menu-open")) { setMenu(false); menuBtn.focus(); }
+    if (e.key !== "Escape") return;
+    if (header.classList.contains("pm-menu-open")) { setMenu(false); menuBtn.focus(); }
+    if (header.classList.contains("pm-sections-open")) { setSections(false); sectionBtn.focus(); }
   });
 
-  // Crossing the phone breakpoint closes it, so it never jumps between sheet and popover.
-  window.matchMedia("(max-width: 720px)").addEventListener("change", function () { setMenu(false); });
+  // Crossing the phone breakpoint closes both, so they never jump between layouts.
+  window.matchMedia("(max-width: 720px)").addEventListener("change", function () { setMenu(false); setSections(false); });
 
   nav.addEventListener("click", function (e) {
     var link = e.target.closest("a");
     if (!link) return;
     e.preventDefault();
     goTo($$("a", nav).indexOf(link));
+    setSections(false);
   });
 
   // ── Intro: a framed card (title and time/place cut into the top border) holding
@@ -141,6 +170,17 @@
   allocWrap.appendChild(allocList);
   card.appendChild(allocWrap);
   var strip = $(".pm-strip", allocWrap);
+
+  // Pointing at a segment names it on the card's bottom border: "ZRO · 64% · $76.4k".
+  var readout = el("p", { class: "pm-card__readout", "aria-hidden": "true", hidden: "" });
+  card.appendChild(readout);
+  strip.addEventListener("mouseover", function (e) {
+    var seg = e.target.closest(".pm-strip__seg");
+    if (!seg) return;
+    readout.textContent = seg.dataset.readout;
+    readout.hidden = false;
+  });
+  strip.addEventListener("mouseleave", function () { readout.hidden = true; });
 
   function setAllocOpen(open) {
     strip.setAttribute("aria-expanded", String(open));
@@ -177,7 +217,8 @@
     var showValue = !narrow.matches;
 
     var segs = items.map(function (it, i) {
-      return '<span class="pm-strip__seg pm-tone-' + toneFor(it, i) + '" style="flex-grow:' + it.pct + '"></span>';
+      var readout = [it.label, it.share, it.value].filter(Boolean).join(" · ");
+      return '<span class="pm-strip__seg pm-tone-' + toneFor(it, i) + '" style="flex-grow:' + it.pct + '" data-readout="' + escapeHtml(readout) + '"></span>';
     }).join("");
     var label = "Allocation: " + items.map(function (it) { return it.label + " " + it.share; }).join(", ");
     var rows = items.map(function (it) {
@@ -226,19 +267,20 @@
     if (place.textContent !== text) place.textContent = text;
   }
 
-  // ── Footer: theme chip on the left, last update on the right ──
+  // ── Theme: a menu item under Settings opens a window listing every theme ──
+  // Pointing at (or arrowing to) a theme previews it on the page; clicking or Enter
+  // keeps it; Esc or Close puts the previous one back. T / Shift+T still step through.
 
   var themeSelect = $("#newThemeSelect");
-  var foot = $(".status-bar");
-  var themeBtn = el("button", { type: "button", class: "pm-theme" },
-    '<span class="chip">' + chip("T", "Theme") + '</span><span class="js-pm-theme-name"></span>');
-  foot.insertBefore(themeBtn, foot.firstChild);
+  var themeItem = el("button", { type: "button", id: "pmThemeBtn", class: "btn-text", "aria-haspopup": "dialog" },
+    'Theme <span class="pm-theme-current js-pm-theme-name"></span>');
+  tools.insertBefore(themeItem, tools.firstChild);
 
   function syncThemeName() {
     var opt = themeSelect && themeSelect.selectedOptions[0];
     var name = opt ? opt.textContent.trim().toLowerCase() : "";
-    $(".js-pm-theme-name").textContent = name;
-    themeBtn.setAttribute("aria-label", "Theme: " + name + ". Next theme");
+    $$(".js-pm-theme-name").forEach(function (n) { if (n.textContent !== name) n.textContent = name; });
+    themeItem.setAttribute("aria-label", "Theme: " + name + ". Choose a theme");
   }
 
   function cycleTheme(delta) {
@@ -249,10 +291,115 @@
     syncThemeName();
   }
 
-  themeBtn.addEventListener("click", function (e) { cycleTheme(e.shiftKey ? -1 : 1); });
+  var themeBackdrop = el("div", { class: "settings-backdrop", id: "pmThemeBackdrop", style: "display: none;" });
+  var themeWindow = el("div", { class: "sticker-window pm-theme-window", id: "pmThemeWindow", role: "dialog",
+    "aria-modal": "true", "aria-labelledby": "pmThemeTitle", style: "display: none;" },
+    '<div class="sticker-window-header"><h2 id="pmThemeTitle" class="window-title">Theme</h2>' +
+    '<button type="button" class="btn-text js-pm-theme-close">Close</button></div>' +
+    '<div class="sticker-window-content"><div class="pm-theme-grid" role="listbox" aria-labelledby="pmThemeTitle"></div></div>');
+  document.body.append(themeBackdrop, themeWindow);
+  var themeGrid = $(".pm-theme-grid", themeWindow);
+  var themeBefore = null;
+  var themeOpener = null;
+
+  function previewTheme(value) {
+    document.documentElement.dataset.theme = value;
+  }
+
+  function openThemeWindow() {
+    if (!themeSelect) return;
+    themeBefore = themeSelect.value;
+    themeOpener = document.activeElement;
+    themeGrid.innerHTML = Array.prototype.map.call(themeSelect.options, function (opt) {
+      var on = opt.value === themeBefore;
+      return '<button type="button" class="pm-theme-option" role="option" data-value="' + opt.value + '" aria-selected="' + on + '">' +
+        opt.textContent.trim() + '</button>';
+    }).join("");
+    themeBackdrop.style.display = "block";
+    themeWindow.style.display = "flex";
+    document.body.classList.add("modal-open");
+    var current = $('[aria-selected="true"]', themeGrid) || themeGrid.firstElementChild;
+    current.focus();
+    current.scrollIntoView({ block: "center" });
+  }
+
+  function closeThemeWindow(keep) {
+    if (themeWindow.style.display === "none") return;
+    if (!keep && themeBefore) previewTheme(themeBefore);
+    themeBackdrop.style.display = "none";
+    themeWindow.style.display = "none";
+    document.body.classList.remove("modal-open");
+    if (themeOpener && themeOpener.focus) themeOpener.focus();
+  }
+
+  function chooseTheme(value) {
+    themeSelect.value = value;
+    themeSelect.dispatchEvent(new Event("change"));
+    syncThemeName();
+    closeThemeWindow(true);
+  }
+
+  themeItem.addEventListener("click", openThemeWindow);
+  themeBackdrop.addEventListener("click", function () { closeThemeWindow(false); });
+  $(".js-pm-theme-close", themeWindow).addEventListener("click", function () { closeThemeWindow(false); });
+
+  themeGrid.addEventListener("click", function (e) {
+    var opt = e.target.closest(".pm-theme-option");
+    if (opt) chooseTheme(opt.dataset.value);
+  });
+
+  // Pointing or focusing previews; leaving the grid shows the one you started with.
+  themeGrid.addEventListener("mouseover", function (e) {
+    var opt = e.target.closest(".pm-theme-option");
+    if (opt) previewTheme(opt.dataset.value);
+  });
+  themeGrid.addEventListener("focusin", function (e) {
+    var opt = e.target.closest(".pm-theme-option");
+    if (opt) previewTheme(opt.dataset.value);
+  });
+  themeGrid.addEventListener("mouseleave", function () {
+    var focused = document.activeElement && document.activeElement.closest(".pm-theme-option");
+    previewTheme(focused ? focused.dataset.value : themeBefore);
+  });
+
+  themeWindow.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeThemeWindow(false);
+      return;
+    }
+    var opts = $$(".pm-theme-option", themeGrid);
+    var i = opts.indexOf(document.activeElement);
+    if (i < 0) return;
+    var cols = getComputedStyle(themeGrid).gridTemplateColumns.split(" ").length || 1;
+    var step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[e.key];
+    if (step) {
+      e.preventDefault();
+      e.stopPropagation();
+      var next = opts[Math.max(0, Math.min(opts.length - 1, i + step))];
+      next.focus();
+      next.scrollIntoView({ block: "nearest" });
+    }
+  });
+
+  // Native controls (date pickers, select menus, scrollbars) follow the theme: a dark
+  // background asks the browser for its dark versions. Read from the painted body
+  // colour, so it works whatever form the theme's --bg is written in.
+  function syncColorScheme() {
+    var m = getComputedStyle(document.body).backgroundColor.match(/\d+(\.\d+)?/g);
+    if (!m) return;
+    var lum = (0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]) / 255;
+    var scheme = lum < 0.5 ? "dark" : "light";
+    if (document.documentElement.style.colorScheme !== scheme) document.documentElement.style.colorScheme = scheme;
+  }
+
+  // The app switches themes through data-theme on <html>.
+  new MutationObserver(syncColorScheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  syncColorScheme();
   if (themeSelect) themeSelect.addEventListener("change", syncThemeName);
 
-  // ── Keys: 1–4 sections, T / Shift+T theme, H amounts ──
+  // ── Keys: 1–4 sections, T / Shift+T step through themes, H amounts ──
   // R, S, W and ←/→ are already handled by the app's own shortcuts.
 
   function typing(t) {
@@ -272,7 +419,9 @@
     var win = e.target.closest && e.target.closest(".sticker-window");
     var primary = win && $(".btn-primary", win);
     if (!primary || primary.disabled || primary.offsetParent === null) return;
-    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "BUTTON" || e.target.id === "newAddPositionPythSearch") return;
+    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "BUTTON") return;
+    // A form submits on Enter by itself; pressing the button too would save twice.
+    if (e.target.form || e.defaultPrevented) return;
     e.preventDefault();
     primary.click();
   });

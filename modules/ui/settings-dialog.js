@@ -22,6 +22,7 @@ const FIELDS = [
   { id: 'newFontSelect', key: 'font', type: 'select', fallback: 'sf' },
   { id: 'newFontSizeSelect', key: 'fontSize', type: 'number', fallback: 14 },
   { id: 'newFullWidth', key: 'fullWidth', type: 'check', fallback: false },
+  { id: 'newCenterLayout', key: 'centerLayout', type: 'check', fallback: false },
   { id: 'newUseColoredPnL', key: 'useColoredPnL', type: 'check', fallback: true },
   { id: 'newShowExactAmounts', key: 'showExactAmounts', type: 'check', fallback: false, data: true },
   { id: 'newShowPriceChart', key: 'showPriceChart', type: 'check', fallback: true },
@@ -80,12 +81,29 @@ function describeAddresses(text) {
   return parts.length ? parts.join(' · ') : 'EVM, Solana, Bitcoin and Zcash (t-addr) are detected automatically.';
 }
 
-async function geocodeCity(name) {
-  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1&language=en&format=json`;
+// Places matching a typed name, most relevant first. Region is "Texas, United States",
+// so towns that share a name can be told apart.
+async function searchCities(name, count = 6) {
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=${count}&language=en&format=json`;
   const resp = await fetch(url);
-  if (!resp.ok) return null;
-  const place = (await resp.json()).results?.[0];
-  return place ? { label: place.name, lat: place.latitude, lon: place.longitude } : null;
+  if (!resp.ok) return [];
+  const results = (await resp.json()).results || [];
+  return results.map(place => ({
+    label: place.name,
+    region: [place.admin1, place.country].filter((part, i, all) => part && part !== place.name && all.indexOf(part) === i).join(', '),
+    lat: place.latitude,
+    lon: place.longitude
+  }));
+}
+
+async function geocodeCity(name) {
+  return (await searchCities(name, 1))[0] || null;
+}
+
+// What the city field shows for a saved place: "Paris, Texas, United States".
+function placeText(weather) {
+  if (!weather?.label) return '';
+  return weather.region ? `${weather.label}, ${weather.region}` : weather.label;
 }
 
 function fillForm(settings) {
@@ -102,7 +120,7 @@ function fillForm(settings) {
   const addresses = document.getElementById('newAddresses');
   if (addresses) addresses.value = joinAddresses(settings);
   const city = document.getElementById('newWeatherCity');
-  if (city) city.value = settings.weather?.label || '';
+  if (city) city.value = placeText(settings.weather);
 }
 
 function readForm(settings) {
@@ -149,6 +167,7 @@ export function applyAppearance(settings) {
   body.classList.toggle('mono-pnl', !(settings.useColoredPnL ?? true));
   body.classList.toggle('no-charts', !(settings.showPriceChart ?? true));
   document.documentElement.classList.toggle('pm-full', settings.fullWidth ?? false);
+  document.documentElement.classList.toggle('pm-center', settings.centerLayout ?? false);
   applyFont(settings.font || 'sf');
   const size = Number(settings.fontSize);
   document.documentElement.style.fontSize = `${Number.isFinite(size) && size > 0 ? size : 14}px`;
@@ -229,15 +248,22 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     save(next);
   };
   let cityLookup = Promise.resolve();
+  const defaultCityHint = 'Optional. Only used to show the weather.';
+  const pickPlace = (place) => {
+    saveWeather(place);
+    cityInput.value = placeText(place);
+    setCityHint(defaultCityHint);
+  };
+  // Leaving the field without picking a suggestion takes the best match for what was typed.
   const lookUpCity = () => {
     const name = cityInput.value.trim();
     const current = getSettings().weather || {};
     if (!name) {
-      saveWeather({ label: '', lat: null, lon: null });
-      setCityHint('Optional. Only used to show the weather.');
+      saveWeather({ label: '', region: '', lat: null, lon: null });
+      setCityHint(defaultCityHint);
       return cityLookup;
     }
-    if (name === current.label && Number.isFinite(Number(current.lat))) return cityLookup;
+    if ((name === placeText(current) || name === current.label) && Number.isFinite(Number(current.lat))) return cityLookup;
     setCityHint('Looking up…');
     cityLookup = geocodeCity(name)
       .then(place => {
@@ -245,16 +271,130 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
           setCityHint(`Couldn't find "${name}". Try a nearby larger city.`);
           return;
         }
-        saveWeather(place);
-        cityInput.value = place.label;
-        setCityHint('Optional. Only used to show the weather.');
+        pickPlace(place);
       })
       .catch(() => setCityHint("Couldn't look up the city. Check your connection."));
     return cityLookup;
   };
+
+  // Suggestions as you type: a listbox under the field (combobox pattern). Arrow keys
+  // move, Enter picks, Esc closes; clicking an option picks it without blurring first.
+  const cityList = document.getElementById('newWeatherCityList');
+  let cityOptions = [];
+  let activeCity = -1;
+  let suggestTimer = null;
+  let suggestSeq = 0;
+
+  const closeCityList = () => {
+    cityOptions = [];
+    activeCity = -1;
+    if (cityList) {
+      cityList.hidden = true;
+      cityList.innerHTML = '';
+    }
+    cityInput?.setAttribute('aria-expanded', 'false');
+    cityInput?.removeAttribute('aria-activedescendant');
+  };
+
+  const setActiveCity = (index) => {
+    activeCity = index;
+    Array.from(cityList.children).forEach((li, i) => li.setAttribute('aria-selected', String(i === index)));
+    if (index >= 0) {
+      cityInput.setAttribute('aria-activedescendant', `newWeatherCityOption${index}`);
+      cityList.children[index]?.scrollIntoView({ block: 'nearest' });
+    } else {
+      cityInput.removeAttribute('aria-activedescendant');
+    }
+  };
+
+  const showCityOptions = (places) => {
+    cityOptions = places;
+    if (!cityList || places.length === 0) {
+      closeCityList();
+      return;
+    }
+    cityList.innerHTML = '';
+    places.forEach((place, i) => {
+      const li = document.createElement('li');
+      li.id = `newWeatherCityOption${i}`;
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', 'false');
+      const name = document.createElement('span');
+      name.className = 'city-option__name';
+      name.textContent = place.label;
+      li.appendChild(name);
+      if (place.region) {
+        const region = document.createElement('span');
+        region.className = 'city-option__region';
+        region.textContent = place.region;
+        li.append(' ', region);
+      }
+      li.addEventListener('mousedown', (e) => e.preventDefault());
+      li.addEventListener('click', () => {
+        pickPlace(place);
+        closeCityList();
+      });
+      cityList.appendChild(li);
+    });
+    cityList.hidden = false;
+    cityInput.setAttribute('aria-expanded', 'true');
+    setActiveCity(-1);
+  };
+
+  const suggestCities = () => {
+    clearTimeout(suggestTimer);
+    const name = cityInput.value.trim();
+    if (name.length < 2) {
+      closeCityList();
+      return;
+    }
+    suggestTimer = setTimeout(async () => {
+      const seq = ++suggestSeq;
+      try {
+        const places = await searchCities(name);
+        // A slower earlier search must not replace the list for what's typed now.
+        if (seq === suggestSeq && cityInput.value.trim() === name) showCityOptions(places);
+      } catch (_) { /* The plain lookup on leaving the field still works */ }
+    }, 250);
+  };
+
   if (cityInput) {
-    cityInput.addEventListener('change', lookUpCity);
-    cityInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') cityInput.blur(); });
+    cityInput.setAttribute('role', 'combobox');
+    cityInput.setAttribute('aria-autocomplete', 'list');
+    cityInput.setAttribute('aria-expanded', 'false');
+    if (cityList) cityInput.setAttribute('aria-controls', cityList.id);
+    cityInput.addEventListener('input', suggestCities);
+    cityInput.addEventListener('change', () => {
+      // A pick already saved and filled the field; only look up text that was typed.
+      if (cityOptions.length === 0) lookUpCity();
+    });
+    cityInput.addEventListener('blur', () => {
+      if (cityOptions.length > 0) {
+        closeCityList();
+        lookUpCity();
+      }
+    });
+    cityInput.addEventListener('keydown', (e) => {
+      const open = cityOptions.length > 0;
+      if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        e.preventDefault();
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        setActiveCity((activeCity + step + cityOptions.length) % cityOptions.length);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (open) {
+          pickPlace(cityOptions[Math.max(0, activeCity)]);
+          closeCityList();
+        } else {
+          cityInput.blur();
+        }
+      } else if (e.key === 'Escape' && open) {
+        // Close the list, not the Settings window.
+        e.preventDefault();
+        e.stopPropagation();
+        closeCityList();
+      }
+    });
   }
 
   const useMyLocationBtn = document.getElementById('newUseMyLocationBtn');
@@ -280,9 +420,9 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
             label = data.city || data.locality || data.principalSubdivision || '';
           }
         } catch (_) { /* City name is optional */ }
-        saveWeather({ label, lat, lon });
+        saveWeather({ label, region: '', lat, lon });
         if (cityInput) cityInput.value = label;
-        setCityHint('Optional. Only used to show the weather.');
+        setCityHint(defaultCityHint);
       } catch (_) {
         setCityHint('Could not get your location. Check your browser permissions.');
       }
