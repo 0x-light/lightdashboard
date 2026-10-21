@@ -306,6 +306,37 @@ function formatAssetCellHtml(pos) {
   return `${label}<span class="asset-name">${escapeHtml(name)}</span>`;
 }
 
+// Column sorting (header clicks in app.js set opts.sort = { key, dir }). Empty values
+// sort last whichever way the column goes.
+const SORT_VALUES = {
+  asset: p => String(p.asset || '').toLowerCase(),
+  price: p => Number(p.price),
+  value: p => computeValue(p),
+  pnl: p => p.pnl,
+  funding: p => p.funding,
+  change: p => p.change24h,
+  amount: p => Math.abs(Number(p.amount)),
+  exchange: p => String(p.exchange || '').toLowerCase()
+};
+
+function sortPositions(list, sort) {
+  const get = SORT_VALUES[sort?.key];
+  if (!get) return list;
+  const dir = sort.dir === 'asc' ? 1 : -1;
+  const empty = v => v == null || v === '' || (typeof v === 'number' && !Number.isFinite(v));
+  return [...list].sort((a, b) => {
+    const va = get(a), vb = get(b);
+    if (empty(va) || empty(vb)) return empty(va) - empty(vb);
+    return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
+  });
+}
+
+// The search box above the table: matches ticker, name or source.
+function matchesQuery(pos, query) {
+  if (!query) return true;
+  return [pos.asset, pos.name, pos.exchange].some(v => String(v || '').toLowerCase().includes(query));
+}
+
 function shouldHidePosition(pos, opts) {
   if (opts.hideNfts && pos.exchange === 'OpenSea') return true;
   if (opts.hideSmallPositions) {
@@ -598,7 +629,8 @@ function updateHeaders(tableBody, baseCurrency) {
   // is there on hover for the odd case it isn't obvious.
   const label = (th, text) => {
     if (!th) return;
-    th.textContent = text;
+    // Sortable headers hold a button; the label goes inside it.
+    (th.querySelector('.th-sort') || th).textContent = text;
     th.title = `In ${baseCurrency}`;
   };
   label(valueHeader, 'Value');
@@ -619,7 +651,8 @@ export function renderPositions({ positions, containers, options, previousPositi
     updateHeaders(containers.positionsBody, baseCurrency);
 
     const list = Array.isArray(positions) ? positions : [];
-    const filtered = list.filter(p => !shouldHidePosition(p, opts));
+    const query = String(opts.query || '').trim().toLowerCase();
+    const filtered = sortPositions(list.filter(p => !shouldHidePosition(p, opts) && matchesQuery(p, query)), opts.sort);
 
     const table = containers.positionsBody.closest('table');
     if (table) {
@@ -633,7 +666,7 @@ export function renderPositions({ positions, containers, options, previousPositi
       const emptyCell = doc.createElement('td');
       emptyCell.colSpan = 9;
       emptyCell.className = 'loading';
-      emptyCell.textContent = 'No positions.';
+      emptyCell.textContent = query ? `No positions match “${opts.query.trim()}”.` : 'No positions.';
       emptyRow.appendChild(emptyCell);
       containers.positionsBody.replaceChildren(emptyRow);
       // The table is hidden on phones, so the cards area needs its own message.

@@ -89,6 +89,7 @@ export function getDefaultSettings() {
     fontSize: 14,
     fullWidth: false, // Content column fills the window instead of stopping at a reading width
     centerLayout: false, // Content column sits in the middle of the window instead of on the left
+    valueInTitle: true, // Portfolio value and today's change in the browser tab title
     comicStrip: 'calvinandhobbes',
     hideComic: false,
     hideWatchlist: false,

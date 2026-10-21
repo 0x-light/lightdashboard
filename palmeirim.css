@@ -236,6 +236,8 @@ html.pm:root #pmTools #pmThemeBtn { order: -3; }
 html.pm:root #pmTools #newRefreshBtn { order: -2; }
 html.pm:root #pmTools #newToggleAmountsBtn { order: -1; }
 html.pm:root #pmThemeBtn::before { content: "T"; }
+html.pm:root #pmKeysBtn::before { content: "?"; }
+html.pm:root #pmTools #pmKeysBtn { order: 1; }
 html.pm:root .pm-theme-current { color: var(--pm-muted); text-transform: lowercase; }
 
 /* Full-width rows: easier to hit, and they line up like a list. */
@@ -641,6 +643,64 @@ html.pm:root .data-table .loading,
 html.pm:root .watchlist-empty-row td { color: var(--pm-muted); text-align: left; }
 
 html.pm:root .loading-terminal { color: var(--pm-muted); }
+
+/* ── Positions search and sortable headers ── */
+/* Search sits in the title line, between the count and + Add: a "/" key cell joined
+   to a compact field, like a chip. */
+html.pm:root .table-search {
+  display: flex;
+  align-items: baseline;
+  flex: 0 1 26ch;
+  min-width: 10ch;
+  margin-left: auto;
+}
+
+html.pm:root .table-search + .panel-action { margin-left: 0; }
+html.pm:root .table-search__key { flex: none; cursor: text; }
+
+html.pm:root .table-search__input {
+  flex: 1;
+  min-width: 0;
+  height: var(--pm-lh);
+  padding: 0 1ch;
+  border: 0;
+  border-radius: 0;
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: var(--pm-lh);
+  caret-color: var(--pm-ink);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+html.pm:root .table-search__input::placeholder { color: var(--pm-muted); opacity: 1; text-transform: uppercase; }
+html.pm:root .table-search__input:focus { outline: none; background: var(--pm-tint-2); }
+html.pm:root .table-search__input::-webkit-search-cancel-button { -webkit-appearance: none; }
+
+/* Header buttons look like the header text; the sorted column gets an arrow. */
+html.pm:root .th-sort {
+  display: inline-flex;
+  gap: 0.5ch;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+html.pm:root th[aria-sort] { color: var(--pm-ink); }
+html.pm:root th[aria-sort="descending"] .th-sort::after { content: "↓"; }
+html.pm:root th[aria-sort="ascending"] .th-sort::after { content: "↑"; }
+html.pm:root .th-sort:focus-visible { background: var(--pm-ink); color: var(--bg); outline: none; }
+
+@media (hover: hover) {
+  html.pm:root .th-sort:hover { color: var(--pm-ink); }
+}
 
 /* ── Rows that open in place ──
    A row opens (click, or Enter when focused) into a detail line with its actions,
@@ -1629,6 +1689,21 @@ html.pm:root .pm-theme-option:focus-visible { background: var(--pm-ink); color: 
 @media (hover: hover) {
   html.pm:root .pm-theme-option:hover { background: var(--pm-ink); color: var(--bg); }
 }
+
+/* ── Shortcuts window: key cell, then what it does, two columns when there's room ── */
+html.pm:root .pm-keys-window { width: min(72ch, calc(100vw - 3ch)); }
+
+html.pm:root .pm-keys {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(32ch, 1fr));
+  gap: calc(var(--pm-lh) / 3) 3ch;
+  margin: 0;
+}
+
+html.pm:root .pm-keys > div { display: grid; grid-template-columns: 6ch minmax(0, 1fr); gap: 0 1ch; align-items: baseline; }
+html.pm:root .pm-keys dt { margin: 0; }
+html.pm:root .pm-keys dd { margin: 0; }
+html.pm:root .pm-keys kbd { display: inline-block !important; min-width: 3ch; text-align: center; }
 
 /* ── Strip readout: the hovered segment, named on the card's bottom border at its start ── */
 html.pm:root .pm-card__readout {

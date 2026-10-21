@@ -915,6 +915,75 @@ function setupControls() {
     if (row) toggleOpenPosition(row);
   });
 
+  // Sorting: a header click sorts by that column, largest first (A–Z for text); a
+  // second click flips it, a third goes back to the default order (by value). The
+  // choice is remembered in this browser.
+  const positionsTable = document.getElementById('newPositionsTable');
+  const TEXT_SORTS = new Set(['asset', 'exchange']);
+
+  function applySortHeaders() {
+    const sort = window.positionsSort;
+    positionsTable?.querySelectorAll('th').forEach(th => {
+      const key = th.querySelector('.th-sort')?.dataset.sort;
+      if (!key) return;
+      if (sort?.key === key) th.setAttribute('aria-sort', sort.dir === 'asc' ? 'ascending' : 'descending');
+      else th.removeAttribute('aria-sort');
+    });
+  }
+
+  try { window.positionsSort = JSON.parse(localStorage.getItem('positionsSort') || 'null'); } catch (_) { window.positionsSort = null; }
+  applySortHeaders();
+
+  positionsTable?.querySelector('thead')?.addEventListener('click', (e) => {
+    const key = e.target.closest('.th-sort')?.dataset.sort;
+    if (!key) return;
+    const first = TEXT_SORTS.has(key) ? 'asc' : 'desc';
+    const current = window.positionsSort;
+    let next;
+    if (current?.key !== key) next = { key, dir: first };
+    else if (current.dir === first) next = { key, dir: first === 'asc' ? 'desc' : 'asc' };
+    else next = null;
+    window.positionsSort = next;
+    try { localStorage.setItem('positionsSort', JSON.stringify(next)); } catch (_) { /* sort just isn't remembered */ }
+    applySortHeaders();
+    rerenderPositions();
+  });
+
+  // Search: narrows the table to tickers or sources containing what's typed. / jumps
+  // to the box from anywhere; Esc clears it.
+  const positionsSearch = document.getElementById('newPositionsSearch');
+  positionsSearch?.addEventListener('input', () => {
+    window.positionsQuery = positionsSearch.value;
+    window.openPositionKey = null;
+    rerenderPositions();
+  });
+  positionsSearch?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (positionsSearch.value) {
+        positionsSearch.value = '';
+        window.positionsQuery = '';
+        rerenderPositions();
+      } else {
+        positionsSearch.blur();
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      positionRows()[0]?.focus();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+    const tag = e.target?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return;
+    if (document.querySelector('[role="dialog"]:not([hidden])[style*="block"], [role="dialog"]:not([hidden])[style*="flex"]')) return;
+    if (!positionsSearch || positionsSearch.offsetParent === null) return;
+    e.preventDefault();
+    positionsSearch.focus();
+    positionsSearch.scrollIntoView({ block: 'center' });
+  });
+
   // ↑ ↓ move between rows, Enter opens, Esc closes; on an open row its action keys work
   // (E edit, H hide or show, Delete/Backspace delete). Handled here so they don't also
   // reach the page-wide shortcuts.

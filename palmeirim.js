@@ -391,6 +391,65 @@
     }
   });
 
+  // ── Shortcuts: ? (or the menu's last item) lists every key in a window ──
+
+  var SHORTCUTS = [
+    ["1–4", "Go to a section"],
+    ["/", "Search positions"],
+    ["↑ ↓", "Move between rows"],
+    ["↵", "Open or close a row"],
+    ["E", "Edit the open position"],
+    ["H", "Hide or show the open position"],
+    ["⌫", "Delete or remove the open item"],
+    ["U", "Undo the last change"],
+    ["H", "Hide or show amounts (no row open)"],
+    ["R", "Refresh"],
+    ["S", "Settings"],
+    ["A", "Account: margin, funding, fees"],
+    ["T", "Next theme (Shift+T: previous)"],
+    ["W", "Add to the watchlist"],
+    ["← →", "Previous or next comic"],
+    ["Esc", "Close"],
+    ["?", "Show these keys"]
+  ];
+
+  var keysItem = el("button", { type: "button", id: "pmKeysBtn", class: "btn-text", "aria-haspopup": "dialog" }, "Shortcuts");
+  tools.appendChild(keysItem);
+
+  var keysBackdrop = el("div", { class: "settings-backdrop", style: "display: none;" });
+  var keysWindow = el("div", { class: "sticker-window pm-keys-window", role: "dialog", "aria-modal": "true",
+    "aria-labelledby": "pmKeysTitle", style: "display: none;" },
+    '<div class="sticker-window-header"><h2 id="pmKeysTitle" class="window-title">Shortcuts</h2>' +
+    '<button type="button" class="btn-text js-pm-keys-close">Close</button></div>' +
+    '<div class="sticker-window-content"><dl class="pm-keys">' +
+    SHORTCUTS.map(function (s) { return '<div><dt><kbd>' + s[0] + '</kbd></dt><dd>' + s[1] + '</dd></div>'; }).join("") +
+    '</dl></div>');
+  document.body.append(keysBackdrop, keysWindow);
+  var keysOpener = null;
+
+  function openKeys() {
+    keysOpener = document.activeElement;
+    keysBackdrop.style.display = "block";
+    keysWindow.style.display = "flex";
+    document.body.classList.add("modal-open");
+    $(".js-pm-keys-close", keysWindow).focus();
+  }
+
+  function closeKeys() {
+    if (keysWindow.style.display === "none") return;
+    keysBackdrop.style.display = "none";
+    keysWindow.style.display = "none";
+    document.body.classList.remove("modal-open");
+    if (keysOpener && keysOpener.focus) keysOpener.focus();
+  }
+
+  keysItem.addEventListener("click", openKeys);
+  keysBackdrop.addEventListener("click", closeKeys);
+  $(".js-pm-keys-close", keysWindow).addEventListener("click", closeKeys);
+  keysWindow.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" || e.key === "?") { e.preventDefault(); e.stopPropagation(); closeKeys(); }
+  });
+
   // Native controls (date pickers, select menus, scrollbars) follow the theme: a dark
   // background asks the browser for its dark versions. Read from the painted body
   // colour, so it works whatever form the theme's --bg is written in.
@@ -437,6 +496,7 @@
   document.addEventListener("keydown", function (e) {
     if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || modalOpen()) return;
     if (/^[1-9]$/.test(e.key)) { e.preventDefault(); goTo(Number(e.key) - 1); return; }
+    if (e.key === "?") { e.preventDefault(); openKeys(); return; }
     if (e.key === "t" || e.key === "T") { e.preventDefault(); cycleTheme(e.shiftKey ? -1 : 1); return; }
     if (e.key === "h" || e.key === "H") {
       var btn = $("#newToggleAmountsBtn");

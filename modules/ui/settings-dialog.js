@@ -23,6 +23,7 @@ const FIELDS = [
   { id: 'newFontSizeSelect', key: 'fontSize', type: 'number', fallback: 14 },
   { id: 'newFullWidth', key: 'fullWidth', type: 'check', fallback: false },
   { id: 'newCenterLayout', key: 'centerLayout', type: 'check', fallback: false },
+  { id: 'newValueInTitle', key: 'valueInTitle', type: 'check', fallback: true },
   { id: 'newUseColoredPnL', key: 'useColoredPnL', type: 'check', fallback: true },
   { id: 'newShowExactAmounts', key: 'showExactAmounts', type: 'check', fallback: false, data: true },
   { id: 'newShowPriceChart', key: 'showPriceChart', type: 'check', fallback: true },
@@ -168,6 +169,9 @@ export function applyAppearance(settings) {
   body.classList.toggle('no-charts', !(settings.showPriceChart ?? true));
   document.documentElement.classList.toggle('pm-full', settings.fullWidth ?? false);
   document.documentElement.classList.toggle('pm-center', settings.centerLayout ?? false);
+  // The portfolio renderer writes the value into the tab title unless this says off.
+  const titleValue = settings.valueInTitle ?? true;
+  document.documentElement.dataset.titleValue = titleValue ? 'on' : 'off';
   applyFont(settings.font || 'sf');
   const size = Number(settings.fontSize);
   document.documentElement.style.fontSize = `${Number.isFinite(size) && size > 0 ? size : 14}px`;

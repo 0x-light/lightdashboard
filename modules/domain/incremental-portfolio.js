@@ -4,6 +4,7 @@
  */
 import { getRandomSpinner } from '../ui/unicode-animations.js';
 import {
+  formatMoney,
   getFxCurrency,
   getQuoteUnitScale,
   normalizeBaseCurrency,
@@ -824,6 +825,8 @@ export class IncrementalPortfolioRenderer {
           hideSmallPositions: false, // Already filtered above
           editMode: window.editMode || false,
           openKey: window.openPositionKey || null,
+          sort: window.positionsSort || null,
+          query: window.positionsQuery || '',
           settings: {
             minBalanceThreshold: minThreshold,
             showExactAmounts: this.settings.showExactAmounts || false,
@@ -856,6 +859,19 @@ export class IncrementalPortfolioRenderer {
         weather: window.cachedWeather || null
       });
       summaryEl.innerHTML = heroHtml;
+    }
+
+    // Tab title: "$119.4k ▲ 5.0% · Viewport", so a pinned tab shows the portfolio.
+    // Hidden amounts keep only the percentage; Settings can turn it off (data-title-value).
+    if (document.documentElement.dataset.titleValue !== 'off') {
+      const pct = Number(change24hPercent);
+      const move = Number.isFinite(pct) ? `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(1)}%` : '';
+      const value = document.body.classList.contains('amounts-hidden')
+        ? ''
+        : formatMoney(totalValue, { currency: baseCurrency, visible: true, compact: true });
+      const head = [value, move].filter(Boolean).join(' ');
+      const title = head ? `${head} · Viewport` : 'Viewport';
+      if (document.title !== title) document.title = title;
     }
 
     if (!this.isLoading) this.scheduleSnapshotSave();

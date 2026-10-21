@@ -575,6 +575,10 @@
                                 <input id="newShowExactAmounts" type="checkbox" class="settings-input">
                                 Show exact amounts
                             </label>
+                            <label class="check">
+                                <input id="newValueInTitle" type="checkbox" class="settings-input">
+                                Show the value in the tab title
+                            </label>
 
                             <h3 class="settings-group">Sections</h3>
                             <label class="check">
@@ -653,21 +657,27 @@
                     <h2 class="panel-title section-title">Positions</h2>
                     <span class="panel-count"></span>
                     <span class="panel-rule"></span>
+                    <div class="table-search">
+                        <label class="table-search__key" for="newPositionsSearch"><kbd>/</kbd></label>
+                        <input id="newPositionsSearch" type="search" class="table-search__input" placeholder="Search"
+                            aria-label="Search positions by ticker or source" autocomplete="off" spellcheck="false"
+                            aria-controls="newPositionsBody">
+                    </div>
                     <button id="newAddPositionBtn" class="btn-text panel-action" aria-label="Add position">+ Add</button>
                 </header>
                 <div class="table-wrapper">
                     <table id="newPositionsTable" class="data-table">
                         <thead>
                             <tr>
-                                <th class="th-asset">Asset</th>
-                                <th class="th-price">Price</th>
+                                <th class="th-asset"><button type="button" class="th-sort" data-sort="asset">Asset</button></th>
+                                <th class="th-price"><button type="button" class="th-sort" data-sort="price">Price</button></th>
                                 <th class="th-chart chart">24h</th>
-                                <th class="th-value">Value</th>
-                                <th class="th-pnl">P&L</th>
-                                <th class="th-funding">Funding</th>
-                                <th class="th-change">24h %</th>
-                                <th class="th-amount">Amount</th>
-                                <th class="th-exchange">Source</th>
+                                <th class="th-value"><button type="button" class="th-sort" data-sort="value">Value</button></th>
+                                <th class="th-pnl"><button type="button" class="th-sort" data-sort="pnl">P&L</button></th>
+                                <th class="th-funding"><button type="button" class="th-sort" data-sort="funding">Funding</button></th>
+                                <th class="th-change"><button type="button" class="th-sort" data-sort="change">24h %</button></th>
+                                <th class="th-amount"><button type="button" class="th-sort" data-sort="amount">Amount</button></th>
+                                <th class="th-exchange"><button type="button" class="th-sort" data-sort="exchange">Source</button></th>
                             </tr>
                         </thead>
                         <tbody id="newPositionsBody">
