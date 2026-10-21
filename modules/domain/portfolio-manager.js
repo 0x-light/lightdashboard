@@ -30,18 +30,11 @@ export class PortfolioManager {
                 fetchPromises.push(this.fetchers['Lighter'].fetch(wallets));
             }
 
-            // 3. Onchain wallet data (Zerion, Cielo, or Alchemy/Helius fallback)
-            const onchainProvider = this.settings.onchainProvider || 'zerion';
+            // 3. Onchain wallet data: whichever key is set (Zerion first), else Alchemy/Helius
             if (wallets.length > 0) {
-                if (onchainProvider === 'cielo' && this.fetchers['Cielo'] && this.settings.cieloApiKey) {
-                    fetchPromises.push(this.fetchers['Cielo'].fetch(wallets));
-                } else if (onchainProvider === 'zerion' && this.fetchers['Zerion'] && this.settings.zerionApiKey) {
-                    fetchPromises.push(this.fetchers['Zerion'].fetch(wallets));
-                } else if (this.fetchers['Zerion'] && this.settings.zerionApiKey) {
-                    // Fallback to Zerion if configured
+                if (this.fetchers['Zerion'] && this.settings.zerionApiKey) {
                     fetchPromises.push(this.fetchers['Zerion'].fetch(wallets));
                 } else if (this.fetchers['Cielo'] && this.settings.cieloApiKey) {
-                    // Fallback to Cielo if configured  
                     fetchPromises.push(this.fetchers['Cielo'].fetch(wallets));
                 } else if (this.fetchers['AlchemyHelius'] && (this.settings.alchemyApiKey || this.settings.heliusApiKey)) {
                     fetchPromises.push(this.fetchers['AlchemyHelius'].fetch(wallets, solanaAddrs));

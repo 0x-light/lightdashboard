@@ -17,8 +17,15 @@ function simpleDecrypt(encoded) {
 
 // Keys that get reset to new defaults during v1→v2 migration
 const V2_RESET_KEYS = [
-  'fontSize', 'hideSnowBtn', 'hideRainBtn', 'hideFontSize',
-  'hideThemeBtn', 'hideAmountsBtn', 'hideStickersBtn', 'hideDonateBtn'
+  'fontSize', 'hideSnowBtn', 'hideRainBtn', 'hideStickersBtn', 'hideDonateBtn'
+];
+
+// Settings that no longer do anything; dropped on load so they stop riding along in exports
+const REMOVED_KEYS = [
+  'refreshMinutes', 'usePythPrices', 'enableRealTimeUpdates', 'realTimeUpdateInterval',
+  'showCompactBtn', 'showSettingsBtn', 'compactList', 'buttonBackgrounds', 'hideThemeBtn',
+  'hideAmountsBtn', 'hideFontSize', 'onchainProvider', 'comicCollapsed', 'watchlistCollapsed',
+  'enableKeyboardShortcuts'
 ];
 
 export function loadSettings() {
@@ -42,6 +49,7 @@ export function loadSettings() {
 
     if (!raw) return null;
     const s = JSON.parse(raw);
+    REMOVED_KEYS.forEach(k => delete s[k]);
     if (s.walletAddresses) s.walletAddresses = simpleDecrypt(s.walletAddresses);
     if (s.alchemyApiKey) s.alchemyApiKey = simpleDecrypt(s.alchemyApiKey);
     if (s.heliusApiKey) s.heliusApiKey = simpleDecrypt(s.heliusApiKey);
@@ -64,7 +72,6 @@ export function loadSettings() {
 export function getDefaultSettings() {
   return {
     theme: 'dark',
-    refreshMinutes: 30,
     userName: '',
     cryptoPositions: [], // { type: 'pyth', symbol, feedId, amount, entryPrice } or { type: 'custom', name, value }
     weather: { label: '', lat: null, lon: null },
@@ -72,43 +79,32 @@ export function getDefaultSettings() {
     solanaAddresses: '',
     bitcoinAddresses: '',
     zcashAddresses: '',
+    unrecognizedAddresses: '', // Pasted addresses no chain pattern matched; kept so they aren't lost
     alchemyApiKey: '',
     heliusApiKey: '',
     openSeaApiKey: '',
     zerionApiKey: '',
     cieloApiKey: '',
-    onchainProvider: 'zerion', // 'zerion' or 'cielo'
     font: 'sf',
     fontSize: 14,
     comicStrip: 'calvinandhobbes',
     hideComic: false,
-    comicCollapsed: false, // Whether comic section is collapsed
     hideWatchlist: false,
+    showExactAmounts: false,
     showRainForecast: true,
     useColoredPnL: true,
-    usePythPrices: true,
     portfolioBaseCurrency: 'USD',
     minBalanceThreshold: 100,
-    enableRealTimeUpdates: true,
-    realTimeUpdateInterval: 5, // seconds
     heroPnLMode: 'total', // 'total' or '24h'
     hideSnowBtn: true,
     hideRainBtn: true,
-    hideThemeBtn: false,
-    hideAmountsBtn: false,
-    hideFontSize: true,
-    showCompactBtn: true,
     hideStickersBtn: true,
     hideDonateBtn: true,
-    showSettingsBtn: true,
     hiddenAssets: [], // Array of hidden asset keys: "ASSET_EXCHANGE"
     rainEnabled: false,
     snowEnabled: false,
     rainSnowManuallySet: false, // Whether user has manually set rain/snow preference
     watchlist: [], // Array of Pyth price feed IDs
-    watchlistCollapsed: false, // Whether watchlist section is collapsed
-    compactList: false, // Whether to use compact list mode
-    buttonBackgrounds: false, // Whether to add backgrounds to buttons
     showPriceChart: true // Whether to show 24h price chart column
   };
 }

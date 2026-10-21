@@ -200,11 +200,15 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
     });
 
     // Build new content HTML
-    let html = `<img src="${result.src}" alt="${comic.name}" data-comic-type="${comicKey}">`;
+    const dateText = date instanceof Date && !Number.isNaN(date.getTime())
+      ? date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+      : '';
+    const alt = dateText ? `${comic.name} strip from ${dateText}` : `${comic.name} strip`;
+    let html = `<img src="${result.src}" alt="${alt}" data-comic-type="${comicKey}">`;
 
     // Add caption if available (for The Far Side)
     if (result.caption) {
-      html += `<div style="font-style: italic; text-align: center; opacity: 0.8; margin-top: 8px;">${result.caption}</div>`;
+      html += `<p class="comic-caption">${result.caption}</p>`;
     }
 
     // Now swap the content (image is fully loaded)
@@ -216,7 +220,7 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
     // Fallback: link to view online with retry option
     container.innerHTML = `
       <div class="help" style="text-align: center; padding: 20px;">
-        <p id="retryComicText" style="cursor: pointer; color: var(--accent);">Unable to load comic. Click to retry.</p>
+        <p>Unable to load the comic. <button type="button" id="retryComicBtn" class="link-button">Try again</button></p>
         <p style="margin-top: 12px;">
           <a href="${url}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">View ${comic.name} online ↗</a>
         </p>
@@ -226,11 +230,7 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
     // Remove fading animation
     container.classList.remove('fading');
 
-    // Add retry click event listener
-    const retryText = document.getElementById('retryComicText');
-    if (retryText) {
-      retryText.addEventListener('click', () => renderComic(container, comicKey, date));
-    }
+    document.getElementById('retryComicBtn')?.addEventListener('click', () => renderComic(container, comicKey, date));
   }
 }
 

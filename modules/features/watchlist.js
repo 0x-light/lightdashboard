@@ -77,7 +77,7 @@ function createSparkline(priceData, width = 60, height = 24, currentChange24h = 
   if (range === 0) {
     const y = height / 2;
     const points = priceData.map((_, i) => `${(i / (priceData.length - 1)) * width},${y}`).join(' ');
-    return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="sparkline"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
+    return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="sparkline" aria-hidden="true" focusable="false"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
   }
 
   const points = priceData.map((d, i) => {
@@ -95,7 +95,7 @@ function createSparkline(priceData, width = 60, height = 24, currentChange24h = 
     color = lastPrice >= firstPrice ? 'var(--green)' : 'var(--red)';
   }
 
-  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="sparkline" aria-hidden="true" focusable="false"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
 }
 
 // --- Pyth fetch path (unchanged semantics, just keyed by entry.key now) ---
@@ -324,7 +324,7 @@ function renderRows(container, data, options) {
     }
 
     const assetCellContent = editMode
-      ? `<span class="edit-asset-cell"><button class="watchlist-edit-btn" data-entry-key="${key}">[X]</button>${symbol}</span>`
+      ? `<span class="edit-asset-cell"><button type="button" class="watchlist-edit-btn" data-entry-key="${key}" aria-label="Remove ${symbol} from watchlist">[X]</button>${symbol}</span>`
       : `<span class="symbol">${symbol}</span>`;
 
     return `

@@ -45,6 +45,39 @@ function showFundingTooltip(e, text) {
   updateTooltipPosition(e);
 }
 
+function showFundingTooltipAt(cell, text) {
+  if (!fundingTooltipEl) initFundingTooltip();
+  fundingTooltipEl.textContent = text;
+  fundingTooltipEl.classList.add('visible');
+  activeTooltipCell = cell;
+  const rect = cell.getBoundingClientRect();
+  fundingTooltipEl.style.left = `${rect.left}px`;
+  fundingTooltipEl.style.top = `${rect.bottom + 4}px`;
+}
+
+function escapeAttr(value) {
+  return String(value ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+// Edit-mode actions, shared by table rows and phone cards so both offer the same things.
+// The handler in app.js keys off the class names and data attributes.
+function editActionsHtml(pos, assetKey, { withText = false } = {}) {
+  const isManual = pos.isManual || (typeof pos.exchange === 'string' && pos.exchange.startsWith('Manual'));
+  const name = escapeAttr(pos.asset);
+  const button = (cls, attrs, glyph, label) =>
+    `<button type="button" class="${cls}" ${attrs} aria-label="${label}">${withText ? label.split(' ')[0] : glyph}</button>`;
+  if (isManual) {
+    const manualType = pos.manualType || (pos.exchange ? manualTypeFromExchange(pos.exchange) : '');
+    const attrs = `data-asset="${name}"${manualType ? ` data-manual-type="${manualType}"` : ''}`;
+    return button('position-delete-btn', attrs, '×', `Delete ${name}`) +
+      button('position-manual-edit-btn', attrs, 'edit', `Edit ${name}`);
+  }
+  if (pos.isManuallyHidden) {
+    return button('position-restore-btn', `data-asset-key="${escapeAttr(assetKey)}"`, '+', `Show ${name}`);
+  }
+  return button('position-edit-btn', `data-asset-key="${escapeAttr(assetKey)}"`, '×', `Hide ${name}`);
+}
+
 function hideFundingTooltip() {
   if (fundingTooltipEl) {
     fundingTooltipEl.classList.remove('visible');
@@ -77,7 +110,7 @@ function createSparkline(priceData, width = 60, height = 24, currentChange24h = 
     // Flat line
     const y = height / 2;
     const points = priceData.map((_, i) => `${(i / (priceData.length - 1)) * width},${y}`).join(' ');
-    return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="sparkline"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
+    return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="sparkline" aria-hidden="true" focusable="false"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
   }
 
   // Normalize prices to chart height
@@ -98,7 +131,7 @@ function createSparkline(priceData, width = 60, height = 24, currentChange24h = 
     color = lastPrice >= firstPrice ? 'var(--green)' : 'var(--red)';
   }
 
-  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="sparkline" aria-hidden="true" focusable="false"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
 }
 
 function formatAmount(num, visible, showExact = false) {
@@ -359,27 +392,7 @@ function createTableRow(doc, pos, opts, prevDataMap) {
     }
 
     if (i === 0 && opts.editMode) {
-      // Add × or + button to asset cell in edit mode
-      // × = hide, + = restore (only for manually hidden positions, NOT <$100)
-      // For manual positions, mark with data-manual-type for proper deletion
-      const isManual = pos.isManual || (pos.exchange && typeof pos.exchange === 'string' && pos.exchange.startsWith('Manual'));
-      const isManuallyHidden = pos.isManuallyHidden; // Only manually hidden get +
-
-      if (isManual) {
-        // Manual positions can be deleted
-        let manualType = pos.manualType;
-        if (!manualType && pos.exchange) {
-          manualType = manualTypeFromExchange(pos.exchange);
-        }
-        const manualTypeAttr = manualType ? ` data-manual-type="${manualType}"` : '';
-        td.innerHTML = `<span class="edit-asset-cell"><button class="position-delete-btn" data-asset="${pos.asset}"${manualTypeAttr}>×</button><button class="position-manual-edit-btn" data-asset="${pos.asset}"${manualTypeAttr}>edit</button>${String(cells[i])}</span>`;
-      } else if (isManuallyHidden) {
-        // Manually hidden positions show + to restore
-        td.innerHTML = `<span class="edit-asset-cell"><button class="position-restore-btn" data-asset-key="${assetKey}">+</button>${String(cells[i])}</span>`;
-      } else {
-        // Normal positions show × to hide
-        td.innerHTML = `<span class="edit-asset-cell"><button class="position-edit-btn" data-asset-key="${assetKey}">×</button>${String(cells[i])}</span>`;
-      }
+      td.innerHTML = `<span class="edit-asset-cell">${editActionsHtml(pos, assetKey)}${String(cells[i])}</span>`;
     } else if (isChart) {
       // Chart column uses innerHTML
       td.innerHTML = cells[i];
@@ -395,10 +408,14 @@ function createTableRow(doc, pos, opts, prevDataMap) {
       }
       td.classList.add('funding-cell');
       td.setAttribute('data-funding-rate', fundingTooltipText);
-      // Attach tooltip event listeners
+      // Tooltip follows the pointer; keyboard users reach the same rate by focusing the cell
+      td.tabIndex = 0;
+      td.setAttribute('aria-label', `${td.textContent.trim()}, ${fundingTooltipText}`);
       td.addEventListener('mouseenter', (e) => showFundingTooltip(e, fundingTooltipText));
       td.addEventListener('mousemove', updateTooltipPosition);
       td.addEventListener('mouseleave', hideFundingTooltip);
+      td.addEventListener('focus', (e) => showFundingTooltipAt(e.currentTarget, fundingTooltipText));
+      td.addEventListener('blur', hideFundingTooltip);
     } else {
       // Use innerHTML if content contains HTML (loading indicator), otherwise textContent
       const cellContent = String(cells[i]);
@@ -493,13 +510,18 @@ function createMobileCard(doc, pos, opts) {
       <span class="card-exchange">${pos.exchange || '—'}</span>
       ${fundingText}
     </div>
+    ${opts.editMode ? `<div class="card-actions">${editActionsHtml(pos, `${pos.asset}_${pos.exchange}`, { withText: true })}</div>` : ''}
   `;
 
-  card.setAttribute('role', 'button');
-  card.tabIndex = 0;
+  // A button can't hold other buttons, so in edit mode the card stops being one and its
+  // Hide / Delete / Edit actions take the focus stops instead
+  if (!opts.editMode) {
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
+  }
   const setExpanded = (expanded) => {
     card.classList.toggle('expanded', expanded);
-    card.setAttribute('aria-expanded', String(expanded));
+    if (!opts.editMode) card.setAttribute('aria-expanded', String(expanded));
   };
   setExpanded(expandedCards.has(key));
   const toggle = () => {
@@ -507,7 +529,10 @@ function createMobileCard(doc, pos, opts) {
     if (expanded) expandedCards.add(key); else expandedCards.delete(key);
     setExpanded(expanded);
   };
-  card.addEventListener('click', toggle);
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('.card-actions')) return; // edit actions are handled in app.js
+    toggle();
+  });
   card.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();

@@ -1,5 +1,4 @@
-// Keyboard shortcuts feature (lazy-loaded)
-// Only active when enabled in settings
+// Keyboard shortcuts feature (lazy-loaded, always on)
 
 let initialized = false;
 let enabled = false;
@@ -53,13 +52,10 @@ function isTyping(target) {
 
 // Close any open modal
 function closeModals() {
-    // Settings
+    // Settings: go through its Close button so pending edits save and data refreshes
     const settingsDialog = document.getElementById('newSettingsDialog');
-    const settingsBackdrop = document.getElementById('newSettingsBackdrop');
     if (isElementVisible(settingsDialog)) {
-        settingsDialog.style.display = 'none';
-        if (settingsBackdrop) settingsBackdrop.style.display = 'none';
-        document.body.classList.remove('modal-open');
+        document.getElementById('newCloseSettingsBtn')?.click();
         return true;
     }
 

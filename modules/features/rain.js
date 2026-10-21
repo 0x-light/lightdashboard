@@ -9,6 +9,9 @@ let rainActive = false;
 let snowActive = false;
 let animationFrame = null;
 
+// With reduced motion the effect still shows, as one still frame instead of falling drops
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
 const config = {
   density: 180,
   speed: 8,
@@ -29,7 +32,8 @@ function createDrop() {
   
   return {
     x: Math.random() * canvas.width,
-    y: Math.random() * canvas.height - canvas.height,
+    // Drops fall in from above; a still frame needs them spread over the visible area instead
+    y: Math.random() * canvas.height - (reducedMotion.matches ? 0 : canvas.height),
     speed: baseSpeed * (0.4 + Math.random() * 0.5),
     size: baseSize,
     length: baseLength,
@@ -88,7 +92,7 @@ function draw() {
     }
   });
   
-  animationFrame = requestAnimationFrame(draw);
+  animationFrame = reducedMotion.matches ? null : requestAnimationFrame(draw);
 }
 
 export function toggleRain() {
@@ -143,6 +147,8 @@ export function toggleSnow() {
 
 // Check weather and auto-enable rain/snow
 export async function checkWeatherAndAutoEnable() {
+  // Never start a full-screen effect by itself for someone who asked for less motion
+  if (reducedMotion.matches) return null;
   try {
     const settingsStr = localStorage.getItem('myDashboardSettings.v2');
     if (!settingsStr) return;

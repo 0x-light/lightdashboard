@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Viewport | Portfolio Tracker</title>
 
     <!-- Resource hints for critical APIs -->
@@ -57,6 +57,8 @@
     <link rel="modulepreload" href="/modules/ui/positions.js">
     <link rel="modulepreload" href="/modules/ui/mobile-menu.js">
     <link rel="modulepreload" href="/modules/ui/settings-dialog.js">
+    <link rel="modulepreload" href="/modules/ui/dialog-focus.js">
+    <link rel="modulepreload" href="/modules/ui/table-scroll-cue.js">
     <link rel="modulepreload" href="/modules/features/manual-positions.js">
     <link rel="modulepreload" href="/modules/features/rain.js">
     <link rel="modulepreload" href="/modules/features/weather.js">
@@ -128,6 +130,8 @@
 </head>
 
 <body class="hide-snow-btn hide-rain-btn hide-font-size hide-stickers-btn hide-donate-btn">
+    <a class="skip-link" href="#main">Skip to portfolio</a>
+
     <!-- iOS Status Bar Cover - completely independent, never transforms -->
     <div id="statusBarCover" class="status-bar-cover"></div>
 
@@ -146,22 +150,18 @@
 
 
         <header class="app-header">
-            <div class="greeting-container" title="Refresh">
-                <h1 id="newGreeting" class="greeting">Viewport</h1>
-            </div>
-            <button id="newMobileMenuBtn" class="btn-text mobile-menu-btn">Menu</button>
+            <!-- The greeting doubles as a refresh control; the heading keeps its own semantics -->
+            <h1 class="greeting-container">
+                <button type="button" id="newGreeting" class="greeting" title="Refresh">Viewport</button>
+            </h1>
+            <button id="newMobileMenuBtn" class="btn-text mobile-menu-btn" aria-haspopup="dialog" aria-controls="newMobileMenu">Menu</button>
             <div class="header-actions">
-                <button id="newToggleSnowBtn" class="btn-text">Snow On</button>
-                <button id="newToggleRainBtn" class="btn-text">Rain On</button>
-                <div class="font-size-controls">
-                    <button id="newDecreaseFontBtn" class="btn-text">-</button>
-                    <span id="newFontSizeDisplay" class="btn-text">14px</span>
-                    <button id="newIncreaseFontBtn" class="btn-text">+</button>
-                </div>
+                <button id="newToggleSnowBtn" class="btn-text">Snow on</button>
+                <button id="newToggleRainBtn" class="btn-text">Rain on</button>
                 <button id="newRefreshBtn" class="btn-text">Refresh</button>
-                <button id="newToggleAmountsBtn" class="btn-text">Hide Amounts</button>
+                <button id="newToggleAmountsBtn" class="btn-text">Hide amounts</button>
                 <span class="theme-select-wrapper">
-                    <select id="newThemeSelect" class="theme-select-btn">
+                    <select id="newThemeSelect" class="theme-select-btn" aria-label="Theme">
                         <option value="light">Light</option>
                         <option value="dark">Dark</option>
                         <option value="bloomberg">Bloomberg</option>
@@ -277,22 +277,17 @@
         </header>
 
         <!-- Mobile Menu -->
-        <div id="newMobileMenu" class="mobile-menu">
+        <div id="newMobileMenu" class="mobile-menu" role="dialog" aria-modal="true" aria-labelledby="newMobileMenuTitle">
             <div class="mobile-menu-header">
-                <h1 class="greeting">Viewport</h1>
+                <span id="newMobileMenuTitle" class="mobile-menu-title">Viewport</span>
                 <button id="newCloseMobileMenuBtn" class="btn-text">Close</button>
             </div>
             <div class="mobile-menu-content">
-                <button id="newToggleSnowBtnMobile" class="btn-text">Snow On</button>
-                <button id="newToggleRainBtnMobile" class="btn-text">Rain On</button>
-                <div class="font-size-controls">
-                    <button id="newDecreaseFontBtnMobile" class="btn-text">-</button>
-                    <span id="newFontSizeDisplayMobile" class="btn-text">14px</span>
-                    <button id="newIncreaseFontBtnMobile" class="btn-text">+</button>
-                </div>
-                <button id="newToggleAmountsBtnMobile" class="btn-text">Hide Amounts</button>
+                <button id="newToggleSnowBtnMobile" class="btn-text">Snow on</button>
+                <button id="newToggleRainBtnMobile" class="btn-text">Rain on</button>
+                <button id="newToggleAmountsBtnMobile" class="btn-text">Hide amounts</button>
                 <span class="theme-select-wrapper">
-                    <select id="newThemeSelectMobile" class="theme-select-btn" style="padding:0!important;">
+                    <select id="newThemeSelectMobile" class="theme-select-btn" aria-label="Theme">
                         <option value="light">Light</option>
                         <option value="dark">Dark</option>
                         <option value="bloomberg">Bloomberg</option>
@@ -407,264 +402,222 @@
                 <button id="newSettingsBtnMobile" class="btn-text">Settings</button>
             </div>
             <div class="mobile-menu-footer">
-                <div id="healthMobile" class="status-info" style="margin-bottom: 16px;">
-                    <div style="margin-bottom: 4px;">Providers:</div>
-                    <div style="white-space: pre-line; line-height: 1.6;">Initializing…</div>
+                <div id="healthMobile" class="status-info">
+                    <div>Providers:</div>
+                    <div class="status-info-list">Initializing…</div>
                 </div>
-                <div class="status-info" style="margin-bottom: 16px; opacity: 0.6;">
-                    <div id="versionDisplay">Version: Loading...</div>
+                <div class="status-info">
+                    <div id="versionDisplay">Version: Loading…</div>
                 </div>
             </div>
         </div>
 
         <!-- Settings Dialog -->
         <div id="newSettingsBackdrop" class="settings-backdrop" style="display: none;"></div>
-        <div id="newSettingsDialog" class="settings" style="display: none;">
+        <div id="newSettingsDialog" class="settings" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" style="display: none;">
             <div class="settings-form">
-                <header style="display: flex; justify-content: space-between; align-items: center;">
-                    <h3>Settings</h3>
+                <header>
+                    <h2 id="settingsTitle">Settings</h2>
                     <button id="newCloseSettingsBtn" class="btn-text">Close</button>
                 </header>
 
-                <section>
-                    <!-- Privacy Notice -->
-                    <div class="info">All settings are stored locally in your browser.
-                        Nothing is
-                        sent
-                        to any server.</div>
+                <div class="settings-body">
+                    <nav class="settings-nav" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
+                        <button type="button" class="settings-tab" role="tab" id="settingsTab-general" aria-controls="settingsPane-general" data-tab="general">General</button>
+                        <button type="button" class="settings-tab" role="tab" id="settingsTab-wallets" aria-controls="settingsPane-wallets" data-tab="wallets">Wallets</button>
+                        <button type="button" class="settings-tab" role="tab" id="settingsTab-keys" aria-controls="settingsPane-keys" data-tab="keys">API keys</button>
+                        <button type="button" class="settings-tab" role="tab" id="settingsTab-appearance" aria-controls="settingsPane-appearance" data-tab="appearance">Appearance</button>
+                        <button type="button" class="settings-tab" role="tab" id="settingsTab-backup" aria-controls="settingsPane-backup" data-tab="backup">Backup</button>
+                    </nav>
 
-                    <!-- Backup & Restore Section -->
-                    <div class="help">
-                        <div style="margin-bottom: 8px;">Import/export your settings as text to backup or transfer
-                            between devices
-                        </div>
-                        <div class="button-row" style="margin-bottom: 0;">
-                            <button type="button" id="newExportSettingsBtn" class="btn-text">Export</button>
-                            <button type="button" id="newImportSettingsBtn" class="btn-text">Import</button>
-                        </div>
-                        <textarea id="newSettingsExportArea" class="settings-input"
-                            style="display: none; min-height: 100px;"
-                            placeholder="Paste exported settings here, then click Save & Reload at the bottom"
-                            readonly></textarea>
-                    </div>
-
-                    <fieldset>
-                        <legend>Personal</legend>
-                        <label>
-                            Your Name
-                            <input id="newUserName" type="text" class="settings-input" placeholder="there">
-                        </label>
-                        <label style="margin-top: 8px;">
-                            City
-                            <input id="newWeatherCity" type="text" class="settings-input" placeholder="Lisbon">
-                        </label>
-                        <div class="row" style="margin-top: 8px;">
+                    <section class="settings-panes">
+                        <div class="settings-pane" role="tabpanel" id="settingsPane-general" aria-labelledby="settingsTab-general" data-pane="general">
                             <label>
-                                Latitude
-                                <input id="newWeatherLat" type="number" step="any" class="settings-input">
+                                Your name
+                                <input id="newUserName" type="text" class="settings-input" placeholder="there" autocomplete="given-name">
                             </label>
                             <label>
-                                Longitude
-                                <input id="newWeatherLon" type="number" step="any" class="settings-input">
+                                Portfolio currency
+                                <span class="select">
+                                    <select id="newPortfolioBaseCurrency" class="settings-input">
+                                        <option value="USD">USD</option>
+                                        <option value="EUR">EUR</option>
+                                        <option value="GBP">GBP</option>
+                                    </select>
+                                </span>
+                            </label>
+                            <label>
+                                Hide balances below
+                                <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100" inputmode="decimal" class="settings-input settings-input-short">
+                                <span class="info">In your portfolio currency</span>
+                            </label>
+                            <div class="settings-field">
+                                <label for="newWeatherCity">City for weather</label>
+                                <div class="settings-inline">
+                                    <input id="newWeatherCity" type="text" class="settings-input" placeholder="Lisbon" autocomplete="address-level2" aria-describedby="newWeatherCityHint">
+                                    <button id="newUseMyLocationBtn" type="button" class="btn-text">Use my location</button>
+                                </div>
+                                <span id="newWeatherCityHint" class="info" aria-live="polite">Optional. Only used to show the weather.</span>
+                            </div>
+                        </div>
+
+                        <div class="settings-pane" role="tabpanel" id="settingsPane-wallets" aria-labelledby="settingsTab-wallets" data-pane="wallets" hidden>
+                            <label>
+                                Wallet addresses
+                                <textarea id="newAddresses" class="settings-input" rows="6" spellcheck="false" autocapitalize="off"
+                                    placeholder="Paste addresses, one per line or separated by commas"></textarea>
+                                <span id="newAddressesHint" class="info" aria-live="polite">EVM, Solana, Bitcoin and Zcash (t-addr) are detected automatically.</span>
                             </label>
                         </div>
-                        <button id="newUseMyLocationBtn" type="button" class="btn-text" style="margin-top: 8px;">⌖ Use my location</button>
-                        <div class="info" style="margin-top: 8px;">Location is used for weather display (optional)</div>
-                    </fieldset>
 
-                    <fieldset>
-                        <legend>Wallets</legend>
-                        <label>
-                            EVM Addresses (comma-separated)
-                            <textarea id="newWalletAddresses" class="settings-input" rows="2"
-                                placeholder="0xYourAddress1, 0xYourAddress2"></textarea>
-                        </label>
-                        <div class="info" style="margin-top: 4px;">Ethereum, Arbitrum, Optimism, Polygon, Base, HyperEVM
-                        </div>
-                        <label style="margin-top: 12px;">
-                            Solana Addresses (comma-separated)
-                            <textarea id="newSolanaAddresses" class="settings-input" rows="2"
-                                placeholder="YourSolanaAddress1, YourSolanaAddress2"></textarea>
-                        </label>
-                        <div class="info" style="margin-top: 4px;">Solana mainnet addresses</div>
-                        <label style="margin-top: 12px;">
-                            Bitcoin Addresses (comma-separated)
-                            <textarea id="newBitcoinAddresses" class="settings-input" rows="2"
-                                placeholder="bc1qxxx, 1xxx, 3xxx"></textarea>
-                        </label>
-                        <div class="info" style="margin-top: 4px;">Bitcoin mainnet - all address types supported</div>
-                        <label style="margin-top: 12px;">
-                            Zcash Addresses (comma-separated)
-                            <textarea id="newZcashAddresses" class="settings-input" rows="2"
-                                placeholder="t1xxx"></textarea>
-                        </label>
-                        <div class="info" style="margin-top: 4px;">Zcash transparent addresses only (t-addr)</div>
-                    </fieldset>
+                        <div class="settings-pane" role="tabpanel" id="settingsPane-keys" aria-labelledby="settingsTab-keys" data-pane="keys" hidden>
+                            <div class="info">Wallet balances come from Zerion or Cielo, whichever key you add. Zerion is used if you add both.</div>
+                            <label>
+                                Zerion
+                                <input id="newZerionApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
+                                    placeholder="Your Zerion API key">
+                                <span class="info">Get a key at <a
+                                    href="https://developers.zerion.io/reference/intro/getting-started" target="_blank"
+                                    rel="noopener noreferrer">Zerion</a></span>
+                            </label>
+                            <label>
+                                Cielo Finance
+                                <input id="newCieloApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
+                                    placeholder="Your Cielo API key">
+                                <span class="info">Free key at <a href="https://build.cielo.finance/" target="_blank"
+                                    rel="noopener noreferrer">Cielo</a> (5,000 credits/month)</span>
+                            </label>
 
-                    <fieldset>
-                        <legend>API Keys</legend>
-
-                        <label style="display: block; margin-bottom: 8px;">
-                            Onchain Data Provider
-                            <select id="newOnchainProvider" class="settings-input"
-                                style="width: 100%; margin-top: 4px;">
-                                <option value="zerion">Zerion</option>
-                                <option value="cielo">Cielo Finance</option>
-                            </select>
-                        </label>
-                        <div class="info" style="margin-bottom: 12px;">Choose which service fetches your onchain wallet
-                            data</div>
-
-                        <label>
-                            Zerion API Key
-                            <input id="newZerionApiKey" type="text" class="settings-input"
-                                placeholder="Your Zerion API key">
-                        </label>
-                        <div class="info" style="margin-top: 4px;">Get a key at <a
-                                href="https://developers.zerion.io/reference/intro/getting-started" target="_blank"
-                                rel="noopener noreferrer">Zerion</a></div>
-
-                        <label style="margin-top: 12px;">
-                            Cielo Finance API Key
-                            <input id="newCieloApiKey" type="text" class="settings-input"
-                                placeholder="Your Cielo API key">
-                        </label>
-                        <div class="info" style="margin-top: 4px;">Get a free key at <a
-                                href="https://build.cielo.finance/" target="_blank" rel="noopener noreferrer">Cielo</a>
-                            (5,000 credits/month free)</div>
-
-                        <label style="margin-top: 12px;">
-                            Alchemy API Key
-                            <input id="newAlchemyApiKey" type="text" class="settings-input"
-                                placeholder="Your Alchemy API key">
-                        </label>
-                        <div class="info" style="margin-top: 4px;">Fallback for EVM chains (Ethereum, Arbitrum,
-                            Optimism, Polygon,
-                            Base, HyperEVM). Get a free key at <a href="https://www.alchemy.com/" target="_blank"
-                                rel="noopener noreferrer">Alchemy</a></div>
-
-                        <label style="margin-top: 12px;">
-                            Helius API Key
-                            <input id="newHeliusApiKey" type="text" class="settings-input"
-                                placeholder="Your Helius API key">
-                        </label>
-                        <div class="info" style="margin-top: 4px;">Fallback for Solana. Get a free key at <a
-                                href="https://www.helius.dev/" target="_blank" rel="noopener noreferrer">Helius</a>
+                            <h3 class="settings-group">Fallbacks and extras</h3>
+                            <label>
+                                Alchemy
+                                <input id="newAlchemyApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
+                                    placeholder="Your Alchemy API key">
+                                <span class="info">Fallback for EVM chains. Free key at <a href="https://www.alchemy.com/"
+                                    target="_blank" rel="noopener noreferrer">Alchemy</a></span>
+                            </label>
+                            <label>
+                                Helius
+                                <input id="newHeliusApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
+                                    placeholder="Your Helius API key">
+                                <span class="info">Fallback for Solana. Free key at <a href="https://www.helius.dev/"
+                                    target="_blank" rel="noopener noreferrer">Helius</a></span>
+                            </label>
+                            <label>
+                                OpenSea
+                                <input id="newOpenSeaApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
+                                    placeholder="Your OpenSea API key">
+                                <span class="info">For NFT data. Get a key at <a href="https://opensea.io/account/developer"
+                                    target="_blank" rel="noopener noreferrer">OpenSea</a></span>
+                            </label>
                         </div>
 
-                        <label style="margin-top: 12px;">
-                            OpenSea API Key
-                            <input id="newOpenSeaApiKey" type="text" class="settings-input"
-                                placeholder="Your OpenSea API key">
-                        </label>
-                        <div class="info" style="margin-top: 4px;">For NFT data. Get a key at <a
-                                href="https://opensea.io/account/developer" target="_blank"
-                                rel="noopener noreferrer">OpenSea</a></div>
-                    </fieldset>
+                        <div class="settings-pane" role="tabpanel" id="settingsPane-appearance" aria-labelledby="settingsTab-appearance" data-pane="appearance" hidden>
+                            <div class="row">
+                                <label>
+                                    Font
+                                    <span class="select">
+                                        <select id="newFontSelect" class="settings-input">
+                                            <option value="system">System</option>
+                                            <option value="berkeley">Berkeley Mono</option>
+                                            <option value="commit">Commit Mono</option>
+                                            <option value="departure">Departure Mono</option>
+                                            <option value="sf">SF Mono</option>
+                                        </select>
+                                    </span>
+                                </label>
+                                <label>
+                                    Text size
+                                    <span class="select">
+                                        <select id="newFontSizeSelect" class="settings-input">
+                                            <option value="12">12px</option>
+                                            <option value="13">13px</option>
+                                            <option value="14">14px</option>
+                                            <option value="15">15px</option>
+                                            <option value="16">16px</option>
+                                            <option value="18">18px</option>
+                                        </select>
+                                    </span>
+                                </label>
+                            </div>
 
-                    <fieldset>
-                        <legend>Display Options</legend>
-                        <label style="display: block; margin-bottom: 12px;">
-                            Font
-                            <select id="newFontSelect" class="settings-input" style="width: 100%; margin-top: 4px;">
-                                <option value="system">System</option>
-                                <option value="berkeley">Berkeley Mono</option>
-                                <option value="commit">Commit Mono</option>
-                                <option value="departure">Departure Mono</option>
-                                <option value="sf">SF Mono</option>
-                            </select>
-                        </label>
-                        <label style="display: block; margin-bottom: 12px;">
-                            Portfolio Currency
-                            <select id="newPortfolioBaseCurrency" class="settings-input"
-                                style="width: 100%; margin-top: 4px;">
-                                <option value="USD">USD</option>
-                                <option value="EUR">EUR</option>
-                                <option value="GBP">GBP</option>
-                            </select>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <input id="newUseColoredPnL" type="checkbox" class="settings-input">
-                            Use colored P&L (green/red)
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <input id="newHideWatchlist" type="checkbox" class="settings-input">
-                            Hide watchlist
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <input id="newHideComic" type="checkbox" class="settings-input">
-                            Hide comic strip
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <input id="newShowExactAmounts" type="checkbox" class="settings-input">
-                            Show exact amounts (no rounding)
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <input id="newShowPriceChart" type="checkbox" class="settings-input" checked>
-                            Show 24h price chart (BETA)
-                        </label>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <input id="newEnableKeyboardShortcuts" type="checkbox" class="settings-input">
-                            Enable keyboard shortcuts (R, S, W, Esc, arrows)
-                        </label>
-                        <label style="margin-top: 12px;">
-                            Hide balances below (portfolio currency)
-                            <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100"
-                                style="width: 100px;" class="settings-input">
-                        </label>
-                    </fieldset>
+                            <h3 class="settings-group">Numbers</h3>
+                            <label class="check">
+                                <input id="newUseColoredPnL" type="checkbox" class="settings-input">
+                                Color gains and losses
+                            </label>
+                            <label class="check">
+                                <input id="newShowExactAmounts" type="checkbox" class="settings-input">
+                                Show exact amounts
+                            </label>
 
-                    <fieldset>
-                        <legend>Menu Buttons</legend>
-                        <div class="info" style="margin-bottom: 12px;">Hide menu bar buttons</div>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <input id="newHideSnowBtn" type="checkbox" class="settings-input">
-                            Hide Snow button
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <input id="newHideRainBtn" type="checkbox" class="settings-input">
-                            Hide Rain button
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <input id="newHideFontSize" type="checkbox" class="settings-input">
-                            Hide Font Size controls
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <input id="newHideThemeBtn" type="checkbox" class="settings-input">
-                            Hide Theme selector
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <input id="newHideAmountsBtn" type="checkbox" class="settings-input">
-                            Hide Amounts toggle
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <input id="newHideDonateBtn" type="checkbox" class="settings-input">
-                            Hide Donate button
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <input id="newHideStickersBtn" type="checkbox" class="settings-input">
-                            Hide Stickers button
-                        </label>
-                    </fieldset>
+                            <h3 class="settings-group">Sections</h3>
+                            <label class="check">
+                                <input id="newShowPriceChart" type="checkbox" class="settings-input">
+                                Show 24h price chart
+                            </label>
+                            <label class="check">
+                                <input id="newShowWatchlist" type="checkbox" class="settings-input">
+                                Show watchlist
+                            </label>
+                            <label class="check">
+                                <input id="newShowComic" type="checkbox" class="settings-input">
+                                Show comic strip
+                            </label>
 
-                    <!-- Force Update Section -->
-                    <div class="help" style="margin-top: 16px;">
-                        <div style="margin-bottom: 8px;">Not seeing the latest version? Force clear all caches and
-                            reload</div>
-                        <button type="button" id="newForceUpdateBtn" class="btn-text">Force Update</button>
-                    </div>
-                </section>
-                <footer class="settings-actions">
-                    <button id="newCancelSettingsBtn" class="btn-text">Cancel</button>
-                    <button id="newSaveSettingsBtn" class="btn-text">Save & Reload</button>
-                </footer>
+                            <h3 class="settings-group">Menu bar</h3>
+                            <label class="check">
+                                <input id="newShowStickersBtn" type="checkbox" class="settings-input">
+                                Show Stickers
+                            </label>
+                            <label class="check">
+                                <input id="newShowSnowBtn" type="checkbox" class="settings-input">
+                                Show Snow
+                            </label>
+                            <label class="check">
+                                <input id="newShowRainBtn" type="checkbox" class="settings-input">
+                                Show Rain
+                            </label>
+                            <label class="check">
+                                <input id="newShowDonateBtn" type="checkbox" class="settings-input">
+                                Show Donate
+                            </label>
+                        </div>
+
+                        <div class="settings-pane settings-pane-rows" role="tabpanel" id="settingsPane-backup" aria-labelledby="settingsTab-backup" data-pane="backup" hidden>
+                            <div class="settings-row">
+                                <div class="settings-row-text">
+                                    <div class="settings-row-title">Export settings</div>
+                                    <div class="info">Copy your settings as text to back them up or move them to another device.</div>
+                                </div>
+                                <button type="button" id="newExportSettingsBtn" class="btn-text">Export</button>
+                            </div>
+                            <div class="settings-row">
+                                <div class="settings-row-text">
+                                    <div class="settings-row-title">Import settings</div>
+                                    <div class="info">Paste settings exported from another device. This replaces your current settings and reloads.</div>
+                                </div>
+                                <button type="button" id="newImportSettingsBtn" class="btn-text">Import</button>
+                            </div>
+                            <textarea id="newSettingsExportArea" class="settings-input" aria-label="Exported settings"
+                                style="display: none; min-height: 100px;" spellcheck="false" readonly></textarea>
+                            <div class="settings-row">
+                                <div class="settings-row-text">
+                                    <div class="settings-row-title">Force update</div>
+                                    <div class="info">Not seeing the latest version? Clears all caches and reloads. Your settings are kept.</div>
+                                </div>
+                                <button type="button" id="newForceUpdateBtn" class="btn-text">Force update</button>
+                            </div>
+                            <div class="info settings-footnote">All settings are stored locally in your browser. Nothing is sent to any server.</div>
+                        </div>
+                    </section>
+                </div>
             </div>
         </div>
-        <main class="container">
+        <main id="main" class="container" tabindex="-1">
             <section class="hero panel">
                 <header class="panel-head">
-                    <h2 class="panel-title">Portfolio</h2>
+                    <h2 class="panel-title sr-only">Portfolio</h2>
                     <span class="panel-rule"></span>
                 </header>
                 <div id="newSummary" class="hero-summary"><span class="loading-terminal">Loading</span></div>
@@ -738,13 +691,14 @@
 
             <section class="data-section panel" id="comicSection">
                 <header class="panel-head comic-header">
-                    <div class="comic-tabs" role="tablist">
-                        <button id="newTabCalvin" class="comic-tab active" data-comic="calvinandhobbes">
+                    <h2 class="sr-only">Comics</h2>
+                    <div class="comic-tabs" role="group" aria-label="Comic strip">
+                        <button id="newTabCalvin" class="comic-tab active" data-comic="calvinandhobbes" aria-pressed="true">
                             <span class="tab-desktop">Calvin & Hobbes</span>
                             <span class="tab-mobile">C&H</span>
                         </button>
-                        <button id="newTabPeanuts" class="comic-tab" data-comic="peanuts">Peanuts</button>
-                        <button id="newTabFarside" class="comic-tab" data-comic="farside">The Far Side</button>
+                        <button id="newTabPeanuts" class="comic-tab" data-comic="peanuts" aria-pressed="false">Peanuts</button>
+                        <button id="newTabFarside" class="comic-tab" data-comic="farside" aria-pressed="false">The Far Side</button>
                     </div>
                     <span class="panel-rule"></span>
                 </header>
@@ -773,144 +727,141 @@
 
     <!-- Watchlist Search Modal -->
     <div id="newWatchlistSearchBackdrop" class="settings-backdrop" style="display: none;"></div>
-    <div id="newWatchlistSearchWindow" class="sticker-window" style="display: none;">
+    <div id="newWatchlistSearchWindow" class="sticker-window" role="dialog" aria-modal="true" aria-labelledby="newWatchlistSearchTitle" style="display: none;">
         <div class="sticker-window-header">
-            <span>Add to Watchlist</span>
+            <h2 id="newWatchlistSearchTitle" class="window-title">Add to watchlist</h2>
             <button id="newCloseWatchlistSearchBtn" class="btn-text">Close</button>
         </div>
-        <div class="sticker-window-content">
-            <div class="info" style="margin: 0 0 12px 0;">Search for tokens</div>
-            <input type="text" id="newWatchlistSearchInput" class="settings-input" placeholder="Search tokens..."
-                style="width: 100%; margin-bottom: 12px;">
-            <div id="newWatchlistSearchResults" style="display: none;">
+        <div class="sticker-window-content modal-form">
+            <div class="modal-field">
+                <label for="newWatchlistSearchInput">Search for tokens</label>
+                <input type="text" id="newWatchlistSearchInput" class="settings-input" placeholder="BTC, AAPL, EUR/USD…"
+                    autocomplete="off" spellcheck="false">
+            </div>
+            <div id="newWatchlistSearchResults" class="search-results" style="display: none;">
             </div>
         </div>
     </div>
 
     <!-- Donate Modal -->
     <div id="newDonateBackdrop" class="settings-backdrop" style="display: none;"></div>
-    <div id="newDonateWindow" class="sticker-window" style="display: none;">
+    <div id="newDonateWindow" class="sticker-window" role="dialog" aria-modal="true" aria-labelledby="newDonateTitle" style="display: none;">
         <div class="sticker-window-header">
-            <span>Donate</span>
+            <h2 id="newDonateTitle" class="window-title">Donate</h2>
             <button id="newCloseDonateBtn" class="btn-text">Close</button>
         </div>
         <div class="sticker-window-content">
-            <div class="help" style="margin-bottom: 0">Viewport is free for everyone, forever. If you'd like to support
-                its
-                development, you can contribute to the addresses below. Thank you for using Viewport &lt;3</div>
-            <div style="display: flex; flex-direction: column; gap: 0;">
+            <p class="help">Viewport is free for everyone, forever. If you'd like to support its development, you can
+                contribute to the addresses below. Thank you for using Viewport &lt;3</p>
+            <div class="donate-list">
                 <div class="donate-address-row">
                     <div class="donate-label">Bitcoin</div>
                     <div class="donate-address">bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt</div>
-                    <button class="btn-text copy-address-btn"
-                        data-address="bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt">Copy
-                        Bitcoin Address</button>
+                    <button type="button" class="btn-text copy-address-btn"
+                        data-address="bc1q4zxarhvtk4hhs9selq8tat6jc60lg329fjjxlt">Copy Bitcoin address</button>
                 </div>
                 <div class="donate-address-row">
                     <div class="donate-label">EVM</div>
                     <div class="donate-address">0x002cd0a71c10091d90A19eC98384FDe2923518F9</div>
-                    <button class="btn-text copy-address-btn"
-                        data-address="0x002cd0a71c10091d90A19eC98384FDe2923518F9">Copy
-                        EVM Address</button>
+                    <button type="button" class="btn-text copy-address-btn"
+                        data-address="0x002cd0a71c10091d90A19eC98384FDe2923518F9">Copy EVM address</button>
                 </div>
                 <div class="donate-address-row">
-                    <div class="donate-label">ZCash</div>
+                    <div class="donate-label">Zcash</div>
                     <div class="donate-address">
                         u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h
                     </div>
-                    <button class="btn-text copy-address-btn"
-                        data-address="u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h">Copy
-                        ZCash Address</button>
+                    <button type="button" class="btn-text copy-address-btn"
+                        data-address="u1edmrg3zyw2d6d8hpzc54cy84ndvcfkc5mc52syeguslk8sxd3tj6v0uxzu0ae4xrpyhnnkhnh8zyhnmdpfkyj5q9lvxeyzsvlxst6wvq8skynhz3utuw2eurlrwt92f6ec3g0l2h32ghyx4fcp53hn9xzqex4nmurnfmyav4mudhzc4h">Copy Zcash address</button>
                 </div>
                 <div class="donate-address-row">
                     <div class="donate-label">Solana</div>
                     <div class="donate-address">AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV</div>
-                    <button class="btn-text copy-address-btn"
-                        data-address="AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV">Copy
-                        Solana Address</button>
+                    <button type="button" class="btn-text copy-address-btn"
+                        data-address="AqZya1XVuzPicnFnChypiZc8vprEcivpsbGKwxXKttZV">Copy Solana address</button>
                 </div>
             </div>
+            <div id="newDonateStatus" class="sr-only" aria-live="polite"></div>
         </div>
     </div>
 
     <!-- Add Position Modal -->
     <div id="newAddPositionBackdrop" class="settings-backdrop" style="display: none;"></div>
-    <div id="newAddPositionModal" class="sticker-window" style="display: none;">
+    <div id="newAddPositionModal" class="sticker-window" role="dialog" aria-modal="true" aria-labelledby="newAddPositionTitle" style="display: none;">
         <div class="sticker-window-header">
-            <span id="newAddPositionTitle">Add Position</span>
+            <h2 id="newAddPositionTitle" class="window-title">Add position</h2>
             <button id="newCloseAddPositionBtn" class="btn-text">Close</button>
         </div>
-        <div class="sticker-window-content">
-            <div class="help" style="margin: 0 0 12px 0;">Add a manual position using a live price feed, or add a custom
-                asset.</div>
+        <div class="sticker-window-content modal-form">
+            <p class="help">Add a manual position using a live price feed, or add a custom asset.</p>
 
             <!-- Type Selection -->
-            <div style="margin-bottom: 16px;">
-                <label style="display: block; margin-bottom: 8px;">Position Type</label>
-                <div class="button-row">
-                    <button id="newAddPositionTypePyth" class="btn-tab active" style="flex: 1;">Live Price</button>
-                    <button id="newAddPositionTypeCustom" class="btn-tab" style="flex: 1;">Custom Asset</button>
+            <div class="modal-field">
+                <div id="newAddPositionTypeLabel">Position type</div>
+                <div class="button-row segmented" role="group" aria-labelledby="newAddPositionTypeLabel">
+                    <button type="button" id="newAddPositionTypePyth" class="btn-tab active" aria-pressed="true">Live price</button>
+                    <button type="button" id="newAddPositionTypeCustom" class="btn-tab" aria-pressed="false">Custom asset</button>
                 </div>
             </div>
 
             <!-- Pyth Oracle Section -->
-            <div id="newAddPositionPythSection">
-                <label style="display: block; margin-bottom: 8px;">Search Ticker</label>
-                <input type="text" id="newAddPositionPythSearch" class="settings-input"
-                    placeholder="Search AAPL, BTC, EUR/USD, XAU..." style="width: 100%; margin-bottom: 12px;">
-                <div id="newAddPositionPythResults"
-                    style="max-height: 240px; overflow-y: auto; display: none; margin-bottom: 16px;">
-                </div>
-                <div id="newAddPositionPythSelection" class="help"
-                    style="display: none; margin-bottom: 12px; padding: 8px; border: 1px solid var(--border); background: var(--bg-elev);">
+            <div id="newAddPositionPythSection" class="modal-form">
+                <div class="modal-field">
+                    <label for="newAddPositionPythSearch">Search ticker</label>
+                    <input type="text" id="newAddPositionPythSearch" class="settings-input"
+                        placeholder="AAPL, BTC, EUR/USD, XAU…" autocomplete="off" spellcheck="false">
+                    <div id="newAddPositionPythResults" class="search-results" style="display: none;"></div>
+                    <div id="newAddPositionPythSelection" class="help" aria-live="polite" style="display: none;"></div>
                 </div>
 
-                <label style="display: block; margin-bottom: 8px;">Amount</label>
-                <input type="number" id="newAddPositionPythAmount" class="settings-input" placeholder="0.00"
-                    style="width: 100%; margin-bottom: 16px;" step="any">
+                <div class="modal-field">
+                    <label for="newAddPositionPythAmount">Amount</label>
+                    <input type="number" id="newAddPositionPythAmount" class="settings-input" placeholder="0.00" step="any"
+                        inputmode="decimal">
+                </div>
 
-                <label style="display: block; margin-bottom: 8px;">Entry Date (optional — auto-fills entry price)</label>
-                <input type="date" id="newAddPositionPythEntryDate" class="settings-input"
-                    style="width: 100%; margin-bottom: 16px;">
+                <div class="modal-field">
+                    <label for="newAddPositionPythEntryDate">Entry date (optional, fills in the entry price)</label>
+                    <input type="date" id="newAddPositionPythEntryDate" class="settings-input">
+                </div>
 
-                <label id="newAddPositionPythEntryPriceLabel" style="display: block; margin-bottom: 8px;">Entry Price
-                    (ticker quote currency)</label>
-                <input type="number" id="newAddPositionPythEntryPrice" class="settings-input" placeholder="0.00"
-                    style="width: 100%; margin-bottom: 8px;" step="any">
-                <div id="newAddPositionPythEntryPriceHint" class="help" style="margin-bottom: 16px;"></div>
+                <div class="modal-field">
+                    <label id="newAddPositionPythEntryPriceLabel" for="newAddPositionPythEntryPrice">Entry price (ticker quote currency)</label>
+                    <input type="number" id="newAddPositionPythEntryPrice" class="settings-input" placeholder="0.00" step="any"
+                        inputmode="decimal" aria-describedby="newAddPositionPythEntryPriceHint">
+                    <div id="newAddPositionPythEntryPriceHint" class="info" aria-live="polite"></div>
+                </div>
             </div>
 
             <!-- Custom Asset Section -->
-            <div id="newAddPositionCustomSection" style="display: none;">
-                <label style="display: block; margin-bottom: 8px;">Asset Name</label>
-                <input type="text" id="newAddPositionCustomName" class="settings-input"
-                    placeholder="e.g., Gold bars, Real estate, etc." style="width: 100%; margin-bottom: 16px;">
+            <div id="newAddPositionCustomSection" class="modal-form" style="display: none;">
+                <div class="modal-field">
+                    <label for="newAddPositionCustomName">Asset name</label>
+                    <input type="text" id="newAddPositionCustomName" class="settings-input"
+                        placeholder="Gold bars, real estate…">
+                </div>
 
-                <label id="newAddPositionCustomValueLabel" style="display: block; margin-bottom: 8px;">Value (portfolio
-                    currency)</label>
-                <input type="number" id="newAddPositionCustomValue" class="settings-input" placeholder="5000"
-                    style="width: 100%; margin-bottom: 16px;" step="any">
+                <div class="modal-field">
+                    <label id="newAddPositionCustomValueLabel" for="newAddPositionCustomValue">Value (portfolio currency)</label>
+                    <input type="number" id="newAddPositionCustomValue" class="settings-input" placeholder="5000" step="any"
+                        inputmode="decimal">
+                </div>
             </div>
-            <button id="newSavePositionBtn" class="btn-text btn-primary">Save Position</button>
+            <button type="button" id="newSavePositionBtn" class="btn-text btn-primary">Save position</button>
         </div>
     </div>
 
     <!-- Sticker Window Modal -->
     <div id="stickerBackdrop" class="settings-backdrop" style="display: none;"></div>
-    <div id="stickerWindow" class="sticker-window" style="display: none;">
+    <div id="stickerWindow" class="sticker-window" role="dialog" aria-modal="true" aria-labelledby="stickerWindowTitle" style="display: none;">
         <div class="sticker-window-header">
-            <span>Stickers</span>
+            <h2 id="stickerWindowTitle" class="window-title">Stickers</h2>
             <button id="closeStickerWindowBtn" class="btn-text">Close</button>
         </div>
         <div class="sticker-window-content">
-            <div class="help sticker-help-desktop" style="margin-bottom: 8px;">Drag stickers onto the page to place
-                them.
-            </div>
-            <div class="help sticker-help-mobile" style="margin-bottom: 8px;">Tap a sticker to place it on the page.
-            </div>
-            <div id="stickerGrid"
-                style="display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; max-height: 400px; overflow-y: auto; padding: 8px; background: var(--bg-elev); border: 1px solid var(--border);">
-            </div>
+            <p class="help sticker-help-desktop">Drag stickers onto the page, or press Enter on one to place it.</p>
+            <p class="help sticker-help-mobile">Tap a sticker to place it on the page.</p>
+            <div id="stickerGrid" class="sticker-grid"></div>
         </div>
     </div>
 

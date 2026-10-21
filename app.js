@@ -10,6 +10,9 @@ import {
   storedManualPositionMatches
 } from './modules/features/manual-positions.js';
 import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
+import { setupSettingsDialog, applyAppearance } from './modules/ui/settings-dialog.js';
+import { setupDialogFocus } from './modules/ui/dialog-focus.js';
+import { setupTableScrollCues } from './modules/ui/table-scroll-cue.js';
 import { getRandomSpinner } from './modules/ui/unicode-animations.js';
 import { formatMoney, normalizeBaseCurrency } from './modules/utils/currency.js';
 
@@ -247,9 +250,16 @@ async function _doRenderPortfolioIncremental() {
     const positionsBody = document.getElementById('newPositionsBody');
     if (summaryEl) {
       summaryEl.innerHTML = `
-        <p class="hero-sentence">Your portfolio is empty. <button type="button" class="link-button" data-empty-action="newSettingsBtn">Add a wallet</button> or <button type="button" class="link-button" data-empty-action="newAddPositionBtn">a position</button> to start tracking.</p>`;
+        <p class="hero-sentence">Your portfolio is empty. <button type="button" class="link-button" data-empty-action="newSettingsBtn" data-empty-tab="wallets">Add a wallet</button> or <button type="button" class="link-button" data-empty-action="newAddPositionBtn">a position</button> to start tracking.</p>`;
       summaryEl.querySelectorAll('[data-empty-action]').forEach(btn => {
-        btn.addEventListener('click', () => document.getElementById(btn.dataset.emptyAction)?.click());
+        btn.addEventListener('click', () => {
+          document.getElementById(btn.dataset.emptyAction)?.click();
+          if (btn.dataset.emptyTab) {
+            document.getElementById(`settingsTab-${btn.dataset.emptyTab}`)?.click();
+            // Land in the field the link promised, not on the tab Settings focused as it opened
+            document.getElementById(`settingsPane-${btn.dataset.emptyTab}`)?.querySelector('input, textarea, select')?.focus();
+          }
+        });
       });
     }
     if (positionsBody) positionsBody.innerHTML = '<tr><td colspan="9" class="loading">No wallets or positions configured</td></tr>';
@@ -260,17 +270,10 @@ async function _doRenderPortfolioIncremental() {
   const expectedProviders = [];
   if (wallets.length > 0) {
     expectedProviders.push('Hyperliquid', 'Lighter');
-    // Check which onchain provider to use
-    const onchainProvider = settings.onchainProvider || 'zerion';
-    if (onchainProvider === 'cielo' && settings.cieloApiKey) {
-      expectedProviders.push('Cielo');
-    } else if (onchainProvider === 'zerion' && settings.zerionApiKey) {
-      expectedProviders.push('Zerion');
-    } else if (settings.zerionApiKey) {
-      // Fallback to Zerion if configured
+    // Onchain provider: whichever key is set, Zerion first
+    if (settings.zerionApiKey) {
       expectedProviders.push('Zerion');
     } else if (settings.cieloApiKey) {
-      // Fallback to Cielo if configured
       expectedProviders.push('Cielo');
     } else if (settings.alchemyApiKey || settings.heliusApiKey) {
       expectedProviders.push('Alchemy/Helius');
@@ -445,7 +448,6 @@ let cachedWeather = null; // Cache weather data globally to preserve across re-r
 let cachedWatchlistData = null; // Cache watchlist data globally
 let watchlistEditMode = false;
 
-let currentFontSize = 15; // Default font size in px
 
 // Expose to window for incremental renderer
 window.hideSmallPositions = hideSmallPositions;
@@ -459,28 +461,6 @@ window.cachedSummaryData = cachedSummaryData;
 
 
 
-function applyFontSize(size) {
-  document.documentElement.style.fontSize = size + 'px';
-  currentFontSize = size;
-  const displays = [
-    document.getElementById('newFontSizeDisplay'),
-    document.getElementById('newFontSizeDisplayMobile')
-  ];
-  displays.forEach(display => {
-    if (display) display.textContent = size + 'px';
-  });
-}
-
-function applyFont(fontName) {
-  const body = document.body;
-  body.classList.remove('font-berkeley', 'font-commit', 'font-departure', 'font-sf');
-
-  if (fontName === 'berkeley' || fontName === 'commit' || fontName === 'departure' || fontName === 'sf') {
-    body.classList.add(`font-${fontName}`);
-  }
-  // Mirrored on <html> so the pre-paint script in index.html can pick the font before modules load.
-  document.documentElement.dataset.font = fontName || 'system';
-}
 
 // ============================================================================
 // PULL TO REFRESH (Mobile Only)
@@ -658,11 +638,39 @@ function setupPullToRefresh() {
 }
 
 
+// Greeting uses the saved name; the settings window calls this again on close
+function updateGreeting() {
+  const greetingEl = document.getElementById('newGreeting');
+  if (greetingEl) {
+    const hour = new Date().getHours();
+    let timeOfDay = 'Good morning';
+    if (hour >= 12 && hour < 18) timeOfDay = 'Good afternoon';
+    else if (hour >= 18) timeOfDay = 'Good evening';
+
+    const userName = (getSettings().userName || '').trim();
+    greetingEl.textContent = userName ? `${timeOfDay}, ${userName}.` : `${timeOfDay}.`;
+  }
+}
+
 function setupControls() {
   const settings = getSettings();
 
-  // Apply saved font
-  applyFont(settings.font || 'sf');
+  // Fonts, text size, sections and optional menu buttons
+  applyAppearance(settings);
+
+  // Pop-ups take focus when they open and hand it back when they close
+  setupDialogFocus();
+  setupTableScrollCues();
+
+  // Toggle groups (comic strip, position type) mark the current choice with `.active`; mirror it
+  // as aria-pressed so screen readers hear which one is on, whichever code path flips the class
+  const pressedObserver = new MutationObserver(records => records.forEach(({ target }) => {
+    target.setAttribute('aria-pressed', String(target.classList.contains('active')));
+  }));
+  document.querySelectorAll('.comic-tab, .btn-tab').forEach(btn => {
+    btn.setAttribute('aria-pressed', String(btn.classList.contains('active')));
+    pressedObserver.observe(btn, { attributes: true, attributeFilter: ['class'] });
+  });
 
 
 
@@ -794,9 +802,11 @@ function setupControls() {
   let editModeSnapshot = null; // Store state before edit mode for cancel functionality
   const handlePositionEditClick = (e) => {
     if (!editMode) return;
+    const btn = e.target.closest('button');
+    if (!btn) return;
 
-    if (e.target.classList.contains('position-edit-btn')) {
-      const assetKey = e.target.getAttribute('data-asset-key');
+    if (btn.classList.contains('position-edit-btn')) {
+      const assetKey = btn.getAttribute('data-asset-key');
       if (hiddenAssets.has(assetKey)) {
         hiddenAssets.delete(assetKey);
       } else {
@@ -819,10 +829,11 @@ function setupControls() {
       if (window._portfolioRenderer) {
         window._portfolioRenderer.forceRender();
       }
-    } else if (e.target.classList.contains('position-delete-btn')) {
-      // Delete manual position
-      const asset = e.target.getAttribute('data-asset');
-      const manualType = e.target.getAttribute('data-manual-type');
+    } else if (btn.classList.contains('position-delete-btn')) {
+      // Delete manual position, after asking: there is no undo
+      const asset = btn.getAttribute('data-asset');
+      const manualType = btn.getAttribute('data-manual-type');
+      if (!window.confirm(`Delete ${asset}? This removes the position and can't be undone.`)) return;
 
       const s = getSettings();
       if (s.cryptoPositions && Array.isArray(s.cryptoPositions)) {
@@ -847,13 +858,13 @@ function setupControls() {
           window._portfolioRenderer.removePositions(p => renderedManualPositionMatches(p, asset, manualType));
         }
       }
-    } else if (e.target.classList.contains('position-manual-edit-btn')) {
-      const asset = e.target.getAttribute('data-asset');
-      const manualType = e.target.getAttribute('data-manual-type');
+    } else if (btn.classList.contains('position-manual-edit-btn')) {
+      const asset = btn.getAttribute('data-asset');
+      const manualType = btn.getAttribute('data-manual-type');
       openManualPositionEdit(asset, manualType);
-    } else if (e.target.classList.contains('position-restore-btn')) {
+    } else if (btn.classList.contains('position-restore-btn')) {
       // Restore hidden position (remove from hiddenAssets)
-      const assetKey = e.target.getAttribute('data-asset-key');
+      const assetKey = btn.getAttribute('data-asset-key');
       hiddenAssets.delete(assetKey);
       window.hiddenAssets = hiddenAssets;
 
@@ -875,6 +886,10 @@ function setupControls() {
     }
   };
 
+  // Table rows and phone cards carry the same edit actions; the handler ignores clicks outside edit mode
+  positionsBody?.addEventListener('click', handlePositionEditClick);
+  document.getElementById('newMobilePositionsContainer')?.addEventListener('click', handlePositionEditClick);
+
   if (editListBtn) {
     editListBtn.addEventListener('click', () => {
       if (!editMode) {
@@ -891,14 +906,6 @@ function setupControls() {
       // Show/hide cancel button
       if (cancelEditBtn) {
         cancelEditBtn.style.display = editMode ? 'inline' : 'none';
-      }
-
-      if (positionsBody) {
-        if (editMode) {
-          positionsBody.addEventListener('click', handlePositionEditClick);
-        } else {
-          positionsBody.removeEventListener('click', handlePositionEditClick);
-        }
       }
 
       // Re-render with edit mode
@@ -928,9 +935,6 @@ function setupControls() {
       window.editMode = editMode;
       editListBtn.textContent = 'Edit';
       cancelEditBtn.style.display = 'none';
-      if (positionsBody) {
-        positionsBody.removeEventListener('click', handlePositionEditClick);
-      }
 
       // Re-render
       if (window._portfolioRenderer) {
@@ -955,7 +959,7 @@ function setupControls() {
   if (amountsBtn) {
     amountsBtn.addEventListener('click', () => {
       amountsVisible = !amountsVisible;
-      amountsBtn.textContent = amountsVisible ? 'Hide Amounts' : 'Show Amounts';
+      amountsBtn.textContent = amountsVisible ? 'Hide amounts' : 'Show amounts';
 
       // Also update mobile button text
       const mobileAmountsBtn = document.getElementById('newToggleAmountsBtnMobile');
@@ -990,233 +994,29 @@ function setupControls() {
 
 
 
-  // Settings dialog
-  const settingsBtn = document.getElementById('newSettingsBtn');
-  const settingsDialog = document.getElementById('newSettingsDialog');
-  const settingsBackdrop = document.getElementById('newSettingsBackdrop');
-  const closeBtn = document.getElementById('newCloseSettingsBtn');
-  const cancelBtn = document.getElementById('newCancelSettingsBtn');
-  const saveBtn = document.getElementById('newSaveSettingsBtn');
-
-  const openSettings = () => {
-    if (settingsDialog && settingsBackdrop) {
-      // Load current settings into form
-      const s = getSettings();
-      const userNameInput = document.getElementById('newUserName');
-      const walletInput = document.getElementById('newWalletAddresses');
-      const solanaInput = document.getElementById('newSolanaAddresses');
-      const bitcoinInput = document.getElementById('newBitcoinAddresses');
-      const zcashInput = document.getElementById('newZcashAddresses');
-      const zerionInput = document.getElementById('newZerionApiKey');
-      const cieloInput = document.getElementById('newCieloApiKey');
-      const onchainProviderInput = document.getElementById('newOnchainProvider');
-      const alchemyInput = document.getElementById('newAlchemyApiKey');
-      const heliusInput = document.getElementById('newHeliusApiKey');
-      const openseaInput = document.getElementById('newOpenSeaApiKey');
-      const cityInput = document.getElementById('newWeatherCity');
-      const latInput = document.getElementById('newWeatherLat');
-      const lonInput = document.getElementById('newWeatherLon');
-      const coloredPnLInput = document.getElementById('newUseColoredPnL');
-      const hideWatchlistInput = document.getElementById('newHideWatchlist');
-      const hideComicInput = document.getElementById('newHideComic');
-      const showExactAmountsInput = document.getElementById('newShowExactAmounts');
-      const showPriceChartInput = document.getElementById('newShowPriceChart');
-      const minBalanceInput = document.getElementById('newMinBalanceThreshold');
-      const fontSelectInput = document.getElementById('newFontSelect');
-      const portfolioBaseCurrencyInput = document.getElementById('newPortfolioBaseCurrency');
-
-      // Menu visibility controls
-      const hideSnowBtnInput = document.getElementById('newHideSnowBtn');
-      const hideRainBtnInput = document.getElementById('newHideRainBtn');
-      const hideFontSizeInput = document.getElementById('newHideFontSize');
-      const hideThemeBtnInput = document.getElementById('newHideThemeBtn');
-      const hideAmountsBtnInput = document.getElementById('newHideAmountsBtn');
-      const showCompactBtnInput = document.getElementById('newShowCompactBtn');
-      const hideDonateBtnInput = document.getElementById('newHideDonateBtn');
-      const hideStickersBtnInput = document.getElementById('newHideStickersBtn');
-
-      if (userNameInput) userNameInput.value = s.userName || '';
-      if (walletInput) walletInput.value = s.walletAddresses || '';
-      if (solanaInput) solanaInput.value = s.solanaAddresses || '';
-      if (bitcoinInput) bitcoinInput.value = s.bitcoinAddresses || '';
-      if (zcashInput) zcashInput.value = s.zcashAddresses || '';
-      if (zerionInput) zerionInput.value = s.zerionApiKey || '';
-      if (cieloInput) cieloInput.value = s.cieloApiKey || '';
-      if (onchainProviderInput) onchainProviderInput.value = s.onchainProvider || 'zerion';
-      if (alchemyInput) alchemyInput.value = s.alchemyApiKey || '';
-      if (heliusInput) heliusInput.value = s.heliusApiKey || '';
-      if (openseaInput) openseaInput.value = s.openSeaApiKey || '';
-      if (cityInput) cityInput.value = s.weather?.label || '';
-      if (latInput) latInput.value = s.weather?.lat ?? '';
-      if (lonInput) lonInput.value = s.weather?.lon ?? '';
-      if (coloredPnLInput) coloredPnLInput.checked = s.useColoredPnL ?? false;
-      if (hideWatchlistInput) hideWatchlistInput.checked = s.hideWatchlist ?? false;
-      if (hideComicInput) hideComicInput.checked = s.hideComic ?? false;
-      if (showExactAmountsInput) showExactAmountsInput.checked = s.showExactAmounts ?? false;
-      if (showPriceChartInput) showPriceChartInput.checked = s.showPriceChart ?? true;
-      if (minBalanceInput) minBalanceInput.value = s.minBalanceThreshold || 100;
-      if (fontSelectInput) fontSelectInput.value = s.font || 'sf';
-      if (portfolioBaseCurrencyInput) portfolioBaseCurrencyInput.value = s.portfolioBaseCurrency || 'USD';
-
-
-      // Menu visibility checkboxes
-      if (hideSnowBtnInput) hideSnowBtnInput.checked = s.hideSnowBtn ?? true;
-      if (hideRainBtnInput) hideRainBtnInput.checked = s.hideRainBtn ?? true;
-      if (hideFontSizeInput) hideFontSizeInput.checked = s.hideFontSize ?? true;
-      if (hideThemeBtnInput) hideThemeBtnInput.checked = s.hideThemeBtn ?? false;
-      if (hideAmountsBtnInput) hideAmountsBtnInput.checked = s.hideAmountsBtn ?? false;
-      if (showCompactBtnInput) showCompactBtnInput.checked = s.showCompactBtn ?? true;
-      if (hideDonateBtnInput) hideDonateBtnInput.checked = s.hideDonateBtn ?? true;
-      if (hideStickersBtnInput) hideStickersBtnInput.checked = s.hideStickersBtn ?? true;
-
-      settingsDialog.style.display = 'block';
-      settingsBackdrop.style.display = 'block';
-
-      // Disable scroll on mobile when settings open
-      document.body.classList.add('modal-open');
+  // Settings dialog (modules/ui/settings-dialog.js). Changes save as you go; closing refetches
+  // positions only when wallets, keys or number formatting changed.
+  setupSettingsDialog({
+    getSettings,
+    invalidateSettingsCache,
+    onClose: async (newSettings, { dataChanged }) => {
+      updateGreeting();
+      if (!dataChanged) return;
+      if (newSettings.watchlist && newSettings.watchlist.length > 0) {
+        try {
+          await renderWatchlistPanel({
+            feedIdsOverride: newSettings.watchlist,
+            forceRefresh: false,
+            editMode: watchlistEditMode,
+            preserveCurrentData: true
+          });
+        } catch (_) {
+          // Keep the current rows if the re-render fails
+        }
+      }
+      await renderPortfolioIncremental();
     }
-  };
-
-  // Import/Export state
-  let importMode = false;
-  const exportBtn = document.getElementById('newExportSettingsBtn');
-  const exportArea = document.getElementById('newSettingsExportArea');
-  const importBtn = document.getElementById('newImportSettingsBtn');
-
-  const closeSettings = () => {
-    if (settingsDialog && settingsBackdrop) {
-      // Reset import mode if active
-      if (importMode && exportArea && importBtn) {
-        exportArea.style.display = 'none';
-        exportArea.setAttribute('readonly', 'readonly');
-        importBtn.textContent = 'Import';
-        importMode = false;
-      }
-      settingsDialog.style.display = 'none';
-      settingsBackdrop.style.display = 'none';
-
-      // Undo an unsaved live font preview; after Save this re-applies the saved value.
-      applyFont(getSettings().font || 'sf');
-
-      // Re-enable scroll on mobile
-      document.body.classList.remove('modal-open');
-    }
-  };
-
-  if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
-  if (closeBtn) closeBtn.addEventListener('click', closeSettings);
-  if (cancelBtn) cancelBtn.addEventListener('click', closeSettings);
-  if (settingsBackdrop) settingsBackdrop.addEventListener('click', closeSettings);
-
-  // Live font preview
-  const fontSelectInput = document.getElementById('newFontSelect');
-  if (fontSelectInput) {
-    fontSelectInput.addEventListener('change', (e) => {
-      applyFont(e.target.value);
-    });
-  }
-
-  // Export settings. Wallet-asset entry prices live in a separate localStorage key
-  // (`walletAssetEntryPrices`) rather than in the settings blob, so we splice them in under
-  // a namespaced field. Import unpacks them back into that key.
-  if (exportBtn && exportArea) {
-    exportBtn.addEventListener('click', async () => {
-      const s = { ...getSettings() };
-      try {
-        const walletPrices = localStorage.getItem('walletAssetEntryPrices');
-        if (walletPrices) {
-          s.__walletAssetEntryPrices = JSON.parse(walletPrices);
-        }
-      } catch (_) { /* ignore parse failures — just skip in that case */ }
-
-      const exportData = btoa(JSON.stringify(s));
-      exportArea.value = exportData;
-      exportArea.style.display = 'block';
-      exportArea.removeAttribute('readonly');
-      exportArea.select();
-
-      try {
-        await navigator.clipboard.writeText(exportData);
-        const originalText = exportBtn.textContent;
-        exportBtn.textContent = 'Copied!';
-        setTimeout(() => {
-          exportBtn.textContent = originalText;
-        }, 1500);
-      } catch (err) {
-        // Clipboard failed, but text is still selected
-      }
-    });
-  }
-
-  // Import settings
-  if (importBtn && exportArea) {
-    importBtn.addEventListener('click', () => {
-      if (!importMode) {
-        // First click: show textarea for pasting
-        exportArea.value = '';
-        exportArea.placeholder = 'Paste exported settings here, then click Save & Reload at the bottom';
-        exportArea.style.display = 'block';
-        exportArea.removeAttribute('readonly');
-        exportArea.focus();
-        importBtn.textContent = 'Cancel Import';
-        importMode = true;
-      } else {
-        // Second click: cancel import
-        exportArea.style.display = 'none';
-        exportArea.setAttribute('readonly', 'readonly');
-        exportArea.value = '';
-        importBtn.textContent = 'Import';
-        importMode = false;
-      }
-    });
-  }
-
-  // Force update button - clears all caches, unregisters SW, and hard reloads
-  const forceUpdateBtn = document.getElementById('newForceUpdateBtn');
-  if (forceUpdateBtn) {
-    forceUpdateBtn.addEventListener('click', async () => {
-      const originalText = forceUpdateBtn.textContent;
-      forceUpdateBtn.textContent = 'Clearing...';
-      forceUpdateBtn.disabled = true;
-
-      try {
-        // Step 1: Clear all browser caches
-        if ('caches' in window) {
-          const cacheNames = await caches.keys();
-          await Promise.all(cacheNames.map(name => caches.delete(name)));
-        }
-
-        // Step 2: Unregister ALL service workers (this is the key fix)
-        // This ensures no stale SW serves cached content
-        if ('serviceWorker' in navigator) {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(registrations.map(reg => reg.unregister()));
-        }
-
-        // Step 3: Clear localStorage version to force fresh state
-        localStorage.removeItem(FORCE_UPDATE_KEY);
-
-        // Step 4: Clear sessionStorage
-        sessionStorage.clear();
-
-        // Step 5: Wait for unregistration to complete
-        await new Promise(resolve => setTimeout(resolve, 300));
-
-        // Step 6: Hard reload using cache-busting URL
-        // Adding a timestamp query param forces the browser to bypass any cached redirects
-        const url = new URL(window.location.href);
-        url.searchParams.set('_cb', Date.now().toString());
-        window.location.replace(url.toString());
-      } catch (error) {
-        console.error('[Force Update] Error:', error);
-        forceUpdateBtn.textContent = 'Error - Try Again';
-        forceUpdateBtn.disabled = false;
-        setTimeout(() => {
-          forceUpdateBtn.textContent = originalText;
-        }, 2000);
-      }
-    });
-  }
+  });
 
   // Rain/Snow controls
   const Rain = window.AppModules?.features?.rain;
@@ -1228,13 +1028,13 @@ function setupControls() {
   if (Rain && toggleRainBtn) {
     toggleRainBtn.addEventListener('click', () => {
       const active = Rain.toggleRain();
-      toggleRainBtn.textContent = active ? 'Rain Off' : 'Rain On';
+      toggleRainBtn.textContent = active ? 'Rain off' : 'Rain on';
       if (toggleRainBtnMobile) {
-        toggleRainBtnMobile.textContent = active ? 'Rain Off' : 'Rain On';
+        toggleRainBtnMobile.textContent = active ? 'Rain off' : 'Rain on';
       }
       if (active) {
-        toggleSnowBtn.textContent = 'Snow On';
-        if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = 'Snow On';
+        toggleSnowBtn.textContent = 'Snow on';
+        if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = 'Snow on';
       }
 
       // Save to localStorage
@@ -1249,13 +1049,13 @@ function setupControls() {
   if (Rain && toggleSnowBtn) {
     toggleSnowBtn.addEventListener('click', () => {
       const active = Rain.toggleSnow();
-      toggleSnowBtn.textContent = active ? 'Snow Off' : 'Snow On';
+      toggleSnowBtn.textContent = active ? 'Snow off' : 'Snow on';
       if (toggleSnowBtnMobile) {
-        toggleSnowBtnMobile.textContent = active ? 'Snow Off' : 'Snow On';
+        toggleSnowBtnMobile.textContent = active ? 'Snow off' : 'Snow on';
       }
       if (active) {
-        toggleRainBtn.textContent = 'Rain On';
-        if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = 'Rain On';
+        toggleRainBtn.textContent = 'Rain on';
+        if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = 'Rain on';
       }
 
       // Save to localStorage
@@ -1270,13 +1070,13 @@ function setupControls() {
   if (Rain && toggleRainBtnMobile) {
     toggleRainBtnMobile.addEventListener('click', () => {
       const active = Rain.toggleRain();
-      toggleRainBtnMobile.textContent = active ? 'Rain Off' : 'Rain On';
+      toggleRainBtnMobile.textContent = active ? 'Rain off' : 'Rain on';
       if (toggleRainBtn) {
-        toggleRainBtn.textContent = active ? 'Rain Off' : 'Rain On';
+        toggleRainBtn.textContent = active ? 'Rain off' : 'Rain on';
       }
       if (active) {
-        toggleSnowBtn.textContent = 'Snow On';
-        if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = 'Snow On';
+        toggleSnowBtn.textContent = 'Snow on';
+        if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = 'Snow on';
       }
 
       // Close mobile menu if open (with scroll restoration)
@@ -1294,13 +1094,13 @@ function setupControls() {
   if (Rain && toggleSnowBtnMobile) {
     toggleSnowBtnMobile.addEventListener('click', () => {
       const active = Rain.toggleSnow();
-      toggleSnowBtnMobile.textContent = active ? 'Snow Off' : 'Snow On';
+      toggleSnowBtnMobile.textContent = active ? 'Snow off' : 'Snow on';
       if (toggleSnowBtn) {
-        toggleSnowBtn.textContent = active ? 'Snow Off' : 'Snow On';
+        toggleSnowBtn.textContent = active ? 'Snow off' : 'Snow on';
       }
       if (active) {
-        toggleRainBtn.textContent = 'Rain On';
-        if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = 'Rain On';
+        toggleRainBtn.textContent = 'Rain on';
+        if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = 'Rain on';
       }
 
       // Close mobile menu if open (with scroll restoration)
@@ -1312,305 +1112,6 @@ function setupControls() {
       s.rainEnabled = false;
       s.rainSnowManuallySet = true; // User has manually set preference
       localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
-    });
-  }
-
-  // Font size controls
-  const decreaseFontBtn = document.getElementById('newDecreaseFontBtn');
-  const increaseFontBtn = document.getElementById('newIncreaseFontBtn');
-  const decreaseFontBtnMobile = document.getElementById('newDecreaseFontBtnMobile');
-  const increaseFontBtnMobile = document.getElementById('newIncreaseFontBtnMobile');
-
-  if (decreaseFontBtn) {
-    decreaseFontBtn.addEventListener('click', () => {
-      if (currentFontSize > 10) { // minimum 10px
-        const newSize = currentFontSize - 1;
-        applyFontSize(newSize);
-        const s = getSettings();
-        s.fontSize = newSize;
-        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
-      }
-    });
-  }
-
-  if (increaseFontBtn) {
-    increaseFontBtn.addEventListener('click', () => {
-      if (currentFontSize < 24) { // maximum 24px
-        const newSize = currentFontSize + 1;
-        applyFontSize(newSize);
-        const s = getSettings();
-        s.fontSize = newSize;
-        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
-      }
-    });
-  }
-
-  if (decreaseFontBtnMobile) {
-    decreaseFontBtnMobile.addEventListener('click', () => {
-      if (currentFontSize > 10) {
-        const newSize = currentFontSize - 1;
-        applyFontSize(newSize);
-        const s = getSettings();
-        s.fontSize = newSize;
-        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
-      }
-    });
-  }
-
-  if (increaseFontBtnMobile) {
-    increaseFontBtnMobile.addEventListener('click', () => {
-      if (currentFontSize < 24) {
-        const newSize = currentFontSize + 1;
-        applyFontSize(newSize);
-        const s = getSettings();
-        s.fontSize = newSize;
-        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
-      }
-    });
-  }
-
-  // Use My Location button
-  const useMyLocationBtn = document.getElementById('newUseMyLocationBtn');
-  if (useMyLocationBtn) {
-    useMyLocationBtn.addEventListener('click', async () => {
-      if (!navigator.geolocation) {
-        alert('Geolocation is not supported by your browser');
-        return;
-      }
-
-      useMyLocationBtn.textContent = 'Getting Location...';
-      useMyLocationBtn.disabled = true;
-
-      try {
-        const position = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-          });
-        });
-
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-
-        const latInput = document.getElementById('newWeatherLat');
-        const lonInput = document.getElementById('newWeatherLon');
-        const cityInput = document.getElementById('newWeatherCity');
-
-        if (latInput) latInput.value = lat;
-        if (lonInput) lonInput.value = lon;
-
-        // Try to get city name via reverse geocoding
-        try {
-          const geoResp = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
-          if (geoResp.ok) {
-            const geoData = await geoResp.json();
-            const city = geoData.city || geoData.locality || geoData.principalSubdivision || '';
-            if (city && cityInput) {
-              cityInput.value = city;
-            }
-          }
-        } catch (err) {
-          // Silent - city name is optional
-        }
-
-        useMyLocationBtn.textContent = 'Use My Location';
-        useMyLocationBtn.disabled = false;
-      } catch (err) {
-        console.error('Location denied:', err);
-        alert('Could not get your location. Please check browser permissions.');
-        useMyLocationBtn.textContent = 'Use My Location';
-        useMyLocationBtn.disabled = false;
-      }
-    });
-  }
-
-  if (saveBtn) {
-    saveBtn.addEventListener('click', async () => {
-      // Check if import mode is active and there's data to import
-      if (importMode && exportArea && exportArea.value.trim()) {
-        try {
-          const importData = exportArea.value.trim();
-          const decoded = atob(importData);
-          const importedSettings = JSON.parse(decoded);
-
-          // Split out the wallet-asset entry prices back into their own localStorage key
-          // so the EntryPriceTracker finds them. Strip the namespaced field before storing
-          // the rest as settings so we don't leak it into subsequent exports.
-          const walletPrices = importedSettings.__walletAssetEntryPrices;
-          if (walletPrices && typeof walletPrices === 'object') {
-            try {
-              localStorage.setItem('walletAssetEntryPrices', JSON.stringify(walletPrices));
-            } catch (e) {
-              console.warn('[Import] Failed to restore walletAssetEntryPrices:', e);
-            }
-          }
-          delete importedSettings.__walletAssetEntryPrices;
-
-          // Save imported settings to localStorage
-          localStorage.setItem('myDashboardSettings.v2', JSON.stringify(importedSettings));
-          invalidateSettingsCache(); // Clear cache so next getSettings() reads fresh data
-
-          // Reset import mode UI
-          exportArea.style.display = 'none';
-          exportArea.setAttribute('readonly', 'readonly');
-          importBtn.textContent = 'Import';
-          importMode = false;
-
-          // Close settings and reload
-          closeSettings();
-          location.reload();
-          return;
-        } catch (err) {
-          alert('Invalid settings data. Please check the pasted text and try again.');
-          console.error('[Import] Failed to import settings:', err);
-          return;
-        }
-      }
-
-      // Normal save flow: Collect form values and save to legacy storage (compatibility)
-      const newSettings = settings || {};
-      const userNameInput = document.getElementById('newUserName');
-      const walletInput = document.getElementById('newWalletAddresses');
-      const solanaInput = document.getElementById('newSolanaAddresses');
-      const bitcoinInput = document.getElementById('newBitcoinAddresses');
-      const zcashInput = document.getElementById('newZcashAddresses');
-      const zerionInput = document.getElementById('newZerionApiKey');
-      const cieloInput = document.getElementById('newCieloApiKey');
-      const onchainProviderInput = document.getElementById('newOnchainProvider');
-      const alchemyInput = document.getElementById('newAlchemyApiKey');
-      const heliusInput = document.getElementById('newHeliusApiKey');
-      const openseaInput = document.getElementById('newOpenSeaApiKey');
-      const cityInput = document.getElementById('newWeatherCity');
-      const latInput = document.getElementById('newWeatherLat');
-      const lonInput = document.getElementById('newWeatherLon');
-      const coloredPnLInput = document.getElementById('newUseColoredPnL');
-      const hideWatchlistInput = document.getElementById('newHideWatchlist');
-      const hideComicInput = document.getElementById('newHideComic');
-      const showExactAmountsInput = document.getElementById('newShowExactAmounts');
-      const showPriceChartInput = document.getElementById('newShowPriceChart');
-      const minBalanceInput = document.getElementById('newMinBalanceThreshold');
-      const fontSelectInput = document.getElementById('newFontSelect');
-      const portfolioBaseCurrencyInput = document.getElementById('newPortfolioBaseCurrency');
-
-      // Menu visibility controls
-      const hideSnowBtnInput = document.getElementById('newHideSnowBtn');
-      const hideRainBtnInput = document.getElementById('newHideRainBtn');
-      const hideFontSizeInput = document.getElementById('newHideFontSize');
-      const hideThemeBtnInput = document.getElementById('newHideThemeBtn');
-      const hideAmountsBtnInput = document.getElementById('newHideAmountsBtn');
-      const showCompactBtnInput = document.getElementById('newShowCompactBtn');
-      const hideDonateBtnInput = document.getElementById('newHideDonateBtn');
-      const hideStickersBtnInput = document.getElementById('newHideStickersBtn');
-
-      if (userNameInput) newSettings.userName = userNameInput.value;
-      if (walletInput) newSettings.walletAddresses = walletInput.value;
-      if (solanaInput) newSettings.solanaAddresses = solanaInput.value;
-      if (bitcoinInput) newSettings.bitcoinAddresses = bitcoinInput.value;
-      if (zcashInput) newSettings.zcashAddresses = zcashInput.value;
-      if (zerionInput) newSettings.zerionApiKey = zerionInput.value;
-      if (cieloInput) newSettings.cieloApiKey = cieloInput.value;
-      if (onchainProviderInput) newSettings.onchainProvider = onchainProviderInput.value;
-      if (alchemyInput) newSettings.alchemyApiKey = alchemyInput.value;
-      if (heliusInput) newSettings.heliusApiKey = heliusInput.value;
-      if (openseaInput) newSettings.openSeaApiKey = openseaInput.value;
-      if (coloredPnLInput) newSettings.useColoredPnL = coloredPnLInput.checked;
-      if (hideWatchlistInput) newSettings.hideWatchlist = hideWatchlistInput.checked;
-      if (hideComicInput) newSettings.hideComic = hideComicInput.checked;
-      if (showExactAmountsInput) newSettings.showExactAmounts = showExactAmountsInput.checked;
-      if (showPriceChartInput) newSettings.showPriceChart = showPriceChartInput.checked;
-      if (minBalanceInput) newSettings.minBalanceThreshold = parseFloat(minBalanceInput.value) || 100;
-      if (fontSelectInput) newSettings.font = fontSelectInput.value;
-      if (portfolioBaseCurrencyInput) newSettings.portfolioBaseCurrency = portfolioBaseCurrencyInput.value || 'USD';
-
-      // Save menu visibility settings
-      if (hideSnowBtnInput) newSettings.hideSnowBtn = hideSnowBtnInput.checked;
-      if (hideRainBtnInput) newSettings.hideRainBtn = hideRainBtnInput.checked;
-      if (hideFontSizeInput) newSettings.hideFontSize = hideFontSizeInput.checked;
-      if (hideThemeBtnInput) newSettings.hideThemeBtn = hideThemeBtnInput.checked;
-      if (hideAmountsBtnInput) newSettings.hideAmountsBtn = hideAmountsBtnInput.checked;
-      if (showCompactBtnInput) newSettings.showCompactBtn = showCompactBtnInput.checked;
-      if (hideDonateBtnInput) newSettings.hideDonateBtn = hideDonateBtnInput.checked;
-      if (hideStickersBtnInput) newSettings.hideStickersBtn = hideStickersBtnInput.checked;
-
-      const parsedLat = parseFloat(latInput?.value);
-      const parsedLon = parseFloat(lonInput?.value);
-      newSettings.weather = {
-        label: cityInput?.value || '',
-        lat: Number.isFinite(parsedLat) ? parsedLat : null,
-        lon: Number.isFinite(parsedLon) ? parsedLon : null
-      };
-
-      // Save via legacy saveSettings (handles encryption)
-      try {
-        localStorage.setItem('myDashboardSettings.v2', JSON.stringify(newSettings));
-        invalidateSettingsCache(); // Clear cache so next getSettings() reads fresh data
-        closeSettings();
-
-        // Apply alignment immediately
-        const container = document.querySelector('.container');
-        if (container) {
-          if (true) {
-            container.style.margin = '0 auto';
-          } else {
-            container.style.margin = '';
-          }
-        }
-
-        // Apply chart visibility class
-        if (!newSettings.showPriceChart) {
-          document.body.classList.add('no-charts');
-        } else {
-          document.body.classList.remove('no-charts');
-        }
-
-        // Re-render watchlist with updated settings while preserving existing rows
-        if (newSettings.watchlist && newSettings.watchlist.length > 0) {
-          try {
-            await renderWatchlistPanel({
-              feedIdsOverride: newSettings.watchlist,
-              forceRefresh: false,
-              editMode: watchlistEditMode,
-              preserveCurrentData: true
-            });
-          } catch (_) {
-            // Silently fail if watchlist re-render fails
-          }
-        }
-
-        // Apply visibility settings via body classes
-        const body = document.body;
-        body.classList.toggle('hide-snow-btn', newSettings.hideSnowBtn ?? true);
-        body.classList.toggle('hide-rain-btn', newSettings.hideRainBtn ?? true);
-        body.classList.toggle('hide-font-size', newSettings.hideFontSize ?? true);
-        body.classList.toggle('hide-theme-btn', newSettings.hideThemeBtn ?? false);
-        body.classList.toggle('hide-amounts-btn', newSettings.hideAmountsBtn ?? false);
-        body.classList.toggle('hide-donate-btn', newSettings.hideDonateBtn ?? true);
-        body.classList.toggle('hide-stickers-btn', newSettings.hideStickersBtn ?? true);
-        body.classList.toggle('hide-watchlist', newSettings.hideWatchlist ?? false);
-        body.classList.toggle('hide-comic', newSettings.hideComic ?? false);
-        body.classList.toggle('mono-pnl', !(newSettings.useColoredPnL ?? false));
-
-        // Apply font setting
-        applyFont(newSettings.font || 'sf');
-
-        // Apply keyboard shortcuts setting (dynamic enable/disable)
-        if (newSettings.enableKeyboardShortcuts) {
-          import('./modules/features/keyboard-shortcuts.js')
-            .then(mod => mod.init())
-            .catch(e => console.warn('[Keyboard] Failed to load:', e));
-        } else {
-          // Try to disable if module was loaded
-          import('./modules/features/keyboard-shortcuts.js')
-            .then(mod => mod.disable())
-            .catch(() => { /* Module not loaded, nothing to disable */ });
-        }
-
-        // Soft reload: re-fetch positions without full page refresh (this will reload settings)
-        await renderPortfolioIncremental();
-      } catch (e) {
-        alert('Failed to save settings: ' + e.message);
-      }
     });
   }
 
@@ -1646,11 +1147,12 @@ function setupControls() {
     try {
       await navigator.clipboard.writeText(text);
       const originalText = button.textContent;
-      button.textContent = 'Copied!';
-      button.style.opacity = '0.6';
+      button.textContent = 'Copied';
+      const status = document.getElementById('newDonateStatus');
+      if (status) status.textContent = 'Address copied';
       setTimeout(() => {
         button.textContent = originalText;
-        button.style.opacity = '1';
+        if (status) status.textContent = '';
       }, 1500);
     } catch (err) {
       console.error('Failed to copy:', err);
@@ -1996,7 +1498,7 @@ function setupControls() {
       const watchlistKeys = currentWatchlistKeys();
 
       if (feeds.length === 0) {
-        watchlistSearchResults.innerHTML = '<div class="help" style="padding: 16px;">No results found</div>';
+        watchlistSearchResults.innerHTML = '<p class="search-empty">No results found</p>';
         watchlistSearchResults.style.display = 'block';
         return;
       }
@@ -2019,11 +1521,12 @@ function setupControls() {
         if (isInWatchlist || isAdded) resultDiv.classList.add('added');
 
         const label = categoryLabel(feed.category);
-        const name = feed.name && feed.name !== feed.symbol ? ` <span style="opacity: 0.65;">— ${escapeHtml(feed.name)}</span>` : '';
+        const name = feed.name && feed.name !== feed.symbol ? ` <span class="result-meta">— ${escapeHtml(feed.name)}</span>` : '';
         resultDiv.innerHTML = `
-          <span><strong>${escapeHtml(feed.symbol)}</strong>${name}${label ? ` <span style="opacity: 0.5;">${label}</span>` : ''}</span>
-          <button class="btn-text ${isInWatchlist || isAdded ? 'added' : ''}" data-entry-key="${key}">
-            ${isInWatchlist ? 'In List' : isAdded ? 'Added' : 'Add'}
+          <span><strong>${escapeHtml(feed.symbol)}</strong>${name}${label ? ` <span class="result-meta">${label}</span>` : ''}</span>
+          <button type="button" class="btn-text ${isInWatchlist || isAdded ? 'added' : ''}" data-entry-key="${key}"
+            aria-label="${isInWatchlist ? 'In watchlist' : isAdded ? 'Added' : 'Add'}: ${escapeHtml(feed.symbol)}"${isInWatchlist || isAdded ? ' disabled' : ''}>
+            ${isInWatchlist ? 'In list' : isAdded ? 'Added' : 'Add'}
           </button>
         `;
 
@@ -2034,8 +1537,11 @@ function setupControls() {
               addToWatchlist(entry);
               addedKeys.add(key);
               btn.textContent = 'Added';
+              btn.setAttribute('aria-label', `Added: ${feed.symbol}`);
               btn.classList.add('added');
               resultDiv.classList.add('added');
+              // Keep focus in the results rather than dropping it to the page when the button disables
+              btn.setAttribute('aria-disabled', 'true');
             }
           });
         }
@@ -2049,7 +1555,7 @@ function setupControls() {
       clearTimeout(watchlistSearchDebounce);
 
       if (!query) {
-        watchlistSearchResults.innerHTML = '<div class="help" style="padding: 16px;">Type to search tokens or stocks...</div>';
+        watchlistSearchResults.innerHTML = '<p class="search-empty">Type to search tokens or stocks…</p>';
         watchlistSearchResults.style.display = 'block';
         return;
       }
@@ -2256,7 +1762,7 @@ function setupControls() {
     const currency = quoteCurrencyForFeed(feed);
     const labelCurrency = currency || 'ticker quote currency';
     if (addPositionPythEntryPriceLabel) {
-      addPositionPythEntryPriceLabel.textContent = `Entry Price (${labelCurrency})`;
+      addPositionPythEntryPriceLabel.textContent = `Entry price (${labelCurrency})`;
     }
     if (showHint && addPositionPythEntryPriceHint) {
       if (currency) {
@@ -2277,8 +1783,8 @@ function setupControls() {
   function closeAddPosition() {
     if (addPositionModal) addPositionModal.style.display = 'none';
     if (addPositionBackdrop) addPositionBackdrop.style.display = 'none';
-    if (addPositionTitle) addPositionTitle.textContent = 'Add Position';
-    if (savePositionBtn) savePositionBtn.textContent = 'Save Position';
+    if (addPositionTitle) addPositionTitle.textContent = 'Add position';
+    if (savePositionBtn) savePositionBtn.textContent = 'Save position';
     editingManualPositionIndex = null;
     editingCustomCurrency = null;
 
@@ -2300,8 +1806,8 @@ function setupControls() {
       selectedPythFeed = null;
       editingManualPositionIndex = null;
       editingCustomCurrency = null;
-      if (addPositionTitle) addPositionTitle.textContent = 'Add Position';
-      if (savePositionBtn) savePositionBtn.textContent = 'Save Position';
+      if (addPositionTitle) addPositionTitle.textContent = 'Add position';
+      if (savePositionBtn) savePositionBtn.textContent = 'Save position';
       if (addPositionPythSearch) addPositionPythSearch.value = '';
       if (addPositionPythAmount) addPositionPythAmount.value = '';
       if (addPositionPythEntryDate) addPositionPythEntryDate.value = '';
@@ -2353,8 +1859,8 @@ function setupControls() {
     if (addPositionModal) addPositionModal.style.display = 'block';
     if (addPositionBackdrop) addPositionBackdrop.style.display = 'block';
     document.body.classList.add('modal-open');
-    if (addPositionTitle) addPositionTitle.textContent = 'Edit Position';
-    if (savePositionBtn) savePositionBtn.textContent = 'Save Changes';
+    if (addPositionTitle) addPositionTitle.textContent = 'Edit position';
+    if (savePositionBtn) savePositionBtn.textContent = 'Save changes';
 
     if (addPositionPythResults) {
       addPositionPythResults.innerHTML = '';
@@ -2512,19 +2018,16 @@ function setupControls() {
     }
     addPositionPythResults.style.display = 'block';
     matches.forEach(feed => {
-      const resultDiv = document.createElement('div');
+      // A real button, so results can be reached with Tab and picked with Enter
+      const resultDiv = document.createElement('button');
+      resultDiv.type = 'button';
       resultDiv.className = 'watchlist-search-result';
-      resultDiv.style.cursor = 'pointer';
-      resultDiv.style.padding = '6px 8px';
-      resultDiv.style.display = 'flex';
-      resultDiv.style.justifyContent = 'space-between';
-      resultDiv.style.gap = '8px';
       const label = categoryLabel(feed.category);
       const name = feed.name && feed.name !== feed.symbol ? escapeHtml(feed.name) : '';
-      const exchange = feed.exchange ? ` <span style="opacity: 0.5;">(${escapeHtml(feed.exchange)})</span>` : '';
+      const exchange = feed.exchange ? ` <span class="result-meta">(${escapeHtml(feed.exchange)})</span>` : '';
       resultDiv.innerHTML =
-        `<span><strong>${escapeHtml(feed.symbol)}</strong>${name ? ` <span style="opacity: 0.7;">— ${name}</span>` : ''}${exchange}</span>` +
-        (label ? `<span style="opacity: 0.6;">${label}</span>` : '');
+        `<span><strong>${escapeHtml(feed.symbol)}</strong>${name ? ` <span class="result-meta">— ${name}</span>` : ''}${exchange}</span>` +
+        (label ? `<span class="result-meta">${label}</span>` : '');
       resultDiv.addEventListener('click', () => {
         selectedPythFeed = feed;
         addPositionPythSearch.value = feed.symbol;
@@ -2535,6 +2038,8 @@ function setupControls() {
         if (addPositionPythEntryDate?.value) {
           fetchHistoricalEntryPrice(feed, addPositionPythEntryDate.value).catch(() => {});
         }
+        // The picked result is gone; carry focus on to the next field
+        addPositionPythAmount?.focus();
       });
       addPositionPythResults.appendChild(resultDiv);
     });
@@ -2652,8 +2157,33 @@ function setupControls() {
     });
   }
 
+  // Errors sit under the field they belong to and say what to enter
+  const clearPositionErrors = () => {
+    document.querySelectorAll('#newAddPositionModal .field-error').forEach(el => el.remove());
+    document.querySelectorAll('#newAddPositionModal [aria-invalid]').forEach(el => {
+      el.removeAttribute('aria-invalid');
+      el.removeAttribute('aria-describedby');
+    });
+  };
+  const showPositionError = (field, message) => {
+    clearPositionErrors();
+    const error = document.createElement('div');
+    error.className = 'field-error';
+    error.id = `${field.id}Error`;
+    error.setAttribute('role', 'alert');
+    error.textContent = message;
+    field.insertAdjacentElement('afterend', error);
+    if (field.matches('input, select, textarea')) {
+      field.setAttribute('aria-invalid', 'true');
+      field.setAttribute('aria-describedby', error.id);
+    }
+    field.focus();
+  };
+  document.getElementById('newAddPositionModal')?.addEventListener('input', clearPositionErrors);
+
   if (savePositionBtn) {
     savePositionBtn.addEventListener('click', async () => {
+      clearPositionErrors();
       const s = getSettings();
 
       // Ensure cryptoPositions array exists
@@ -2666,7 +2196,7 @@ function setupControls() {
       if (selectedPositionType === 'pyth') {
         // Validate Pyth position
         if (!selectedPythFeed) {
-          alert('Please select a token from the search results');
+          showPositionError(addPositionPythSearch, 'Search for a ticker, then pick it from the results.');
           return;
         }
 
@@ -2674,12 +2204,12 @@ function setupControls() {
         const entryPrice = parseFloat(addPositionPythEntryPrice.value);
 
         if (!amount || amount <= 0) {
-          alert('Please enter a valid amount');
+          showPositionError(addPositionPythAmount, 'Enter an amount greater than 0.');
           return;
         }
 
         if (!entryPrice || entryPrice <= 0) {
-          alert('Please enter a valid entry price');
+          showPositionError(addPositionPythEntryPrice, 'Enter an entry price greater than 0, or pick an entry date to fill it in.');
           return;
         }
 
@@ -2719,12 +2249,12 @@ function setupControls() {
         const value = parseFloat(addPositionCustomValue.value);
 
         if (!name) {
-          alert('Please enter an asset name');
+          showPositionError(addPositionCustomName, 'Enter a name for the asset, for example "Gold bars".');
           return;
         }
 
         if (!value || value <= 0) {
-          alert('Please enter a valid value');
+          showPositionError(addPositionCustomValue, 'Enter a value greater than 0.');
           return;
         }
 
@@ -2754,7 +2284,8 @@ function setupControls() {
         // Soft reload: re-fetch positions without full page refresh
         await renderPortfolioIncremental();
       } catch (e) {
-        alert('Failed to save position: ' + e.message);
+        console.error('[Add position] Save failed:', e);
+        showPositionError(savePositionBtn, "Couldn't save the position. Your browser storage may be full or blocked; free some space and try again.");
       }
     });
   }
@@ -2873,32 +2404,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Init font size
-  let fontSize = settings?.fontSize;
-  if (typeof fontSize === 'string' || !fontSize) {
-    fontSize = 14; // Default if it's a string or not set
-  }
-  applyFontSize(fontSize);
-
-  // Apply visibility settings via body classes (CSS handles the rest)
-  const applyVisibilityClasses = () => {
-    const body = document.body;
-
-    // Button visibility
-    body.classList.toggle('hide-snow-btn', settings.hideSnowBtn ?? true);
-    body.classList.toggle('hide-rain-btn', settings.hideRainBtn ?? true);
-    body.classList.toggle('hide-font-size', settings.hideFontSize ?? true);
-    body.classList.toggle('hide-theme-btn', settings.hideThemeBtn ?? false);
-    body.classList.toggle('hide-amounts-btn', settings.hideAmountsBtn ?? false);
-    body.classList.toggle('hide-donate-btn', settings.hideDonateBtn ?? true);
-    body.classList.toggle('hide-stickers-btn', settings.hideStickersBtn ?? true);
-
-    // Section visibility
-    body.classList.toggle('hide-watchlist', settings.hideWatchlist ?? false);
-    body.classList.toggle('hide-comic', settings.hideComic ?? false);
-    body.classList.toggle('mono-pnl', !(settings.useColoredPnL ?? false));
-  };
-  applyVisibilityClasses();
 
   // Init rain/snow from saved preferences (only one can be active)
   const Rain = window.AppModules?.features?.rain;
@@ -2911,12 +2416,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Only enable one - prioritize rain if both are somehow enabled
     if (settings.rainEnabled && !settings.snowEnabled) {
       Rain.toggleRain();
-      if (toggleRainBtn) toggleRainBtn.textContent = 'Rain Off';
-      if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = 'Rain Off';
+      if (toggleRainBtn) toggleRainBtn.textContent = 'Rain off';
+      if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = 'Rain off';
     } else if (settings.snowEnabled && !settings.rainEnabled) {
       Rain.toggleSnow();
-      if (toggleSnowBtn) toggleSnowBtn.textContent = 'Snow Off';
-      if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = 'Snow Off';
+      if (toggleSnowBtn) toggleSnowBtn.textContent = 'Snow off';
+      if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = 'Snow off';
     }
   }
 
@@ -2935,19 +2440,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     tables.forEach(table => table.classList.add('compact-mode'));
   }
 
-  // Update greeting
-  function updateGreeting() {
-    const greetingEl = document.getElementById('newGreeting');
-    if (greetingEl) {
-      const hour = new Date().getHours();
-      let timeOfDay = 'Good morning';
-      if (hour >= 12 && hour < 18) timeOfDay = 'Good afternoon';
-      else if (hour >= 18) timeOfDay = 'Good evening';
-
-      const userName = (settings.userName || '').trim();
-      greetingEl.textContent = userName ? `${timeOfDay}, ${userName}.` : `${timeOfDay}.`;
-    }
-  }
   updateGreeting();
 
   // Greeting container click to refresh with ASCII spinner
@@ -2955,7 +2447,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   const greetingEl = document.getElementById('newGreeting');
 
   if (greetingContainer && greetingEl) {
-    greetingContainer.style.cursor = 'pointer';
     greetingContainer.style.userSelect = 'none';
 
     let spinnerInterval = null;
@@ -2975,6 +2466,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       spinnerEl = document.createElement('span');
       spinnerEl.style.marginLeft = '8px';
       spinnerEl.style.opacity = '0.6';
+      spinnerEl.setAttribute('aria-hidden', 'true');
       spinnerEl.textContent = frames[0];
       greetingEl.appendChild(spinnerEl);
 
@@ -3072,7 +2564,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Show error in hero
     const summaryEl = document.getElementById('newSummary');
     if (summaryEl) {
-      summaryEl.innerHTML = `<span style="color: var(--red);">Error loading portfolio: ${error.message || error}</span>`;
+      console.error('[Portfolio] Load failed:', error);
+      summaryEl.innerHTML = `<span style="color: var(--red);">Couldn't load your portfolio. Check your connection, then press Refresh.</span>`;
     }
   }
 
@@ -3087,12 +2580,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     setTimeout(scheduleHealthChecks, 10000);
   }
 
-  // NON-CRITICAL: Keyboard shortcuts (lazy loaded if enabled)
-  if (settings.enableKeyboardShortcuts) {
-    import('./modules/features/keyboard-shortcuts.js')
-      .then(mod => mod.init())
-      .catch(e => console.warn('[Keyboard] Failed to load:', e));
-  }
+  // NON-CRITICAL: Keyboard shortcuts (always on, lazy loaded)
+  import('./modules/features/keyboard-shortcuts.js')
+    .then(mod => mod.init())
+    .catch(e => console.warn('[Keyboard] Failed to load:', e));
 
   // NON-CRITICAL: Rain/Snow effects (lazy loaded after everything else)
   setTimeout(async () => {
@@ -3108,14 +2599,14 @@ window.addEventListener('DOMContentLoaded', async () => {
           Rain.toggleSnow();
           const btn = document.getElementById('newToggleSnowBtn');
           const mobileBtn = document.getElementById('newToggleSnowBtnMobile');
-          if (btn) btn.textContent = 'Snow Off';
-          if (mobileBtn) mobileBtn.textContent = 'Snow Off';
+          if (btn) btn.textContent = 'Snow off';
+          if (mobileBtn) mobileBtn.textContent = 'Snow off';
         } else if (weather.isRaining) {
           Rain.toggleRain();
           const btn = document.getElementById('newToggleRainBtn');
           const mobileBtn = document.getElementById('newToggleRainBtnMobile');
-          if (btn) btn.textContent = 'Rain Off';
-          if (mobileBtn) mobileBtn.textContent = 'Rain Off';
+          if (btn) btn.textContent = 'Rain off';
+          if (mobileBtn) mobileBtn.textContent = 'Rain off';
         }
       }
     }

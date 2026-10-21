@@ -61,7 +61,8 @@ function renderStickerGrid() {
         const imgSrc = `/stickers/${encodeURIComponent(file)}`;
         const displayName = file.replace(/\.(png|jpg|jpeg|gif|webp|svg)$/i, '');
 
-        const item = document.createElement('div');
+        const item = document.createElement('button');
+        item.type = 'button';
         item.className = 'sticker-item';
         item.dataset.src = imgSrc;
         item.title = displayName;
@@ -71,7 +72,7 @@ function renderStickerGrid() {
 
         const img = document.createElement('img');
         img.src = imgSrc;
-        img.alt = displayName;
+        img.alt = ''; // the label below names it
         img.loading = 'lazy';
         img.draggable = false;
 
@@ -179,6 +180,14 @@ function setupGridInteraction() {
         isDragging = false;
     });
 
+    // Keyboard: Enter or Space on a sticker places it mid-screen. Pointer clicks are left to the
+    // drag handling above (a keyboard click has no pointer, so its detail is 0)
+    newGrid.addEventListener('click', (e) => {
+        const item = e.target.closest('.sticker-item');
+        if (!item || e.detail !== 0 || !item.dataset.src) return;
+        createStickySticker(item.dataset.src, (window.innerWidth / 2) - 75, (window.innerHeight / 2) - 75);
+    });
+
     newGrid.addEventListener('pointercancel', () => {
         if (dragGhost) {
             dragGhost.remove();
@@ -207,6 +216,7 @@ function createStickySticker(imageSrc, x, y, width = null, height = null, rotati
 
     const img = document.createElement('img');
     img.src = imageSrc;
+    img.alt = '';
     img.draggable = false;
 
     img.onload = () => {
@@ -247,7 +257,9 @@ function createStickySticker(imageSrc, x, y, width = null, height = null, rotati
     rotateHandle.textContent = 'Rotate';
 
     const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
     removeBtn.className = 'remove-btn';
+    removeBtn.setAttribute('aria-label', 'Remove sticker');
     removeBtn.textContent = 'Remove';
     removeBtn.onclick = (e) => {
         e.stopPropagation();
