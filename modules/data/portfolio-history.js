@@ -19,6 +19,7 @@ import { getWalletChart } from './providers/zerion.js';
 import { getStatement } from './providers/ibkr.js';
 import { get24hPriceHistory } from './providers/stocks.js';
 import { normalizeBaseCurrency } from '../utils/currency.js';
+import { isCoveredByVenueEquity } from '../domain/portfolio.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 const TTL_MS = 5 * 60 * 1000;
@@ -107,8 +108,8 @@ export function scaled(series, live, now) {
 // ── Which rows belong to which account ──
 
 // Rows sorted into accounts with their live values (base currency), and the holdings
-// priced one by one. Mirrors calculatePortfolioTotals: rows inside a venue's equity
-// row add nothing of their own.
+// priced one by one. Rows inside a venue's equity row add nothing of their own, by the
+// same rule as calculatePortfolioTotals.
 export function plan(rows) {
   const hasHlEquity = rows.some(p => p?.isHlAccountEquity);
   const hasLighterEquity = rows.some(p => p?.isLighterAccountEquity);
@@ -125,8 +126,7 @@ export function plan(rows) {
     const src = String(p._source || '');
     if (p.isHlAccountEquity) { add(hl, src.replace(/^Hyperliquid_/, ''), value); continue; }
     if (p.isLighterAccountEquity) { add(lighter, String(p._changeDetectionKey || '').split('_').pop(), value); continue; }
-    if (hasHlEquity && (p.exchange === 'HL Perps' || p.exchange === 'HL Spot')) continue;
-    if (hasLighterEquity && p.exchange === 'Lighter') continue;
+    if (isCoveredByVenueEquity(p, hasHlEquity, hasLighterEquity)) continue;
     if (src.startsWith('Zerion_')) { add(zerion, src.slice('Zerion_'.length), value); continue; }
     if (src === 'IBKR') { ibkr = (ibkr || 0) + value; continue; }
     priced.push(p);
