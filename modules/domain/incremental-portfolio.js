@@ -29,6 +29,7 @@ function snapshotFingerprint(settings) {
     settings?.bitcoinAddresses || '',
     settings?.zcashAddresses || '',
     settings?.cryptoPositions || [],
+    settings?.ibkrFlexQueryId || '',
     normalizeBaseCurrency(settings?.portfolioBaseCurrency)
   ]);
   let hash = 5381;
@@ -638,8 +639,9 @@ export class IncrementalPortfolioRenderer {
   async enrichMissing24hWithPyth() {
     // Find positions missing 24h change
     // Custom manual entries have a fixed, user-entered value: a market's 24h move doesn't apply.
+    // IBKR tickers are brokerage symbols; a crypto symbol with the same name is another asset.
     const needsEnrichment = this.allPositions.filter(p =>
-      (p.change24h === null || p.change24h === undefined) && p.manualType !== 'custom'
+      (p.change24h === null || p.change24h === undefined) && p.manualType !== 'custom' && p.exchange !== 'IBKR'
     );
 
     if (needsEnrichment.length === 0) return;

@@ -85,6 +85,8 @@ export function getDefaultSettings() {
     openSeaApiKey: '',
     zerionApiKey: '',
     cieloApiKey: '',
+    ibkrFlexToken: '', // Interactive Brokers Flex Web Service token (read-only)
+    ibkrFlexQueryId: '', // ID of the Activity Flex Query with Open Positions
     font: 'sf',
     fontSize: 14,
     fullWidth: false, // Content column fills the window instead of stopping at a reading width

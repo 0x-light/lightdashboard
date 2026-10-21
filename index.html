@@ -82,6 +82,7 @@
     <link rel="modulepreload" href="/modules/data/providers/zcash.js">
     <link rel="modulepreload" href="/modules/data/providers/zerion.js">
     <link rel="modulepreload" href="/modules/data/providers/cielo.js">
+    <link rel="modulepreload" href="/modules/data/providers/ibkr.js">
     <link rel="modulepreload" href="/modules/data/providers/alchemy.js">
     <link rel="modulepreload" href="/modules/data/providers/helius.js">
     <link rel="modulepreload" href="/modules/data/providers/opensea.js">
@@ -91,6 +92,7 @@
     <link rel="modulepreload" href="/modules/data/fetchers/bitcoin-fetcher.js">
     <link rel="modulepreload" href="/modules/data/fetchers/zerion-fetcher.js">
     <link rel="modulepreload" href="/modules/data/fetchers/cielo-fetcher.js">
+    <link rel="modulepreload" href="/modules/data/fetchers/ibkr-fetcher.js">
     <link rel="modulepreload" href="/modules/data/fetchers/alchemy-helius-fetcher.js">
     <!-- Apply theme synchronously to prevent flash of wrong theme -->
     <script>
@@ -502,6 +504,23 @@
                                     placeholder="API key">
                                 <span class="info">Get a free key at <a href="https://build.cielo.finance/" target="_blank"
                                     rel="noopener noreferrer">Cielo</a>.</span>
+                            </label>
+
+                            <h3 class="settings-group">Interactive Brokers</h3>
+                            <div class="info">In the IBKR Portal, open Performance &amp; Reports, then Flex Queries. Make an Activity Flex Query with Open Positions and Cash Report, in XML. Then turn on Flex Web Service. <a
+                                href="https://www.ibkrguides.com/orgportal/performanceandstatements/flex.htm" target="_blank"
+                                rel="noopener noreferrer">IBKR guide</a>.</div>
+                            <label>
+                                Flex token
+                                <input id="newIbkrFlexToken" type="text" class="settings-input" spellcheck="false" autocomplete="off"
+                                    inputmode="numeric" placeholder="Token">
+                                <span class="info">From Flex Web Service. It can only read reports.</span>
+                            </label>
+                            <label>
+                                Flex Query ID
+                                <input id="newIbkrFlexQueryId" type="text" class="settings-input settings-input-short" spellcheck="false" autocomplete="off"
+                                    inputmode="numeric" placeholder="Query ID">
+                                <span class="info">IBKR updates positions once a day. Prices update live.</span>
                             </label>
 
                             <h3 class="settings-group">Other keys</h3>

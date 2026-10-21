@@ -240,8 +240,9 @@ async function _doRenderPortfolioIncremental() {
   const zcashAddrs = (settings.zcashAddresses || '').split(',').map(a => a.trim()).filter(Boolean);
 
   const hasManualPositions = settings.cryptoPositions && Array.isArray(settings.cryptoPositions) && settings.cryptoPositions.length > 0;
+  const hasIbkr = !!(settings.ibkrFlexToken && settings.ibkrFlexQueryId);
 
-  const isEmpty = wallets.length === 0 && solanaAddrs.length === 0 && bitcoinAddrs.length === 0 && zcashAddrs.length === 0 && !hasManualPositions;
+  const isEmpty = wallets.length === 0 && solanaAddrs.length === 0 && bitcoinAddrs.length === 0 && zcashAddrs.length === 0 && !hasManualPositions && !hasIbkr;
   // Empty portfolio: the hero sentence carries the call to action, so the (empty) positions
   // section is hidden rather than showing headers and buttons with nothing behind them.
   document.body.classList.toggle('portfolio-empty', isEmpty);
@@ -285,6 +286,9 @@ async function _doRenderPortfolioIncremental() {
   }
   if (hasManualPositions) {
     expectedProviders.push('Manual');
+  }
+  if (hasIbkr) {
+    expectedProviders.push('IBKR');
   }
 
   // Fetch weather data (non-blocking, will be used in hero summary)
@@ -371,7 +375,8 @@ async function _doRenderPortfolioIncremental() {
       { CieloFetcher },
       { AlchemyHeliusFetcher },
       { BitcoinZcashFetcher },
-      { ManualFetcher }
+      { ManualFetcher },
+      { IbkrFetcher }
     ] = await Promise.all([
       import('./modules/data/fetchers/hyperliquid-fetcher.js'),
       import('./modules/data/fetchers/lighter-fetcher.js'),
@@ -379,7 +384,8 @@ async function _doRenderPortfolioIncremental() {
       import('./modules/data/fetchers/cielo-fetcher.js'),
       import('./modules/data/fetchers/alchemy-helius-fetcher.js'),
       import('./modules/data/fetchers/bitcoin-fetcher.js'),
-      import('./modules/data/fetchers/manual-fetcher.js')
+      import('./modules/data/fetchers/manual-fetcher.js'),
+      import('./modules/data/fetchers/ibkr-fetcher.js')
     ]);
 
     const renderer = new IncrementalPortfolioRenderer({
@@ -407,6 +413,7 @@ async function _doRenderPortfolioIncremental() {
     manager.registerFetcher('AlchemyHelius', new AlchemyHeliusFetcher(providers, renderer, settings));
     manager.registerFetcher('BitcoinZcash', new BitcoinZcashFetcher(providers, renderer));
     manager.registerFetcher('Manual', new ManualFetcher(providers, renderer, settings));
+    manager.registerFetcher('IBKR', new IbkrFetcher(providers, renderer, settings));
 
     window._portfolioManager = manager;
   } else {

@@ -54,6 +54,11 @@ export class PortfolioManager {
                 fetchPromises.push(this.fetchers['Manual'].fetch(this.settings.cryptoPositions));
             }
 
+            // 6. Interactive Brokers (Flex Web Service)
+            if (this.fetchers['IBKR'] && this.settings.ibkrFlexToken && this.settings.ibkrFlexQueryId) {
+                fetchPromises.push(this.fetchers['IBKR'].fetch());
+            }
+
             await Promise.allSettled(fetchPromises);
         } catch (e) {
             console.error('[PortfolioManager] Error in fetchAll:', e);

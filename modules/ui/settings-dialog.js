@@ -17,6 +17,8 @@ const FIELDS = [
   { id: 'newAlchemyApiKey', key: 'alchemyApiKey', type: 'text', fallback: '', data: true },
   { id: 'newHeliusApiKey', key: 'heliusApiKey', type: 'text', fallback: '', data: true },
   { id: 'newOpenSeaApiKey', key: 'openSeaApiKey', type: 'text', fallback: '', data: true },
+  { id: 'newIbkrFlexToken', key: 'ibkrFlexToken', type: 'text', fallback: '', data: true },
+  { id: 'newIbkrFlexQueryId', key: 'ibkrFlexQueryId', type: 'text', fallback: '', data: true },
 
   // Appearance
   { id: 'newFontSelect', key: 'font', type: 'select', fallback: 'sf' },
@@ -174,7 +176,6 @@ export function applyAppearance(settings) {
   const titleValue = settings.valueInTitle ?? true;
   document.documentElement.dataset.titleValue = titleValue ? 'on' : 'off';
   document.documentElement.dataset.valueChart = (settings.showValueChart ?? true) ? 'on' : 'off';
-  if (!titleValue) document.title = 'Viewport';
   applyFont(settings.font || 'sf');
   const size = Number(settings.fontSize);
   document.documentElement.style.fontSize = `${Number.isFinite(size) && size > 0 ? size : 14}px`;
