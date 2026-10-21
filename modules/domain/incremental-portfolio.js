@@ -11,7 +11,6 @@ import {
   normalizeCurrencyCode
 } from '../utils/currency.js';
 import { calculatePortfolioBreakdown, calculatePortfolioTotals } from './portfolio.js';
-import { recordPortfolioValue } from '../data/value-history.js';
 
 // Last finished portfolio, kept so the next page load can paint real numbers immediately instead
 // of "Loading portfolio..." while every provider round-trips. Rows from it are marked `_stale` and
@@ -883,10 +882,6 @@ export class IncrementalPortfolioRenderer {
     }
 
     if (!this.isLoading) this.scheduleSnapshotSave();
-    // A point for the value chart, once every provider has reported this round.
-    if (!this.isLoading && this.expectedProviders.every(name => this.providerStatus.has(name))) {
-      recordPortfolioValue({ positions: sorted, totalValue, currency: baseCurrency });
-    }
 
     // Store in global cache for other functions
     window.cachedPositions = sorted;

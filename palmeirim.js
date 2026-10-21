@@ -168,12 +168,11 @@
   window.addEventListener("scroll", function () { readout.hidden = true; }, { passive: true });
 
   // ── Portfolio value chart ──
-  // Hyperliquid's own history (the same on every device) plus what this device has recorded of
-  // everything else (modules/data/value-history.js), added up. Before the first record, the rest
-  // counts at its earliest known value, so the line starts as Hyperliquid's shape and fills in.
-  // Sits under the sentence: periods on the left (the chosen one inverted), the change over the
-  // period on the right, a line over the dim dither. Pointing at it names the time and value on
-  // the card's bottom border. Settings → Sections can hide it (html[data-value-chart="off"]).
+  // Every account's own history added up (modules/data/portfolio-history.js), so the line is
+  // the same on every device. Sits under the sentence: periods on the left (the chosen one
+  // inverted), the change over the period on the right, a line over the dim dither. Pointing
+  // at it names the time and value on the card's bottom border. Settings → Sections can hide
+  // it (html[data-value-chart="off"]).
   var PERIODS = [["day", "1D"], ["week", "1W"], ["month", "1M"], ["allTime", "All"]];
   var valueBox = el("div", { class: "pm-value", hidden: "" },
     '<div class="pm-value__head">' +
@@ -183,75 +182,31 @@
   card.appendChild(valueBox);
   var valuePeriod = "week";
   try { valuePeriod = localStorage.getItem("pmValuePeriod") || "week"; } catch (_e) {}
-  var valueData = null;
+  var valueData = null; // { values: [[t, v]], currency, symbol } for valuePeriod
   var valueSeries = [];
-
-  function hlAddresses() {
-    try {
-      var s = JSON.parse(localStorage.getItem("myDashboardSettings.v2") || "{}");
-      return String(s.walletAddresses || "").split(/[\s,]+/).filter(function (a) { return /^0x[0-9a-fA-F]{40}$/.test(a); });
-    } catch (_e) { return []; }
-  }
+  var valueSymbol = "$";
 
   function money(v, signed) {
     var abs = Math.abs(v);
-    var text = "$" + new Intl.NumberFormat(undefined, { notation: abs >= 10000 ? "compact" : "standard", maximumFractionDigits: abs >= 10000 ? 2 : 0 }).format(abs);
+    var text = valueSymbol + new Intl.NumberFormat(undefined, { notation: abs >= 10000 ? "compact" : "standard", maximumFractionDigits: abs >= 10000 ? 2 : 0 }).format(abs);
     return (v < 0 ? "−" : signed ? "+" : "") + text;
-  }
-
-  var WINDOW = { day: 864e5, week: 7 * 864e5, month: 30 * 864e5, allTime: Infinity };
-
-  // A stepwise series read in time order: the last point at or before t, the first point before
-  // any. One pass over the series for the whole chart.
-  function stepper(series, index) {
-    var i = 0, v = series.length ? series[0][index] : 0;
-    return function (t) {
-      while (i < series.length && series[i][0] <= t) v = series[i++][index];
-      return v;
-    };
-  }
-
-  // The portfolio over a period: Hyperliquid's series per address plus the rest recorded here,
-  // on every timestamp either has. Without Hyperliquid history (no address, or amounts in
-  // another currency than its dollars), the recorded totals stand alone.
-  function combine(data, period) {
-    var since = Date.now() - WINDOW[period];
-    var hl = [];
-    if (data.local.currency === "USD") {
-      data.hl.forEach(function (p) { if (p && p[period] && p[period].values.length) hl.push(p[period].values); });
-    }
-    var local = data.local.points.filter(function (p) { return p[0] >= since; });
-    var ts = local.map(function (p) { return p[0]; });
-    hl.forEach(function (list) { list.forEach(function (p) { ts.push(p[0]); }); });
-    ts.sort(function (a, b) { return a - b; });
-    // The rest, with the Hyperliquid part taken out when its own series stands in for it.
-    var rest = stepper(data.local.points.map(function (p) { return [p[0], hl.length ? p[1] - p[2] : p[1]]; }), 1);
-    var parts = hl.map(function (list) { return stepper(list, 1); });
-    var values = [], lastT = null;
-    ts.forEach(function (t) {
-      if (t === lastT) return;
-      lastT = t;
-      var v = rest(t);
-      for (var i = 0; i < parts.length; i++) v += parts[i](t);
-      values.push([t, v]);
-    });
-    if (values.length < 2) return null;
-    return { values: values, pnl: values[values.length - 1][1] - values[0][1] };
   }
 
   function drawValue() {
     var chart = $(".pm-value__chart", valueBox);
     $$(".pm-value__period", valueBox).forEach(function (b) { b.setAttribute("aria-checked", String(b.dataset.period === valuePeriod)); });
-    var data = valueData && combine(valueData, valuePeriod);
-    if (!data) {
+    var data = valueData;
+    if (!data || data.values.length < 2) {
       chart.innerHTML = '<p class="pm-value__empty">No history for this period.</p>';
       $(".pm-value__change", valueBox).textContent = "";
       valueSeries = [];
       return;
     }
+    valueSymbol = data.symbol || "$";
     var first = data.values[0][1];
-    var pct = first > 0 ? (data.pnl / first) * 100 : null;
-    $(".pm-value__change", valueBox).textContent = money(data.pnl, true) + (pct !== null ? " (" + (pct >= 0 ? "+" : "−") + Math.abs(pct).toFixed(1) + "%)" : "");
+    var pnl = data.values[data.values.length - 1][1] - first;
+    var pct = first > 0 ? (pnl / first) * 100 : null;
+    $(".pm-value__change", valueBox).textContent = money(pnl, true) + (pct !== null ? " (" + (pct >= 0 ? "+" : "−") + Math.abs(pct).toFixed(1) + "%)" : "");
 
     // Drawn at the box's real pixel size, so the 1px dither stays crisp.
     var w = Math.max(100, Math.round(chart.clientWidth));
@@ -277,21 +232,22 @@
     chart.setAttribute("aria-label", "Portfolio value, " + $(".pm-value__period[aria-checked=true]", valueBox).textContent + ": " + money(vs[0]) + " to " + money(vs[vs.length - 1]));
   }
 
+  // The series for the chosen period. The first draws come from the last snapshot while the
+  // providers are still loading, so it loads again until they have all reported; after that
+  // once a minute (the sources are cached, so that mostly re-adds cached series).
+  var valueLoad = 0, valueSettled = false;
   function loadValue() {
     if (document.documentElement.dataset.valueChart === "off") { valueBox.hidden = true; return; }
-    var addresses = hlAddresses();
-    Promise.all([
-      import("./modules/data/value-history.js"),
-      addresses.length ? import("./modules/data/hl-account.js") : null
-    ]).then(function (mods) {
-      var history = mods[0].getValueHistory();
-      var hl = mods[1] ? Promise.all(addresses.map(function (a) { return mods[1].getPortfolio(a).catch(function () { return null; }); })) : Promise.resolve([]);
-      return hl.then(function (perAddress) {
-        valueData = { hl: perAddress, local: history };
-        var any = combine(valueData, "allTime");
-        valueBox.hidden = !any;
-        if (!any) return;
-        drawValue();
+    var period = valuePeriod, seq = ++valueLoad;
+    import("./modules/data/portfolio-history.js").then(function (m) {
+      var settled = m.isPortfolioSettled();
+      return m.getPortfolioHistory(period).then(function (data) {
+        if (seq !== valueLoad) return; // a newer load is on its way
+        valueData = data;
+        valueBox.hidden = !data.values.length;
+        if (!valueBox.hidden) drawValue();
+        if (settled) valueSettled = true;
+        else if (!valueSettled) setTimeout(loadValue, 4000);
       });
     }).catch(function () { valueBox.hidden = true; });
   }
@@ -301,7 +257,8 @@
     if (!b) return;
     valuePeriod = b.dataset.period;
     try { localStorage.setItem("pmValuePeriod", valuePeriod); } catch (_e) {}
-    drawValue();
+    $$(".pm-value__period", valueBox).forEach(function (r) { r.setAttribute("aria-checked", String(r === b)); });
+    loadValue();
   });
 
   // Pointing (mouse) or touching and dragging (finger) moves a cursor along the line.
@@ -364,9 +321,8 @@
     valueResize = setTimeout(function () { if (valueData) drawValue(); }, 150);
   });
   new MutationObserver(loadValue).observe(document.documentElement, { attributes: true, attributeFilter: ["data-value-chart"] });
-  window.addEventListener("viewport:valuehistory", loadValue); // a new point recorded: redraw with it
   loadValue();
-  setInterval(loadValue, 5 * 60 * 1000);
+  setInterval(loadValue, 60 * 1000);
 
   function tick() {
     var now = new Date();

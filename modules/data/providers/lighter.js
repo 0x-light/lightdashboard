@@ -711,6 +711,35 @@ export async function fetchCandlesticks(symbol, { timeoutMs = 5000, days = 7 } =
 /**
  * Fetch all funding rates
  */
+// Each P&L row turned into what the account's value has gained since it opened: profits
+// from trading, pools and staking, plus deposits, minus withdrawals. Moves between the
+// account and its pools or staking are internal and cancel out. Two points' difference is
+// the value change between them.
+export function pnlSeries(data) {
+  const rows = Array.isArray(data?.pnl) ? data.pnl : [];
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  return rows
+    .map(r => ({
+      t: n(r.timestamp) * 1000,
+      equityDelta: n(r.trade_pnl) + n(r.trade_spot_pnl) + n(r.pool_pnl) + n(r.staking_pnl)
+        + n(r.inflow) - n(r.outflow) + n(r.spot_inflow) - n(r.spot_outflow)
+    }))
+    .filter(p => p.t > 0)
+    .sort((a, b) => a.t - b.t);
+}
+
+/**
+ * Account P&L history, oldest first: [{ t, equityDelta }] (see pnlSeries). The API gives
+ * hourly or daily rows ('1h' | '1d'), `countBack` of them up to now.
+ */
+export async function fetchPnlHistory(accountIndex, { resolution = '1h', countBack = 24, timeoutMs = 8000 } = {}) {
+  const end = Math.floor(Date.now() / 1000);
+  const step = resolution === '1d' ? 86400 : 3600;
+  const url = `${MAINNET}/pnl?by=index&value=${encodeURIComponent(accountIndex)}&resolution=${resolution}`
+    + `&start_timestamp=${end - countBack * step}&end_timestamp=${end}&count_back=${countBack}&ignore_transfers=false`;
+  return pnlSeries(await getJsonWithDevCorsFallback(url, timeoutMs));
+}
+
 export async function fetchFundingRates({ timeoutMs = 5000 } = {}) {
   // Return cached if valid
   if (cachedFundingRates && (Date.now() - fundingRatesCacheTime) < FUNDING_CACHE_TTL) {

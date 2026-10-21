@@ -6,7 +6,9 @@ import { LighterFetcher } from '../modules/data/fetchers/lighter-fetcher.js';
 import * as StocksProvider from '../modules/data/providers/stocks.js';
 import { _internal as pythInternal } from '../modules/data/providers/pyth.js';
 import { normalizeEntries } from '../modules/features/watchlist.js';
-import { _internal as valueHistoryInternal } from '../modules/data/value-history.js';
+import { anchored, clip, getPortfolioHistory, plan, priceKeyOf, scaled, sumSeries } from '../modules/data/portfolio-history.js';
+import { pnlSeries } from '../modules/data/providers/lighter.js';
+import { chartPoints } from '../modules/data/providers/zerion.js';
 import {
   formatMoney,
   getFxCurrency,
@@ -975,27 +977,94 @@ function testWatchlistNormalizeEntriesAcceptsLegacyAndMixed() {
   assert.deepEqual(normalizeEntries('not-an-array'), []);
 }
 
-function testValueHistoryThinsOldPoints() {
-  const { thin } = valueHistoryInternal;
-  const HOUR = 60 * 60 * 1000;
-  const DAY = 24 * HOUR;
-  const now = Date.UTC(2026, 9, 21, 12, 0, 0);
-  const points = [];
-  // Forty days ago: four points in one day, then two days ago: four points in one hour,
-  // then today: four points five minutes apart. Oldest first, as stored.
-  for (let i = 0; i < 4; i++) points.push([now - 40 * DAY + i * HOUR, 100 + i, 10]);
-  for (let i = 0; i < 4; i++) points.push([now - 2 * DAY + i * 5 * 60 * 1000, 200 + i, 20]);
-  for (let i = 0; i < 4; i++) points.push([now - 15 * 60 * 1000 + i * 5 * 60 * 1000, 300 + i, 30]);
-  const thinned = thin(points, now);
-  // One a day beyond a month, one an hour beyond a day (the last of each), all of today's.
-  assert.deepEqual(thinned.map(p => p[1]), [103, 203, 300, 301, 302, 303]);
-  // Points in different buckets are all kept.
-  const spread = [[now - 3 * DAY, 1, 0], [now - 2 * DAY, 2, 0], [now - 1 * HOUR, 3, 0]];
-  assert.deepEqual(thin(spread, now).map(p => p[1]), [1, 2, 3]);
+function testPortfolioHistorySeriesMath() {
+  // Parts added on every timestamp either has; before its first point a part holds that value.
+  const a = [[10, 100], [20, 110], [30, 120]];
+  const b = [[15, 50], [25, 70]];
+  assert.deepEqual(sumSeries([a, b]), [[10, 150], [15, 150], [20, 160], [25, 180], [30, 190]]);
+  assert.deepEqual(sumSeries([a, b], 20), [[20, 160], [25, 180], [30, 190]]);
+  assert.deepEqual(sumSeries([[[5, 1], [5, 2]]]), [[5, 2]]);
+  // The window keeps the last point before it, so the value at the start is known.
+  assert.deepEqual(clip(a, 25), [[20, 110], [30, 120]]);
+  assert.deepEqual(clip(a, 5), a);
+  assert.deepEqual(clip(a, 99), [[30, 120]]);
+  // Account series end at the live value; priced holdings scale with their price.
+  assert.deepEqual(anchored([[1, 90], [2, 95]], 100, 3), [[1, 95], [2, 100], [3, 100]]);
+  assert.deepEqual(anchored([], 100, 3), [[3, 100]]);
+  assert.deepEqual(scaled([[1, 50], [2, 100]], 300, 3), [[1, 150], [2, 300], [3, 300]]);
+  assert.deepEqual(scaled([], 300, 3), [[3, 300]]);
+  // A series ending at or below zero can't be scaled: shifted instead.
+  assert.deepEqual(scaled([[1, -5], [2, 0]], 300, 3), [[1, 295], [2, 300], [3, 300]]);
+}
+
+function testPortfolioHistoryPlanAndPriceKeys() {
+  const rows = [
+    { asset: 'HL_ACCOUNT_EQUITY', exchange: 'HL Perps', isHlAccountEquity: true, value: 1000, _source: 'Hyperliquid_0xabc' },
+    { asset: 'ETH', exchange: 'HL Perps', isLeveraged: true, value: 5000, _source: 'Hyperliquid_0xabc' },
+    { asset: 'HYPE', exchange: 'HL Staking', value: 200, _source: 'Hyperliquid_0xabc' },
+    { asset: 'LIGHTER_ACCOUNT_EQUITY', exchange: 'Lighter', isLighterAccountEquity: true, value: 300, _source: 'Lighter_0xabc', _changeDetectionKey: 'LIGHTER_ACCOUNT_EQUITY_0xabc_42' },
+    { asset: 'BTC', exchange: 'Lighter', value: 900, _source: 'Lighter_0xabc' },
+    { asset: 'LIT', exchange: 'Lighter Spot', value: 40, _source: 'Lighter_0xabc' },
+    { asset: 'ETH', exchange: 'Ethereum', value: 700, _source: 'Zerion_0xabc' },
+    { asset: 'USDC', exchange: 'Base', value: 100, _source: 'Zerion_0xabc' },
+    { asset: 'VWCE', exchange: 'IBKR', category: 'etf', value: 2000, _source: 'IBKR' },
+    { asset: 'AAPL', exchange: 'IBKR', category: 'equity', value: 500, _source: 'IBKR' },
+    { asset: 'BTC', exchange: 'Bitcoin', value: 600, _source: 'Bitcoin/Zcash' },
+    { asset: 'Vault', exchange: 'Manual (Custom)', value: 50, _source: 'Manual' },
+    { asset: 'ZERO', exchange: 'Manual (Custom)', value: 0, _source: 'Manual' },
+    null
+  ];
+  const groups = plan(rows);
+  assert.deepEqual(Array.from(groups.hl), [['0xabc', 1000]]);
+  assert.deepEqual(Array.from(groups.lighter), [['42', 300]]);
+  assert.deepEqual(Array.from(groups.zerion), [['0xabc', 800]]);
+  assert.equal(groups.ibkr, 2500);
+  // Perps inside an equity row add nothing; staking, spot, Bitcoin and manual rows are priced.
+  assert.deepEqual(groups.priced.map(p => p.asset), ['HYPE', 'LIT', 'BTC', 'Vault']);
+  assert.equal(plan([]).ibkr, null);
+
+  assert.equal(priceKeyOf({ asset: 'HYPE', exchange: 'HL Staking' }), 'hl:HYPE');
+  assert.equal(priceKeyOf({ asset: 'btc', exchange: 'Bitcoin' }), 'hl:BTC');
+  assert.equal(priceKeyOf({ asset: 'AAPL', exchange: 'Manual (Stock)', category: 'equity' }), 'yahoo:AAPL');
+  assert.equal(priceKeyOf({ asset: 'VWCE.DE', exchange: 'Manual (Stock)', category: 'etf' }), 'yahoo:VWCE.DE');
+  assert.equal(priceKeyOf({ asset: 'USDC', exchange: 'Base' }), null);
+  assert.equal(priceKeyOf({ asset: 'Vault', exchange: 'Manual (Custom)' }), null);
+  assert.equal(priceKeyOf({ asset: 'GC', exchange: 'Manual (Metal)', category: 'metal' }), null);
+  assert.equal(priceKeyOf({ asset: 'ABCL 270115C00008000', exchange: 'IBKR', category: 'option' }), null);
+}
+
+async function testPortfolioHistoryFlatHoldingsNeedNoRequests() {
+  // Only holdings without a price history: one point, the total, in the base currency.
+  const rows = [
+    { asset: 'Vault', exchange: 'Manual (Custom)', value: 50, _source: 'Manual' },
+    { asset: 'USDC', exchange: 'Base', value: 150, _source: 'Alchemy/Helius' }
+  ];
+  const renderer = { settings: { portfolioBaseCurrency: 'EUR' }, conversionRateFor: () => 0.9 };
+  const out = await getPortfolioHistory('week', { rows, renderer, now: 1000 });
+  assert.deepEqual(out, { values: [[1000, 200]], currency: 'EUR', symbol: '€' });
+  const empty = await getPortfolioHistory('day', { rows: [], renderer: null, now: 1000 });
+  assert.deepEqual(empty.values, []);
+}
+
+function testLighterAndZerionHistoryShapes() {
+  // Lighter: profits plus deposits minus withdrawals; pool and staking moves cancel out.
+  const series = pnlSeries({ pnl: [
+    { timestamp: 200, trade_pnl: 5, trade_spot_pnl: 1, pool_pnl: 2, staking_pnl: 0, inflow: 100, outflow: 10, spot_inflow: 3, spot_outflow: 1, pool_inflow: 50, pool_outflow: 0, staking_inflow: 20 },
+    { timestamp: 100, trade_pnl: 0, inflow: 100 }
+  ] });
+  assert.deepEqual(series, [{ t: 100000, equityDelta: 100 }, { t: 200000, equityDelta: 100 }]);
+  assert.deepEqual(pnlSeries(null), []);
+  // Zerion: [seconds, value] pairs, oldest first, in milliseconds.
+  assert.deepEqual(chartPoints({ data: { attributes: { points: [[1700000100, 20], [1700000000, 10], ['x', 5]] } } }), [[1700000000000, 10], [1700000100000, 20]]);
+  assert.deepEqual(chartPoints({ data: { attributes: { points: [{ timestamp: 1700000000, value: 7 }] } } }), [[1700000000000, 7]]);
+  assert.deepEqual(chartPoints({}), []);
 }
 
 async function run() {
-  testValueHistoryThinsOldPoints();
+  testPortfolioHistorySeriesMath();
+  testPortfolioHistoryPlanAndPriceKeys();
+  await testPortfolioHistoryFlatHoldingsNeedNoRequests();
+  testLighterAndZerionHistoryShapes();
   await testManualCustomLegacySchema();
   testLighterTotalsWithoutEquity();
   testLighterTotalsWithEquity();

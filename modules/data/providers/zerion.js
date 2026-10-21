@@ -61,5 +61,24 @@ export async function getWalletPnl(wallet, apiKey, { timeoutMs = 15000 } = {}) {
   return await HttpClient.getJson(url, { headers, timeoutMs }).catch(() => null);
 }
 
-export default { getWalletPositions, getWalletNfts, getWalletPnl };
+// The chart's points as [[t (ms), usd]], oldest first. Zerion sends [seconds, value] pairs.
+export function chartPoints(data) {
+  const raw = data?.data?.attributes?.points;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(p => (Array.isArray(p) ? [Number(p[0]), Number(p[1])] : [Number(p?.timestamp), Number(p?.value)]))
+    .filter(([t, v]) => t > 0 && Number.isFinite(v))
+    .map(([t, v]) => [t < 1e12 ? t * 1000 : t, v])
+    .sort((a, b) => a[0] - b[0]);
+}
+
+/** The wallet's value over a period (hour, day, week, month, year, max): [[t, usd]]. */
+export async function getWalletChart(wallet, apiKey, period, { timeoutMs = 10000 } = {}) {
+  const url = buildUrl(`wallets/${wallet}/charts/${period}`, { currency: 'usd' });
+  const headers = USE_PROXY ? { 'x-proxy-api-key': apiKey } : authHeaders(apiKey);
+  const data = await HttpClient.getJson(url, { headers, timeoutMs });
+  return chartPoints(data);
+}
+
+export default { getWalletPositions, getWalletNfts, getWalletPnl, getWalletChart };
 

@@ -76,7 +76,19 @@ export function parseStatement(xml) {
       }))
       .filter(c => c.amount !== 0);
 
-    accounts.push({ accountId, positions, cash });
+    // Daily net asset value, when the query includes "Change in NAV" (Equity Summary in Base).
+    // Dates come as YYYYMMDD or YYYY-MM-DD.
+    const nav = Array.from(st.getElementsByTagName('EquitySummaryByReportDateInBase'))
+      .map(attrs)
+      .filter(r => r.reportDate && num(r.total) !== null)
+      .map(r => ({ date: r.reportDate.replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3'), total: num(r.total), currency: r.currency || '' }))
+      .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.date))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    // The account's base currency: from Account Information, else from the NAV rows.
+    const info = st.getElementsByTagName('AccountInformation')[0];
+    const currency = info?.getAttribute('currency') || nav.find(r => r.currency)?.currency || '';
+
+    accounts.push({ accountId, positions, cash, nav, currency });
   }
 
   if (accounts.length === 0) throw new Error('The Flex Query returned no statement');
