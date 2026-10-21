@@ -1,3 +1,6 @@
+const SPOT_META_CACHE_KEY = 'hl_spot_meta_compact_v1';
+const SPOT_META_TTL_MS = 24 * 60 * 60 * 1000;
+
 export class HyperliquidFetcher {
     constructor(providers, renderer, settings) {
         this.providers = providers;
@@ -7,292 +10,65 @@ export class HyperliquidFetcher {
     }
 
     async fetch(wallets) {
+        const hl = this.providers.hyperliquid;
         try {
-            // Fetch main dex and xyz dex metadata in parallel
-            const [hlMarketData, hlAllMids, hlSpotData, xyzMarketData] = await Promise.all([
-                this.providers.hyperliquid.fetchMetaAndAssetCtxs(3000),
-                this.providers.hyperliquid.fetchAllMids(3000),
-                this.providers.hyperliquid.fetchSpotMetaAndAssetCtxs(3000),
-                this.providers.hyperliquid.fetchXyzDexMetaAndAssetCtxs?.(3000).catch(() => null) // xyz dex metadata
+            // Everything starts at once: account state doesn't depend on market data, so waiting
+            // for metadata before asking for positions only added round trips.
+            const positionResults = wallets.map(wallet => hl.fetchPositions(wallet, 4000)
+                .then(data => ({ wallet, data }), error => ({ wallet, error })));
+            const midsPromise = hl.fetchAllMids(3000);
+            // Perp/xyz contexts (prevDayPx, funding) are 70KB and 60KB uncompressed. Skip them when
+            // the last fetch showed no positions there; they're fetched late if positions appear.
+            let perpCtxPromise = this.hasPerps !== false ? hl.fetchMetaAndAssetCtxs(3000) : null;
+            let xyzCtxPromise = this.hasXyzPerps !== false
+                ? (hl.fetchXyzDexMetaAndAssetCtxs?.(3000).catch(() => null) ?? null)
+                : null;
+            const spotMetaPromise = this.getSpotMeta();
+
+            const results = await Promise.all(positionResults);
+            const allPerps = results.flatMap(r => r.data?.perp?.assetPositions || [])
+                .filter(p => Math.abs(parseFloat(p.position?.szi || 0)) > 0);
+            this.hasPerps = allPerps.length > 0;
+            this.hasXyzPerps = allPerps.some(p => String(p.position?.coin || '').startsWith('xyz:'));
+            if (this.hasPerps && !perpCtxPromise) perpCtxPromise = hl.fetchMetaAndAssetCtxs(3000);
+            if (this.hasXyzPerps && !xyzCtxPromise) xyzCtxPromise = hl.fetchXyzDexMetaAndAssetCtxs?.(3000).catch(() => null) ?? null;
+
+            // Spot balances in a token the cached map doesn't know yet (new listing) force a refresh.
+            let spotMeta = await spotMetaPromise;
+            const knownTokens = new Set((spotMeta?.tokens || []).map(t => t.name));
+            const hasUnknownToken = results.some(r => (r.data?.spot?.balances || [])
+                .some(bal => parseFloat(bal.total || 0) > 0 && !knownTokens.has(bal.coin)));
+            if (hasUnknownToken) spotMeta = await this.getSpotMeta({ force: true });
+
+            // Positions and mids are enough for values; prevDayPx/funding contexts are the slowest
+            // responses (~70KB, uncompressed). Show rows as soon as values are known, then rebuild
+            // them with 24h change and funding when the contexts land.
+            const hlAllMids = await midsPromise;
+            const emit = (market, { enrich }) => {
+                for (const { wallet, data, error } of results) {
+                    if (error) {
+                        if (enrich) console.warn(`[Hyperliquid] Failed for wallet ${wallet}:`, error);
+                        continue;
+                    }
+                    try {
+                        const rows = this.buildWalletRows(wallet, data, market);
+                        this.renderer.appendPositions(rows, `Hyperliquid_${wallet}`, { markCompleted: enrich });
+                        // Charts and missing 24h changes load after the rows are on screen.
+                        if (enrich) this.enrichWithHistory(rows, wallet);
+                    } catch (e) {
+                        if (enrich) console.warn(`[Hyperliquid] Failed for wallet ${wallet}:`, e);
+                    }
+                }
+            };
+
+            const contextsPromise = Promise.all([perpCtxPromise, xyzCtxPromise]);
+            const contextsReady = await Promise.race([
+                contextsPromise.then(() => true),
+                new Promise(resolve => setTimeout(() => resolve(false), 0))
             ]);
-
-            // Store spotMeta for enrichment
-            // hlSpotData is [meta, ctxs]
-            let hlSpotMeta = null;
-            let hlSpotCtxs = null;
-            if (Array.isArray(hlSpotData) && hlSpotData.length >= 2) {
-                hlSpotMeta = hlSpotData[0];
-                hlSpotCtxs = hlSpotData[1];
-            } else {
-                hlSpotMeta = hlSpotData; // Fallback if old format (unlikely)
-            }
-            this.spotMeta = hlSpotMeta;
-
-            // Build Spot prevDayPx Map
-            const spotPrevDayPxMap = {};
-            if (hlSpotCtxs) {
-                for (const ctx of hlSpotCtxs) {
-                    if (ctx.coin && ctx.prevDayPx) {
-                        spotPrevDayPxMap[ctx.coin] = parseFloat(ctx.prevDayPx);
-                    }
-                }
-            }
-
-            // ... (existing price map logic) ...
-            const hlPriceMap = {};
-            const hlPrevDayPxMap = {};
-            const hlFundingRateMap = {}; // Map of asset name to current funding rate
-            // ... (populate maps) ...
-            if (hlMarketData?.[0] && hlMarketData?.[1]) {
-                for (let i = 0; i < hlMarketData[1].length; i++) {
-                    const ctx = hlMarketData[1][i];
-                    const assetName = hlMarketData[0].universe[i]?.name;
-                    if (assetName && ctx?.markPx) {
-                        hlPriceMap[assetName] = parseFloat(ctx.markPx);
-                        if (ctx.prevDayPx) {
-                            hlPrevDayPxMap[assetName] = parseFloat(ctx.prevDayPx);
-                        }
-                        // Store current funding rate (funding is per-hour rate as decimal)
-                        if (ctx.funding !== undefined) {
-                            hlFundingRateMap[assetName] = parseFloat(ctx.funding);
-                        }
-                    }
-                }
-            }
-
-            // Add xyz dex funding rates and prevDayPx (for xyz:GOOGL, xyz:AAPL, etc.)
-            if (xyzMarketData?.[0] && xyzMarketData?.[1]) {
-                for (let i = 0; i < xyzMarketData[1].length; i++) {
-                    const ctx = xyzMarketData[1][i];
-                    const assetName = xyzMarketData[0].universe[i]?.name;
-                    if (assetName) {
-                        if (ctx?.funding !== undefined) {
-                            hlFundingRateMap[assetName] = parseFloat(ctx.funding);
-                        }
-                        // Also extract prevDayPx for 24h change calculation
-                        if (ctx?.prevDayPx) {
-                            hlPrevDayPxMap[assetName] = parseFloat(ctx.prevDayPx);
-                        }
-                    }
-                }
-            }
-
-            if (hlAllMids) {
-                for (const [key, value] of Object.entries(hlAllMids)) {
-                    if (value && !key.startsWith('@')) {
-                        hlPriceMap[key] = parseFloat(value);
-                    }
-                }
-            }
-
-            const spotPriceMap = this.providers.hyperliquid.buildSpotPriceMap(hlAllMids, hlSpotMeta);
-
-            // Fetch all wallets in parallel
-            await Promise.all(wallets.map(async (wallet) => {
-                try {
-                    const data = await this.providers.hyperliquid.fetchPositions(wallet, 3000);
-                    const rows = [];
-
-                    // ... (existing position processing) ...
-                    // We need to copy the logic for processing perps and spot
-                    // Since I cannot match the entire file easily with replace_file_content for just the middle,
-                    // I will assume the user wants me to inject the cache application logic.
-
-                    // I will target the end of the loop where rows are ready.
-                    const resolvePerpEquity = (state) => {
-                        const marginValue = Number(state?.marginSummary?.accountValue);
-                        const crossValue = Number(state?.crossMarginSummary?.accountValue);
-                        const withdrawable = Number(state?.withdrawable);
-                        const values = [marginValue, crossValue].filter(Number.isFinite);
-                        const best = values.length > 0 ? values[0] : null;
-
-                        if (best !== null && Number.isFinite(withdrawable)) {
-                            if (best >= 0 && withdrawable >= 0) {
-                                return Math.max(best, withdrawable);
-                            }
-                            return best;
-                        }
-
-                        if (best !== null) return best;
-                        return Number.isFinite(withdrawable) ? withdrawable : 0;
-                    };
-
-                    const perpEquity = this.providers.hyperliquid.resolvePerpAccountValue
-                        ? (this.providers.hyperliquid.resolvePerpAccountValue(data?.perp) ?? 0)
-                        : resolvePerpEquity(data?.perp);
-
-                    let spotEquity = 0;
-                    if (data?.spot?.balances) {
-                        for (const bal of data.spot.balances) {
-                            const total = parseFloat(bal.total || 0);
-                            if (total > 0) {
-                                const price = parseFloat(spotPriceMap[bal.coin] || 0);
-                                spotEquity += total * price;
-                            }
-                        }
-                    }
-
-                    const hlAccountEquity = perpEquity + spotEquity;
-                    let totalHlPnL = 0;
-
-                    // Process Perp Positions
-                    if (data?.perp?.assetPositions) {
-                        for (const pos of data.perp.assetPositions) {
-                            const position = pos.position;
-                            const szi = parseFloat(position?.szi || 0);
-                            if (Math.abs(szi) > 0) {
-                                const entryPrice = parseFloat(position?.entryPx || 0);
-                                const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
-                                let currentPrice = notionalValue / Math.abs(szi);
-
-                                if (!currentPrice || isNaN(currentPrice)) {
-                                    currentPrice = hlPriceMap[position.coin] || entryPrice;
-                                }
-
-                                const pnl = parseFloat(position?.unrealizedPnl || 0);
-                                totalHlPnL += pnl;
-
-                                // Calculate 24h change
-                                let change24h = null;
-                                const prevDayPx = hlPrevDayPxMap[position.coin];
-                                if (prevDayPx && prevDayPx > 0) {
-                                    change24h = ((currentPrice - prevDayPx) / prevDayPx) * 100;
-                                }
-
-                                // Extract funding since position opened (positive = received, negative = paid)
-                                // Use sinceOpen (not allTime) to show funding for the CURRENT position only
-                                // Negate the value: Hyperliquid returns negative when you RECEIVE funding
-                                let funding = null;
-                                if (position?.cumFunding?.sinceOpen !== undefined) {
-                                    funding = -parseFloat(position.cumFunding.sinceOpen);
-                                }
-
-                                // Get current funding rate for this asset
-                                const fundingRate = hlFundingRateMap[position.coin] ?? null;
-
-                                rows.push({
-                                    asset: position.coin,
-                                    exchange: 'HL Perps',
-                                    amount: szi,
-                                    price: currentPrice,
-                                    value: notionalValue,
-                                    change24h,
-                                    pnl,
-                                    entryPrice,
-                                    isLeveraged: true,
-                                    funding,
-                                    fundingRate
-                                });
-                            }
-                        }
-                    }
-
-                    // Process Spot Balances
-                    if (data?.spot?.balances) {
-                        for (const bal of data.spot.balances) {
-                            const total = parseFloat(bal.total || 0);
-                            const available = total - parseFloat(bal.hold || 0);
-                            if (available > 0) {
-                                const price = parseFloat(spotPriceMap[bal.coin] || 0);
-                                const value = available * price;
-                                // entryNtl is the cost of the whole balance; scale it to the
-                                // available part we value, or held tokens read as a loss.
-                                const entryNtl = parseFloat(bal.entryNtl || 0) * (total > 0 ? available / total : 0);
-                                const pnl = (entryNtl > 0 && value > 0) ? (value - entryNtl) : null;
-
-                                if (pnl !== null && !isNaN(pnl)) {
-                                    totalHlPnL += pnl;
-                                }
-
-                                // Calculate Spot 24h Change
-                                let change24h = null;
-                                // Need to find the spot identifier (e.g. @248) for this coin name
-                                let spotPrevDayPx = null;
-
-                                // Try to find by name in tokens list to get index
-                                if (hlSpotMeta && hlSpotMeta.tokens) {
-                                    const token = hlSpotMeta.tokens.find(t => t.name === bal.coin);
-                                    if (token) {
-                                        // Find pair with this token as base
-                                        const pair = hlSpotMeta.universe.find(p => p.tokens[0] === token.index && p.tokens[1] === 0);
-                                        if (pair) {
-                                            // The context uses the pair name (e.g. @248) or sometimes the coin name?
-                                            // Debug script showed context coin is @232 (index-based?)
-                                            // Actually debug script showed context coin field is like '@232'.
-                                            // Wait, debug script showed BZEC pair is @248.
-                                            // But context coin was @232? No, that was my confusion.
-                                            // If pair name is @248, we should look for @248 in spotPrevDayPxMap.
-                                            spotPrevDayPx = spotPrevDayPxMap[pair.name];
-                                        }
-                                    }
-                                }
-
-                                if (spotPrevDayPx && spotPrevDayPx > 0) {
-                                    change24h = ((price - spotPrevDayPx) / spotPrevDayPx) * 100;
-                                }
-
-                                rows.push({
-                                    asset: bal.coin,
-                                    exchange: 'HL Spot',
-                                    amount: available,
-                                    price,
-                                    value,
-                                    change24h,
-                                    pnl,
-                                    entryNtl
-                                });
-                            }
-                        }
-                    }
-
-                    // Account Equity Position
-                    if (hlAccountEquity > 0) {
-                        rows.push({
-                            asset: 'HL_ACCOUNT_EQUITY',
-                            exchange: 'HL Perps',
-                            amount: 1,
-                            price: hlAccountEquity,
-                            value: hlAccountEquity,
-                            pnl: totalHlPnL,
-                            isHlAccountEquity: true,
-                            isLeveraged: false
-                        });
-                    }
-
-                    // Enrich with CoinGecko (TODO: Move to shared utility if needed)
-                    // For now, we assume renderer handles basic display, but enrichment is good.
-                    // Skipping complex enrichment here to keep it simple, or we can inject coingecko provider.
-
-                    // Ensure Unique Keys
-                    for (const row of rows) {
-                        if (!row._changeDetectionKey) {
-                            row._changeDetectionKey = `${row.asset}_${row.exchange}_${wallet}`;
-                        }
-
-                        // Apply cached history if available
-                        if (this.historyCache.has(row.asset)) {
-                            const cached = this.historyCache.get(row.asset);
-                            // Use cache if less than 15 minutes old
-                            if (Date.now() - cached.timestamp < 15 * 60 * 1000) {
-                                row.priceHistory = cached.priceHistory;
-                                if (cached.change24h !== null) {
-                                    row.change24h = cached.change24h;
-                                }
-                            }
-                        }
-                    }
-
-                    // Append to Renderer
-                    this.renderer.appendPositions(rows, `Hyperliquid_${wallet}`);
-
-                    // 3. Fetch History for Charts (Async enrichment)
-                    // We do this after initial render to keep UI snappy
-                    this.enrichWithHistory(rows, wallet);
-
-                } catch (e) {
-                    console.warn(`[Hyperliquid] Failed for wallet ${wallet}:`, e);
-                }
-            }));
+            if (!contextsReady) emit(this.buildMarket(hlAllMids, null, null, spotMeta), { enrich: false });
+            const [hlMarketData, xyzMarketData] = await contextsPromise;
+            emit(this.buildMarket(hlAllMids, hlMarketData, xyzMarketData, spotMeta), { enrich: true });
 
             // Mark the main 'Hyperliquid' provider as completed
             this.renderer.appendPositions([], 'Hyperliquid');
@@ -301,17 +77,272 @@ export class HyperliquidFetcher {
         }
     }
 
+    /**
+     * Token/pair index for spot balances. Only names and indexes are needed, so a compact copy is
+     * kept in localStorage for a day instead of downloading ~140KB of metadata on every load.
+     */
+    async getSpotMeta({ force = false } = {}) {
+        const now = Date.now();
+        if (!force && this.spotMeta && now - (this.spotMetaFetchedAt || 0) < SPOT_META_TTL_MS) {
+            return this.spotMeta;
+        }
+        if (!force && !this.spotMeta) {
+            try {
+                const cached = JSON.parse(localStorage.getItem(SPOT_META_CACHE_KEY) || 'null');
+                if (cached && now - Number(cached.savedAt) < SPOT_META_TTL_MS) {
+                    this.spotMeta = {
+                        tokens: cached.tokens.map(([name, index]) => ({ name, index })),
+                        universe: cached.universe.map(([name, base, quote, index]) => ({ name, tokens: [base, quote], index }))
+                    };
+                    this.spotMetaFetchedAt = Number(cached.savedAt);
+                    return this.spotMeta;
+                }
+            } catch (_) { /* fall through to network */ }
+        }
+        const meta = await this.providers.hyperliquid.fetchSpotMeta(5000);
+        if (meta?.tokens && meta?.universe) {
+            this.spotMeta = meta;
+            this.spotMetaFetchedAt = now;
+            try {
+                localStorage.setItem(SPOT_META_CACHE_KEY, JSON.stringify({
+                    savedAt: now,
+                    tokens: meta.tokens.map(t => [t.name, t.index]),
+                    universe: meta.universe.map(p => [p.name, p.tokens?.[0], p.tokens?.[1], p.index])
+                }));
+            } catch (_) { /* quota: keep in memory only */ }
+        }
+        return this.spotMeta;
+    }
+
+    buildMarket(hlAllMids, hlMarketData, xyzMarketData, spotMeta) {
+        const hlPriceMap = {};
+        const hlPrevDayPxMap = {};
+        const hlFundingRateMap = {}; // Map of asset name to current funding rate
+        if (hlMarketData?.[0] && hlMarketData?.[1]) {
+            for (let i = 0; i < hlMarketData[1].length; i++) {
+                const ctx = hlMarketData[1][i];
+                const assetName = hlMarketData[0].universe[i]?.name;
+                if (assetName && ctx?.markPx) {
+                    hlPriceMap[assetName] = parseFloat(ctx.markPx);
+                    if (ctx.prevDayPx) {
+                        hlPrevDayPxMap[assetName] = parseFloat(ctx.prevDayPx);
+                    }
+                    // Store current funding rate (funding is per-hour rate as decimal)
+                    if (ctx.funding !== undefined) {
+                        hlFundingRateMap[assetName] = parseFloat(ctx.funding);
+                    }
+                }
+            }
+        }
+
+        // Add xyz dex funding rates and prevDayPx (for xyz:GOOGL, xyz:AAPL, etc.)
+        if (xyzMarketData?.[0] && xyzMarketData?.[1]) {
+            for (let i = 0; i < xyzMarketData[1].length; i++) {
+                const ctx = xyzMarketData[1][i];
+                const assetName = xyzMarketData[0].universe[i]?.name;
+                if (assetName) {
+                    if (ctx?.funding !== undefined) {
+                        hlFundingRateMap[assetName] = parseFloat(ctx.funding);
+                    }
+                    // Also extract prevDayPx for 24h change calculation
+                    if (ctx?.prevDayPx) {
+                        hlPrevDayPxMap[assetName] = parseFloat(ctx.prevDayPx);
+                    }
+                }
+            }
+        }
+
+        if (hlAllMids) {
+            for (const [key, value] of Object.entries(hlAllMids)) {
+                if (value && !key.startsWith('@')) {
+                    hlPriceMap[key] = parseFloat(value);
+                }
+            }
+        }
+
+        const spotPriceMap = this.providers.hyperliquid.buildSpotPriceMap(hlAllMids, spotMeta);
+        return { hlPriceMap, hlPrevDayPxMap, hlFundingRateMap, spotPriceMap };
+    }
+
+    buildWalletRows(wallet, data, market) {
+        const { hlPriceMap, hlPrevDayPxMap, hlFundingRateMap, spotPriceMap } = market;
+        const rows = [];
+
+        const resolvePerpEquity = (state) => {
+            const marginValue = Number(state?.marginSummary?.accountValue);
+            const crossValue = Number(state?.crossMarginSummary?.accountValue);
+            const withdrawable = Number(state?.withdrawable);
+            const values = [marginValue, crossValue].filter(Number.isFinite);
+            const best = values.length > 0 ? values[0] : null;
+
+            if (best !== null && Number.isFinite(withdrawable)) {
+                if (best >= 0 && withdrawable >= 0) {
+                    return Math.max(best, withdrawable);
+                }
+                return best;
+            }
+
+            if (best !== null) return best;
+            return Number.isFinite(withdrawable) ? withdrawable : 0;
+        };
+
+        const perpEquity = this.providers.hyperliquid.resolvePerpAccountValue
+            ? (this.providers.hyperliquid.resolvePerpAccountValue(data?.perp) ?? 0)
+            : resolvePerpEquity(data?.perp);
+
+        let spotEquity = 0;
+        if (data?.spot?.balances) {
+            for (const bal of data.spot.balances) {
+                const total = parseFloat(bal.total || 0);
+                if (total > 0) {
+                    const price = parseFloat(spotPriceMap[bal.coin] || 0);
+                    spotEquity += total * price;
+                }
+            }
+        }
+
+        const hlAccountEquity = perpEquity + spotEquity;
+        let totalHlPnL = 0;
+
+        // Process Perp Positions
+        if (data?.perp?.assetPositions) {
+            for (const pos of data.perp.assetPositions) {
+                const position = pos.position;
+                const szi = parseFloat(position?.szi || 0);
+                if (Math.abs(szi) > 0) {
+                    const entryPrice = parseFloat(position?.entryPx || 0);
+                    const notionalValue = Math.abs(parseFloat(position?.positionValue || 0));
+                    let currentPrice = notionalValue / Math.abs(szi);
+
+                    if (!currentPrice || isNaN(currentPrice)) {
+                        currentPrice = hlPriceMap[position.coin] || entryPrice;
+                    }
+
+                    const pnl = parseFloat(position?.unrealizedPnl || 0);
+                    totalHlPnL += pnl;
+
+                    // Calculate 24h change
+                    let change24h = null;
+                    const prevDayPx = hlPrevDayPxMap[position.coin];
+                    if (prevDayPx && prevDayPx > 0) {
+                        change24h = ((currentPrice - prevDayPx) / prevDayPx) * 100;
+                    }
+
+                    // Extract funding since position opened (positive = received, negative = paid)
+                    // Use sinceOpen (not allTime) to show funding for the CURRENT position only
+                    // Negate the value: Hyperliquid returns negative when you RECEIVE funding
+                    let funding = null;
+                    if (position?.cumFunding?.sinceOpen !== undefined) {
+                        funding = -parseFloat(position.cumFunding.sinceOpen);
+                    }
+
+                    // Get current funding rate for this asset
+                    const fundingRate = hlFundingRateMap[position.coin] ?? null;
+
+                    rows.push({
+                        asset: position.coin,
+                        exchange: 'HL Perps',
+                        amount: szi,
+                        price: currentPrice,
+                        value: notionalValue,
+                        change24h,
+                        pnl,
+                        entryPrice,
+                        isLeveraged: true,
+                        funding,
+                        fundingRate
+                    });
+                }
+            }
+        }
+
+        // Process Spot Balances. Their 24h change comes from the candle enrichment below; the
+        // contexts that carry prevDayPx for every spot pair are a 350KB download.
+        if (data?.spot?.balances) {
+            for (const bal of data.spot.balances) {
+                const total = parseFloat(bal.total || 0);
+                const available = total - parseFloat(bal.hold || 0);
+                if (available > 0) {
+                    const price = parseFloat(spotPriceMap[bal.coin] || 0);
+                    const value = available * price;
+                    // entryNtl is the cost of the whole balance; scale it to the
+                    // available part we value, or held tokens read as a loss.
+                    const entryNtl = parseFloat(bal.entryNtl || 0) * (total > 0 ? available / total : 0);
+                    const pnl = (entryNtl > 0 && value > 0) ? (value - entryNtl) : null;
+
+                    if (pnl !== null && !isNaN(pnl)) {
+                        totalHlPnL += pnl;
+                    }
+
+                    rows.push({
+                        asset: bal.coin,
+                        exchange: 'HL Spot',
+                        amount: available,
+                        price,
+                        value,
+                        change24h: null,
+                        pnl,
+                        entryNtl
+                    });
+                }
+            }
+        }
+
+        // Account Equity Position
+        if (hlAccountEquity > 0) {
+            rows.push({
+                asset: 'HL_ACCOUNT_EQUITY',
+                exchange: 'HL Perps',
+                amount: 1,
+                price: hlAccountEquity,
+                value: hlAccountEquity,
+                pnl: totalHlPnL,
+                isHlAccountEquity: true,
+                isLeveraged: false
+            });
+        }
+
+        // Ensure Unique Keys
+        for (const row of rows) {
+            if (!row._changeDetectionKey) {
+                row._changeDetectionKey = `${row.asset}_${row.exchange}_${wallet}`;
+            }
+
+            // Apply cached history if available
+            if (this.historyCache.has(row.asset)) {
+                const cached = this.historyCache.get(row.asset);
+                // Use cache if less than 15 minutes old
+                if (Date.now() - cached.timestamp < 15 * 60 * 1000) {
+                    row.priceHistory = cached.priceHistory;
+                    if (row.change24h === null && cached.change24h !== null) {
+                        row.change24h = cached.change24h;
+                    }
+                }
+            }
+        }
+
+        return rows;
+    }
+
     async enrichWithHistory(rows, wallet) {
         if (!rows || rows.length === 0) return;
-        if (this.settings && this.settings.showPriceChart === false) return;
+        const chartsOn = !(this.settings && this.settings.showPriceChart === false);
 
         const now = Date.now();
         const startTime = now - 24 * 60 * 60 * 1000;
 
-        // Filter out items that don't need history or already have it
+        // Only rows that will be on screen: wallets often hold dozens of dust spot balances, and one
+        // candle request each (all at once) delays the charts that matter and risks rate limits.
+        // With charts off, candles are still needed for spot rows' 24h change.
+        const threshold = this.settings?.minBalanceThreshold || 100;
+        const hideSmall = window.hideSmallPositions ?? true;
+        const hiddenAssets = this.settings?.hiddenAssets || [];
         const itemsToFetch = rows.filter(r =>
             !r.isHlAccountEquity &&
             !r.priceHistory &&
+            (chartsOn || r.change24h === null) &&
+            !(hideSmall && (r.value || 0) < threshold) &&
+            !hiddenAssets.includes(`${r.asset}_${r.exchange}`) &&
             r.asset !== 'USDC' // Skip stablecoins if needed, though HL usually trades against USDC
         );
 

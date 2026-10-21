@@ -4,6 +4,9 @@ import { getCoingeckoId } from '../../utils/asset-mapping.js';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes for price data
 const CUM_FUNDING_CACHE_TTL = 15 * 60 * 1000; // 15 minutes for cumulative funding
 const WALLET_ROWS_CACHE_TTL = 30 * 60 * 1000; // 30 minutes stale fallback for transient API failures
+// Candles, funding and the CoinGecko fallback only decorate rows whose values come from the account
+// payload. Wait this long for them, then show the rows and rebuild once enrichment lands.
+const ENRICHMENT_BUDGET_MS = 350;
 const LIGHTER_DEBUG = (() => {
     try {
         return typeof window !== 'undefined' &&
@@ -263,7 +266,7 @@ export class LighterFetcher {
         }
     }
 
-    async _fetchWallet(wallet) {
+    async _fetchWallet(wallet, { enrichmentBudgetMs = ENRICHMENT_BUDGET_MS } = {}) {
         let walletRows = [];
         const spotAssetMap = (typeof this.providers?.lighter?.getSpotAssetMap === 'function')
             ? this.providers.lighter.getSpotAssetMap()
@@ -421,12 +424,19 @@ export class LighterFetcher {
                 return { accountIndex, pos, symbol, isLong, cumFunding };
             });
 
-            // Wait for static data first, then funding (can start processing while funding loads)
-            await Promise.all(promises);
+            const enrichment = Promise.all([Promise.all(promises), Promise.all(cumFundingPromises)]);
+            const enrichedInTime = enrichmentBudgetMs === Infinity || await Promise.race([
+                enrichment.then(() => true),
+                new Promise(resolve => setTimeout(() => resolve(false), enrichmentBudgetMs))
+            ]);
+            if (!enrichedInTime) {
+                // Everything above lands in the caches, so the rebuild needs no new requests.
+                enrichment.then(() => this._fetchWallet(wallet, { enrichmentBudgetMs: Infinity }));
+            }
 
             // 2.5 CoinGecko fallback pricing only for symbols missing source data.
             // Source-of-truth remains Lighter; fallback is used strictly when Lighter has no usable candle price/change.
-            if (this.providers?.coingecko?.getSimplePrice && symbolsNeeded.size > 0) {
+            if (enrichedInTime && this.providers?.coingecko?.getSimplePrice && symbolsNeeded.size > 0) {
                 const symbolsMissingSourceData = Array.from(symbolsNeeded).filter(symbol => {
                     const sourceData = this.priceDataCache.get(symbol);
                     const hasSourcePrice = firstFiniteNumber(sourceData?.currentPrice) !== null;
@@ -463,7 +473,15 @@ export class LighterFetcher {
                 }
             }
 
-            const positionsWithFunding = await Promise.all(cumFundingPromises);
+            const positionsWithFunding = enrichedInTime
+                ? await Promise.all(cumFundingPromises)
+                : positionsData.map(({ accountIndex, pos, symbol, isLong }) => ({
+                    accountIndex,
+                    pos,
+                    symbol,
+                    isLong,
+                    cumFunding: this.cumFundingCache.get(this._getCumFundingKey(accountIndex ?? 'unknown', symbol))?.value ?? null
+                }));
 
             // Track per-account unrealized PnL so the equity row reflects position PnL even when the
             // API omits a top-level pnl field.

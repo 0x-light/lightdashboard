@@ -11,6 +11,51 @@ import {
 } from '../utils/currency.js';
 import { calculatePortfolioBreakdown, calculatePortfolioTotals } from './portfolio.js';
 
+// Last finished portfolio, kept so the next page load can paint real numbers immediately instead
+// of "Loading portfolio..." while every provider round-trips. Rows from it are marked `_stale` and
+// replaced source by source as fresh data arrives.
+const SNAPSHOT_KEY = 'viewport.portfolioSnapshot.v1';
+const SNAPSHOT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const SNAPSHOT_HISTORY_POINTS = 24;
+const SNAPSHOT_SAVE_DELAY_MS = 1500;
+
+// Hash of everything that decides which positions exist. A snapshot taken under different wallets
+// or manual positions would show holdings that are no longer tracked, so it is ignored.
+function snapshotFingerprint(settings) {
+  const text = JSON.stringify([
+    settings?.walletAddresses || '',
+    settings?.solanaAddresses || '',
+    settings?.bitcoinAddresses || '',
+    settings?.zcashAddresses || '',
+    settings?.cryptoPositions || [],
+    normalizeBaseCurrency(settings?.portfolioBaseCurrency)
+  ]);
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
+  return String(hash >>> 0);
+}
+
+function downsampleHistory(history, points) {
+  if (!Array.isArray(history) || history.length <= points) return history;
+  const step = (history.length - 1) / (points - 1);
+  const out = [];
+  for (let i = 0; i < points; i++) out.push(history[Math.round(i * step)]);
+  return out;
+}
+
+function loadPortfolioSnapshot(settings) {
+  try {
+    const snapshot = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || 'null');
+    if (!snapshot || !Array.isArray(snapshot.positions) || snapshot.positions.length === 0) return null;
+    if (!(Date.now() - Number(snapshot.savedAt) < SNAPSHOT_MAX_AGE_MS)) return null;
+    if (snapshot.fingerprint !== snapshotFingerprint(settings)) return null;
+    snapshot.positions.forEach(row => { row._stale = true; });
+    return snapshot;
+  } catch (_) {
+    return null;
+  }
+}
+
 export class IncrementalPortfolioRenderer {
   constructor({ providers, settings, containers, ui, expectedProviders = [], initialPositions = null }) {
     this.providers = providers;
@@ -46,6 +91,24 @@ export class IncrementalPortfolioRenderer {
     this._fxRatesBase = null;
     this._fxRates = new Map();
     this._fxRatesLoading = new Set();
+
+    // Nothing in memory yet (fresh page load): start from the last saved portfolio, if it still
+    // matches the configured wallets and positions.
+    if (!initialPositions && this.allPositions.length === 0) {
+      const snapshot = loadPortfolioSnapshot(settings);
+      if (snapshot) {
+        this.allPositions = snapshot.positions;
+        const base = this.getBaseCurrency();
+        if (snapshot.baseCurrency === base && Array.isArray(snapshot.fxRates)) {
+          this._fxRatesBase = base;
+          this._fxRates = new Map(snapshot.fxRates.filter(([, rate]) => Number(rate) > 0));
+          this._fxRates.set(base, 1);
+        }
+        this.isLoading = false;
+      }
+    }
+    this._snapshotSaveTimer = null;
+    this._staleCarry = new Map(); // row key -> { priceHistory, change24h } from the snapshot
 
     // Store reference to renderer IMMEDIATELY for external re-renders
     window._portfolioRenderer = this;
@@ -135,6 +198,7 @@ export class IncrementalPortfolioRenderer {
    */
   clearPositions() {
     this.allPositions = [];
+    this._staleCarry.clear();
     this._positionsToken++;
     this.providerStatus.clear();
     this.providerErrors.clear();
@@ -161,9 +225,106 @@ export class IncrementalPortfolioRenderer {
    * Append new positions and re-render immediately
    * When refreshing, removes old positions from the same source to prevent duplicates
    */
+  /**
+   * Drop saved-snapshot rows that `source` is now reporting fresh data for. A fresh row that has
+   * no sparkline yet, or whose quote is still loading, keeps the last known values meanwhile so
+   * charts and totals don't blink out while enrichment requests finish. A partial update (one
+   * that doesn't mark the source completed) only replaces the rows it carries.
+   */
+  dropStaleRows(source, newRows, { partial = false } = {}) {
+    if (!this.allPositions.some(p => p._stale && p._source === source)) return false;
+    const keyOf = p => p._changeDetectionKey || `${p.asset}_${p.exchange}`;
+    const newKeys = partial ? new Set(newRows.map(keyOf)) : null;
+    const staleByKey = new Map();
+    this.allPositions = this.allPositions.filter(p => {
+      if (!(p._stale && p._source === source)) return true;
+      if (newKeys && !newKeys.has(keyOf(p))) return true;
+      staleByKey.set(keyOf(p), p);
+      return false;
+    });
+    if (staleByKey.size === 0) return false;
+    for (const row of newRows) {
+      const stale = staleByKey.get(keyOf(row));
+      if (!stale) continue;
+      // Kept on the side, not copied onto the row: fetchers skip enrichment for rows that already
+      // have a sparkline, so copying would freeze a days-old chart in place.
+      this._staleCarry.set(keyOf(row), { priceHistory: stale.priceHistory, change24h: stale.change24h });
+      if (row.quoteLoading && Number(stale.value) > 0) {
+        Object.assign(row, {
+          price: stale.price,
+          value: stale.value,
+          pnl: stale.pnl,
+          change24h: stale.change24h,
+          currency: row.currency || stale.currency,
+          quoteLoading: false
+        });
+      }
+    }
+    this._positionsToken++;
+    return true;
+  }
+
+  /**
+   * Once every provider has reported, any snapshot rows left belong to holdings that no longer
+   * exist. Rows from providers that failed this round are kept: last known beats missing.
+   */
+  purgeStaleRows() {
+    const failed = [];
+    for (const [provider, status] of this.providerStatus.entries()) {
+      if (status === 'failed') failed.push(provider);
+    }
+    const before = this.allPositions.length;
+    this.allPositions = this.allPositions.filter(p => {
+      if (!p._stale) return true;
+      const src = String(p._source || '');
+      return failed.some(name => src === name || src.startsWith(`${name}_`));
+    });
+    if (this.allPositions.length !== before) {
+      this._positionsToken++;
+      this.forceRender();
+    }
+  }
+
+  scheduleSnapshotSave() {
+    clearTimeout(this._snapshotSaveTimer);
+    this._snapshotSaveTimer = setTimeout(() => {
+      if (this.isLoading || this.allPositions.length === 0) return;
+      try {
+        const base = this.getBaseCurrency();
+        // Sparklines only for rows big enough to be listed; dust rows still count toward totals.
+        const minThreshold = this.settings?.minBalanceThreshold || 100;
+        const positions = this.allPositions.map(row => {
+          const { _stale, isHiddenPosition, isManuallyHidden, ...rest } = row;
+          if (rest.priceHistory) {
+            rest.priceHistory = Math.abs(Number(rest.value) || 0) >= minThreshold
+              ? downsampleHistory(rest.priceHistory, SNAPSHOT_HISTORY_POINTS)
+              : undefined;
+          }
+          return rest;
+        });
+        localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({
+          savedAt: Date.now(),
+          fingerprint: snapshotFingerprint(this.settings),
+          baseCurrency: base,
+          fxRates: this._fxRatesBase === base ? Array.from(this._fxRates.entries()) : [],
+          positions
+        }));
+      } catch (_) { /* storage full or unavailable: next load simply starts empty */ }
+    }, SNAPSHOT_SAVE_DELAY_MS);
+  }
+
   appendPositions(newRows, source, options = {}) {
     const markCompleted = options.markCompleted !== false;
+    if (Array.isArray(newRows)) {
+      for (const row of newRows) row._source = source;
+    }
+    const droppedStale = this.dropStaleRows(source, Array.isArray(newRows) ? newRows : [], { partial: !markCompleted });
     if (!Array.isArray(newRows) || newRows.length === 0) {
+      // A complete report with no rows means the source holds nothing now.
+      const before = this.allPositions.length;
+      if (markCompleted) this.allPositions = this.allPositions.filter(p => p._source !== source);
+      if (this.allPositions.length !== before) this._positionsToken++;
+      if (droppedStale || this.allPositions.length !== before) this.forceRender();
       if (markCompleted) {
         this.providerStatus.set(source, 'completed');
         this.providerErrors.delete(source);
@@ -191,15 +352,17 @@ export class IncrementalPortfolioRenderer {
         console.error('[Portfolio] Failed to apply removeFilter:', e);
       }
     }
-    // Fallback: If this source already reported data, remove old positions from same source
-    // This prevents accumulating duplicates when refreshing if no filter is provided
-    else if (this.providerStatus.has(source)) {
-      // Build a set of keys from new rows for efficient lookup
-      const newKeys = new Set(newRows.map(r => r._changeDetectionKey || `${r.asset}_${r.exchange}`));
-      // Filter out positions that will be replaced by new ones
+    // Otherwise a source's rows are replaced by its new report: all of them for a complete report
+    // (closed positions disappear), only the matching ones for a partial one. This used to depend
+    // on providerStatus, which beginRefresh() clears, so every 30s refresh appended a full extra
+    // copy of each source's rows (hidden by aggregation, but allPositions grew without bound).
+    else {
+      const keyOf = r => r._changeDetectionKey || `${r.asset}_${r.exchange}`;
+      const newKeys = new Set(newRows.map(keyOf));
       this.allPositions = this.allPositions.filter(p => {
-        const key = p._changeDetectionKey || `${p.asset}_${p.exchange}`;
-        return !newKeys.has(key);
+        if (p._source === source) return !markCompleted && !newKeys.has(keyOf(p));
+        // Rows without a source predate source tagging; keep the old replace-by-key behavior.
+        return p._source || !newKeys.has(keyOf(p));
       });
     }
 
@@ -362,8 +525,14 @@ export class IncrementalPortfolioRenderer {
     const sourceFunding = position?.sourceFunding ?? position?.funding;
     const hasRate = Number.isFinite(rate) && rate > 0;
 
+    const carry = this._staleCarry.size > 0
+      ? this._staleCarry.get(position?._changeDetectionKey || `${position?.asset}_${position?.exchange}`)
+      : null;
+
     return {
       ...position,
+      priceHistory: position?.priceHistory || carry?.priceHistory,
+      change24h: position?.change24h ?? carry?.change24h ?? null,
       price: sourcePrice,
       sourcePrice,
       sourceValue,
@@ -454,6 +623,7 @@ export class IncrementalPortfolioRenderer {
     const allFinished = pending.length === 0;
 
     if (allFinished) {
+      this.purgeStaleRows();
       this.hideGreetingLoader();
       this.updateLastUpdatedLabel();
       // Trigger Pyth enrichment for positions missing 24h change
@@ -466,13 +636,32 @@ export class IncrementalPortfolioRenderer {
    */
   async enrichMissing24hWithPyth() {
     // Find positions missing 24h change
+    // Custom manual entries have a fixed, user-entered value: a market's 24h move doesn't apply.
     const needsEnrichment = this.allPositions.filter(p =>
-      p.change24h === null || p.change24h === undefined
+      (p.change24h === null || p.change24h === undefined) && p.manualType !== 'custom'
     );
 
     if (needsEnrichment.length === 0) return;
 
     try {
+      // Keyless path: Hyperliquid's prevDayPx by symbol, no feed-id lookup needed.
+      if (this.providers?.pyth?.getDayAgoPricesBySymbol) {
+        const dayAgo = await this.providers.pyth.getDayAgoPricesBySymbol(needsEnrichment.map(p => p.asset));
+        let updated = false;
+        for (const pos of needsEnrichment) {
+          const price24hAgo = dayAgo[String(pos.asset || '').toUpperCase()];
+          if (price24hAgo > 0 && pos.price > 0) {
+            pos.change24h = ((pos.price - price24hAgo) / price24hAgo) * 100;
+            updated = true;
+          }
+        }
+        if (updated) {
+          this._positionsToken++; // mutated change24h in place, invalidate aggregation/totals cache
+          this.render();
+        }
+        return;
+      }
+
       // Get Pyth feed map
       const feedMap = await this.providers?.pyth?.getPriceFeeds?.();
       if (!feedMap) return;
@@ -667,6 +856,8 @@ export class IncrementalPortfolioRenderer {
       });
       summaryEl.innerHTML = heroHtml;
     }
+
+    if (!this.isLoading) this.scheduleSnapshotSave();
 
     // Store in global cache for other functions
     window.cachedPositions = sorted;

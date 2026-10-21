@@ -128,11 +128,27 @@ export class ManualFetcher {
                     return buildStockRow(pos, lastQuote || null, { quoteLoading: !lastQuote });
                 }));
                 rows.push(...customRows);
+                // Partial update: leave the Pyth-backed rows (still on screen from the last
+                // fetch) alone until their own prices arrive below.
                 this.renderer.appendPositions(rows.map(row => ({ ...row })), 'Manual', {
-                    ...MANUAL_REMOVE_OPTIONS,
+                    removeFilter: (p) => p.isManual && (p.manualType === 'stock' || p.manualType === 'custom'),
                     markCompleted: false
                 });
             }
+
+            // Both quote sources are independent: start them together instead of one after the other.
+            const feedIds = pythPositions.map(p => p.feedId).filter(Boolean);
+            this.providers.pyth?.registerFeedHints?.(pythPositions.map(p => ({
+                id: p.feedId,
+                symbol: p.symbol,
+                category: p.category || 'crypto'
+            })));
+            const pythPricesPromise = feedIds.length > 0
+                ? Promise.resolve(this.providers.pyth.getLatestByFeedIds(feedIds, 5000)).catch(e => {
+                    console.warn('[Manual] Failed to fetch Pyth prices:', e);
+                    return {};
+                })
+                : Promise.resolve({});
 
             // Stock/ETF/FX/Index positions via Yahoo Finance. Single batched quote request
             // covers everything in one round-trip.
@@ -164,15 +180,7 @@ export class ManualFetcher {
 
             // Fetch prices for Pyth positions
             if (pythPositions.length > 0) {
-                const feedIds = pythPositions.map(p => p.feedId).filter(Boolean);
-                let pythPrices = {};
-                if (feedIds.length > 0) {
-                    try {
-                        pythPrices = await this.providers.pyth.getLatestByFeedIds(feedIds, 5000) || {};
-                    } catch (e) {
-                        console.warn('[Manual] Failed to fetch Pyth prices:', e);
-                    }
-                }
+                const pythPrices = (await pythPricesPromise) || {};
 
                 // Pyth can be down or drop a feed. Equities/ETFs fall back to Yahoo on the same
                 // ticker; crypto tickers are ambiguous on Yahoo, so those stay unavailable rather

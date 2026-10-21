@@ -7,11 +7,10 @@
     <title>Viewport | Portfolio Tracker</title>
 
     <!-- Resource hints for critical APIs -->
-    <link rel="preconnect" href="https://hermes.pyth.network" crossorigin>
-    <link rel="preconnect" href="https://api.coingecko.com" crossorigin>
-    <link rel="dns-prefetch" href="https://api.hyperliquid.xyz">
+    <link rel="preconnect" href="https://api.hyperliquid.xyz" crossorigin>
     <link rel="dns-prefetch" href="https://blockchain.info">
     <link rel="dns-prefetch" href="https://api.zcha.in">
+    <link rel="dns-prefetch" href="https://api.open-meteo.com">
 
     <!-- Favicon -->
     <!-- SVG adapts to light/dark tab strips; PNG is the fallback for browsers without SVG favicons.
@@ -35,6 +34,51 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <link rel="stylesheet" href="./styles.css?v=2.9.16">
+    <!-- Preload the whole module graph so a cold load fetches it in one parallel wave instead of
+         one round trip per import level (app.js → providers → http client → …). Keep in sync with
+         the static imports of app.js / modules/app-init.js and the fetchers app.js imports at boot. -->
+    <link rel="modulepreload" href="./modules/app-init.js?v=2.9.16">
+    <link rel="modulepreload" href="./app.js?v=2.9.16">
+    <link rel="modulepreload" href="/modules/core/console-policy.js">
+    <link rel="modulepreload" href="/modules/core/settings.js">
+    <link rel="modulepreload" href="/modules/core/themes.js">
+    <link rel="modulepreload" href="/modules/http/client.js">
+    <link rel="modulepreload" href="/modules/http/cors-proxy.js">
+    <link rel="modulepreload" href="/modules/utils/currency.js">
+    <link rel="modulepreload" href="/modules/utils/asset-mapping.js">
+    <link rel="modulepreload" href="/modules/utils/chain-mapping.js">
+    <link rel="modulepreload" href="/modules/utils/entry-price-tracker.js">
+    <link rel="modulepreload" href="/modules/utils/coingecko-batcher.js">
+    <link rel="modulepreload" href="/modules/domain/portfolio.js">
+    <link rel="modulepreload" href="/modules/domain/incremental-portfolio.js">
+    <link rel="modulepreload" href="/modules/domain/portfolio-manager.js">
+    <link rel="modulepreload" href="/modules/ui/unicode-animations.js">
+    <link rel="modulepreload" href="/modules/ui/hero.js">
+    <link rel="modulepreload" href="/modules/ui/positions.js">
+    <link rel="modulepreload" href="/modules/ui/mobile-menu.js">
+    <link rel="modulepreload" href="/modules/ui/settings-dialog.js">
+    <link rel="modulepreload" href="/modules/features/manual-positions.js">
+    <link rel="modulepreload" href="/modules/features/rain.js">
+    <link rel="modulepreload" href="/modules/features/weather.js">
+    <link rel="modulepreload" href="/modules/data/providers/hyperliquid.js">
+    <link rel="modulepreload" href="/modules/data/providers/lighter.js">
+    <link rel="modulepreload" href="/modules/data/providers/stocks.js">
+    <link rel="modulepreload" href="/modules/data/providers/pyth.js">
+    <link rel="modulepreload" href="/modules/data/providers/coingecko.js">
+    <link rel="modulepreload" href="/modules/data/providers/bitcoin.js">
+    <link rel="modulepreload" href="/modules/data/providers/zcash.js">
+    <link rel="modulepreload" href="/modules/data/providers/zerion.js">
+    <link rel="modulepreload" href="/modules/data/providers/cielo.js">
+    <link rel="modulepreload" href="/modules/data/providers/alchemy.js">
+    <link rel="modulepreload" href="/modules/data/providers/helius.js">
+    <link rel="modulepreload" href="/modules/data/providers/opensea.js">
+    <link rel="modulepreload" href="/modules/data/fetchers/hyperliquid-fetcher.js">
+    <link rel="modulepreload" href="/modules/data/fetchers/lighter-fetcher.js">
+    <link rel="modulepreload" href="/modules/data/fetchers/manual-fetcher.js">
+    <link rel="modulepreload" href="/modules/data/fetchers/bitcoin-fetcher.js">
+    <link rel="modulepreload" href="/modules/data/fetchers/zerion-fetcher.js">
+    <link rel="modulepreload" href="/modules/data/fetchers/cielo-fetcher.js">
+    <link rel="modulepreload" href="/modules/data/fetchers/alchemy-helius-fetcher.js">
     <!-- Apply theme synchronously to prevent flash of wrong theme -->
     <script>
         (function () {
@@ -882,10 +926,13 @@
 
         if ('serviceWorker' in navigator && !isLocalhost) {
             let refreshing = false;
+            // On a first visit there is no controller yet, and the new worker claiming the page also
+            // fires controllerchange. Reloading then would load the whole app twice for nothing.
+            const hadController = !!navigator.serviceWorker.controller;
 
             // Reload page when new service worker takes over
             navigator.serviceWorker.addEventListener('controllerchange', () => {
-                if (!refreshing) {
+                if (hadController && !refreshing) {
                     refreshing = true;
                     window.location.reload();
                 }

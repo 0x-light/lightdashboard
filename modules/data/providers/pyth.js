@@ -1,6 +1,8 @@
 // Pyth provider (Hermes REST) with CORS proxy support
 import { fetchWithCorsProxy } from '../../http/cors-proxy.js';
 import { HttpClient } from '../../http/client.js';
+import * as Hyperliquid from './hyperliquid.js';
+import * as Stocks from './stocks.js';
 
 const HERMES_BASE = 'https://hermes.pyth.network';
 const LOCAL_FAILURE_THRESHOLD = 3;
@@ -349,7 +351,270 @@ export async function getFeedsWithMetadata(timeoutMs = 15000) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Keyless prices for Pyth feed ids
+//
+// Since Pyth's Core upgrade (Aug 26, 2026) every Hermes price endpoint (latest, by timestamp,
+// streaming, benchmarks) answers 401 without an API key, and browser use of a key needs a
+// backend minting short-lived tokens. Only /v2/price_feeds (metadata) is still open. So feed ids
+// are mapped to symbols and priced from keyless sources the app already uses:
+//   crypto → Hyperliquid (allMids / metaAndAssetCtxs prevDayPx / candleSnapshot), shared with
+//            the Hyperliquid fetcher's identical requests through HttpClient's in-flight dedup;
+//   equities, ETFs, FX, metals, commodities → Yahoo spark (price, previous close and intraday
+//            history in one batched call, via our /api/yahoo proxy).
+// Set to false to go back to Hermes once an authenticated route exists.
+const HERMES_PRICES_NEED_KEY = true;
+const KEYLESS_QUOTE_TTL_MS = 10 * 1000;
+const KEYLESS_CANDLE_TTL_MS = 60 * 1000;
+
+const feedHints = new Map(); // feedId -> { symbol, category }
+const keylessQuoteCache = new Map(); // feedId -> { quote, at }
+const keylessCandleCache = new Map(); // coin -> { promise, at }
+let hlMidsCache = null; // { at, promise }
+let hlPrevDayCache = null; // { at, promise }
+
+// Yahoo tickers for the non-equity symbols Pyth uses. Spot metals and crude aren't on Yahoo's
+// spark endpoint, so the front-month future stands in (within ~1% of spot).
+const YAHOO_COMMODITY_SYMBOLS = {
+  XAU: 'GC=F', XAG: 'SI=F', XPT: 'PL=F', XPD: 'PA=F', XCU: 'HG=F',
+  WTI: 'CL=F', USOILSPOT: 'CL=F', BRENT: 'BZ=F', UKOILSPOT: 'BZ=F', NGAS: 'NG=F', NATGAS: 'NG=F'
+};
+
+/**
+ * Callers that already know a feed's symbol (manual positions store it) register it here, so
+ * pricing doesn't have to download Pyth's ~1MB feed list just to learn that an id means "ETH".
+ */
+export function registerFeedHints(hints) {
+  for (const hint of Array.isArray(hints) ? hints : []) {
+    const id = normalizeFeedId(hint?.id);
+    const symbol = String(hint?.symbol || '').trim().toUpperCase();
+    if (id && symbol) feedHints.set(id, { symbol, category: String(hint.category || 'crypto').toLowerCase() });
+  }
+}
+
+async function resolveFeedSymbols(ids) {
+  const out = new Map();
+  const missing = [];
+  for (const id of ids) {
+    if (feedHints.has(id)) out.set(id, feedHints.get(id));
+    else missing.push(id);
+  }
+  if (missing.length === 0) return out;
+  const metadata = loadCachedMetadata() || await getFeedsWithMetadata();
+  const byId = new Map((metadata || []).map(feed => [feed.id, feed]));
+  for (const id of missing) {
+    const feed = byId.get(id);
+    if (feed?.symbol) out.set(id, { symbol: feed.symbol, category: feed.category || 'crypto' });
+  }
+  return out;
+}
+
+function yahooSymbolForFeed({ symbol, category }) {
+  if (category === 'fx') {
+    const [base, quote] = symbol.split('/');
+    return base && quote ? `${base}${quote}=X` : null;
+  }
+  if (category === 'metal' || category === 'commodity') return YAHOO_COMMODITY_SYMBOLS[symbol] || null;
+  if (['equity', 'etf', 'fund', 'stock', 'index'].includes(category)) {
+    return /^[A-Z^][A-Z0-9.\-=^]{0,11}$/.test(symbol) ? symbol : null;
+  }
+  return null;
+}
+
+function getHyperliquidMids() {
+  const now = Date.now();
+  if (hlMidsCache && now - hlMidsCache.at < KEYLESS_QUOTE_TTL_MS) return hlMidsCache.promise;
+  const promise = Hyperliquid.fetchAllMids(4000).then(mids => mids || {}).catch(() => ({}));
+  hlMidsCache = { at: now, promise };
+  return promise;
+}
+
+// prevDayPx lives in metaAndAssetCtxs (~70KB), so it's only fetched when a 24h-ago price is asked for.
+function getHyperliquidPrevDay() {
+  const now = Date.now();
+  if (hlPrevDayCache && now - hlPrevDayCache.at < KEYLESS_QUOTE_TTL_MS) return hlPrevDayCache.promise;
+  const promise = Hyperliquid.fetchMetaAndAssetCtxs(4000).then(metaAndCtxs => {
+    const prevDay = {};
+    const universe = metaAndCtxs?.[0]?.universe || [];
+    const ctxs = metaAndCtxs?.[1] || [];
+    for (let i = 0; i < ctxs.length; i++) {
+      const name = universe[i]?.name;
+      const prev = Number(ctxs[i]?.prevDayPx);
+      if (name && prev > 0) prevDay[name] = prev;
+    }
+    return prevDay;
+  }).catch(() => ({}));
+  hlPrevDayCache = { at: now, promise };
+  return promise;
+}
+
+// Hyperliquid lists some low-priced coins per 1000 units (kPEPE, kSHIB, kBONK).
+function hyperliquidCoinFor(symbol, mids) {
+  if (Number(mids[symbol]) > 0) return { coin: symbol, scale: 1 };
+  if (Number(mids[`k${symbol}`]) > 0) return { coin: `k${symbol}`, scale: 1 / 1000 };
+  return null;
+}
+
+/**
+ * Current quote per feed id: { price, priceHistory?, source, coin?/yahooSymbol? }, plus
+ * prevDayPrice where the source returns it with the quote (Yahoo) — Hyperliquid's comes from
+ * getPrevDayPrice(). Ids that no keyless source covers are absent.
+ */
+async function getKeylessQuotes(ids) {
+  const now = Date.now();
+  const result = {};
+  const toFetch = [];
+  for (const id of ids) {
+    const cached = keylessQuoteCache.get(id);
+    if (cached && now - cached.at < KEYLESS_QUOTE_TTL_MS) {
+      if (cached.quote) result[id] = cached.quote;
+    } else {
+      toFetch.push(id);
+    }
+  }
+  if (toFetch.length === 0) return result;
+
+  const symbols = await resolveFeedSymbols(toFetch);
+  const cryptoIds = toFetch.filter(id => symbols.get(id)?.category === 'crypto');
+  const yahooById = new Map();
+  for (const id of toFetch) {
+    const meta = symbols.get(id);
+    const yahooSymbol = meta && meta.category !== 'crypto' ? yahooSymbolForFeed(meta) : null;
+    if (yahooSymbol) yahooById.set(id, yahooSymbol);
+  }
+
+  const [mids, yahooQuotes] = await Promise.all([
+    cryptoIds.length > 0 ? getHyperliquidMids() : null,
+    yahooById.size > 0
+      ? Stocks.getQuotes(Array.from(new Set(yahooById.values())), { timeoutMs: 4000 }).catch(() => ({}))
+      : {}
+  ]);
+
+  for (const id of toFetch) {
+    let quote = null;
+    const meta = symbols.get(id);
+    if (mids && meta?.category === 'crypto') {
+      const match = hyperliquidCoinFor(meta.symbol, mids);
+      if (match) {
+        quote = {
+          price: Number(mids[match.coin]) * match.scale,
+          source: 'hyperliquid',
+          coin: match.coin,
+          scale: match.scale
+        };
+      }
+    } else if (yahooById.has(id)) {
+      const q = yahooQuotes?.[yahooById.get(id)];
+      if (Number(q?.price) > 0) {
+        quote = {
+          price: Number(q.price),
+          prevDayPrice: Number(q.previousClose) > 0 ? Number(q.previousClose) : null,
+          priceHistory: q.priceHistory,
+          source: 'yahoo',
+          yahooSymbol: yahooById.get(id)
+        };
+      }
+    }
+    keylessQuoteCache.set(id, { quote, at: now });
+    if (quote) result[id] = quote;
+  }
+  return result;
+}
+
+function getHyperliquidCandles(coin, now) {
+  const cached = keylessCandleCache.get(coin);
+  if (cached && now - cached.at < KEYLESS_CANDLE_TTL_MS) return cached.promise;
+  const promise = Hyperliquid.fetchCandles(coin, '15m', now - 24 * 60 * 60 * 1000, now, 5000).catch(() => []);
+  keylessCandleCache.set(coin, { promise, at: now });
+  return promise;
+}
+
+function downsample(points, count) {
+  if (!Array.isArray(points) || points.length <= count) return points || [];
+  const step = (points.length - 1) / (count - 1);
+  const out = [];
+  for (let i = 0; i < count; i++) out.push(points[Math.round(i * step)]);
+  return out;
+}
+
+async function getKeylessHistory(ids, points, endTime) {
+  const quotes = await getKeylessQuotes(ids);
+  const results = {};
+  await Promise.all(ids.map(async (id) => {
+    const quote = quotes[id];
+    let history = [];
+    if (quote?.source === 'hyperliquid') {
+      const candles = await getHyperliquidCandles(quote.coin, endTime);
+      history = candles.map(c => ({ timestamp: Math.floor(c.t / 1000), price: c.c * quote.scale }));
+    } else if (quote?.source === 'yahoo' && Array.isArray(quote.priceHistory)) {
+      history = quote.priceHistory.map(p => ({ timestamp: Math.floor(p.timestamp / 1000), price: p.price }));
+    }
+    results[id] = downsample(history.filter(p => Number.isFinite(p.price) && p.price > 0), points);
+  }));
+  return results;
+}
+
+async function getKeylessPricesAt(ids, timestampSeconds) {
+  const quotes = await getKeylessQuotes(ids);
+  const prices = {};
+  const targetMs = timestampSeconds * 1000;
+  // "24h ago" is what nearly every caller asks for, and both sources already return it.
+  const isDayAgo = Math.abs(Date.now() - 24 * 60 * 60 * 1000 - targetMs) < 2 * 60 * 60 * 1000;
+  const prevDay = isDayAgo && Object.values(quotes).some(q => q.source === 'hyperliquid')
+    ? await getHyperliquidPrevDay()
+    : {};
+  await Promise.all(ids.map(async (id) => {
+    const quote = quotes[id];
+    if (!quote) return;
+    const dayAgoPrice = quote.source === 'hyperliquid'
+      ? Number(prevDay[quote.coin]) * quote.scale
+      : quote.prevDayPrice;
+    if (isDayAgo && dayAgoPrice > 0) {
+      prices[id] = dayAgoPrice;
+      return;
+    }
+    if (quote.source === 'hyperliquid') {
+      const ageDays = (Date.now() - targetMs) / 86400000;
+      // Hyperliquid keeps the latest 5000 candles per interval: 1m covers ~3.5 days, 1h ~200.
+      const interval = ageDays < 3 ? '1m' : (ageDays < 200 ? '1h' : '1d');
+      const span = { '1m': 60e3, '1h': 3600e3, '1d': 86400e3 }[interval];
+      const candles = await Hyperliquid.fetchCandles(quote.coin, interval, targetMs - span, targetMs + span, 5000).catch(() => []);
+      const closest = candles.sort((a, b) => Math.abs(a.t - targetMs) - Math.abs(b.t - targetMs))[0];
+      if (closest?.c > 0) prices[id] = closest.c * quote.scale;
+    } else if (quote.source === 'yahoo') {
+      const date = new Date(targetMs).toISOString().slice(0, 10);
+      const price = await Stocks.getHistoricalPrice(quote.yahooSymbol, date).catch(() => null);
+      if (price > 0) prices[id] = price;
+    }
+  }));
+  return prices;
+}
+
+/**
+ * 24h-ago USD prices keyed by crypto symbol, straight from Hyperliquid's prevDayPx. Lets the
+ * portfolio fill missing 24h changes without first mapping symbols to Pyth feed ids (which needs
+ * the ~1MB feed list). Symbols Hyperliquid doesn't list are absent.
+ */
+export async function getDayAgoPricesBySymbol(symbols) {
+  const [mids, prevDay] = await Promise.all([getHyperliquidMids(), getHyperliquidPrevDay()]);
+  const out = {};
+  for (const raw of Array.isArray(symbols) ? symbols : []) {
+    const symbol = String(raw || '').toUpperCase();
+    const match = symbol ? hyperliquidCoinFor(symbol, mids) : null;
+    const prev = match ? Number(prevDay[match.coin]) : 0;
+    if (prev > 0) out[symbol] = prev * match.scale;
+  }
+  return out;
+}
+
 export async function getLatestByFeedIds(feedIds, timeoutMs = 10000, bypassCache = false) {
+  if (HERMES_PRICES_NEED_KEY) {
+    const ids = Array.from(new Set((feedIds || []).map(normalizeFeedId).filter(Boolean)));
+    if (ids.length === 0) return {};
+    if (bypassCache) ids.forEach(id => keylessQuoteCache.delete(id));
+    const quotes = await getKeylessQuotes(ids);
+    return Object.fromEntries(Object.entries(quotes).map(([id, q]) => [id, q.price]));
+  }
   if (isLocalPythDisabled()) return {};
   const normalizedIds = normalizeFeedIds(feedIds);
   if (normalizedIds.length === 0) return {};
@@ -359,6 +624,10 @@ export async function getLatestByFeedIds(feedIds, timeoutMs = 10000, bypassCache
 }
 
 export async function getAtTimestampByFeedIds(feedIds, timestampSeconds, timeoutMs = 10000) {
+  if (HERMES_PRICES_NEED_KEY) {
+    const ids = Array.from(new Set((feedIds || []).map(normalizeFeedId).filter(Boolean)));
+    return ids.length > 0 ? getKeylessPricesAt(ids, Number(timestampSeconds)) : {};
+  }
   if (isLocalPythDisabled()) return {};
   return fetchTimestampPricesResilient(feedIds, timestampSeconds, timeoutMs);
 }
@@ -401,6 +670,10 @@ const enqueue = (task) => {
 
 export async function getBatch24hPriceHistory(feedIds, points = 48, endTime = Date.now()) {
   if (!feedIds || feedIds.length === 0) return {};
+  if (HERMES_PRICES_NEED_KEY) {
+    const ids = Array.from(new Set(feedIds.map(normalizeFeedId).filter(Boolean)));
+    return ids.length > 0 ? getKeylessHistory(ids, points, endTime) : {};
+  }
 
   // Normalize, dedupe, and optionally filter unknown/invalid IDs.
   const uniqueFeedIds = normalizeFeedIds(feedIds);
@@ -556,4 +829,4 @@ export async function get24hPriceHistory(feedId, timeoutMs = 10000, points = 96)
 // Exposed for tests; not meant for general consumers.
 export const _internal = { parsePythFeed, buildFlatMap };
 
-export default { getPriceFeeds, getFeedsWithMetadata, getLatestByFeedIds, getAtTimestampByFeedIds, get24hPriceHistory, getBatch24hPriceHistory };
+export default { getPriceFeeds, getFeedsWithMetadata, getLatestByFeedIds, getAtTimestampByFeedIds, get24hPriceHistory, getBatch24hPriceHistory, registerFeedHints, getDayAgoPricesBySymbol };

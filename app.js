@@ -49,13 +49,6 @@ function checkVersion() {
 
 checkVersion();
 
-// Listen for service worker updates and auto-refresh
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    window.location.reload();
-  });
-}
-
 // ============================================================================
 // SHARED STATE & UTILS
 // ============================================================================
@@ -366,13 +359,24 @@ async function _doRenderPortfolioIncremental() {
 
   // Initialize Portfolio Manager and Fetchers (Singleton pattern)
   if (!window._portfolioManager) {
-    const { HyperliquidFetcher } = await import('./modules/data/fetchers/hyperliquid-fetcher.js');
-    const { LighterFetcher } = await import('./modules/data/fetchers/lighter-fetcher.js');
-    const { ZerionFetcher } = await import('./modules/data/fetchers/zerion-fetcher.js');
-    const { CieloFetcher } = await import('./modules/data/fetchers/cielo-fetcher.js');
-    const { AlchemyHeliusFetcher } = await import('./modules/data/fetchers/alchemy-helius-fetcher.js');
-    const { BitcoinZcashFetcher } = await import('./modules/data/fetchers/bitcoin-fetcher.js');
-    const { ManualFetcher } = await import('./modules/data/fetchers/manual-fetcher.js');
+    // Load all fetchers in one parallel wave (sequential awaits cost one round trip each on a cold load).
+    const [
+      { HyperliquidFetcher },
+      { LighterFetcher },
+      { ZerionFetcher },
+      { CieloFetcher },
+      { AlchemyHeliusFetcher },
+      { BitcoinZcashFetcher },
+      { ManualFetcher }
+    ] = await Promise.all([
+      import('./modules/data/fetchers/hyperliquid-fetcher.js'),
+      import('./modules/data/fetchers/lighter-fetcher.js'),
+      import('./modules/data/fetchers/zerion-fetcher.js'),
+      import('./modules/data/fetchers/cielo-fetcher.js'),
+      import('./modules/data/fetchers/alchemy-helius-fetcher.js'),
+      import('./modules/data/fetchers/bitcoin-fetcher.js'),
+      import('./modules/data/fetchers/manual-fetcher.js')
+    ]);
 
     const renderer = new IncrementalPortfolioRenderer({
       providers,
@@ -2777,20 +2781,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     HttpClient._internal.inFlightByKey.clear();
   }
 
-  // Force service worker update if outdated or stale session
-  if ('serviceWorker' in navigator) {
-    try {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const registration of registrations) {
-        await registration.update();
-      }
-      // Clear API cache if this is a fresh session or stale
-      if (shouldForceFresh && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_API_CACHE' });
-      }
-    } catch (e) {
-      // Silently ignore SW update failures
-    }
+  // Clear the SW's API cache if this is a fresh session or stale. The worker itself is checked for
+  // updates by the registration script in index.html; awaiting that here would hold the first
+  // render behind a network round trip for sw.js.
+  if (shouldForceFresh && navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_API_CACHE' });
   }
 
 
@@ -3083,8 +3078,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 
 
 
-  // NON-CRITICAL: Health checks in background
-  runHealthChecks().catch(() => { });
+  // NON-CRITICAL: Health checks only feed the mobile menu. Run them once the page is idle so their
+  // requests (including Pyth's ~1MB feed list on a cold cache) don't compete with the portfolio fetch.
+  const scheduleHealthChecks = () => runHealthChecks().catch(() => { });
+  if ('requestIdleCallback' in window) {
+    setTimeout(() => requestIdleCallback(scheduleHealthChecks, { timeout: 10000 }), 8000);
+  } else {
+    setTimeout(scheduleHealthChecks, 10000);
+  }
 
   // NON-CRITICAL: Keyboard shortcuts (lazy loaded if enabled)
   if (settings.enableKeyboardShortcuts) {
@@ -3524,19 +3525,14 @@ window.addEventListener('DOMContentLoaded', async () => {
           HttpClient._internal.inFlightByKey.clear();
         }
 
-        // Force service worker to update and clear stale API cache if hidden long
+        // Check for a new service worker in the background (never block the refresh on it) and
+        // clear stale API cache if the tab was hidden for a while
         if ('serviceWorker' in navigator) {
-          try {
-            const registrations = await navigator.serviceWorker.getRegistrations();
-            for (const registration of registrations) {
-              await registration.update();
-            }
-            // Clear API cache if tab was hidden for a while
-            if (wasHiddenLong && navigator.serviceWorker.controller) {
-              navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_API_CACHE' });
-            }
-          } catch (e) {
-            // Silently ignore SW update failures
+          navigator.serviceWorker.getRegistrations()
+            .then(registrations => registrations.forEach(registration => registration.update().catch(() => { })))
+            .catch(() => { });
+          if (wasHiddenLong && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_API_CACHE' });
           }
         }
 

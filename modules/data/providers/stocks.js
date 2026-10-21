@@ -133,6 +133,29 @@ async function resolveListingCurrencies(symbols, timeoutMs) {
   if (found) saveListingCurrencies();
 }
 
+const PREPOST_BROKEN_KEY = 'yahoo_prepost_spark_broken_until';
+const PREPOST_RETRY_AFTER_MS = 60 * 60 * 1000;
+let prePostBrokenUntil = null;
+
+function isPrePostSparkBroken() {
+  if (prePostBrokenUntil === null) {
+    try {
+      prePostBrokenUntil = Number(globalThis.window?.localStorage?.getItem(PREPOST_BROKEN_KEY)) || 0;
+    } catch (_) {
+      prePostBrokenUntil = 0;
+    }
+  }
+  return Date.now() < prePostBrokenUntil;
+}
+
+function markPrePostSparkBroken() {
+  prePostBrokenUntil = Date.now() + PREPOST_RETRY_AFTER_MS;
+  try {
+    globalThis.window?.localStorage?.setItem(PREPOST_BROKEN_KEY, String(prePostBrokenUntil));
+  } catch (_) {
+  }
+}
+
 /**
  * Batch quote lookup via Yahoo's `/v8/finance/spark` endpoint. Returns a map keyed by symbol
  * with current price, 24h change %, previous close, and sparkline data points. Missing or
@@ -147,7 +170,8 @@ export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
   const unique = Array.from(new Set(symbols.map(s => String(s || '').trim()).filter(Boolean)));
   if (unique.length === 0) return {};
 
-  const CHUNK = 40;
+  // Yahoo rejects spark requests with more than 20 symbols ("less than or equal to 20").
+  const CHUNK = 20;
   const chunks = [];
   for (let i = 0; i < unique.length; i += CHUNK) chunks.push(unique.slice(i, i + CHUNK));
 
@@ -155,18 +179,22 @@ export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
   const currenciesReady = resolveListingCurrencies(unique, timeoutMs);
   const results = await Promise.all(chunks.map(async (chunk) => {
     const base = `${SPARK_BASE}?symbols=${encodeURIComponent(chunk.join(','))}&range=1d&interval=5m`;
-    try {
-      // Spark responds as { "<SYMBOL>": { close, timestamp, previousClose, ... } }
-      return await HttpClient.getJson(`${base}&includePrePost=true`, { timeoutMs, ttlMs: 0, retries: 1, bypassCache: true });
-    } catch (e) {
-      // Yahoo intermittently 400s extended-hours spark requests (ClassCastException on "end");
-      // regular-session candles are still better than no quote at all.
+    if (!isPrePostSparkBroken()) {
       try {
-        return await HttpClient.getJson(`${base}&includePrePost=false`, { timeoutMs, ttlMs: 0, retries: 0, bypassCache: true });
-      } catch (fallbackError) {
-        console.warn('[Stocks] Spark chunk failed:', fallbackError?.message || fallbackError);
-        return {};
+        // Spark responds as { "<SYMBOL>": { close, timestamp, previousClose, ... } }
+        return await HttpClient.getJson(`${base}&includePrePost=true`, { timeoutMs, ttlMs: 0, retries: 0, bypassCache: true });
+      } catch (e) {
+        // Yahoo 400s/500s extended-hours spark requests (ClassCastException on "end") for long
+        // stretches. Remember that, so later quotes skip the doomed attempt and its round trip.
+        markPrePostSparkBroken();
       }
+    }
+    // Regular-session candles are still better than no quote at all.
+    try {
+      return await HttpClient.getJson(`${base}&includePrePost=false`, { timeoutMs, ttlMs: 0, retries: 1, bypassCache: true });
+    } catch (fallbackError) {
+      console.warn('[Stocks] Spark chunk failed:', fallbackError?.message || fallbackError);
+      return {};
     }
   }));
   await currenciesReady;

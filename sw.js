@@ -10,7 +10,6 @@ const FORCE_CACHE_CLEAR = true;
 // Assets to cache immediately on install
 const STATIC_ASSETS = [
   '/',
-  '/index.html',
   '/styles.css',
   '/app.js',
   '/modules/app-init.js',
@@ -52,7 +51,8 @@ self.addEventListener('install', (event) => {
       }
 
       const cache = await caches.open(CACHE_NAME);
-      await cache.addAll(STATIC_ASSETS);
+      // cache: 'reload' skips the HTTP cache, which can hold the previous version for up to 5 minutes.
+      await cache.addAll(STATIC_ASSETS.map(url => new Request(url, { cache: 'reload' })));
       await self.skipWaiting();
     })()
   );
@@ -99,6 +99,29 @@ async function cloneWithCacheTime(response) {
   });
 }
 
+// Helper: answer from cache when possible and refresh the entry in the background
+function staleWhileRevalidate(event, request, cacheKey) {
+  const cachePromise = caches.open(CACHE_NAME);
+  const networkPromise = fetch(request).then(async (response) => {
+    if (response.ok && response.type === 'basic' && !response.redirected) {
+      const cache = await cachePromise;
+      await cache.put(cacheKey, response.clone());
+    }
+    return response;
+  });
+  // Keep the worker alive until the cache is updated, even when the cached copy answered first.
+  event.waitUntil(networkPromise.then(() => { }, () => { }));
+
+  return cachePromise
+    .then(cache => cache.match(cacheKey))
+    .then(cached => cached || networkPromise)
+    .catch(() => new Response('Offline - please check your connection', {
+      status: 503,
+      statusText: 'Service Unavailable',
+      headers: { 'Content-Type': 'text/plain' }
+    }));
+}
+
 // Helper: Get cache duration for URL
 function getCacheDuration(url) {
   for (const [pattern, duration] of Object.entries(API_CACHE_CONFIG)) {
@@ -109,7 +132,7 @@ function getCacheDuration(url) {
   return 0; // Don't cache by default
 }
 
-// Fetch event - network first for HTML, cache first for other static assets
+// Fetch event - stale-while-revalidate for the app shell, short-lived caching for some APIs
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -135,80 +158,15 @@ self.addEventListener('fetch', (event) => {
       return;
     }
 
-    // For HTML files - always network first to get updates immediately
-    if (request.destination === 'document' || url.pathname.endsWith('.html') || url.pathname === '/') {
-      event.respondWith(
-        fetch(request)
-          .then((response) => {
-            if (response.ok) {
-              const clone = response.clone();
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(request, clone);
-              });
-            }
-            return response;
-          })
-          .catch(() => {
-            // Fallback to cache only if network fails
-            return caches.match(request).then((cached) => {
-              return cached || new Response('Offline - please check your connection', {
-                status: 503,
-                statusText: 'Service Unavailable',
-                headers: { 'Content-Type': 'text/html' }
-              });
-            });
-          })
-      );
-      return;
-    }
-
-    // For JS/CSS files - use network-first to ensure users get latest version
-    if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
-      event.respondWith(
-        fetch(request)
-          .then((response) => {
-            if (response.ok) {
-              const clone = response.clone();
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(request, clone);
-              });
-            }
-            return response;
-          })
-          .catch(() => {
-            // Fallback to cache only if network fails (offline support)
-            return caches.match(request).then((cached) => {
-              return cached || new Response('Offline - please check your connection', {
-                status: 503,
-                statusText: 'Service Unavailable',
-                headers: { 'Content-Type': 'text/javascript' }
-              });
-            });
-          })
-      );
-      return;
-    }
-
-    // For other static assets (images, fonts, etc.) - cache first
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        return cached || fetch(request).then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, clone);
-            });
-          }
-          return response;
-        });
-      }).catch(() => {
-        return new Response('Offline - please check your connection', {
-          status: 503,
-          statusText: 'Service Unavailable',
-          headers: { 'Content-Type': 'text/plain' }
-        });
-      })
-    );
+    // App shell (HTML, JS, CSS, images, fonts): stale-while-revalidate. Serving from cache makes
+    // repeat loads instant and offline-capable; the background fetch refreshes the cache for the
+    // next load. A deploy that changes sw.js (CACHE_VERSION / BUILD_TIMESTAMP) installs a new worker,
+    // which clears these caches and reloads open pages, so a release is picked up within one visit.
+    const isDocument = request.mode === 'navigate' || request.destination === 'document';
+    // Every route serves index.html (see _redirects), so all navigations share one cache entry.
+    // '/index.html' itself 308s to '/' on Pages, and a redirected response can't answer a navigation.
+    const cacheKey = isDocument ? '/' : request;
+    event.respondWith(staleWhileRevalidate(event, request, cacheKey));
     return;
   }
 

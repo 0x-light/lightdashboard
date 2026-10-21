@@ -47,9 +47,9 @@ export function resolvePerpAccountValue(state) {
 export async function fetchPositions(address, timeoutMs = 10000) {
   if (!address) return null;
 
-  // First get meta to find all vaults
-  const meta = await post({ type: 'meta' }, timeoutMs).catch(() => null);
-
+  // `meta` has no vault list (it's { universe, marginTables, collateralToken }), so the old
+  // "discover vaults from meta" step only delayed these by a round trip. HIP-3 positions come
+  // from the dex-specific clearinghouse query below.
   const queries = [
     // Standard dex (main Hyperliquid)
     post({ type: 'clearinghouseState', user: address }, timeoutMs).catch(() => null),
@@ -57,19 +57,6 @@ export async function fetchPositions(address, timeoutMs = 10000) {
     // Query xyz dex (trade.xyz HIP-3 markets)
     post({ type: 'clearinghouseState', user: address, dex: 'xyz' }, timeoutMs).catch(() => null)
   ];
-
-  // Query additional HIP-3 vaults if discovered in meta
-  if (meta?.vaults && Array.isArray(meta.vaults)) {
-    for (const vault of meta.vaults) {
-      queries.push(
-        post({
-          type: 'clearinghouseState',
-          user: address,
-          vaultAddress: vault.vaultAddress || vault.address || vault
-        }, timeoutMs).catch(() => null)
-      );
-    }
-  }
 
   const results = await Promise.all(queries);
   let [perp, spot, xyzDex, ...vaultResults] = results;
