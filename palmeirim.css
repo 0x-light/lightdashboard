@@ -111,7 +111,7 @@ html.pm:root .app-header {
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: baseline;
-  gap: calc(var(--pm-lh) / 3) 3ch;
+  gap: calc(var(--pm-lh) / 3) 1ch;
   max-width: calc(var(--pm-wide) + 2ch);
   margin: 0;
   padding: calc(var(--pm-lh) / 2) 1ch;
