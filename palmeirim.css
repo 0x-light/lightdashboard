@@ -802,7 +802,9 @@ html.pm:root #newWatchlistBody > tr.watchlist-row > td.wl-change {
 html.pm:root #newWatchlistBody > tr.watchlist-row > td.wl-symbol { left: 1ch; text-transform: uppercase; }
 html.pm:root #newWatchlistBody > tr.watchlist-row > td.wl-change { right: 1ch; color: inherit !important; }
 
-html.pm:root #newWatchlistBody > tr.watchlist-row > td.wl-chart { margin-top: calc(var(--pm-lh) / 4); }
+/* Full bleed: out to the tile's sides, and to its bottom border unless the details follow. */
+html.pm:root #newWatchlistBody > tr.watchlist-row > td.wl-chart { margin: calc(var(--pm-lh) / 4) -1ch 0; }
+html.pm:root #newWatchlistBody > tr.watchlist-row:not(.is-open) > td.wl-chart { margin-bottom: calc(var(--pm-lh) / -2); }
 
 html.pm:root #newWatchlistBody .wl-chart .sparkline {
   display: block;
@@ -1918,7 +1920,8 @@ html.pm:root .pm-value__chart {
 html.pm:root .pm-value__svg { display: block; }
 html.pm:root .pm-value__dot { fill: var(--pm-rule); }
 html.pm:root .pm-value__line { stroke: var(--pm-ink); stroke-width: 1.25; }
-html.pm:root .pm-value__empty { margin: 0; color: var(--pm-muted); }
+/* The chart box bleeds to the borders; the message keeps the card's inset. */
+html.pm:root .pm-value__empty { margin: 0; padding: 0 var(--pm-card-x) var(--pm-card-x); color: var(--pm-muted); }
 html.pm:root .pm-value__cursor { stroke: var(--pm-muted); stroke-width: 1; }
 html.pm:root .pm-value__point { fill: var(--pm-ink); stroke: var(--bg); stroke-width: 1; }
 
