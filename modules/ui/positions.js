@@ -34,7 +34,7 @@ export const POSITION_COLUMNS = [
   { key: 'price', label: 'Price', sort: 'price', num: true },
   { key: 'pnl', label: 'P&L', sort: 'pnl', num: true },
   { key: 'change', label: '24h %', sort: 'change', num: true },
-  { key: 'chart', label: '24h', headClass: 'chart', cellClass: 'chart-cell chart' },
+  { key: 'chart', label: 'Chart', headClass: 'chart', cellClass: 'chart-cell chart' },
   { key: 'value', label: 'Value', sort: 'value', num: true },
   { key: 'funding', label: 'Funding', sort: 'funding', num: true },
   { key: 'expiry', label: 'Expiry', sort: 'expiry' },
