@@ -2156,17 +2156,22 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
 @media (pointer: coarse) {
   html.pm:root { --pm-touch: calc(var(--pm-lh) * 2.4); }
 
-  /* Lists that drop down: GO TO and MENU. */
+  /* Lists that drop down: GO TO and MENU. Each item is a tall box with its text on
+     the first line, top left, the key cell running the full height beside it. */
   html.pm:root .app-header.pm-menu-open .header-actions .btn-text,
   html.pm:root .app-header.pm-sections-open .pm-nav .chip__label {
     min-height: var(--pm-touch);
-    align-items: center;
+    align-items: flex-start;
   }
   html.pm:root .app-header.pm-sections-open .pm-nav .chip { display: inline-flex; width: 100%; }
+  /* The key cell is a square the row's height, its glyph in the middle. */
   html.pm:root .app-header.pm-menu-open .header-actions .btn-text::before {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     align-self: stretch;
+    width: var(--pm-touch);
+    padding: 0;
   }
 
   /* A hit area the size of a finger around what stays one line tall. */
