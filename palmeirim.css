@@ -2171,14 +2171,14 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
 
 /* ── Touch ──
    The chips a finger uses grow a little: 1.6 lines tall, with 0.3 of a line above
-   and below the text, in step with their 1ch sides. The lists keep their own gaps;
+   and below the text, in step with their 1ch sides. The lists keep their own spacing;
    an invisible reach above and below each chip fills the gap, so a tap lands.
    Fields grow the same way, since a field is a box to type in. */
 @media (pointer: coarse) {
   html.pm:root {
     --pm-pad: calc(var(--pm-lh) * 0.3);
     --pm-tall: calc(var(--pm-lh) + var(--pm-pad) * 2);
-    --pm-reach: calc(var(--pm-lh) * 0.4);
+    --pm-reach: calc(var(--pm-lh) / 6); /* half the gap between chips in a list */
   }
 
   /* Lists that drop down (GO TO, MENU), the window's keys, the tabs. */
@@ -2188,8 +2188,6 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
   html.pm:root .sticker-window-header .btn-text,
   html.pm:root .settings-tab { padding-top: var(--pm-pad); padding-bottom: var(--pm-pad); }
   html.pm:root .app-header.pm-menu-open .header-actions .btn-text { padding-left: 1ch; }
-  html.pm:root .app-header.pm-menu-open .header-actions,
-  html.pm:root .app-header.pm-sections-open .pm-nav { gap: calc(var(--pm-reach) * 2); }
   html.pm:root .app-header.pm-sections-open .pm-nav .chip { display: inline-flex; width: 100%; }
 
   /* Reach: the chip, plus a little above and below it. */
@@ -2242,7 +2240,7 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
   html.pm:root .settings-panes select,
   html.pm:root .sticker-window-content input:not([type="checkbox"]):not([type="range"]),
   html.pm:root .sticker-window-content select { height: var(--pm-tall); }
-  html.pm:root .column-order { display: grid; gap: calc(var(--pm-reach) * 2); }
+  html.pm:root .column-order { display: grid; gap: calc(var(--pm-lh) / 3); }
   html.pm:root .column-order__name { flex: 1 1 auto; }
   html.pm:root .column-order__move { min-width: 4ch; padding: var(--pm-pad) 1ch; text-align: center; }
 }
