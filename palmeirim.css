@@ -1131,10 +1131,30 @@ html.pm:root .comic-viewer {
   z-index: 10001;
   display: flex;
   flex-direction: column;
+}
+
+/* The backdrop and the bar fade as the strip is swiped away (app.js sets --comic-backdrop),
+   so the page shows through. */
+html.pm:root .comic-viewer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: var(--bg);
+  opacity: var(--comic-backdrop, 1);
 }
 
 html.pm:root .comic-viewer[hidden] { display: none; }
+
+html.pm:root .comic-viewer.is-settling :is(.comic-viewer__img, .comic-viewer__bar),
+html.pm:root .comic-viewer.is-settling::before {
+  transition: transform 200ms cubic-bezier(0.2, 0, 0, 1), opacity 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.pm:root .comic-viewer.is-settling :is(.comic-viewer__img, .comic-viewer__bar),
+  html.pm:root .comic-viewer.is-settling::before { transition: none; }
+}
 
 html.pm:root .comic-viewer__scroll {
   flex: 1;
@@ -1174,6 +1194,7 @@ html.pm:root .comic-viewer__bar {
   align-items: center;
   padding: calc(var(--pm-lh) / 2) 1ch calc(var(--pm-lh) / 2 + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--pm-rule);
+  opacity: var(--comic-backdrop, 1);
 }
 
 html.pm:root .comic-viewer__close {

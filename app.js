@@ -2921,8 +2921,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // Tapping the strip opens it full screen, fitted to the screen. Pinch zooms around the
     // fingers and one finger pans (Sunday strips are unreadable fitted to a phone's width);
-    // on a computer a trackpad pinch or ctrl + wheel zooms. Esc or Close goes back to the
-    // same place on the page.
+    // on a computer a trackpad pinch or ctrl + wheel zooms. A swipe up or down, Esc or Close
+    // goes back to the same place on the page.
     const comicContainer = document.getElementById('newComic');
     let comicViewer = null;
     let comicViewerOpener = null;
@@ -3011,14 +3011,51 @@ window.addEventListener('DOMContentLoaded', async () => {
         const startGesture = () => {
           gesture = pointers.size ? { ...fingers(), base: comicBase(), ...comicZoom } : null;
         };
+
+        // At fitted size one finger swipes the strip away: it follows the finger, the page
+        // shows through as it goes, and a long or fast swipe up or down closes the viewer.
+        // A short swipe springs back.
+        const strip = comicViewer.querySelector('.comic-viewer__img');
+        let swipe = null;
+        const setSwipe = (dx, dy) => {
+          strip.style.transform = dx || dy ? `translate(${dx}px, ${dy}px)` : '';
+          comicViewer.style.setProperty('--comic-backdrop', String(1 - Math.min(Math.abs(dy) / (innerHeight / 2), 1)));
+        };
+        const settleSwipe = (dx, dy, then) => {
+          const instant = matchMedia('(prefers-reduced-motion: reduce)').matches;
+          comicViewer.classList.add('is-settling');
+          setSwipe(dx, dy);
+          setTimeout(() => {
+            comicViewer.classList.remove('is-settling');
+            then?.();
+          }, instant ? 0 : 200);
+        };
+
         scroller.addEventListener('pointerdown', (e) => {
+          if (comicViewer.classList.contains('is-settling')) return;
           scroller.setPointerCapture(e.pointerId);
           pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          // A second finger turns a swipe into a pinch: put the strip back first.
+          if (swipe) {
+            swipe = null;
+            setSwipe(0, 0);
+          }
           startGesture();
+          if (pointers.size === 1 && comicZoom.s === 1) {
+            swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, dy: 0, vy: 0, t: e.timeStamp };
+          }
         });
         scroller.addEventListener('pointermove', (e) => {
           if (!pointers.has(e.pointerId) || !gesture) return;
           pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          if (swipe) {
+            const dy = e.clientY - swipe.y;
+            const dt = e.timeStamp - swipe.t;
+            if (dt > 0) swipe.vy = (dy - swipe.dy) / dt;
+            Object.assign(swipe, { dx: e.clientX - swipe.x, dy, t: e.timeStamp });
+            setSwipe(swipe.dx, swipe.dy);
+            return;
+          }
           const { m, d } = fingers();
           const g = gesture;
           const s = d && g.d ? clampBetween(g.s * d / g.d, 1, g.base.max) : g.s;
@@ -3033,6 +3070,18 @@ window.addEventListener('DOMContentLoaded', async () => {
         });
         const endPointer = (e) => {
           pointers.delete(e.pointerId);
+          if (swipe?.id === e.pointerId) {
+            const { dx, dy } = swipe;
+            // A finger held still before lifting has no speed left.
+            const vy = e.timeStamp - swipe.t > 100 ? 0 : swipe.vy;
+            swipe = null;
+            const flung = Math.abs(dy) > 20 && Math.abs(vy) > 0.5 && Math.sign(vy) === Math.sign(dy);
+            if (e.type === 'pointerup' && (Math.abs(dy) > 100 || flung)) {
+              settleSwipe(dx, Math.sign(dy) * innerHeight, closeComicViewer);
+            } else {
+              settleSwipe(0, 0);
+            }
+          }
           startGesture();
         };
         scroller.addEventListener('pointerup', endPointer);
@@ -3062,6 +3111,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       big.alt = img.alt;
       Object.assign(comicZoom, { s: 1, x: 0, y: 0 });
       big.style.transform = '';
+      comicViewer.style.removeProperty('--comic-backdrop');
       comicViewer.classList.remove('is-zoomed');
       comicViewerOpener = document.activeElement;
       // On phones modal-open fixes the body in place; the negative top keeps the page where
