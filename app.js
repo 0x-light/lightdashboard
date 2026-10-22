@@ -2919,17 +2919,61 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
     });
 
-    // Tapping the strip opens it full screen: fitted to the screen first, tap again for
-    // its full size and pan around (Sunday strips are unreadable fitted to a phone's
-    // width). Esc or Close goes back.
+    // Tapping the strip opens it full screen, fitted to the screen. Pinch zooms around the
+    // fingers and one finger pans (Sunday strips are unreadable fitted to a phone's width);
+    // on a computer a trackpad pinch or ctrl + wheel zooms. Esc or Close goes back to the
+    // same place on the page.
     const comicContainer = document.getElementById('newComic');
     let comicViewer = null;
     let comicViewerOpener = null;
+    let comicPageScroll = 0;
+
+    // Zoom state: the strip's scale and its offset from its fitted place.
+    const comicZoom = { s: 1, x: 0, y: 0 };
+    const clampBetween = (v, a, b) => Math.min(Math.max(v, Math.min(a, b)), Math.max(a, b));
+    // The strip's fitted box (its box with the zoom taken off) and the most it can zoom.
+    const comicBase = () => {
+      const big = comicViewer.querySelector('.comic-viewer__img');
+      const r = big.getBoundingClientRect();
+      const w = r.width / comicZoom.s;
+      return {
+        left: r.left - comicZoom.x,
+        top: r.top - comicZoom.y,
+        w,
+        h: r.height / comicZoom.s,
+        max: Math.max(4, big.naturalWidth / w),
+      };
+    };
+    // Sets the zoom and keeps the strip on screen: larger than the screen, it can't leave a
+    // gap at an edge; at fitted size it goes back to its place.
+    const setComicZoom = (s, x, y, base = comicBase()) => {
+      const big = comicViewer.querySelector('.comic-viewer__img');
+      const box = comicViewer.querySelector('.comic-viewer__scroll').getBoundingClientRect();
+      s = clampBetween(s, 1, base.max);
+      comicZoom.s = s;
+      comicZoom.x = s === 1 ? 0 : clampBetween(x, box.left - base.left, box.right - base.w * s - base.left);
+      comicZoom.y = s === 1 ? 0 : clampBetween(y, box.top - base.top, box.bottom - base.h * s - base.top);
+      big.style.transform = s === 1 ? '' : `translate(${comicZoom.x}px, ${comicZoom.y}px) scale(${s})`;
+      comicViewer.classList.toggle('is-zoomed', s > 1);
+    };
+    // Zooms to scale s and keeps the point (cx, cy) of the strip where it is on screen.
+    const zoomComicAt = (s, cx, cy) => {
+      const base = comicBase();
+      const k = clampBetween(s, 1, base.max) / comicZoom.s;
+      setComicZoom(
+        s,
+        cx - base.left - (cx - base.left - comicZoom.x) * k,
+        cy - base.top - (cy - base.top - comicZoom.y) * k,
+        base,
+      );
+    };
 
     const closeComicViewer = () => {
       if (!comicViewer || comicViewer.hidden) return;
       comicViewer.hidden = true;
       document.body.classList.remove('modal-open');
+      document.body.style.top = '';
+      window.scrollTo(0, comicPageScroll);
       comicViewerOpener?.focus?.({ preventScroll: true });
     };
 
@@ -2940,11 +2984,10 @@ window.addEventListener('DOMContentLoaded', async () => {
         comicViewer.setAttribute('role', 'dialog');
         comicViewer.setAttribute('aria-modal', 'true');
         comicViewer.setAttribute('aria-label', 'Comic, full screen');
-        // Close sits in a bar at the bottom, next to the hint, within thumb reach.
+        // Close sits in a bar at the bottom, within thumb reach.
         comicViewer.innerHTML =
-          '<div class="comic-viewer__scroll"><img class="comic-viewer__img" alt=""></div>' +
-          '<div class="comic-viewer__bar"><p class="comic-viewer__hint" aria-hidden="true">Tap to zoom</p>' +
-          '<button type="button" class="btn-text comic-viewer__close">Close</button></div>';
+          '<div class="comic-viewer__scroll"><img class="comic-viewer__img" alt="" draggable="false"></div>' +
+          '<div class="comic-viewer__bar"><button type="button" class="btn-text comic-viewer__close">Close</button></div>';
         document.body.appendChild(comicViewer);
         comicViewer.querySelector('.comic-viewer__close').addEventListener('click', closeComicViewer);
         comicViewer.addEventListener('keydown', (e) => {
@@ -2954,33 +2997,79 @@ window.addEventListener('DOMContentLoaded', async () => {
             closeComicViewer();
           }
         });
-        // Tap toggles fitted / full size, keeping the tapped spot under the finger.
+
+        // Two fingers zoom and pan, one finger pans. Each change of fingers starts a new
+        // gesture from where the strip is, so lifting one finger doesn't make it jump.
         const scroller = comicViewer.querySelector('.comic-viewer__scroll');
-        const big = comicViewer.querySelector('.comic-viewer__img');
-        big.addEventListener('click', (e) => {
-          const rect = big.getBoundingClientRect();
-          const fx = (e.clientX - rect.left) / rect.width;
-          const fy = (e.clientY - rect.top) / rect.height;
-          const zoomed = comicViewer.classList.toggle('is-zoomed');
-          comicViewer.querySelector('.comic-viewer__hint').textContent = zoomed ? 'Tap to fit' : 'Tap to zoom';
-          if (zoomed) {
-            requestAnimationFrame(() => {
-              scroller.scrollLeft = fx * big.offsetWidth - scroller.clientWidth / 2;
-              scroller.scrollTop = fy * big.offsetHeight - scroller.clientHeight / 2;
-            });
-          }
+        const pointers = new Map();
+        let gesture = null;
+        const fingers = () => {
+          const [a, b] = [...pointers.values()];
+          if (!b) return { m: a, d: 0 };
+          return { m: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, d: Math.hypot(a.x - b.x, a.y - b.y) };
+        };
+        const startGesture = () => {
+          gesture = pointers.size ? { ...fingers(), base: comicBase(), ...comicZoom } : null;
+        };
+        scroller.addEventListener('pointerdown', (e) => {
+          scroller.setPointerCapture(e.pointerId);
+          pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          startGesture();
+        });
+        scroller.addEventListener('pointermove', (e) => {
+          if (!pointers.has(e.pointerId) || !gesture) return;
+          pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          const { m, d } = fingers();
+          const g = gesture;
+          const s = d && g.d ? clampBetween(g.s * d / g.d, 1, g.base.max) : g.s;
+          // The point of the strip that was under the fingers stays under them.
+          const k = s / g.s;
+          setComicZoom(
+            s,
+            m.x - g.base.left - (g.m.x - g.base.left - g.x) * k,
+            m.y - g.base.top - (g.m.y - g.base.top - g.y) * k,
+            g.base,
+          );
+        });
+        const endPointer = (e) => {
+          pointers.delete(e.pointerId);
+          startGesture();
+        };
+        scroller.addEventListener('pointerup', endPointer);
+        scroller.addEventListener('pointercancel', endPointer);
+
+        // Trackpad pinch (Chrome and Firefox send it as ctrl + wheel) or ctrl + wheel zooms;
+        // the wheel alone pans.
+        scroller.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          if (e.ctrlKey) zoomComicAt(comicZoom.s * Math.exp(-e.deltaY / 300), e.clientX, e.clientY);
+          else setComicZoom(comicZoom.s, comicZoom.x - e.deltaX, comicZoom.y - e.deltaY);
+        }, { passive: false });
+        // Safari sends pinches as gesture events: stop its own page zoom. With no fingers down
+        // it is a Mac trackpad, so the pinch zooms the strip.
+        let gestureScale = 1;
+        comicViewer.addEventListener('gesturestart', (e) => {
+          e.preventDefault();
+          gestureScale = comicZoom.s;
+        });
+        comicViewer.addEventListener('gesturechange', (e) => {
+          e.preventDefault();
+          if (!pointers.size) zoomComicAt(gestureScale * e.scale, e.clientX, e.clientY);
         });
       }
       const big = comicViewer.querySelector('.comic-viewer__img');
-      // Zoom goes to the strip's own pixel width; the CSS keeps it at least screen-wide.
-      big.onload = () => big.style.setProperty('--comic-natural', `${big.naturalWidth}px`);
       big.src = img.src;
       big.alt = img.alt;
+      Object.assign(comicZoom, { s: 1, x: 0, y: 0 });
+      big.style.transform = '';
       comicViewer.classList.remove('is-zoomed');
-      comicViewer.querySelector('.comic-viewer__hint').textContent = 'Tap to zoom';
       comicViewerOpener = document.activeElement;
+      // On phones modal-open fixes the body in place; the negative top keeps the page where
+      // it was, and close scrolls back to it.
+      comicPageScroll = window.scrollY;
       comicViewer.hidden = false;
       document.body.classList.add('modal-open');
+      if (getComputedStyle(document.body).position === 'fixed') document.body.style.top = `-${comicPageScroll}px`;
       comicViewer.querySelector('.comic-viewer__close').focus({ preventScroll: true });
     };
 

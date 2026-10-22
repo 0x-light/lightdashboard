@@ -1120,8 +1120,8 @@ html.pm:root #newComic.fading::after {
 }
 
 /* ── Comic, full screen ──
-   Fitted to the screen on open; tap for full size and pan by scrolling. The close
-   chip sits top right like the windows' ESC CLOSE. */
+   Fitted to the screen on open; pinch to zoom, drag to pan (app.js sets the transform).
+   The close chip sits bottom right, styled like the windows' ESC CLOSE. */
 html.pm:root #newComic { cursor: zoom-in; }
 html.pm:root #newComic:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 2px; }
 
@@ -1140,8 +1140,9 @@ html.pm:root .comic-viewer__scroll {
   flex: 1;
   min-height: 0;
   display: flex;
-  overflow: auto;
-  overscroll-behavior: contain;
+  overflow: hidden;
+  /* The script handles every touch: no page scroll, no page zoom. */
+  touch-action: none;
   padding: calc(var(--pm-lh) + env(safe-area-inset-top, 0px)) 1ch var(--pm-lh);
 }
 
@@ -1157,29 +1158,23 @@ html.pm:root .comic-viewer__img {
   max-height: 100%;
   margin: auto;
   object-fit: contain;
-  cursor: zoom-in;
+  transform-origin: 0 0;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
-/* Zoomed: the image's own pixel size (never narrower than the screen), pan to read. */
-html.pm:root .comic-viewer.is-zoomed .comic-viewer__img {
-  width: max(var(--comic-natural, 200vw), 100%);
-  max-width: none;
-  max-height: none;
-  margin: 0;
-  cursor: zoom-out;
-}
+html.pm:root .comic-viewer.is-zoomed .comic-viewer__scroll { cursor: grab; }
+html.pm:root .comic-viewer.is-zoomed .comic-viewer__scroll:active { cursor: grabbing; }
 
-/* Bottom bar: the hint on the left, Close on the right. */
+/* Bottom bar: Close on the right. */
 html.pm:root .comic-viewer__bar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
-  gap: 2ch;
   padding: calc(var(--pm-lh) / 2) 1ch calc(var(--pm-lh) / 2 + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--pm-rule);
 }
-
-html.pm:root .comic-viewer__hint { margin: 0; color: var(--pm-muted); }
 
 html.pm:root .comic-viewer__close {
   display: inline-flex;
@@ -1198,6 +1193,11 @@ html.pm:root .comic-viewer__close::before { content: "esc"; padding: 0 1ch; back
 @media (hover: none), (pointer: coarse), (max-width: 640px) {
   html.pm:root .comic-viewer__close::before { display: none; }
   html.pm:root .comic-viewer__close { padding-left: 1ch; }
+  /* The home-screen app has no safe-area insets (no viewport-fit=cover), so the bar runs
+     into the round screen corner and the home bar. Keep Close clear of both. */
+  html.pm:root .comic-viewer__bar {
+    padding: calc(var(--pm-lh) / 2) 3ch max(calc(var(--pm-lh) * 2.25), calc(var(--pm-lh) / 2 + env(safe-area-inset-bottom, 0px)));
+  }
 }
 
 /* ── Footer ── */
