@@ -70,21 +70,18 @@ function changeClause(amount, pct, suffix, { amountsVisible, currency, useColore
 
 const isMeaningfulChange = (amount) => Number.isFinite(amount) && Math.abs(amount) >= 0.01;
 
-// The hero is one conversational sentence: value, today's move and what drove it, then
-// unrealized P&L ("…, up $1,234 (1.0%) today, mostly from BTC, and $939 (4.2%) on open positions.").
-function composeSentence({ valueText, amountsVisible, totalPnL, totalPnLPercent, totalDailyChange, totalDailyChangePercent, topMover, weather, ...options }) {
+// The hero is one conversational sentence: value, today's move, then unrealized P&L
+// ("…, up $1,234 (1.0%) today and $939 (4.2%) on open positions.").
+function composeSentence({ valueText, amountsVisible, totalPnL, totalPnLPercent, totalDailyChange, totalDailyChangePercent, weather, ...options }) {
   const toggle = `<strong class="hero-amount-toggle" role="button" tabindex="0" title="${amountsVisible ? 'Hide amounts' : 'Show amounts'}">${valueText}</strong>`;
   const hasToday = isMeaningfulChange(totalDailyChange);
   const hasOverall = isMeaningfulChange(totalPnL);
   const sameDirection = hasOverall && hasToday && (totalPnL >= 0) === (totalDailyChange >= 0);
   let changes = '';
-  if (hasToday) {
-    changes += `, ${changeClause(totalDailyChange, totalDailyChangePercent, 'today', { amountsVisible, ...options })}`;
-    if (topMover?.label) changes += `, mostly from <strong>${escapeHtml(topMover.label)}</strong>`;
-  }
+  if (hasToday) changes += `, ${changeClause(totalDailyChange, totalDailyChangePercent, 'today', { amountsVisible, ...options })}`;
   // Unrealized P&L: positions with a known entry price only, never realized gains.
   if (hasOverall) {
-    const joiner = !hasToday ? ', ' : (sameDirection ? ', and ' : ', but ');
+    const joiner = !hasToday ? ', ' : (sameDirection ? ' and ' : ', but ');
     changes += `${joiner}${changeClause(totalPnL, totalPnLPercent, 'on open positions', {
       amountsVisible,
       ...options,
@@ -103,7 +100,6 @@ export function composeSummary({
   totalPnLPercent,
   totalDailyChange,
   totalDailyChangePercent,
-  topMover, // { label, change } | null — the asset that made most of today's move
   baseCurrency,
   useColoredPnL,
   allocation, // [{ label, value, share, isOther? }]
@@ -115,7 +111,7 @@ export function composeSummary({
   const valueText = formatCurrency(roundForProse(portfolioValue), amountsVisible, currency, { compact: false });
 
   return `
-    ${composeSentence({ valueText, amountsVisible, totalPnL, totalPnLPercent, totalDailyChange, totalDailyChangePercent, topMover, weather, currency, useColoredPnL })}
+    ${composeSentence({ valueText, amountsVisible, totalPnL, totalPnLPercent, totalDailyChange, totalDailyChangePercent, weather, currency, useColoredPnL })}
     ${composeAllocation(allocation, { amountsVisible, currency })}
   `;
 }

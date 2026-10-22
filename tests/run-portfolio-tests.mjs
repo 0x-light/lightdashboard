@@ -128,16 +128,6 @@ function testPortfolioBreakdownAllocationAnd24h() {
   // BTC: 600 * 20/120 = +100. Short SOL: -100 notional * 25/125 = -20.
   assert.equal(Math.round(breakdown.change24h), 80);
   assert.equal(Math.round(breakdown.change24hPercent * 100) / 100, 8.7);
-  // BTC made more than half of the move.
-  assert.equal(breakdown.topMover.label, 'BTC');
-
-  // No asset made half of the move, so none is named.
-  const spread = calculatePortfolioBreakdown([
-    { asset: 'BTC', exchange: 'Wallet', value: 110, change24h: 10 },
-    { asset: 'ETH', exchange: 'Wallet', value: 110, change24h: 10 },
-    { asset: 'SOL', exchange: 'Wallet', value: 110, change24h: 10 }
-  ]);
-  assert.equal(spread.topMover, null);
 
   // Venue spot keeps its value; remaining equity splits across perps by notional.
   const venueSplit = calculatePortfolioBreakdown([
@@ -164,7 +154,7 @@ function testPortfolioBreakdownAllocationAnd24h() {
   assert.equal(many.allocation.at(-1).label, 'Other');
   assert.equal(many.change24h, null);
 
-  assert.deepEqual(calculatePortfolioBreakdown([]), { allocation: [], shareByRow: {}, change24h: null, change24hPercent: null, topMover: null });
+  assert.deepEqual(calculatePortfolioBreakdown([]), { allocation: [], shareByRow: {}, change24h: null, change24hPercent: null });
 }
 
 async function testManualCustomLegacySchema() {
