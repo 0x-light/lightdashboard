@@ -158,7 +158,7 @@ function accountValue(rows) {
   return rows.reduce((sum, p) => {
     if (isEquity(p)) return sum + num(p.value);
     if (hasEquity && ['HL Perps', 'HL Spot', 'HL Staking', 'Lighter'].includes(p.exchange)) return sum;
-    return num(p.value) > 0 ? sum + num(p.value) : sum;
+    return num(p.value) > 0 || p.exchange === 'IBKR' ? sum + num(p.value) : sum;
   }, 0);
 }
 

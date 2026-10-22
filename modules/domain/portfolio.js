@@ -217,7 +217,9 @@ export function calculatePortfolioTotals(positions) {
     }
 
     const value = Number(p.value);
-    const hasValue = Number.isFinite(value) && value > 0;
+    // An IBKR statement is the whole account: a cash debit (margin loan) or a short holding is
+    // owed, so it counts against the total, as in IBKR's own net asset value.
+    const hasValue = Number.isFinite(value) && (value > 0 || p.exchange === 'IBKR');
     // Covered positions are already inside the venue's equity, so they add no value of their own.
     if (hasValue && !isCoveredByVenueEquity(p, hasHlEquity, hasLighterEquity)) {
       totalValue += value;

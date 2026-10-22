@@ -226,6 +226,16 @@ function testHyperliquidTotalsFallbackWhenNoEquity() {
   assert.equal(totals.totalPnL, 15);
 }
 
+function testIbkrCashDebitCountsAgainstTotal() {
+  const totals = calculatePortfolioTotals([
+    { exchange: 'IBKR', value: 110000, pnl: 5000 },
+    { exchange: 'IBKR', value: -800, pnl: 200, category: 'equity' },
+    { exchange: 'IBKR', value: -10000, pnl: null, category: 'cash' },
+    { exchange: 'Ethereum', value: -50, pnl: null }
+  ]);
+  assert.equal(totals.totalValue, 99200, 'IBKR debits and shorts are owed; other negative rows still add nothing');
+}
+
 function testCostBasisOnLosses() {
   // Value $80, PnL -$20 → cost basis must be $100 (original purchase price)
   const totals = calculatePortfolioTotals([
@@ -1291,6 +1301,7 @@ async function run() {
   testLighterTotalsWithoutEquity();
   testLighterTotalsWithEquity();
   testHyperliquidTotalsFallbackWhenNoEquity();
+  testIbkrCashDebitCountsAgainstTotal();
   testHyperliquidDexListAndCombinedPerpState();
   testHyperliquidDexReadPlanAndMissingAnswers();
   await testHyperliquidStakingReadKeepsLastAnswerOrFails();
