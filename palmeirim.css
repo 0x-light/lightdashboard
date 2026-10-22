@@ -1906,7 +1906,8 @@ html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segment
 }
 
 html.pm:root .pm-value__chart {
-  margin-top: calc(var(--pm-lh) / 2);
+  /* Full bleed: out to the card's side and bottom borders. */
+  margin: calc(var(--pm-lh) / 2) calc(var(--pm-card-x) * -1) calc(var(--pm-card-x) * -1);
   cursor: crosshair;
   /* A sideways drag scrubs the line; an up or down swipe still scrolls the page. */
   touch-action: pan-y;
