@@ -1,6 +1,6 @@
 // Settings window. One field list drives filling the form, saving it and applying it.
 // Changes save as you go; anything that needs fresh data is refetched when the window closes.
-import { POSITION_COLUMNS, normalizeColumnOrder } from './positions.js';
+import { POSITION_COLUMNS, normalizeColumnOrder, normalizeHiddenColumns } from './positions.js';
 
 const STORAGE_KEY = 'myDashboardSettings.v2';
 
@@ -61,20 +61,25 @@ const ADDRESS_PATTERNS = [
 
 const FONT_CLASSES = ['berkeley', 'commit', 'departure', 'sf'];
 
-// Column order: one line per column with ↑ ↓ keys; the list's order is the setting.
+// Columns: one line per column with a show box and ↑ ↓ keys; the list's order is the
+// order setting, the unticked boxes the hidden one. Asset is always on.
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 }
 
-function fillColumnOrder(order) {
+function fillColumnOrder(order, hidden) {
   const list = document.getElementById('newColumnOrder');
   if (!list) return;
   const keys = normalizeColumnOrder(order);
+  const off = normalizeHiddenColumns(hidden);
   list.innerHTML = keys.map((key, i) => {
-    const label = escapeHtml(POSITION_COLUMNS.find(c => c.key === key)?.label || key);
-    const move = (dir, glyph, word, off) =>
-      `<button type="button" class="column-order__move" data-move="${dir}" aria-label="Move ${label} ${word}"${off ? ' disabled' : ''}>${glyph}</button>`;
-    return `<li data-key="${key}"><span class="column-order__name">${label}</span>` +
+    const col = POSITION_COLUMNS.find(c => c.key === key);
+    const label = escapeHtml(col?.label || key);
+    const move = (dir, glyph, word, disabled) =>
+      `<button type="button" class="column-order__move" data-move="${dir}" aria-label="Move ${label} ${word}"${disabled ? ' disabled' : ''}>${glyph}</button>`;
+    const show = `<input type="checkbox" class="column-order__show" aria-label="Show ${label}"` +
+      `${off.includes(key) ? '' : ' checked'}${col?.fixed ? ' disabled' : ''}>`;
+    return `<li data-key="${key}">${show}<span class="column-order__name">${label}</span>` +
       move(-1, '↑', 'up', i === 0) + move(1, '↓', 'down', i === keys.length - 1) + '</li>';
   }).join('');
 }
@@ -83,6 +88,14 @@ function readColumnOrder() {
   const list = document.getElementById('newColumnOrder');
   if (!list) return null;
   return Array.from(list.querySelectorAll('li[data-key]')).map(li => li.dataset.key);
+}
+
+function readHiddenColumns() {
+  const list = document.getElementById('newColumnOrder');
+  if (!list) return null;
+  return Array.from(list.querySelectorAll('li[data-key]'))
+    .filter(li => !li.querySelector('.column-order__show')?.checked)
+    .map(li => li.dataset.key);
 }
 
 function listOf(value) {
@@ -152,7 +165,7 @@ function fillForm(settings) {
   if (addresses) addresses.value = joinAddresses(settings);
   const city = document.getElementById('newWeatherCity');
   if (city) city.value = placeText(settings.weather);
-  fillColumnOrder(settings.positionColumns);
+  fillColumnOrder(settings.positionColumns, settings.hiddenPositionColumns);
 }
 
 function readForm(settings) {
@@ -173,6 +186,8 @@ function readForm(settings) {
   if (addresses) Object.assign(next, sortAddresses(addresses.value));
   const columns = readColumnOrder();
   if (columns) next.positionColumns = columns;
+  const hidden = readHiddenColumns();
+  if (hidden) next.hiddenPositionColumns = hidden;
   return next;
 }
 
@@ -210,16 +225,14 @@ export function applyAppearance(settings) {
   // The positions table reads these at render time; give it the new values and redraw.
   const renderer = typeof window !== 'undefined' ? window._portfolioRenderer : null;
   if (renderer?.settings) {
-    const next = {
-      groupPositions: settings.groupPositions ?? true,
-      combineOptionLegs: settings.combineOptionLegs ?? true,
-      positionColumns: normalizeColumnOrder(settings.positionColumns)
-    };
-    const current = {
-      groupPositions: renderer.settings.groupPositions ?? true,
-      combineOptionLegs: renderer.settings.combineOptionLegs ?? true,
-      positionColumns: normalizeColumnOrder(renderer.settings.positionColumns)
-    };
+    const view = (s) => ({
+      groupPositions: s.groupPositions ?? true,
+      combineOptionLegs: s.combineOptionLegs ?? true,
+      positionColumns: normalizeColumnOrder(s.positionColumns),
+      hiddenPositionColumns: normalizeHiddenColumns(s.hiddenPositionColumns)
+    });
+    const next = view(settings);
+    const current = view(renderer.settings);
     if (JSON.stringify(current) !== JSON.stringify(next)) {
       Object.assign(renderer.settings, next);
       renderer.forceRender?.();
@@ -306,7 +319,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     const other = dir < 0 ? li.previousElementSibling : li.nextElementSibling;
     if (!other) return;
     other.insertAdjacentElement(dir < 0 ? 'beforebegin' : 'afterend', li);
-    fillColumnOrder(readColumnOrder());
+    fillColumnOrder(readColumnOrder(), readHiddenColumns());
     const again = document.querySelector(`#newColumnOrder li[data-key="${li.dataset.key}"] button[data-move="${dir}"]`);
     (again && !again.disabled ? again : document.querySelector(`#newColumnOrder li[data-key="${li.dataset.key}"] button:not(:disabled)`))?.focus();
     saveForm();

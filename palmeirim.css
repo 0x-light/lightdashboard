@@ -1737,13 +1737,14 @@ html.pm:root .settings-pane > .settings-group:first-child { margin-top: 0; paddi
 html.pm:root .settings-pane label.check { margin: 0; }
 html.pm:root .settings-pane label.check + label.check { margin-top: 0; }
 
-/* Column order: one line per column, its name then ↑ ↓ keys; an end key is muted. */
+/* Columns: one line per column, a show box, its name, then ↑ ↓ keys; an end key is muted. */
 html.pm:root .column-order li {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 1ch;
   line-height: var(--pm-lh);
 }
+html.pm:root .column-order__show { flex: none; margin: 0; }
 html.pm:root .column-order__name { flex: 0 0 10ch; }
 html.pm:root .column-order__move {
   min-width: 0;
@@ -2144,5 +2145,90 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
   html.pm:root .data-table tbody tr.position-row:hover td.asset-cell {
     --pm-share-fill: color-mix(in srgb, var(--bg) 30%, var(--pm-ink));
     background-image: linear-gradient(to right, var(--pm-share-fill) var(--share, 0%), transparent 0);
+  }
+}
+
+/* ── Touch ──
+   The same chips, rows and keys, tall enough for a finger: about 44px, from the line
+   height. Fills, uppercase and the one text size stay; only the box grows and the
+   text sits in its middle. The bar's chips and the column heads keep their height
+   and get a hit area that size instead, so the bar stays one line. */
+@media (pointer: coarse) {
+  html.pm:root { --pm-touch: calc(var(--pm-lh) * 2.4); }
+
+  /* Lists that drop down: GO TO and MENU. */
+  html.pm:root .app-header.pm-menu-open .header-actions .btn-text,
+  html.pm:root .app-header.pm-sections-open .pm-nav .chip__label {
+    min-height: var(--pm-touch);
+    align-items: center;
+  }
+  html.pm:root .app-header.pm-sections-open .pm-nav .chip { display: inline-flex; width: 100%; }
+  html.pm:root .app-header.pm-menu-open .header-actions .btn-text::before {
+    display: inline-flex;
+    align-items: center;
+    align-self: stretch;
+  }
+
+  /* A hit area the size of a finger around what stays one line tall. */
+  html.pm:root .pm-menu-btn,
+  html.pm:root .pm-section-btn,
+  html.pm:root .pm-account-btn,
+  html.pm:root .th-sort,
+  html.pm:root .row-action,
+  html.pm:root .panel-foot .btn-text,
+  html.pm:root .panel-action { position: relative; }
+  html.pm:root .pm-menu-btn::after,
+  html.pm:root .pm-section-btn::after,
+  html.pm:root .pm-account-btn::after,
+  html.pm:root .th-sort::after,
+  html.pm:root .row-action::after,
+  html.pm:root .panel-foot .btn-text::after,
+  html.pm:root .panel-action::after {
+    content: "";
+    position: absolute;
+    inset: calc((var(--pm-touch) - var(--pm-lh)) / -2) 0;
+  }
+
+  /* Settings: tabs, the window's keys, choice rows, fields and the column list. */
+  html.pm:root .settings-tab {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--pm-touch);
+  }
+  html.pm:root .settings-form > header .btn-text,
+  html.pm:root .sticker-window-header .btn-text {
+    min-height: var(--pm-touch);
+    align-items: center;
+  }
+  html.pm:root .settings-form > header .btn-text::before,
+  html.pm:root .sticker-window-header .btn-text::before {
+    display: inline-flex;
+    align-items: center;
+    align-self: stretch;
+  }
+  html.pm:root .settings-pane label.check {
+    display: flex;
+    align-items: center;
+    gap: 1ch;
+    min-height: var(--pm-touch);
+  }
+  html.pm:root .settings-panes input[type="checkbox"] {
+    flex: none;
+    width: calc(var(--pm-lh) * 1.2);
+    height: calc(var(--pm-lh) * 1.2);
+    margin: 0;
+  }
+  html.pm:root .settings-panes input:not([type="checkbox"]):not([type="range"]),
+  html.pm:root .settings-panes select,
+  html.pm:root .sticker-window-content input:not([type="checkbox"]):not([type="range"]),
+  html.pm:root .sticker-window-content select { height: var(--pm-touch); }
+  html.pm:root .column-order li { min-height: var(--pm-touch); }
+  html.pm:root .column-order__name { flex: 1 1 auto; }
+  html.pm:root .column-order__move {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 5ch;
+    min-height: var(--pm-touch);
   }
 }

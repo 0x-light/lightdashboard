@@ -114,7 +114,8 @@ export function getDefaultSettings() {
     showPriceChart: true, // Whether to show 24h price chart column
     groupPositions: true, // Positions in runs: spot, perps, options; off for one list
     combineOptionLegs: true, // Several option legs on one name as one row that opens to them
-    positionColumns: ['asset', 'expiry', 'underlying', 'price', 'chart', 'value', 'pnl', 'funding', 'change', 'amount', 'exchange'] // Table column order
+    positionColumns: ['asset', 'price', 'pnl', 'change', 'chart', 'value', 'funding', 'expiry', 'underlying', 'amount', 'exchange'], // Table column order
+    hiddenPositionColumns: [] // Table columns switched off in Settings
   };
 }
 

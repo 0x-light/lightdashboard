@@ -26,21 +26,28 @@ import {
 } from '../domain/instruments.js';
 
 // The table's columns, in their default order. Settings can reorder them
-// (settings.positionColumns holds the keys); unknown keys are dropped and missing ones
-// come back at the end, so an old list keeps working when a column is added.
+// (settings.positionColumns holds the keys) and hide them (hiddenPositionColumns);
+// unknown keys are dropped and missing ones go where the default puts them, so an old
+// list keeps working when a column is added.
 export const POSITION_COLUMNS = [
-  { key: 'asset', label: 'Asset', sort: 'asset', cellClass: 'asset-cell' },
-  { key: 'expiry', label: 'Expiry', sort: 'expiry' },
-  { key: 'underlying', label: 'Underlying', sort: 'underlying', num: true },
+  { key: 'asset', label: 'Asset', sort: 'asset', cellClass: 'asset-cell', fixed: true },
   { key: 'price', label: 'Price', sort: 'price', num: true },
+  { key: 'pnl', label: 'P&L', sort: 'pnl', num: true },
+  { key: 'change', label: '24h %', sort: 'change', num: true },
   { key: 'chart', label: '24h', headClass: 'chart', cellClass: 'chart-cell chart' },
   { key: 'value', label: 'Value', sort: 'value', num: true },
-  { key: 'pnl', label: 'P&L', sort: 'pnl', num: true },
   { key: 'funding', label: 'Funding', sort: 'funding', num: true },
-  { key: 'change', label: '24h %', sort: 'change', num: true },
+  { key: 'expiry', label: 'Expiry', sort: 'expiry' },
+  { key: 'underlying', label: 'Underlying', sort: 'underlying', num: true },
   { key: 'amount', label: 'Amount', sort: 'amount', num: true },
   { key: 'exchange', label: 'Source', sort: 'exchange', cellClass: 'exchange-cell' }
 ];
+
+// The columns a saved list hides; Asset never hides.
+export function normalizeHiddenColumns(keys) {
+  const known = POSITION_COLUMNS.filter(c => !c.fixed).map(c => c.key);
+  return Array.isArray(keys) ? known.filter(k => keys.includes(k)) : [];
+}
 
 export function normalizeColumnOrder(keys) {
   const known = POSITION_COLUMNS.map(c => c.key);
@@ -56,7 +63,10 @@ export function normalizeColumnOrder(keys) {
 }
 
 function columnsFor(opts) {
-  return normalizeColumnOrder(opts?.settings?.positionColumns).map(key => POSITION_COLUMNS.find(c => c.key === key));
+  const hidden = normalizeHiddenColumns(opts?.settings?.hiddenPositionColumns);
+  return normalizeColumnOrder(opts?.settings?.positionColumns)
+    .filter(key => !hidden.includes(key))
+    .map(key => POSITION_COLUMNS.find(c => c.key === key));
 }
 
 function cellClassFor(col) {

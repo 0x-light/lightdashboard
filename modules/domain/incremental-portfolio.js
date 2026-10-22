@@ -840,6 +840,7 @@ export class IncrementalPortfolioRenderer {
             groupPositions: this.settings.groupPositions ?? true,
             combineOptionLegs: this.settings.combineOptionLegs ?? true,
             positionColumns: this.settings.positionColumns,
+            hiddenPositionColumns: this.settings.hiddenPositionColumns,
             portfolioBaseCurrency: baseCurrency
           }
         },
