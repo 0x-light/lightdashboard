@@ -770,7 +770,7 @@ export class IncrementalPortfolioRenderer {
       this._cachedTotals = totals;
       this._cachedTotalsToken = aggregationToken;
     }
-    const { totalValue, totalPnL, totalPnLPercent, allocation, change24h, change24hPercent } = totals;
+    const { totalValue, totalPnL, totalPnLPercent, allocation, change24h, change24hPercent, topMover } = totals;
 
     // Filter for display (hide special positions + apply filters)
     // Edit mode: shows manually hidden positions (for editing), but NOT <$100 positions
@@ -861,6 +861,7 @@ export class IncrementalPortfolioRenderer {
         totalPnLPercent,
         totalDailyChange: change24h,
         totalDailyChangePercent: change24hPercent,
+        topMover,
         baseCurrency,
         useColoredPnL: this.settings.useColoredPnL ?? true,
         allocation,

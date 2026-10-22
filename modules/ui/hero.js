@@ -1,4 +1,4 @@
-// UI helper for composing the hero: one sentence (value, P&L, today, weather) and the allocation line.
+// UI helper for composing the hero: one sentence (value, today, P&L, weather) and the allocation line.
 import { formatMoney, normalizeBaseCurrency } from '../utils/currency.js';
 
 function formatCurrency(value, amountsVisible, currency, options = {}) {
@@ -21,10 +21,14 @@ function escapeHtml(value) {
   }[ch]));
 }
 
+// Unsigned: the sentence says "up" or "down". Two decimals only where one would read 0.0%.
 function formatPercent(pct) {
-  const sign = pct > 0 ? '+' : (pct < 0 ? '−' : '');
-  return `${sign}${Math.abs(pct).toFixed(2)}%`;
+  const abs = Math.abs(pct);
+  return `${abs.toFixed(abs > 0 && abs < 0.1 ? 2 : 1)}%`;
 }
+
+// Whole units read better in prose than cents.
+const roundForProse = (amount) => (Math.abs(amount) >= 100 ? Math.round(amount) : amount);
 
 // Allocation line. Slices are shades of the text colour, so it reads in every theme without
 // needing a categorical palette.
@@ -52,38 +56,41 @@ function weatherSentence(weather) {
   return `It's ${Math.round(temp)}°C ${icon} in <strong>${escapeHtml(city)}</strong>${rain}${moonText || ''}.`;
 }
 
-// "up $939 (+1.01%) on open positions" — percent only when amounts are hidden. Whole units read better in
-// prose than cents; `withDirection: false` lets a second clause drop a repeated "up"/"down".
+// "up $1,234 (1.0%) today" — percent only when amounts are hidden. `withDirection: false` lets
+// a second clause drop a repeated "up"/"down".
 function changeClause(amount, pct, suffix, { amountsVisible, currency, useColoredPnL, withDirection = true }) {
   const cls = classForChange(amount, useColoredPnL);
   const direction = amount >= 0 ? 'up' : 'down';
   const pctText = Number.isFinite(pct) ? formatPercent(pct) : '';
-  const rounded = Math.abs(amount) >= 100 ? Math.round(Math.abs(amount)) : Math.abs(amount);
   const figure = amountsVisible
-    ? `${formatCurrency(rounded, true, currency, { compact: false })}${pctText ? ` (${pctText})` : ''}`
-    : pctText.replace(/^[+−]/, '');
+    ? `${formatCurrency(Math.abs(roundForProse(amount)), true, currency, { compact: false })}${pctText ? ` (${pctText})` : ''}`
+    : pctText;
   return `${withDirection ? `${direction} ` : ''}<strong class="${cls}">${figure}</strong> ${suffix}`;
 }
 
 const isMeaningfulChange = (amount) => Number.isFinite(amount) && Math.abs(amount) >= 0.01;
 
-// The hero is one conversational sentence.
-function composeSentence({ valueText, amountsVisible, totalPnL, totalPnLPercent, totalDailyChange, totalDailyChangePercent, weather, ...options }) {
+// The hero is one conversational sentence: value, today's move and what drove it, then
+// unrealized P&L ("…, up $1,234 (1.0%) today, mostly from BTC, and $939 (4.2%) on open positions.").
+function composeSentence({ valueText, amountsVisible, totalPnL, totalPnLPercent, totalDailyChange, totalDailyChangePercent, topMover, weather, ...options }) {
   const toggle = `<strong class="hero-amount-toggle" role="button" tabindex="0" title="${amountsVisible ? 'Hide amounts' : 'Show amounts'}">${valueText}</strong>`;
-  const hasOverall = isMeaningfulChange(totalPnL);
   const hasToday = isMeaningfulChange(totalDailyChange);
+  const hasOverall = isMeaningfulChange(totalPnL);
   const sameDirection = hasOverall && hasToday && (totalPnL >= 0) === (totalDailyChange >= 0);
-  const clauses = [];
-  // Unrealized P&L: positions with a known entry price only, never realized gains.
-  if (hasOverall) clauses.push(changeClause(totalPnL, totalPnLPercent, 'on open positions', { amountsVisible, ...options }));
+  let changes = '';
   if (hasToday) {
-    clauses.push(changeClause(totalDailyChange, totalDailyChangePercent, 'today', {
+    changes += `, ${changeClause(totalDailyChange, totalDailyChangePercent, 'today', { amountsVisible, ...options })}`;
+    if (topMover?.label) changes += `, mostly from <strong>${escapeHtml(topMover.label)}</strong>`;
+  }
+  // Unrealized P&L: positions with a known entry price only, never realized gains.
+  if (hasOverall) {
+    const joiner = !hasToday ? ', ' : (sameDirection ? ', and ' : ', but ');
+    changes += `${joiner}${changeClause(totalPnL, totalPnLPercent, 'on open positions', {
       amountsVisible,
       ...options,
       withDirection: !sameDirection
-    }));
+    })}`;
   }
-  const changes = clauses.length > 0 ? `, ${clauses.join(' and ')}` : '';
   const weatherText = weatherSentence(weather);
   return `<p class="hero-sentence">Your portfolio is worth ${toggle}${changes}.${weatherText ? ` <span class="hero-sentence-weather">${weatherText}</span>` : ''}</p>`;
 }
@@ -96,6 +103,7 @@ export function composeSummary({
   totalPnLPercent,
   totalDailyChange,
   totalDailyChangePercent,
+  topMover, // { label, change } | null — the asset that made most of today's move
   baseCurrency,
   useColoredPnL,
   allocation, // [{ label, value, share, isOther? }]
@@ -104,10 +112,10 @@ export function composeSummary({
 }) {
   const currency = normalizeBaseCurrency(baseCurrency);
   // The total shows the full figure; compact notation is for the dense table cells.
-  const valueText = formatCurrency(portfolioValue, amountsVisible, currency, { compact: false });
+  const valueText = formatCurrency(roundForProse(portfolioValue), amountsVisible, currency, { compact: false });
 
   return `
-    ${composeSentence({ valueText, amountsVisible, totalPnL, totalPnLPercent, totalDailyChange, totalDailyChangePercent, weather, currency, useColoredPnL })}
+    ${composeSentence({ valueText, amountsVisible, totalPnL, totalPnLPercent, totalDailyChange, totalDailyChangePercent, topMover, weather, currency, useColoredPnL })}
     ${composeAllocation(allocation, { amountsVisible, currency })}
   `;
 }

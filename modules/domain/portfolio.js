@@ -274,9 +274,11 @@ function venueOf(p) {
  * - change24h / change24hPercent: price-driven move over the last 24h. Perps contribute their
  *   signed notional exposure (shorts gain when price falls); spot contributes its value.
  *   null when no position reports a 24h change.
+ * - topMover: { label, change } for the asset that made at least half of that move, in the
+ *   same direction; null when no single asset did, or only one asset moved.
  */
 export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
-  const empty = { allocation: [], shareByRow: {}, change24h: null, change24hPercent: null };
+  const empty = { allocation: [], shareByRow: {}, change24h: null, change24hPercent: null, topMover: null };
   if (!Array.isArray(positions) || positions.length === 0) return empty;
 
   const hasHlEquity = positions.some(p => p?.isHlAccountEquity);
@@ -291,6 +293,7 @@ export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
   let totalValue = 0;
   let change = 0;
   let hasChange = false;
+  const moves = new Map(); // slice label -> 24h change
 
   const addSlice = (label, value, p) => {
     if (!(value > 0)) return;
@@ -317,7 +320,10 @@ export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
         ? finiteOrZero(Number(p.amount) * Number(p.price) * fx)
         : finiteOrZero(Number(p.value));
       if (exposure !== 0) {
-        change += exposure * (pct / (100 + pct));
+        const move = exposure * (pct / (100 + pct));
+        const label = sliceLabel(p);
+        moves.set(label, (moves.get(label) || 0) + move);
+        change += move;
         hasChange = true;
       }
     }
@@ -361,12 +367,23 @@ export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
   const shareByRow = {};
   if (totalValue > 0) rowValues.forEach((value, key) => { shareByRow[key] = value / totalValue; });
 
+  let topMover = null;
+  // A single moving asset is not worth naming: it is the whole move.
+  if (change !== 0 && moves.size > 1) {
+    for (const [label, move] of moves) {
+      if (move / change >= 0.5 && (!topMover || Math.abs(move) > Math.abs(topMover.change))) {
+        topMover = { label, change: move };
+      }
+    }
+  }
+
   const previousValue = totalValue - change;
   return {
     allocation,
     shareByRow,
     change24h: hasChange ? change : null,
-    change24hPercent: hasChange && previousValue > 0 ? (change / previousValue) * 100 : null
+    change24hPercent: hasChange && previousValue > 0 ? (change / previousValue) * 100 : null,
+    topMover
   };
 }
 
