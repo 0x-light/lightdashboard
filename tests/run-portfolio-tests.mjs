@@ -39,6 +39,7 @@ import {
   removeManualPositionByAsset,
   renderedManualPositionMatches
 } from '../modules/features/manual-positions.js';
+import { decodeBackup, encodeBackup } from '../modules/ui/settings-dialog.js';
 
 function testInstrumentsReadOptionsAndKinds() {
   // OCC codes, as IBKR's Flex symbol field carries them (root padded to six characters).
@@ -214,6 +215,26 @@ function testHyperliquidTotalsFallbackWhenNoEquity() {
 
   assert.equal(totals.totalValue, 220, 'HL positions should count when no equity row exists');
   assert.equal(totals.totalPnL, 15);
+}
+
+// Backups carry the account connections and any text, and older backups still read.
+function testBackupRoundTripKeepsAccountsAndText() {
+  const settings = {
+    userName: 'Tomás 🙂',
+    ibkrFlexToken: '123456789012345678901234',
+    ibkrFlexQueryId: '987654',
+    walletAddresses: '0xfc667adba8d4837586078f4fdcdc29804337ca06',
+    cryptoPositions: [{ type: 'custom', name: 'Cash €', value: 1000 }],
+    weather: { label: 'Gdańsk', lat: 54.35, lon: 18.65 }
+  };
+  assert.deepEqual(decodeBackup(encodeBackup(settings)), settings);
+
+  // Before UTF-8: btoa of the JSON text, which only worked with Latin-1 characters.
+  const older = { userName: 'Tomás', ibkrFlexToken: 'abc', weather: { label: 'Zürich' } };
+  assert.deepEqual(decodeBackup(btoa(JSON.stringify(older))), older);
+
+  assert.throws(() => decodeBackup(btoa('[1,2]')));
+  assert.throws(() => decodeBackup('not base64!'));
 }
 
 function testIbkrCashDebitCountsAgainstTotal() {
@@ -1283,6 +1304,7 @@ function testHyperliquidEquityRowIsTheAccountValue() {
 }
 
 async function run() {
+  testBackupRoundTripKeepsAccountsAndText();
   testPortfolioHistorySeriesMath();
   testPortfolioHistoryPlanAndPriceKeys();
   await testPortfolioHistoryFlatHoldingsNeedNoRequests();

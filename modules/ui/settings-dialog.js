@@ -99,6 +99,29 @@ function listOf(value) {
 }
 
 // Sorts pasted addresses (any separator, any chain) into the per-chain settings keys.
+// Backup text: base64 of the settings JSON as UTF-8. btoa alone throws on any character past
+// Latin-1 (a "€" in a position name, a city like Gdańsk), and Export then did nothing.
+export function encodeBackup(data) {
+  const bytes = new TextEncoder().encode(JSON.stringify(data));
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+
+// Older backups are base64 of the JSON as Latin-1. Past ASCII those are not valid UTF-8,
+// so read UTF-8 first and fall back to the old reading.
+export function decodeBackup(text) {
+  const binary = atob(text);
+  let data;
+  try {
+    data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(binary, ch => ch.charCodeAt(0))));
+  } catch (_) {
+    data = JSON.parse(binary);
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Backup is not a settings object');
+  return data;
+}
+
 export function sortAddresses(text) {
   const sorted = Object.fromEntries(ADDRESS_KEYS.map(k => [k, []]));
   for (const address of new Set(listOf(text))) {
@@ -540,7 +563,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
         const walletPrices = localStorage.getItem('walletAssetEntryPrices');
         if (walletPrices) s.__walletAssetEntryPrices = JSON.parse(walletPrices);
       } catch (_) { /* Skip entry prices if they don't parse */ }
-      const exportData = btoa(JSON.stringify(s));
+      const exportData = encodeBackup(s);
       exportArea.value = exportData;
       exportArea.style.display = 'block';
       exportArea.select();
@@ -571,7 +594,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
         return;
       }
       try {
-        const imported = JSON.parse(atob(pasted));
+        const imported = decodeBackup(pasted);
         const walletPrices = imported.__walletAssetEntryPrices;
         if (walletPrices && typeof walletPrices === 'object') {
           localStorage.setItem('walletAssetEntryPrices', JSON.stringify(walletPrices));
@@ -689,4 +712,4 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
   return { open, close };
 }
 
-export default { setupSettingsDialog, applyAppearance, applyFont, sortAddresses };
+export default { setupSettingsDialog, applyAppearance, applyFont, sortAddresses, encodeBackup, decodeBackup };
