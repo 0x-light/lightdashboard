@@ -2170,73 +2170,67 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
 }
 
 /* ── Touch ──
-   The same chips, rows and keys, tall enough for a finger: about 44px, from the line
-   height. Fills, uppercase and the one text size stay; only the box grows and the
-   text sits in its middle. The bar's chips and the column heads keep their height
-   and get a hit area that size instead, so the bar stays one line. */
+   The chips a finger uses grow a little: 1.6 lines tall, with 0.3 of a line above
+   and below the text, in step with their 1ch sides. The lists keep their own gaps;
+   an invisible reach above and below each chip fills the gap, so a tap lands.
+   Fields grow the same way, since a field is a box to type in. */
 @media (pointer: coarse) {
-  html.pm:root { --pm-touch: calc(var(--pm-lh) * 2.4); }
+  html.pm:root {
+    --pm-pad: calc(var(--pm-lh) * 0.3);
+    --pm-tall: calc(var(--pm-lh) + var(--pm-pad) * 2);
+    --pm-reach: calc(var(--pm-lh) * 0.4);
+  }
 
-  /* Lists that drop down: GO TO and MENU. Each item is a tall box with its text on
-     the first line, top left, the key cell running the full height beside it. */
+  /* Lists that drop down (GO TO, MENU), the window's keys, the tabs. */
   html.pm:root .app-header.pm-menu-open .header-actions .btn-text,
-  html.pm:root .app-header.pm-sections-open .pm-nav .chip__label {
-    min-height: var(--pm-touch);
-    align-items: flex-start;
-  }
+  html.pm:root .app-header.pm-sections-open .pm-nav .chip__label,
+  html.pm:root .settings-form > header .btn-text,
+  html.pm:root .sticker-window-header .btn-text,
+  html.pm:root .settings-tab { padding-top: var(--pm-pad); padding-bottom: var(--pm-pad); }
+  html.pm:root .app-header.pm-menu-open .header-actions .btn-text { padding-left: 1ch; }
+  html.pm:root .app-header.pm-menu-open .header-actions,
+  html.pm:root .app-header.pm-sections-open .pm-nav { gap: calc(var(--pm-reach) * 2); }
   html.pm:root .app-header.pm-sections-open .pm-nav .chip { display: inline-flex; width: 100%; }
-  /* The key cell is a square the row's height, its glyph in the middle. */
-  html.pm:root .app-header.pm-menu-open .header-actions .btn-text::before {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    align-self: stretch;
-    width: var(--pm-touch);
-    padding: 0;
-  }
 
-  /* A hit area the size of a finger around what stays one line tall. */
+  /* Reach: the chip, plus a little above and below it. */
   html.pm:root .pm-menu-btn,
   html.pm:root .pm-section-btn,
   html.pm:root .pm-account-btn,
+  html.pm:root .pm-nav .chip,
+  html.pm:root .header-actions .btn-text,
   html.pm:root .th-sort,
   html.pm:root .row-action,
   html.pm:root .panel-foot .btn-text,
-  html.pm:root .panel-action { position: relative; }
+  html.pm:root .panel-action,
+  html.pm:root .settings-tab,
+  html.pm:root .settings-form > header .btn-text,
+  html.pm:root .sticker-window-header .btn-text,
+  html.pm:root .column-order__move { position: relative; }
   html.pm:root .pm-menu-btn::after,
   html.pm:root .pm-section-btn::after,
   html.pm:root .pm-account-btn::after,
-  html.pm:root .th-sort::after,
+  html.pm:root .pm-nav .chip::after,
+  html.pm:root .header-actions .btn-text::after,
+  html.pm:root .th-sort::before,
   html.pm:root .row-action::after,
   html.pm:root .panel-foot .btn-text::after,
-  html.pm:root .panel-action::after {
+  html.pm:root .panel-action::after,
+  html.pm:root .settings-tab::after,
+  html.pm:root .settings-form > header .btn-text::after,
+  html.pm:root .sticker-window-header .btn-text::after,
+  html.pm:root .column-order__move::after {
     content: "";
     position: absolute;
-    inset: calc((var(--pm-touch) - var(--pm-lh)) / -2) 0;
+    inset: calc(var(--pm-reach) * -1) 0;
+    background: none;
   }
 
-  /* Settings: tabs, the window's keys, choice rows, fields and the column list. */
-  html.pm:root .settings-tab {
-    display: inline-flex;
-    align-items: center;
-    min-height: var(--pm-touch);
-  }
-  html.pm:root .settings-form > header .btn-text,
-  html.pm:root .sticker-window-header .btn-text {
-    min-height: var(--pm-touch);
-    align-items: center;
-  }
-  html.pm:root .settings-form > header .btn-text::before,
-  html.pm:root .sticker-window-header .btn-text::before {
-    display: inline-flex;
-    align-items: center;
-    align-self: stretch;
-  }
+  /* Settings: choice rows, fields and the column list. */
   html.pm:root .settings-pane label.check {
     display: flex;
     align-items: center;
     gap: 1ch;
-    min-height: var(--pm-touch);
+    min-height: var(--pm-tall);
   }
   html.pm:root .settings-panes input[type="checkbox"] {
     flex: none;
@@ -2247,14 +2241,8 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
   html.pm:root .settings-panes input:not([type="checkbox"]):not([type="range"]),
   html.pm:root .settings-panes select,
   html.pm:root .sticker-window-content input:not([type="checkbox"]):not([type="range"]),
-  html.pm:root .sticker-window-content select { height: var(--pm-touch); }
-  html.pm:root .column-order li { min-height: var(--pm-touch); }
+  html.pm:root .sticker-window-content select { height: var(--pm-tall); }
+  html.pm:root .column-order { display: grid; gap: calc(var(--pm-reach) * 2); }
   html.pm:root .column-order__name { flex: 1 1 auto; }
-  html.pm:root .column-order__move {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 5ch;
-    min-height: var(--pm-touch);
-  }
+  html.pm:root .column-order__move { min-width: 4ch; padding: var(--pm-pad) 1ch; text-align: center; }
 }
