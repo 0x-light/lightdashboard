@@ -759,6 +759,8 @@ html.pm:root #newWatchlistBody {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(24ch, 1fr));
   gap: var(--pm-lh) 2ch;
+  /* An open tile grows alone; its neighbours keep their own height. */
+  align-items: start;
   padding-top: calc(var(--pm-lh) / 2);
 }
 
