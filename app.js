@@ -252,7 +252,7 @@ async function _doRenderPortfolioIncremental() {
     const positionsBody = document.getElementById('newPositionsBody');
     if (summaryEl) {
       summaryEl.innerHTML = `
-        <p class="hero-sentence">Your portfolio is empty. <button type="button" class="link-button" data-empty-action="newSettingsBtn" data-empty-tab="wallets">Add a wallet</button> or <button type="button" class="link-button" data-empty-action="newAddPositionBtn">a position</button> to start tracking.</p>`;
+        <p class="hero-sentence">Your portfolio is empty. <button type="button" class="link-button" data-empty-action="newSettingsBtn" data-empty-tab="accounts">Add a wallet</button> or <button type="button" class="link-button" data-empty-action="newAddPositionBtn">a position</button> to start tracking.</p>`;
       summaryEl.querySelectorAll('[data-empty-action]').forEach(btn => {
         btn.addEventListener('click', () => {
           document.getElementById(btn.dataset.emptyAction)?.click();

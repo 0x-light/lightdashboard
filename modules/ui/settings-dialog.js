@@ -34,11 +34,7 @@ const FIELDS = [
   { id: 'newGroupPositions', key: 'groupPositions', type: 'check', fallback: true },
   { id: 'newCombineOptionLegs', key: 'combineOptionLegs', type: 'check', fallback: true },
   { id: 'newShowWatchlist', key: 'hideWatchlist', type: 'check', invert: true, fallback: false },
-  { id: 'newShowComic', key: 'hideComic', type: 'check', invert: true, fallback: false },
-  { id: 'newShowStickersBtn', key: 'hideStickersBtn', type: 'check', invert: true, fallback: true },
-  { id: 'newShowSnowBtn', key: 'hideSnowBtn', type: 'check', invert: true, fallback: true },
-  { id: 'newShowRainBtn', key: 'hideRainBtn', type: 'check', invert: true, fallback: true },
-  { id: 'newShowDonateBtn', key: 'hideDonateBtn', type: 'check', invert: true, fallback: true }
+  { id: 'newShowComic', key: 'hideComic', type: 'check', invert: true, fallback: false }
 ];
 
 const ADDRESS_KEYS = ['walletAddresses', 'solanaAddresses', 'bitcoinAddresses', 'zcashAddresses', 'unrecognizedAddresses'];

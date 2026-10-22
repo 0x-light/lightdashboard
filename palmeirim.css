@@ -263,15 +263,12 @@ html.pm:root .pm-theme-current { color: var(--pm-muted); text-transform: lowerca
 /* Full-width rows: easier to hit, and they line up like a list. */
 html.pm:root .app-header.pm-menu-open .header-actions .btn-text { width: 100%; }
 
-/* Always listed, whatever the old "Menu bar" settings say… */
+/* Always listed, whatever the old "Menu bar" settings in storage say. */
 html.pm:root body #newToggleSnowBtn,
 html.pm:root body #newToggleRainBtn,
 html.pm:root body #newStickersBtn,
 html.pm:root body #newDonateBtn { display: inline-flex !important; }
 
-/* …so those settings have nothing left to do. */
-html.pm:root .settings-group:has(+ label.check #newShowStickersBtn),
-html.pm:root .settings-pane label.check:has(#newShowStickersBtn, #newShowSnowBtn, #newShowRainBtn, #newShowDonateBtn) { display: none; }
 
 /* Phones: one chip for sections, one for the menu; both drop down from the bar. */
 @media (max-width: 720px) {
@@ -1785,8 +1782,8 @@ html.pm:root .column-order__move:focus-visible { outline: none; background: var(
 }
 
 /* Wallet addresses: the box is wide; its label sits above it. */
-html.pm:root #settingsPane-wallets > label:not(.check) { grid-template-columns: minmax(0, 1fr); }
-html.pm:root #settingsPane-wallets > label:not(.check) > * { grid-column: 1; }
+html.pm:root .settings-pane > label.settings-wide { grid-template-columns: minmax(0, 1fr); }
+html.pm:root .settings-pane > label.settings-wide > * { grid-column: 1; }
 
 /* Backup: what it does on the left, its button on the right. */
 html.pm:root .settings-row {

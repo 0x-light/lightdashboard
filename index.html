@@ -441,18 +441,28 @@
                 <div class="settings-body">
                     <nav class="settings-nav" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
                         <button type="button" class="settings-tab" role="tab" id="settingsTab-general" aria-controls="settingsPane-general" data-tab="general">General</button>
-                        <button type="button" class="settings-tab" role="tab" id="settingsTab-wallets" aria-controls="settingsPane-wallets" data-tab="wallets">Wallets</button>
-                        <button type="button" class="settings-tab" role="tab" id="settingsTab-keys" aria-controls="settingsPane-keys" data-tab="keys">API keys</button>
+                        <button type="button" class="settings-tab" role="tab" id="settingsTab-accounts" aria-controls="settingsPane-accounts" data-tab="accounts">Accounts</button>
+                        <button type="button" class="settings-tab" role="tab" id="settingsTab-positions" aria-controls="settingsPane-positions" data-tab="positions">Positions</button>
                         <button type="button" class="settings-tab" role="tab" id="settingsTab-appearance" aria-controls="settingsPane-appearance" data-tab="appearance">Appearance</button>
                         <button type="button" class="settings-tab" role="tab" id="settingsTab-backup" aria-controls="settingsPane-backup" data-tab="backup">Backup</button>
                     </nav>
 
                     <section class="settings-panes">
+                        <!-- General: who you are and where you are, as the greeting and the weather use them, and the money unit. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-general" aria-labelledby="settingsTab-general" data-pane="general">
                             <label>
                                 Your name
                                 <input id="newUserName" type="text" class="settings-input" placeholder="there" autocomplete="given-name">
                             </label>
+                            <div class="settings-field">
+                                <label for="newWeatherCity">City</label>
+                                <div class="settings-inline">
+                                    <input id="newWeatherCity" type="text" class="settings-input" placeholder="Lisbon" autocomplete="off" aria-describedby="newWeatherCityHint">
+                                    <button id="newUseMyLocationBtn" type="button" class="btn-text">Use my location</button>
+                                </div>
+                                <ul id="newWeatherCityList" class="city-options" role="listbox" aria-label="Matching places" hidden></ul>
+                                <span id="newWeatherCityHint" class="info" aria-live="polite"></span>
+                            </div>
                             <label>
                                 Currency
                                 <span class="select">
@@ -463,35 +473,17 @@
                                     </select>
                                 </span>
                             </label>
-                            <label>
-                                Hide below
-                                <span class="settings-inline">
-                                    <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100" inputmode="decimal" class="settings-input settings-input-short">
-                                    <span id="newMinBalanceUnit" class="info">USD</span>
-                                </span>
-                            </label>
-                            <div class="settings-field">
-                                <label for="newWeatherCity">Weather city</label>
-                                <div class="settings-inline">
-                                    <input id="newWeatherCity" type="text" class="settings-input" placeholder="Lisbon" autocomplete="off" aria-describedby="newWeatherCityHint">
-                                    <button id="newUseMyLocationBtn" type="button" class="btn-text">Use my location</button>
-                                </div>
-                                <ul id="newWeatherCityList" class="city-options" role="listbox" aria-label="Matching places" hidden></ul>
-                                <span id="newWeatherCityHint" class="info" aria-live="polite"></span>
-                            </div>
                         </div>
 
-                        <div class="settings-pane" role="tabpanel" id="settingsPane-wallets" aria-labelledby="settingsTab-wallets" data-pane="wallets" hidden>
-                            <label>
+                        <!-- Accounts: where positions come from. Wallets and the keys that read them, then the broker. -->
+                        <div class="settings-pane" role="tabpanel" id="settingsPane-accounts" aria-labelledby="settingsTab-accounts" data-pane="accounts" hidden>
+                            <h3 class="settings-group">Wallets</h3>
+                            <label class="settings-wide">
                                 Addresses
                                 <textarea id="newAddresses" class="settings-input" rows="6" spellcheck="false" autocapitalize="off"
                                     placeholder="One address on each line"></textarea>
                                 <span id="newAddressesHint" class="info" aria-live="polite">EVM, Solana, Bitcoin or Zcash (t-addr).</span>
                             </label>
-                        </div>
-
-                        <div class="settings-pane" role="tabpanel" id="settingsPane-keys" aria-labelledby="settingsTab-keys" data-pane="keys" hidden>
-                            <h3 class="settings-group">Wallet balances</h3>
                             <label>
                                 Zerion
                                 <span class="settings-inline">
@@ -508,26 +500,9 @@
                                     <a class="settings-link" href="https://build.cielo.finance/" target="_blank" rel="noopener noreferrer">Get a key</a>
                                 </span>
                             </label>
-                            <p class="info settings-note">Add one of the two.</p>
+                            <p class="info settings-note">Wallet balances come from Zerion or Cielo. Add one key.</p>
 
-                            <h3 class="settings-group">Interactive Brokers</h3>
-                            <label>
-                                Flex token
-                                <span class="settings-inline">
-                                    <input id="newIbkrFlexToken" type="text" class="settings-input" spellcheck="false" autocomplete="off"
-                                        inputmode="numeric"
-                                        placeholder="Not set">
-                                    <a class="settings-link" href="https://www.ibkrguides.com/orgportal/performanceandstatements/flex.htm" target="_blank" rel="noopener noreferrer">How to set up</a>
-                                </span>
-                            </label>
-                            <label>
-                                Flex query ID
-                                <input id="newIbkrFlexQueryId" type="text" class="settings-input settings-input-short" spellcheck="false" autocomplete="off"
-                                    inputmode="numeric" placeholder="Not set">
-                            </label>
-                            <p class="info settings-note">Positions update once a day.</p>
-
-                            <h3 class="settings-group">Backups</h3>
+                            <h3 class="settings-group">More keys</h3>
                             <label>
                                 Alchemy · EVM
                                 <span class="settings-inline">
@@ -552,8 +527,64 @@
                                     <a class="settings-link" href="https://opensea.io/account/developer" target="_blank" rel="noopener noreferrer">Get a key</a>
                                 </span>
                             </label>
+                            <p class="info settings-note">Alchemy and Helius read balances when there is no Zerion or Cielo key. OpenSea adds NFTs.</p>
+
+                            <h3 class="settings-group">Interactive Brokers</h3>
+                            <label>
+                                Flex token
+                                <span class="settings-inline">
+                                    <input id="newIbkrFlexToken" type="text" class="settings-input" spellcheck="false" autocomplete="off"
+                                        inputmode="numeric"
+                                        placeholder="Not set">
+                                    <a class="settings-link" href="https://www.ibkrguides.com/orgportal/performanceandstatements/flex.htm" target="_blank" rel="noopener noreferrer">How to set up</a>
+                                </span>
+                            </label>
+                            <label>
+                                Flex query ID
+                                <input id="newIbkrFlexQueryId" type="text" class="settings-input settings-input-short" spellcheck="false" autocomplete="off"
+                                    inputmode="numeric" placeholder="Not set">
+                            </label>
+                            <p class="info settings-note">Positions update once a day.</p>
                         </div>
 
+                        <!-- Positions: what the table shows and how. -->
+                        <div class="settings-pane" role="tabpanel" id="settingsPane-positions" aria-labelledby="settingsTab-positions" data-pane="positions" hidden>
+                            <label>
+                                Hide under
+                                <span class="settings-inline">
+                                    <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100" inputmode="decimal" class="settings-input settings-input-short">
+                                    <span id="newMinBalanceUnit" class="info">USD</span>
+                                </span>
+                            </label>
+
+                            <h3 class="settings-group">Rows</h3>
+                            <label class="check">
+                                <input id="newGroupPositions" type="checkbox" class="settings-input">
+                                Group spot, perps and options
+                            </label>
+                            <label class="check">
+                                <input id="newCombineOptionLegs" type="checkbox" class="settings-input">
+                                Combine option legs by name
+                            </label>
+
+                            <h3 class="settings-group">Numbers</h3>
+                            <label class="check">
+                                <input id="newUseColoredPnL" type="checkbox" class="settings-input">
+                                Color gains and losses
+                            </label>
+                            <label class="check">
+                                <input id="newShowExactAmounts" type="checkbox" class="settings-input">
+                                Show exact amounts
+                            </label>
+
+                            <h3 class="settings-group">Columns</h3>
+                            <div class="settings-field">
+                                <label id="newColumnOrderLabel">Show and order</label>
+                                <ol id="newColumnOrder" class="column-order" aria-labelledby="newColumnOrderLabel"></ol>
+                            </div>
+                        </div>
+
+                        <!-- Appearance: type, layout, and which parts of the page show. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-appearance" aria-labelledby="settingsTab-appearance" data-pane="appearance" hidden>
                             <div class="row">
                                 <label>
@@ -593,43 +624,17 @@
                                 Center the page
                             </label>
 
-                            <h3 class="settings-group">Numbers</h3>
-                            <label class="check">
-                                <input id="newUseColoredPnL" type="checkbox" class="settings-input">
-                                Color gains and losses
-                            </label>
-                            <label class="check">
-                                <input id="newShowExactAmounts" type="checkbox" class="settings-input">
-                                Show exact amounts
-                            </label>
-                            <label class="check">
-                                <input id="newValueInTitle" type="checkbox" class="settings-input">
-                                Show the value in the tab title
-                            </label>
-
-                            <h3 class="settings-group">Sections</h3>
+                            <h3 class="settings-group">Charts</h3>
                             <label class="check">
                                 <input id="newShowValueChart" type="checkbox" class="settings-input">
                                 Show the value chart
                             </label>
                             <label class="check">
                                 <input id="newShowPriceChart" type="checkbox" class="settings-input">
-                                Show 24h price chart
-                            </label>
-                            <label class="check">
-                                <input id="newGroupPositions" type="checkbox" class="settings-input">
-                                Group spot, perps and options
-                            </label>
-                            <label class="check">
-                                <input id="newCombineOptionLegs" type="checkbox" class="settings-input">
-                                Combine option legs by name
+                                Show price charts
                             </label>
 
-                            <h3 class="settings-group">Columns</h3>
-                            <div class="settings-field">
-                                <label id="newColumnOrderLabel">Order</label>
-                                <ol id="newColumnOrder" class="column-order" aria-labelledby="newColumnOrderLabel"></ol>
-                            </div>
+                            <h3 class="settings-group">Sections</h3>
                             <label class="check">
                                 <input id="newShowWatchlist" type="checkbox" class="settings-input">
                                 Show watchlist
@@ -639,25 +644,14 @@
                                 Show comic strip
                             </label>
 
-                            <h3 class="settings-group">Menu bar</h3>
+                            <h3 class="settings-group">Browser tab</h3>
                             <label class="check">
-                                <input id="newShowStickersBtn" type="checkbox" class="settings-input">
-                                Show Stickers
-                            </label>
-                            <label class="check">
-                                <input id="newShowSnowBtn" type="checkbox" class="settings-input">
-                                Show Snow
-                            </label>
-                            <label class="check">
-                                <input id="newShowRainBtn" type="checkbox" class="settings-input">
-                                Show Rain
-                            </label>
-                            <label class="check">
-                                <input id="newShowDonateBtn" type="checkbox" class="settings-input">
-                                Show Donate
+                                <input id="newValueInTitle" type="checkbox" class="settings-input">
+                                Show the value in the tab title
                             </label>
                         </div>
 
+                        <!-- Backup: the settings as text, out and in, and a hard reload. -->
                         <div class="settings-pane settings-pane-rows" role="tabpanel" id="settingsPane-backup" aria-labelledby="settingsTab-backup" data-pane="backup" hidden>
                             <div class="settings-row">
                                 <div class="settings-row-text">
