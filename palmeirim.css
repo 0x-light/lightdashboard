@@ -39,8 +39,6 @@ html.pm:root ::selection { background: var(--pm-ink); color: var(--bg); }
 html.pm:root :focus-visible { outline: none; }
 
 /* One emphasis everywhere: swap the theme's two colours. */
-html.pm:root .pm-nav a:focus-visible kbd,
-html.pm:root .pm-nav a[aria-current] .chip__label,
 html.pm:root .header-actions .btn-text:focus-visible::before,
 html.pm:root .pm-btn:focus-visible,
 html.pm:root .panel-foot .btn-text:focus-visible,
@@ -50,7 +48,6 @@ html.pm:root .panel-action:focus-visible {
 }
 
 @media (hover: hover) {
-  html.pm:root .pm-nav a:hover kbd,
   html.pm:root .header-actions .btn-text:hover::before,
   html.pm:root .panel-foot .btn-text:hover,
   html.pm:root .panel-action:hover,
@@ -121,8 +118,6 @@ html.pm:root .app-header {
 html.pm:root .greeting-container,
 html.pm:root .mobile-menu-btn { display: none !important; }
 
-html.pm:root .pm-nav { display: flex; flex-wrap: wrap; gap: calc(var(--pm-lh) / 3) 1ch; }
-html.pm:root .pm-nav a { color: inherit; text-decoration: none; }
 
 /* Header tools as chips. The key cell is a pseudo-element, because the app
    rewrites some of these labels (Hide/Show amounts). */
@@ -162,18 +157,6 @@ html.pm:root #newToggleRainBtn::before { content: "☂"; }
 
 /* Theme moves to the footer, as on the site. */
 html.pm:root .header-actions .theme-select-wrapper { display: none !important; }
-
-/* The section chip only exists on phones (see below). */
-html.pm:root .pm-section-btn {
-  display: none;
-  flex: none;
-  padding: 0;
-  border: 0;
-  background: none;
-  line-height: var(--pm-lh);
-}
-
-html.pm:root .pm-section-btn[aria-expanded="true"] .chip__label { background: var(--pm-ink); color: var(--bg); }
 
 /* All tools live behind one MENU chip at the right of the bar: a framed popover
    that drops down under it. Every tool is always
@@ -231,10 +214,9 @@ html.pm:root .app-header.pm-menu-open .header-actions::before {
 /* Menu order: Settings first, then the everyday tools, then the decorations. */
 html.pm:root #pmTools #newSettingsBtn { order: -5; }
 html.pm:root #pmTools #pmThemeBtn { order: -4; }
-/* Account sits in the bar beside MENU: a key cell and a label, like the section chips. */
+/* Account sits at the left of the bar: a key cell and a label. */
 html.pm:root .pm-account-btn {
   flex: none;
-  margin-left: auto;
   padding: 0;
   border: 0;
   background: none;
@@ -242,7 +224,6 @@ html.pm:root .pm-account-btn {
   cursor: pointer;
 }
 
-html.pm:root .pm-account-btn + .pm-menu-btn { margin-left: 0; }
 html.pm:root .pm-account-btn:focus-visible kbd { background: var(--pm-ink); color: var(--bg); }
 
 @media (hover: hover) {
@@ -270,42 +251,11 @@ html.pm:root body #newStickersBtn,
 html.pm:root body #newDonateBtn { display: inline-flex !important; }
 
 
-/* Phones: one chip for sections, one for the menu; both drop down from the bar. */
+/* Phones: the menu drops down from the bar. */
 @media (max-width: 720px) {
   html.pm:root .app-header { flex-wrap: nowrap; align-items: center; gap: 1ch; }
 
-  /* Sections: one chip naming the one in view; it opens them as a framed list. */
-  html.pm:root .pm-section-btn { display: inline-flex; }
-  html.pm:root .app-header:not(.pm-sections-open) .pm-nav { display: none; }
-
-  html.pm:root .app-header.pm-sections-open .pm-nav {
-    position: absolute;
-    top: calc(100% + var(--pm-lh) / 2);
-    left: 1ch;
-    z-index: 60;
-    display: grid;
-    gap: calc(var(--pm-lh) / 3);
-    min-width: 24ch;
-    padding: var(--pm-lh) 1ch calc(var(--pm-lh) / 2 + 2px);
-    border: 1px solid var(--pm-ink);
-    background: var(--bg);
-    box-shadow: 1ch calc(var(--pm-lh) / 2) 0 var(--pm-tint-2);
-  }
-
-  html.pm:root .app-header.pm-sections-open .pm-nav::before {
-    content: "GO TO";
-    position: absolute;
-    top: calc(var(--pm-lh) / -2);
-    left: 1ch;
-    padding: 0 1ch;
-    background: var(--bg);
-    line-height: var(--pm-lh);
-  }
-
-  html.pm:root .pm-nav .chip,
-  html.pm:root .pm-nav .chip__label { width: 100%; }
-
-  /* MENU drops down under its chip, like the section list: as wide as its items. */
+  /* MENU drops down under its chip, as wide as its items. */
   html.pm:root .app-header.pm-menu-open .header-actions {
     right: 1ch;
     min-width: 24ch;
@@ -2188,20 +2138,16 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
     --pm-reach: calc(var(--pm-lh) / 6); /* half the gap between chips in a list */
   }
 
-  /* Lists that drop down (GO TO, MENU), the window's keys, the tabs. */
+  /* The MENU list, the window's keys, the tabs. */
   html.pm:root .app-header.pm-menu-open .header-actions .btn-text,
-  html.pm:root .app-header.pm-sections-open .pm-nav .chip__label,
   html.pm:root .settings-form > header .btn-text,
   html.pm:root .sticker-window-header .btn-text,
   html.pm:root .settings-tab { padding-top: var(--pm-pad); padding-bottom: var(--pm-pad); }
   html.pm:root .app-header.pm-menu-open .header-actions .btn-text { padding-left: 1ch; }
-  html.pm:root .app-header.pm-sections-open .pm-nav .chip { display: inline-flex; width: 100%; }
 
   /* Reach: the chip, plus a little above and below it. */
   html.pm:root .pm-menu-btn,
-  html.pm:root .pm-section-btn,
   html.pm:root .pm-account-btn,
-  html.pm:root .pm-nav .chip,
   html.pm:root .header-actions .btn-text,
   html.pm:root .th-sort,
   html.pm:root .row-action,
@@ -2212,9 +2158,7 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
   html.pm:root .sticker-window-header .btn-text,
   html.pm:root .column-order__move { position: relative; }
   html.pm:root .pm-menu-btn::after,
-  html.pm:root .pm-section-btn::after,
   html.pm:root .pm-account-btn::after,
-  html.pm:root .pm-nav .chip::after,
   html.pm:root .header-actions .btn-text::after,
   html.pm:root .th-sort::before,
   html.pm:root .row-action::after,
