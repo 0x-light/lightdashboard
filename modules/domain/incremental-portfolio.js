@@ -419,7 +419,9 @@ export class IncrementalPortfolioRenderer {
       return;
     }
     const updatedAt = new Date();
-    const time = updatedAt.toLocaleTimeString(undefined, {
+    // 24-hour, like the clock on the portfolio card
+    const time = updatedAt.toLocaleTimeString('en-GB', {
+      hourCycle: 'h23',
       hour: '2-digit',
       minute: '2-digit',
       timeZone: window.larpTimeZone
@@ -633,6 +635,7 @@ export class IncrementalPortfolioRenderer {
       this.purgeStaleRows();
       this.hideGreetingLoader();
       this.updateLastUpdatedLabel();
+      if (this.allPositions.length === 0) this.render(); // Loading becomes No positions
       // Trigger Pyth enrichment for positions missing 24h change
       this.enrichMissing24hWithPyth();
     }
@@ -740,11 +743,14 @@ export class IncrementalPortfolioRenderer {
     const { positionsBody, mobileContainer, summaryEl } = this.containers;
 
     if (this.allPositions.length === 0) {
+      // While sources load, say so; once they have all answered, there is nothing.
       if (positionsBody) {
-        positionsBody.innerHTML = '<tr><td colspan="9" class="loading">Fetching positions...</td></tr>';
+        positionsBody.innerHTML = `<tr><td colspan="9" class="loading">${this.isLoading ? 'Loading positions…' : 'No positions.'}</td></tr>`;
+        const count = positionsBody.closest('section')?.querySelector('.panel-count');
+        if (count) count.textContent = '';
       }
       if (summaryEl) {
-        summaryEl.innerHTML = 'Loading portfolio...';
+        summaryEl.innerHTML = this.isLoading ? 'Loading portfolio…' : 'Your portfolio is empty.';
       }
       this.isRendering = false;
       return;
@@ -786,6 +792,7 @@ export class IncrementalPortfolioRenderer {
     const minThreshold = this.settings.minBalanceThreshold || 100;
     const hiddenAssets = window.hiddenAssets || new Set();
 
+    let anyHidden = false;
     const visible = sorted.filter(p => {
       // Hide special tracking positions always
       if (p.isHlAccountEquity || p.isLighterAccountEquity) return false;
@@ -798,6 +805,8 @@ export class IncrementalPortfolioRenderer {
       // Clear flags first
       p.isHiddenPosition = false;
       p.isManuallyHidden = false;
+
+      if (isManuallyHidden || isSmall) anyHidden = true;
 
       // Handle manually hidden positions
       if (isManuallyHidden) {
@@ -823,6 +832,10 @@ export class IncrementalPortfolioRenderer {
 
       return true;
     });
+
+    // Show <$100 only when there is something to show.
+    const showHiddenBtn = document.getElementById('newShowHiddenBtn');
+    if (showHiddenBtn) showHiddenBtn.hidden = !anyHidden;
 
     // Render positions table
     if (PositionsUI && positionsBody) {

@@ -55,14 +55,10 @@ export function formatMoney(value, {
   const sign = n < 0 ? '−' : (showPlusSign && n > 0 ? '+' : '');
   const suffix = normalized === 'GBp' ? ' GBp' : '';
 
-  if (compact && abs >= 1000000) {
-    const formatted = (abs / 1000000).toFixed(1).replace(/\.0$/, '');
-    return `${sign}${symbol}${formatted}M${suffix}`;
-  }
-  if (compact && abs >= 1000) {
-    const formatted = (abs / 1000).toFixed(1).replace(/\.0$/, '');
-    return `${sign}${symbol}${formatted}k${suffix}`;
-  }
+  // Compact amounts always keep one decimal, so a column reads $7.0M over $7.4M, not $7M.
+  if (compact && abs >= 1e9) return `${sign}${symbol}${(abs / 1e9).toFixed(1)}B${suffix}`;
+  if (compact && abs >= 1e6) return `${sign}${symbol}${(abs / 1e6).toFixed(1)}M${suffix}`;
+  if (compact && abs >= 1e3) return `${sign}${symbol}${(abs / 1e3).toFixed(1)}k${suffix}`;
   if (abs >= 1) {
     const formatted = abs.toLocaleString(undefined, {
       minimumFractionDigits: 2,
@@ -71,7 +67,12 @@ export function formatMoney(value, {
     return `${sign}${symbol}${formatted}${suffix}`;
   }
   if (abs === 0) return `${symbol}0${suffix}`;
-  return `${sign}${symbol}${abs.toPrecision(4)}${suffix}`;
+  return `${sign}${symbol}${small(abs)}${suffix}`;
+}
+
+// Under 1: four significant digits, written out ($0.0000001, not $1.000e-7).
+function small(abs) {
+  return abs.toLocaleString('en-US', { maximumSignificantDigits: 4, maximumFractionDigits: 20 });
 }
 
 export function formatPrice(value, {

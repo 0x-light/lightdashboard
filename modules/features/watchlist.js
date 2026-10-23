@@ -117,6 +117,27 @@ function createSparkline(priceData, width = 60, height = 24, currentChange24h = 
   return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="sparkline" aria-hidden="true" focusable="false"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1"/></svg>`;
 }
 
+// A Pyth entry is saved as a feed id. The symbol each id resolved to is kept, so a tile
+// whose quote hasn't arrived (or failed) still reads ETH, not a slice of the id.
+const SYMBOLS_KEY = 'pmWatchlistSymbols';
+const feedKey = id => `0x${String(id || '').toLowerCase().replace(/^0x/, '')}`;
+function knownSymbol(id) {
+  if (!id) return null;
+  try { return JSON.parse(localStorage.getItem(SYMBOLS_KEY) || '{}')[feedKey(id)] || null; } catch (_) { return null; }
+}
+function rememberSymbols(items) {
+  try {
+    const known = JSON.parse(localStorage.getItem(SYMBOLS_KEY) || '{}');
+    let changed = false;
+    for (const item of items || []) {
+      if (!item?.feedId || !item.symbol || item.symbol.startsWith('...')) continue;
+      const k = feedKey(item.feedId);
+      if (known[k] !== item.symbol) { known[k] = item.symbol; changed = true; }
+    }
+    if (changed) localStorage.setItem(SYMBOLS_KEY, JSON.stringify(known));
+  } catch (_) { /* labels only */ }
+}
+
 // --- Pyth fetch path (unchanged semantics, just keyed by entry.key now) ---
 
 async function fetchPythItems(pythEntries, pythProvider, bypassCache = false) {
@@ -143,7 +164,7 @@ async function fetchPythItems(pythEntries, pythProvider, bypassCache = false) {
         ? entry.id.toLowerCase()
         : `0x${entry.id.toLowerCase()}`;
       const curr = current[normalizedId];
-      const symbol = idToSymbol[normalizedId] || `...${normalizedId.slice(-6)}`;
+      const symbol = idToSymbol[normalizedId] || knownSymbol(normalizedId) || `...${normalizedId.slice(-6)}`;
 
       if (curr !== undefined) {
         results.push({
@@ -517,6 +538,7 @@ export async function render(container, {
   }
 
   const updateUI = (data) => {
+    rememberSymbols(data);
     // Every saved entry gets a row, even when its quote failed — otherwise an entry whose feed
     // is down has no remove button and can never be deleted. Rows for entries no longer saved
     // (stale fallback data) are dropped.
@@ -531,7 +553,7 @@ export async function render(container, {
       byKey.set(key, {
         key,
         provider: entry.provider,
-        symbol: entry.symbol || (id ? `${id.replace(/^0x/i, '').slice(0, 6)}…` : '—'),
+        symbol: entry.symbol || knownSymbol(id) || '…',
         price: null,
         change24h: null,
         unavailable: true

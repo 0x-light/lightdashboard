@@ -1030,6 +1030,9 @@ async function testCurrencyFormattingAndFxRates() {
   assert.equal(getFxCurrency('GBp'), 'GBP');
   assert.equal(getQuoteUnitScale('GBp'), 0.01);
   assert.equal(formatMoney(1234, { currency: 'EUR' }), '€1.2k');
+  assert.equal(formatMoney(7e6), '$7.0M');
+  assert.equal(formatMoney(-2.5e9), '−$2.5B');
+  assert.equal(formatMoney(1e-7), '$0.0000001');
   assert.equal(formatMoney(150, { currency: 'GBp', compact: false }), '150 GBp');
 
   const originalFetch = globalThis.fetch;
@@ -1149,6 +1152,8 @@ function testPortfolioHistorySeriesMath() {
   const b = [[15, 50], [25, 70]];
   assert.deepEqual(sumSeries([a, b]), [[10, 150], [15, 150], [20, 160], [25, 180], [30, 190]]);
   assert.deepEqual(sumSeries([a, b], 20), [[20, 160], [25, 180], [30, 190]]);
+  // A window between points starts at its own edge, with the value then.
+  assert.deepEqual(sumSeries([a, b], 22), [[22, 160], [25, 180], [30, 190]]);
   assert.deepEqual(sumSeries([[[5, 1], [5, 2]]]), [[5, 2]]);
   // The window keeps the last point before it, so the value at the start is known.
   assert.deepEqual(clip(a, 25), [[20, 110], [30, 120]]);

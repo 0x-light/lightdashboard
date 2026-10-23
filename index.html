@@ -179,8 +179,8 @@
             </h1>
             <button id="newMobileMenuBtn" class="btn-text mobile-menu-btn" aria-haspopup="dialog" aria-controls="newMobileMenu">Menu</button>
             <div class="header-actions">
-                <button id="newToggleSnowBtn" class="btn-text">Snow on</button>
-                <button id="newToggleRainBtn" class="btn-text">Rain on</button>
+                <button id="newToggleSnowBtn" class="btn-text">Snow <span class="pm-theme-current">off</span></button>
+                <button id="newToggleRainBtn" class="btn-text">Rain <span class="pm-theme-current">off</span></button>
                 <button id="newRefreshBtn" class="btn-text">Refresh</button>
                 <button id="newToggleAmountsBtn" class="btn-text">Hide amounts</button>
                 <span class="theme-select-wrapper">
@@ -306,8 +306,8 @@
                 <button id="newCloseMobileMenuBtn" class="btn-text">Close</button>
             </div>
             <div class="mobile-menu-content">
-                <button id="newToggleSnowBtnMobile" class="btn-text">Snow on</button>
-                <button id="newToggleRainBtnMobile" class="btn-text">Rain on</button>
+                <button id="newToggleSnowBtnMobile" class="btn-text">Snow <span class="pm-theme-current">off</span></button>
+                <button id="newToggleRainBtnMobile" class="btn-text">Rain <span class="pm-theme-current">off</span></button>
                 <button id="newToggleAmountsBtnMobile" class="btn-text">Hide amounts</button>
                 <span class="theme-select-wrapper">
                     <select id="newThemeSelectMobile" class="theme-select-btn" aria-label="Theme">
@@ -594,6 +594,10 @@
                         <!-- Appearance: type, layout, and which parts of the page show. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-appearance" aria-labelledby="settingsTab-appearance" data-pane="appearance" hidden>
                             <div class="row">
+                                <label>
+                                    Theme
+                                    <span class="select"><button type="button" id="settingsThemeBtn" class="settings-input" aria-haspopup="dialog"><span class="js-pm-theme-label"></span></button></span>
+                                </label>
                                 <label>
                                     Font
                                     <span class="select">

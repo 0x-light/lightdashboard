@@ -1696,6 +1696,7 @@ html.pm:root .settings-pane :is(input[type="text"], input:not([type])) { width: 
 html.pm:root .settings-pane .settings-input-short { width: 10ch !important; max-width: 10ch; }
 html.pm:root .settings-pane .select { width: max-content; min-width: 16ch; max-width: 100%; }
 html.pm:root .settings-pane .select select { width: 100%; padding-right: 3ch; }
+html.pm:root .settings-pane .select button { width: 100%; padding-right: 3ch; text-align: left; } /* Theme: opens the theme window */
 
 /* A field with something beside it: a unit, a link, a button. Wraps under when narrow. */
 html.pm:root .settings-pane .settings-inline {
@@ -1746,7 +1747,7 @@ html.pm:root .column-order__move {
   line-height: var(--pm-lh);
   cursor: pointer;
 }
-html.pm:root .column-order__move:disabled { background: none; color: var(--pm-muted); cursor: default; }
+html.pm:root .column-order__move:disabled { visibility: hidden; } /* first ↑, last ↓: nothing to do */
 html.pm:root .column-order__move:focus-visible { outline: none; background: var(--pm-ink); color: var(--bg); }
 @media (hover: hover) {
   html.pm:root .column-order__move:not(:disabled):hover { background: var(--pm-ink); color: var(--bg); }

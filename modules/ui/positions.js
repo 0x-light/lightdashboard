@@ -502,7 +502,10 @@ function formatAmount(num, visible, showExact = false) {
 
   // Round to reasonable precision
   const abs = Math.abs(n);
-  if (abs >= 1000000) {
+  if (abs >= 1e9) {
+    const formatted = (abs / 1e9).toFixed(2);
+    return (n < 0 ? '−' : '') + formatted.replace(/\.?0+$/, '') + 'B';
+  } else if (abs >= 1000000) {
     const formatted = (abs / 1000000).toFixed(2);
     return (n < 0 ? '−' : '') + formatted.replace(/\.?0+$/, '') + 'M';
   } else if (abs >= 1000) {
@@ -601,9 +604,22 @@ function isShortPosition(pos) {
   return (!!pos?.isLeveraged || !!optionOf(pos)) && Number.isFinite(amount) && amount < 0;
 }
 
+// A Hyperliquid builder dex's market, "xyz:GOLD": the dex and the market's own name.
+function hip3Of(pos) {
+  if (pos?.exchange !== 'HL Perps') return null;
+  const m = /^([a-z0-9]+):(.+)$/.exec(String(pos.asset || ''));
+  return m ? { dex: m[1], name: m[2] } : null;
+}
+
+// The ticker alone: a builder dex's prefix goes to the Source column.
 function formatAssetLabel(pos) {
   const option = optionOf(pos);
-  return option ? option.underlying : (pos?.asset || '—');
+  return option ? option.underlying : (hip3Of(pos)?.name || pos?.asset || '—');
+}
+
+function formatSource(pos) {
+  const hip3 = hip3Of(pos);
+  return hip3 ? `${pos.exchange} · ${hip3.dex}` : (pos.exchange || '—');
 }
 
 // An option's strike and right after its underlying, short enough for the Asset column:
@@ -627,7 +643,7 @@ function escapeHtml(value) {
 
 function formatAssetLabelHtml(pos) {
   const base = escapeHtml(formatAssetLabel(pos));
-  const arrow = isShortPosition(pos) ? '<span class="short-arrow"> ↓</span>' : '';
+  const arrow = isShortPosition(pos) ? '<span class="short-arrow"> short</span>' : '';
   return `${base}${arrow}${optionTermsHtml(pos)}`;
 }
 
@@ -636,7 +652,7 @@ function formatAssetCellHtml(pos, { leg = false } = {}) {
   // A leg under its underlying's row: the contract's terms stand in for the ticker.
   if (leg) {
     const option = optionOf(pos);
-    const arrow = isShortPosition(pos) ? '<span class="short-arrow"> ↓</span>' : '';
+    const arrow = isShortPosition(pos) ? '<span class="short-arrow"> short</span>' : '';
     return `<span class="asset-leg">${escapeHtml(optionTerms(option))}${arrow}</span>`;
   }
   const label = formatAssetLabelHtml(pos);
@@ -773,7 +789,7 @@ function createTableRow(doc, pos, opts, prevDataMap, { leg = false } = {}) {
     funding: fundingCell,
     change: formatPct(pos.change24h, is24hLoading),
     amount: formatAmount(pos.amount, amountVisible, showExactAmounts),
-    exchange: pos.exchange || '—'
+    exchange: escapeHtml(formatSource(pos))
   };
   const flash = {
     price: priceChanged,

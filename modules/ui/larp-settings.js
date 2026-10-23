@@ -114,6 +114,14 @@ function cell(sec, ci, col, row, i) {
   return `<input class="larp-cell" type="${type}" ${id} value="${esc(value)}" aria-label="${esc(col.label)}" autocomplete="off" spellcheck="false"${ro}${style}>`;
 }
 
+// Said under the lists it applies to: what Gain means, and how to enter a short.
+function hintOf(sec) {
+  const labels = sec.cols.map(c => c.label);
+  const gain = labels.includes('Gain %') ? 'Gain is the profit in %.' : '';
+  const short = labels.includes('Size') ? ' Enter a negative size for a short.' : '';
+  return (gain + short).trim();
+}
+
 function renderSection(sec, config) {
   const list = config[sec.list] || [];
   const rows = list.map((row, i) => ({ row, i })).filter(({ row }) => !sec.filter || sec.filter(row));
@@ -125,6 +133,7 @@ function renderSection(sec, config) {
     </div>`).join('');
   return `
     <h3 class="settings-group">${esc(sec.title)}</h3>
+    ${hintOf(sec) ? `<div class="info">${hintOf(sec)}</div>` : ''}
     <div class="larp-list" data-list="${sec.id}">
       ${rows.length ? `<div class="larp-row larp-head">${head}<span class="larp-remove-gap"></span></div>` : ''}
       ${body}
@@ -164,7 +173,7 @@ export function setupLarpSettings() {
       <div class="info larp-apply" id="larpApply" hidden>You changed the portfolio. <button type="button" class="btn-text" id="larpReload">Reload</button></div>
 
       <label>Your name
-        <input type="text" class="settings-input" id="larpName" value="${esc(c.name)}" autocomplete="off" placeholder="there">
+        <input type="text" class="settings-input" id="larpName" value="${esc(c.name)}" autocomplete="off" placeholder="Not set">
       </label>
       <div class="settings-field">
         <label for="larpCity">City</label>
@@ -172,7 +181,6 @@ export function setupLarpSettings() {
         <ul class="city-options" id="larpCityList" role="listbox" aria-label="Matching places" hidden></ul>
         <span class="info" id="larpCityHint" aria-live="polite"></span>
       </div>
-      <div class="info">Gain is the profit in %. Enter a negative size for a short.</div>
 
       ${SECTIONS.map(sec => renderSection(sec, c)).join('')}
 

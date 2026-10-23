@@ -66,10 +66,12 @@ export function stepper(series) {
   };
 }
 
-// The parts added up on every timestamp any of them has from `since` on.
+// The parts added up on every timestamp any of them has from `since` on, and at `since`
+// itself when a part began before it, so the line starts where the window does.
 export function sumSeries(parts, since = 0) {
   const ts = [];
   for (const s of parts) for (const [t] of s) if (t >= since) ts.push(t);
+  if (since > 0 && parts.some(s => s.length && s[0][0] < since)) ts.push(since);
   ts.sort((a, b) => a - b);
   const steps = parts.map(stepper);
   const values = [];

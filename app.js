@@ -674,6 +674,11 @@ function updateGreeting() {
   }
 }
 
+// Rain and snow in the menu show their state, like Theme: "Rain off" reads as it is now.
+function effectLabel(name, on) {
+  return `${name} <span class="pm-theme-current">${on ? 'on' : 'off'}</span>`;
+}
+
 function setupControls() {
   const settings = getSettings();
 
@@ -1154,13 +1159,13 @@ function setupControls() {
   if (Rain && toggleRainBtn) {
     toggleRainBtn.addEventListener('click', () => {
       const active = Rain.toggleRain();
-      toggleRainBtn.textContent = active ? 'Rain off' : 'Rain on';
+      toggleRainBtn.innerHTML = effectLabel('Rain', active);
       if (toggleRainBtnMobile) {
-        toggleRainBtnMobile.textContent = active ? 'Rain off' : 'Rain on';
+        toggleRainBtnMobile.innerHTML = effectLabel('Rain', active);
       }
       if (active) {
-        toggleSnowBtn.textContent = 'Snow on';
-        if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = 'Snow on';
+        toggleSnowBtn.innerHTML = effectLabel('Snow', false);
+        if (toggleSnowBtnMobile) toggleSnowBtnMobile.innerHTML = effectLabel('Snow', false);
       }
 
       // Save to localStorage
@@ -1175,13 +1180,13 @@ function setupControls() {
   if (Rain && toggleSnowBtn) {
     toggleSnowBtn.addEventListener('click', () => {
       const active = Rain.toggleSnow();
-      toggleSnowBtn.textContent = active ? 'Snow off' : 'Snow on';
+      toggleSnowBtn.innerHTML = effectLabel('Snow', active);
       if (toggleSnowBtnMobile) {
-        toggleSnowBtnMobile.textContent = active ? 'Snow off' : 'Snow on';
+        toggleSnowBtnMobile.innerHTML = effectLabel('Snow', active);
       }
       if (active) {
-        toggleRainBtn.textContent = 'Rain on';
-        if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = 'Rain on';
+        toggleRainBtn.innerHTML = effectLabel('Rain', false);
+        if (toggleRainBtnMobile) toggleRainBtnMobile.innerHTML = effectLabel('Rain', false);
       }
 
       // Save to localStorage
@@ -1196,13 +1201,13 @@ function setupControls() {
   if (Rain && toggleRainBtnMobile) {
     toggleRainBtnMobile.addEventListener('click', () => {
       const active = Rain.toggleRain();
-      toggleRainBtnMobile.textContent = active ? 'Rain off' : 'Rain on';
+      toggleRainBtnMobile.innerHTML = effectLabel('Rain', active);
       if (toggleRainBtn) {
-        toggleRainBtn.textContent = active ? 'Rain off' : 'Rain on';
+        toggleRainBtn.innerHTML = effectLabel('Rain', active);
       }
       if (active) {
-        toggleSnowBtn.textContent = 'Snow on';
-        if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = 'Snow on';
+        toggleSnowBtn.innerHTML = effectLabel('Snow', false);
+        if (toggleSnowBtnMobile) toggleSnowBtnMobile.innerHTML = effectLabel('Snow', false);
       }
 
       // Close mobile menu if open (with scroll restoration)
@@ -1220,13 +1225,13 @@ function setupControls() {
   if (Rain && toggleSnowBtnMobile) {
     toggleSnowBtnMobile.addEventListener('click', () => {
       const active = Rain.toggleSnow();
-      toggleSnowBtnMobile.textContent = active ? 'Snow off' : 'Snow on';
+      toggleSnowBtnMobile.innerHTML = effectLabel('Snow', active);
       if (toggleSnowBtn) {
-        toggleSnowBtn.textContent = active ? 'Snow off' : 'Snow on';
+        toggleSnowBtn.innerHTML = effectLabel('Snow', active);
       }
       if (active) {
-        toggleRainBtn.textContent = 'Rain on';
-        if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = 'Rain on';
+        toggleRainBtn.innerHTML = effectLabel('Rain', false);
+        if (toggleRainBtnMobile) toggleRainBtnMobile.innerHTML = effectLabel('Rain', false);
       }
 
       // Close mobile menu if open (with scroll restoration)
@@ -2567,12 +2572,12 @@ const boot = async () => {
     // Only enable one - prioritize rain if both are somehow enabled
     if (settings.rainEnabled && !settings.snowEnabled) {
       Rain.toggleRain();
-      if (toggleRainBtn) toggleRainBtn.textContent = 'Rain off';
-      if (toggleRainBtnMobile) toggleRainBtnMobile.textContent = 'Rain off';
+      if (toggleRainBtn) toggleRainBtn.innerHTML = effectLabel('Rain', true);
+      if (toggleRainBtnMobile) toggleRainBtnMobile.innerHTML = effectLabel('Rain', true);
     } else if (settings.snowEnabled && !settings.rainEnabled) {
       Rain.toggleSnow();
-      if (toggleSnowBtn) toggleSnowBtn.textContent = 'Snow off';
-      if (toggleSnowBtnMobile) toggleSnowBtnMobile.textContent = 'Snow off';
+      if (toggleSnowBtn) toggleSnowBtn.innerHTML = effectLabel('Snow', true);
+      if (toggleSnowBtnMobile) toggleSnowBtnMobile.innerHTML = effectLabel('Snow', true);
     }
   }
 
@@ -2750,14 +2755,14 @@ const boot = async () => {
           Rain.toggleSnow();
           const btn = document.getElementById('newToggleSnowBtn');
           const mobileBtn = document.getElementById('newToggleSnowBtnMobile');
-          if (btn) btn.textContent = 'Snow off';
-          if (mobileBtn) mobileBtn.textContent = 'Snow off';
+          if (btn) btn.innerHTML = effectLabel('Snow', true);
+          if (mobileBtn) mobileBtn.innerHTML = effectLabel('Snow', true);
         } else if (weather.isRaining) {
           Rain.toggleRain();
           const btn = document.getElementById('newToggleRainBtn');
           const mobileBtn = document.getElementById('newToggleRainBtnMobile');
-          if (btn) btn.textContent = 'Rain off';
-          if (mobileBtn) mobileBtn.textContent = 'Rain off';
+          if (btn) btn.innerHTML = effectLabel('Rain', true);
+          if (mobileBtn) mobileBtn.innerHTML = effectLabel('Rain', true);
         }
       }
     }
@@ -2934,6 +2939,13 @@ const boot = async () => {
     // (calvinandhobbes-1988-06-05.jpg). GoComics images allow a direct fetch; others go
     // through our proxy; if both fail, the image opens in a new tab to save from there.
     const downloadComicBtn = document.getElementById('newComicDownloadBtn');
+    // Nothing to save while a strip loads or after it fails: Download shows only with one on screen.
+    const comicBox = document.getElementById('newComic');
+    if (downloadComicBtn && comicBox) {
+      const syncDownload = () => { downloadComicBtn.hidden = !comicBox.querySelector('img'); };
+      new MutationObserver(syncDownload).observe(comicBox, { childList: true });
+      syncDownload();
+    }
     downloadComicBtn?.addEventListener('click', async () => {
       const img = document.querySelector('#newComic img');
       if (!img?.src) return;

@@ -120,10 +120,14 @@
   var valueSeries = [];
   var valueSymbol = "$";
 
+  // Written like the table's amounts: $561.5k, $126.4M.
   function money(v, signed) {
     var abs = Math.abs(v);
-    var text = valueSymbol + new Intl.NumberFormat(undefined, { notation: abs >= 10000 ? "compact" : "standard", maximumFractionDigits: abs >= 10000 ? 2 : 0 }).format(abs);
-    return (v < 0 ? "−" : signed ? "+" : "") + text;
+    var text = abs >= 1e9 ? (abs / 1e9).toFixed(1) + "B"
+      : abs >= 1e6 ? (abs / 1e6).toFixed(1) + "M"
+      : abs >= 1e4 ? (abs / 1e3).toFixed(1) + "k"
+      : Math.round(abs).toLocaleString("en-US");
+    return (v < 0 ? "−" : signed ? "+" : "") + valueSymbol + text;
   }
 
   function chartHeight() {
@@ -135,9 +139,9 @@
     $$(".pm-value__period", valueBox).forEach(function (b) { b.setAttribute("aria-checked", String(b.dataset.period === valuePeriod)); });
     var data = valueData;
     if (!data || data.values.length < 2) {
-      // Still loading: an empty line's worth of space. Loaded: say there is none.
+      // The line's height either way: empty while loading, then say there is none.
       chart.innerHTML = valueSettled ? '<p class="pm-value__empty">No history for this period.</p>' : "";
-      chart.style.height = valueSettled ? "" : chartHeight() + "px";
+      chart.style.height = chartHeight() + "px";
       $(".pm-value__change", valueBox).textContent = "";
       valueSeries = [];
       return;
@@ -181,14 +185,16 @@
     if (document.documentElement.dataset.valueChart === "off") { valueBox.hidden = true; return; }
     var period = valuePeriod, seq = ++valueLoad;
     import("./modules/data/portfolio-history.js").then(function (m) {
-      var settled = m.isPortfolioSettled();
+      // Settled with no rows yet is the boot, before any source has started: not settled.
+      var settled = m.isPortfolioSettled() && ((window.venuePositions || window.cachedPositions || []).length > 0);
       return m.getPortfolioHistory(period).then(function (data) {
         if (seq !== valueLoad) return; // a newer load is on its way
         valueData = data;
         if (settled) valueSettled = true;
-        valueBox.hidden = valueSettled && !data.values.length; // nothing to chart at all
-        if (!valueBox.hidden) drawValue();
-        if (!valueSettled) setTimeout(loadValue, 4000);
+        valueBox.hidden = false;
+        drawValue();
+        // A source that failed (Hyperliquid rate-limits bursts) gets another go soon.
+        if (!valueSettled || data.values.length < 2) setTimeout(loadValue, valueSettled ? 15000 : 4000);
       });
     }).catch(function () { valueBox.hidden = true; });
   }
@@ -222,7 +228,7 @@
     }
     var when = new Date(near.t);
     var label = valuePeriod === "day"
-      ? when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZone: window.larpTimeZone })
+      ? when.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: window.larpTimeZone })
       : when.toLocaleDateString(undefined, { month: "short", day: "numeric", year: valuePeriod === "allTime" ? "numeric" : undefined });
     readout.textContent = label + " · " + money(near.v);
     readout.hidden = false;
@@ -317,6 +323,9 @@
     var opt = themeSelect && themeSelect.selectedOptions[0];
     var name = opt ? opt.textContent.trim().toLowerCase() : "";
     $$(".js-pm-theme-name").forEach(function (n) { if (n.textContent !== name) n.textContent = name; });
+    // Settings writes it as its own list does: Dark, Game Boy
+    var label = opt ? opt.textContent.trim() : "";
+    $$(".js-pm-theme-label").forEach(function (n) { if (n.textContent !== label) n.textContent = label; });
     themeItem.setAttribute("aria-label", "Theme: " + name + ". Choose a theme");
   }
 
@@ -343,10 +352,12 @@
     document.documentElement.dataset.theme = value;
   }
 
+  var themeOverModal = false; // opened from Settings: closing leaves the page locked
   function openThemeWindow() {
     if (!themeSelect) return;
     themeBefore = themeSelect.value;
     themeOpener = document.activeElement;
+    themeOverModal = document.body.classList.contains("modal-open");
     themeGrid.innerHTML = Array.prototype.map.call(themeSelect.options, function (opt) {
       var on = opt.value === themeBefore;
       return '<button type="button" class="pm-theme-option" role="option" data-value="' + opt.value + '" aria-selected="' + on + '">' +
@@ -365,7 +376,7 @@
     if (!keep && themeBefore) previewTheme(themeBefore);
     themeBackdrop.style.display = "none";
     themeWindow.style.display = "none";
-    document.body.classList.remove("modal-open");
+    if (!themeOverModal) document.body.classList.remove("modal-open");
     if (themeOpener && themeOpener.focus) themeOpener.focus();
   }
 
@@ -377,6 +388,9 @@
   }
 
   themeItem.addEventListener("click", openThemeWindow);
+  // Settings → Appearance has it too, over the Settings window.
+  var settingsTheme = $("#settingsThemeBtn");
+  if (settingsTheme) settingsTheme.addEventListener("click", openThemeWindow);
   themeBackdrop.addEventListener("click", function () { closeThemeWindow(false); });
   $(".js-pm-theme-close", themeWindow).addEventListener("click", function () { closeThemeWindow(false); });
 

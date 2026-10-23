@@ -37,13 +37,20 @@ export function setupDialogFocus() {
   document.addEventListener('pointerdown', remember, true);
   document.addEventListener('click', remember, true); // also fires for Enter and Space
 
-  const state = new Map(); // dialog -> { opener, inerted: Element[] }
+  const state = new Map(); // dialog -> { opener, inerted: Element[], lifted: Element[] }
 
   const open = (dialog) => {
     // Whatever had focus as it opened is the opener (read before the page goes inert and drops
     // focus); fall back to the last control pressed
     const active = document.activeElement;
     const opener = active && active !== document.body && !dialog.contains(active) ? active : lastTrigger;
+
+    // A pop-up opened over another (Theme from Settings) was made inert by the first: lift
+    // that from its own branch while it is open.
+    const lifted = [];
+    for (let node = dialog; node && node !== document.body; node = node.parentElement) {
+      if (node.inert) { node.inert = false; lifted.push(node); }
+    }
 
     // Everything outside the pop-up's own branch goes inert, except backdrops, which close it on click
     const inerted = [];
@@ -54,14 +61,16 @@ export function setupDialogFocus() {
         inerted.push(sibling);
       }
     }
-    state.set(dialog, { opener, inerted });
+    state.set(dialog, { opener, inerted, lifted });
 
     // Settings focuses its own selected tab; others get their first control past the header.
     // Runs right away (the observer fires after the pop-up is shown), not on an animation frame,
     // which background tabs don't run.
     if (!dialog.contains(document.activeElement)) {
       const content = dialog.querySelector('.sticker-window-content, .settings-panes, .mobile-menu-content') || dialog;
-      const target = [...content.querySelectorAll(FOCUSABLE)].find(isFocusableNow)
+      // The chosen item of a list (the current theme), else the first control
+      const target = [...content.querySelectorAll('[aria-selected="true"]')].find(isFocusableNow)
+        || [...content.querySelectorAll(FOCUSABLE)].find(isFocusableNow)
         || [...dialog.querySelectorAll(FOCUSABLE)].find(isFocusableNow);
       target?.focus({ preventScroll: true });
     }
@@ -72,6 +81,7 @@ export function setupDialogFocus() {
     if (!entry) return;
     state.delete(dialog);
     entry.inerted.forEach(el => { el.inert = false; });
+    entry.lifted.forEach(el => { el.inert = true; });
     const focusInside = dialog.contains(document.activeElement) || document.activeElement === document.body;
     // Pop-ups opened from the phone menu outlive it, so their opener is gone; the Menu button stands in
     const fallback = entry.opener?.closest?.('#newMobileMenu') ? document.getElementById('newMobileMenuBtn') : null;
