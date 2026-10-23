@@ -75,8 +75,8 @@ function fieldInputs(field) {
   return el ? [el] : [];
 }
 
-// Columns: one line per column with a show box and ↑ ↓ keys; the list's order is the
-// order setting, the unticked boxes the hidden one. Asset is always on.
+// Columns: one line per column: a show box, a grip to drag it by, and ↑ ↓ keys; the
+// list's order is the order setting, the unticked boxes the hidden one. Asset is always on.
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 }
@@ -93,8 +93,9 @@ function fillColumnOrder(order, hidden) {
       `<button type="button" class="column-order__move" data-move="${dir}" aria-label="Move ${label} ${word}"${disabled ? ' disabled' : ''}>${glyph}</button>`;
     const show = `<input type="checkbox" class="column-order__show" aria-label="Show ${label}"` +
       `${off.includes(key) ? '' : ' checked'}${col?.fixed ? ' disabled' : ''}>`;
-    return `<li data-key="${key}">${show}<span class="column-order__name">${label}</span>` +
-      move(-1, '↑', 'up', i === 0) + move(1, '↓', 'down', i === keys.length - 1) + '</li>';
+    return `<li data-key="${key}"${off.includes(key) ? ' data-off' : ''}>${show}` +
+      `<span class="column-order__grip" aria-hidden="true">${label}</span>` +
+      `<span class="column-order__keys">${move(-1, '↑', 'up', i === 0)}${move(1, '↓', 'down', i === keys.length - 1)}</span></li>`;
   }).join('');
 }
 
@@ -291,7 +292,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
   const backdrop = document.getElementById('newSettingsBackdrop');
   if (!dialog || !backdrop) return {};
 
-  // "Saved" on the title bar for a moment after each change that reached storage.
+  // "Saved" as a toast low in the window for a moment after each change that reached storage.
   const savedEl = document.getElementById('settingsSaved');
   let savedTimer = null;
   const save = (settings) => {
@@ -545,8 +546,42 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     (again && !again.disabled ? again : document.querySelector(`#newColumnOrder li[data-key="${li.dataset.key}"] button:not(:disabled)`))?.focus();
     saveForm();
   });
+  // Drag a line by its name: it follows the pointer and the others make room; drop saves.
+  const columnList = document.getElementById('newColumnOrder');
+  columnList?.addEventListener('pointerdown', (e) => {
+    const grip = e.target.closest('.column-order__grip');
+    const li = grip?.closest('li[data-key]');
+    if (!li || e.button !== 0) return;
+    e.preventDefault();
+    li.classList.add('is-dragging');
+    // On window, not the grip: moving the line in the list drops a pointer capture.
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      const over = Array.from(columnList.children).find(other => {
+        if (other === li) return false;
+        const r = other.getBoundingClientRect();
+        return ev.clientY >= r.top && ev.clientY <= r.bottom;
+      });
+      if (!over) return;
+      const below = over.compareDocumentPosition(li) & Node.DOCUMENT_POSITION_PRECEDING;
+      over.insertAdjacentElement(below ? 'afterend' : 'beforebegin', li);
+    };
+    const onUp = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      li.classList.remove('is-dragging');
+      fillColumnOrder(readColumnOrder(), readHiddenColumns());
+      saveForm();
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  });
   dialog.querySelector('.settings-panes')?.addEventListener('change', (e) => {
     if (e.target === exportArea || e.target.id === 'newWeatherCity') return;
+    if (e.target.classList.contains('column-order__show')) e.target.closest('li')?.toggleAttribute('data-off', !e.target.checked);
     if (e.target.id === 'newPortfolioBaseCurrency') showCurrencyUnit();
     saveForm();
   });

@@ -437,10 +437,10 @@
         <!-- Settings Dialog -->
         <div id="newSettingsBackdrop" class="settings-backdrop" style="display: none;"></div>
         <div id="newSettingsDialog" class="settings" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" style="display: none;">
+            <span id="settingsSaved" class="settings-saved" role="status" aria-live="polite"></span>
             <div class="settings-form">
                 <header>
                     <h2 id="settingsTitle">Settings</h2>
-                    <span id="settingsSaved" class="settings-saved" role="status" aria-live="polite"></span>
                     <div class="settings-find" role="search">
                         <label class="table-search__key" for="settingsFind"><kbd>/</kbd></label>
                         <input id="settingsFind" type="search" class="table-search__input" placeholder="Search" aria-label="Search settings" autocomplete="off" spellcheck="false">
@@ -544,23 +544,27 @@
                         <!-- Positions: what the table shows and how. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-positions" aria-labelledby="settingsTab-positions" data-pane="positions" hidden>
                             <h3 class="settings-group">Rows</h3>
-                            <label class="check">
-                                <input id="newGroupPositions" type="checkbox" class="settings-input">
-                                Group spot, perps and options
+                            <label class="settings-switch" data-find="group spot perps options">
+                                Group by type
+                                <input id="newGroupPositions" type="checkbox" role="switch" class="settings-input">
+                                <span class="settings-switch__state" aria-hidden="true"></span>
                             </label>
-                            <label class="check">
-                                <input id="newCombineOptionLegs" type="checkbox" class="settings-input">
-                                Combine option legs by name
+                            <label class="settings-switch" data-find="combine option legs name">
+                                Combine option legs
+                                <input id="newCombineOptionLegs" type="checkbox" role="switch" class="settings-input">
+                                <span class="settings-switch__state" aria-hidden="true"></span>
                             </label>
 
                             <h3 class="settings-group">Numbers</h3>
-                            <label class="check">
-                                <input id="newUseColoredPnL" type="checkbox" class="settings-input">
-                                Color gains and losses
+                            <label class="settings-switch" data-find="color gains losses green red">
+                                Color P&amp;L
+                                <input id="newUseColoredPnL" type="checkbox" role="switch" class="settings-input">
+                                <span class="settings-switch__state" aria-hidden="true"></span>
                             </label>
-                            <label class="check">
-                                <input id="newShowExactAmounts" type="checkbox" class="settings-input">
-                                Show exact amounts
+                            <label class="settings-switch" data-find="show exact amounts decimals">
+                                Exact amounts
+                                <input id="newShowExactAmounts" type="checkbox" role="switch" class="settings-input">
+                                <span class="settings-switch__state" aria-hidden="true"></span>
                             </label>
 
                             <h3 class="settings-group">Columns</h3>
@@ -572,6 +576,7 @@
 
                         <!-- Appearance: type, layout, and which parts of the page show. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-appearance" aria-labelledby="settingsTab-appearance" data-pane="appearance" hidden>
+                            <h3 class="settings-group">Page</h3>
                             <div class="row">
                                 <label>
                                     Theme
@@ -613,7 +618,7 @@
                                     <label><input type="radio" name="newAlign" value="on"><span>Center</span></label>
                                 </span>
                             </div>
-                            <div class="settings-rule" role="presentation"></div>
+                            <h3 class="settings-group">Show</h3>
                             <label class="settings-switch" data-find="history">
                                 Value chart
                                 <input id="newShowValueChart" type="checkbox" role="switch" class="settings-input">

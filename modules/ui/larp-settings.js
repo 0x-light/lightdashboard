@@ -163,12 +163,12 @@ export function setupLarpSettings() {
     root.innerHTML = `
       <div class="settings-row">
         <div class="settings-row-text">
-          <div class="settings-row-title">Larp mode is ${larp.on ? 'on' : 'off'}</div>
+          <div class="settings-row-title">Larp mode</div>
           <div class="info">${larp.on
             ? 'The page shows the portfolio below. Your own data is hidden and stays as it is.'
             : 'Show a made-up portfolio. Your own data stays hidden. Use it for screenshots.'}</div>
         </div>
-        <button type="button" class="btn-text" id="larpToggle">${larp.on ? 'Turn off' : 'Turn on'}</button>
+        <button type="button" class="btn-text settings-toggle" id="larpToggle" aria-label="Larp mode" aria-pressed="${larp.on}">${larp.on ? 'On' : 'Off'}</button>
       </div>
       <div class="info larp-apply" id="larpApply" hidden>You changed the portfolio. <button type="button" class="btn-text" id="larpReload">Reload</button></div>
 
