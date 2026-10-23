@@ -26,6 +26,17 @@ export async function fetchWeather(lat, lon, timeoutMs = 10000) {
   return data || null;
 }
 
+// The city at a point, for a place saved with coordinates but no name. '' when unknown.
+export async function placeName(lat, lon) {
+  try {
+    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`;
+    const data = await HttpClient.getJson(url, { timeoutMs: 5000, ttlMs: 24 * 60 * 60 * 1000 });
+    return data?.city || data?.locality || data?.principalSubdivision || '';
+  } catch (_) {
+    return '';
+  }
+}
+
 export async function renderWeather(container, settings = {}) {
   if (!container) return;
   const label = settings.weather?.label || 'your location';
@@ -71,5 +82,5 @@ export async function renderWeather(container, settings = {}) {
 // Alias for compatibility with app.js
 export const getWeather = fetchWeather;
 
-export default { fetchWeather, renderWeather, getWeather };
+export default { fetchWeather, placeName, renderWeather, getWeather };
 

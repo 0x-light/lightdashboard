@@ -298,11 +298,23 @@ async function _doRenderPortfolioIncremental() {
     try {
       const weatherLat = settings.weather?.lat;
       const weatherLon = settings.weather?.lon;
-      const weatherLabel = settings.weather?.label || 'your location';
+      let weatherLabel = settings.weather?.label || '';
 
       // No city set: no weather. (Number(null) is 0, which would be the sea off Ghana.)
       const isCoord = v => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
       const hasWeatherCoords = isCoord(weatherLat) && isCoord(weatherLon);
+      // A place saved with coordinates but no name (older settings, or the name lookup
+      // failed): look the name up once and keep it.
+      if (hasWeatherCoords && !weatherLabel && mods.features?.weather?.placeName) {
+        weatherLabel = await mods.features.weather.placeName(Number(weatherLat), Number(weatherLon));
+        if (weatherLabel) {
+          const s = getSettings();
+          s.weather = { ...s.weather, label: weatherLabel };
+          localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
+          invalidateSettingsCache();
+        }
+      }
+      if (!weatherLabel) weatherLabel = 'your location';
       if (hasWeatherCoords && mods.features?.weather?.fetchWeather) {
         const data = await mods.features.weather.fetchWeather(Number(weatherLat), Number(weatherLon), 5000);
         if (data?.current) {
