@@ -300,7 +300,9 @@ async function _doRenderPortfolioIncremental() {
       const weatherLon = settings.weather?.lon;
       const weatherLabel = settings.weather?.label || 'your location';
 
-      const hasWeatherCoords = Number.isFinite(Number(weatherLat)) && Number.isFinite(Number(weatherLon));
+      // No city set: no weather. (Number(null) is 0, which would be the sea off Ghana.)
+      const isCoord = v => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+      const hasWeatherCoords = isCoord(weatherLat) && isCoord(weatherLon);
       if (hasWeatherCoords && mods.features?.weather?.fetchWeather) {
         const data = await mods.features.weather.fetchWeather(Number(weatherLat), Number(weatherLon), 5000);
         if (data?.current) {
