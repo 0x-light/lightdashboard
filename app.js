@@ -1773,6 +1773,8 @@ function setupControls() {
     const index = before.findIndex(e => watchlistEntryKey(e) === targetKey);
     if (index === -1) return;
     const entry = before[index];
+    // Pyth entries store only the feed id; the loaded row knows the symbol.
+    const shown = cachedWatchlistData?.find(item => item.key === targetKey);
 
     s.watchlist = before.filter(e => watchlistEntryKey(e) !== targetKey);
     try {
@@ -1793,7 +1795,7 @@ function setupControls() {
       return;
     }
 
-    const label = entry?.symbol || targetKey.replace(/^(pyth|yahoo):/, '').toUpperCase();
+    const label = entry?.symbol || shown?.symbol || shown?.name || 'item';
     showUndo(`Removed ${label}`, async () => {
       const t = getSettings();
       const list = Array.isArray(t.watchlist) ? [...t.watchlist] : [];
