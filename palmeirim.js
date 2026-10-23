@@ -106,7 +106,9 @@
   // at it names the time and value on the card's bottom border. Settings → Sections can hide
   // it (html[data-value-chart="off"]).
   var PERIODS = [["day", "1D"], ["week", "1W"], ["month", "1M"], ["allTime", "All"]];
-  var valueBox = el("div", { class: "pm-value", hidden: "" },
+  // Shown from the start, its line's height kept while the history loads, so the
+  // positions below don't jump when it arrives.
+  var valueBox = el("div", { class: "pm-value" },
     '<div class="pm-value__head">' +
     '<span class="pm-value__periods" role="radiogroup" aria-label="Period">' +
     PERIODS.map(function (p) { return '<button type="button" role="radio" class="pm-value__period" data-period="' + p[0] + '">' + p[1] + '</button>'; }).join("") +
@@ -124,16 +126,23 @@
     return (v < 0 ? "−" : signed ? "+" : "") + text;
   }
 
+  function chartHeight() {
+    return Math.round((parseFloat(getComputedStyle(document.documentElement).getPropertyValue("font-size")) || 14) * 18 / 14 * 3);
+  }
+
   function drawValue() {
     var chart = $(".pm-value__chart", valueBox);
     $$(".pm-value__period", valueBox).forEach(function (b) { b.setAttribute("aria-checked", String(b.dataset.period === valuePeriod)); });
     var data = valueData;
     if (!data || data.values.length < 2) {
-      chart.innerHTML = '<p class="pm-value__empty">No history for this period.</p>';
+      // Still loading: an empty line's worth of space. Loaded: say there is none.
+      chart.innerHTML = valueSettled ? '<p class="pm-value__empty">No history for this period.</p>' : "";
+      chart.style.height = valueSettled ? "" : chartHeight() + "px";
       $(".pm-value__change", valueBox).textContent = "";
       valueSeries = [];
       return;
     }
+    chart.style.height = "";
     valueSymbol = data.symbol || "$";
     var first = data.values[0][1];
     var pnl = data.values[data.values.length - 1][1] - first;
@@ -142,7 +151,7 @@
 
     // Drawn at the box's real pixel size, so the 1px dither stays crisp.
     var w = Math.max(100, Math.round(chart.clientWidth));
-    var h = Math.round((parseFloat(getComputedStyle(document.documentElement).getPropertyValue("font-size")) || 14) * 18 / 14 * 3);
+    var h = chartHeight();
     var ts = data.values.map(function (p) { return p[0]; });
     var vs = data.values.map(function (p) { return p[1]; });
     var t0 = Math.min.apply(null, ts), t1 = Math.max.apply(null, ts);
@@ -176,10 +185,10 @@
       return m.getPortfolioHistory(period).then(function (data) {
         if (seq !== valueLoad) return; // a newer load is on its way
         valueData = data;
-        valueBox.hidden = !data.values.length;
-        if (!valueBox.hidden) drawValue();
         if (settled) valueSettled = true;
-        else if (!valueSettled) setTimeout(loadValue, 4000);
+        valueBox.hidden = valueSettled && !data.values.length; // nothing to chart at all
+        if (!valueBox.hidden) drawValue();
+        if (!valueSettled) setTimeout(loadValue, 4000);
       });
     }).catch(function () { valueBox.hidden = true; });
   }
@@ -272,6 +281,7 @@
     valueResize = setTimeout(function () { if (valueData) drawValue(); }, 150);
   });
   new MutationObserver(loadValue).observe(document.documentElement, { attributes: true, attributeFilter: ["data-value-chart"] });
+  drawValue();
   loadValue();
   setInterval(loadValue, 60 * 1000);
 
