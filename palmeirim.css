@@ -1667,6 +1667,7 @@ html.pm:root .settings-find {
   background: var(--bg);
 }
 html.pm:root .settings-form > header .settings-find + .btn-text { margin-left: 0; }
+html.pm:root .is-finding .settings-box > :is(.settings-note, .info, .larp-apply),
 
 /* Finding: no tab is chosen; each pane with a match shows under its tab's name. */
 html.pm:root .is-finding .settings-tab[aria-selected="true"] { background: none; color: var(--pm-muted); }
@@ -1713,7 +1714,6 @@ html.pm:root .settings-tab {
   text-transform: uppercase;
 }
 html.pm:root .settings-tab:first-child { margin-left: -1ch; }
-html.pm:root #larpRoot > label,
 html.pm:root .settings-tab[aria-selected="true"] { background: var(--pm-ink); color: var(--bg); }
 html.pm:root .settings-tab:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 0; }
 
@@ -1725,9 +1725,8 @@ html.pm:root .settings-tab:focus-visible { outline: 1px solid var(--pm-ink); out
 html.pm:root .settings-panes { --pm-label-w: 16ch; padding: var(--pm-lh) 1ch; }
 html.pm:root .settings-pane { gap: calc(var(--pm-lh) / 2); }
 
-html.pm:root #larpRoot > label > *,
 /* A row: label | control (and its note under it). */
-html.pm:root .settings-pane > label:not(.check),
+html.pm:root :is(.settings-pane, .settings-box) > label:not(.check):not(.settings-switch),
 html.pm:root .settings-pane .row > label,
 html.pm:root .settings-pane .settings-field {
   display: grid;
@@ -1738,7 +1737,7 @@ html.pm:root .settings-pane .settings-field {
   text-transform: uppercase;
 }
 
-html.pm:root .settings-pane > label:not(.check) > *,
+html.pm:root :is(.settings-pane, .settings-box) > label:not(.check):not(.settings-switch) > *,
 html.pm:root .settings-pane .row > label > *,
 html.pm:root .settings-pane .settings-field > :not(label) {
   grid-column: 2;
@@ -1773,7 +1772,7 @@ html.pm:root .settings-pane .settings-link:hover,
 html.pm:root .settings-pane .settings-link:focus-visible { color: var(--pm-ink); }
 
 /* A note for a whole group sits in the control column, under its rows. */
-html.pm:root .settings-pane > .settings-note { margin: 0 0 0 calc(var(--pm-label-w) + 2ch); }
+html.pm:root :is(.settings-pane, .settings-box) > .settings-note { margin: 0 0 0 calc(var(--pm-label-w) + 2ch); }
 
 /* Group headings: muted, on a rule; the first in a pane needs no rule. */
 html.pm:root .settings-pane .settings-group {
@@ -1783,74 +1782,17 @@ html.pm:root .settings-pane .settings-group {
   color: var(--pm-muted);
   font: inherit;
   text-transform: uppercase;
-  padding: calc(var(--pm-lh) / 6) 0;
-  border-bottom: 1px solid var(--pm-rule);
 }
 html.pm:root .settings-pane > .settings-group:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 html.pm:root .settings-pane label.check { margin: 0; }
 html.pm:root .settings-pane label.check + label.check { margin-top: 0; }
 
-/* Columns: a ruled list. Each line: show box, name (the grip), then one ↑↓ key pair
-   on the right. An end key stays in place, muted, so the pairs line up. A hidden
-   column's name is muted; the line being dragged is inverted. */
-html.pm:root .column-order { max-width: 36ch; }
-html.pm:root .column-order li {
-  display: flex;
-  align-items: center;
-  gap: 1ch;
-  line-height: var(--pm-lh);
-}
-html.pm:root .column-order__show { flex: none; margin: 0; }
-html.pm:root .column-order__grip {
-  flex: 1 1 auto;
-  min-width: 0;
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-}
-html.pm:root .column-order li[data-off] .column-order__grip { color: var(--pm-muted); }
-html.pm:root .column-order li.is-dragging { background: var(--pm-ink); color: var(--bg); }
-html.pm:root .column-order li.is-dragging .column-order__grip { color: var(--bg); cursor: grabbing; }
-html.pm:root .column-order__keys { display: flex; flex: none; }
-html.pm:root .column-order__move {
-  min-width: 0;
-  min-height: 0;
-  padding: 0 1ch;
-  border: 0;
-  background: var(--pm-tint);
-  color: var(--pm-ink);
-  font: inherit;
-  line-height: var(--pm-lh);
-  cursor: pointer;
-}
-html.pm:root .column-order__move:disabled { color: var(--pm-rule); cursor: default; } /* first ↑, last ↓ */
-html.pm:root .column-order__move:focus-visible { outline: none; background: var(--pm-ink); color: var(--bg); }
-@media (hover: hover) {
-  html.pm:root .column-order__move:not(:disabled):hover { background: var(--pm-ink); color: var(--bg); }
-}
-
-/* Wallet addresses: the box is wide; its label sits above it. */
-/* Backup: what it does on the left, its button on the right. */
-/* The action sits under its text, where the eye ends, not far off on the right. */
-html.pm:root .settings-row {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: calc(var(--pm-lh) / 2);
-  padding: 0 0 calc(var(--pm-lh) / 2);
-  border-bottom: 1px solid var(--pm-rule);
-}
-html.pm:root .settings-row-title { color: var(--pm-ink); text-transform: uppercase; }
-html.pm:root .settings-row .btn-text { flex: none; }
-html.pm:root .settings-footnote { margin: 0; }
 /* Import: Apply and Cancel sit right under the box they act on. */
 html.pm:root .settings-import-actions {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: 1ch;
-  padding: 0 0 calc(var(--pm-lh) / 2);
-  border-bottom: 1px solid var(--pm-rule);
 }
 html.pm:root .settings-import-actions[hidden] { display: none; }
 html.pm:root .settings-import-actions .btn-text.btn-primary { margin: 0; }
@@ -1860,7 +1802,7 @@ html.pm:root .settings-pane .settings-key-status { color: var(--pm-muted); white
 html.pm:root .settings-pane .settings-key-status.is-error { color: var(--pm-ink); }
 html.pm:root .settings-pane .settings-key-status.is-error::before { content: "✕ "; }
 html.pm:root .settings-key input:not(:focus):not(:placeholder-shown) { -webkit-text-security: disc; text-security: disc; }
-html.pm:root .settings-pane > .settings-note[hidden] { display: none; }
+html.pm:root :is(.settings-pane, .settings-box) > .settings-note[hidden] { display: none; }
 
 /* A label that is not a <label> (its control is a group): same muted column. */
 html.pm:root .settings-pane .settings-field[hidden] { display: none; }
@@ -1898,38 +1840,22 @@ html.pm:root .settings-step:focus-visible { outline: none; background: var(--pm-
   html.pm:root .settings-step:not(:disabled):hover { background: var(--pm-ink); color: var(--bg); }
 }
 
-
-/* ── Settings as a ledger ──
-   Every setting is one ruled row: its name in the label column, its control in the
-   next. A group heading sits on a rule of its own. Every control (field, menu, choice,
-   On/Off, key, button) is --set-h tall, and its box starts at the column's edge, so
-   the left edges line up down the pane. Phones read the same rows as a spec sheet:
-   the name on the left, the control on the right (see Phones below). */
-html.pm:root .settings-panes { --pm-label-w: 20ch; --set-h: calc(var(--pm-lh) * 1.4); }
-html.pm:root .settings-pane,
-html.pm:root .settings-pane .row { gap: 0; }
-html.pm:root .settings-pane > label:not(.check),
-html.pm:root #larpRoot > label,
-html.pm:root .settings-pane .row > label,
-html.pm:root .settings-pane .settings-field,
-html.pm:root .settings-pane .settings-row {
-  align-items: start;
-  padding: calc(var(--pm-lh) / 4) 0;
-  border-bottom: 1px solid var(--pm-rule);
-  line-height: var(--set-h); /* the name sits level with the control */
-}
-html.pm:root .settings-pane > label:not(.check) > *,
-html.pm:root #larpRoot > label > *,
-html.pm:root .settings-pane .row > label > *,
-html.pm:root .settings-pane .settings-field > *,
-html.pm:root .settings-pane .settings-row-text > * { line-height: var(--pm-lh); }
-html.pm:root .settings-pane .settings-field > :is(label, .settings-label) { line-height: var(--set-h); }
-
-html.pm:root .settings-pane .settings-group {
-  margin: var(--pm-lh) 0 0;
-  padding: 0 0 calc(var(--pm-lh) / 4);
-  border-top: 0;
-  border-bottom: 1px solid var(--pm-rule);
+/* ── Settings: framed boxes on one line grid ──
+   After sacred.computer. Each group is a box, its title set into the top border.
+   Every control is one line tall. A field or menu is a tint bar; a choice is a row
+   of joined cells, the chosen one inverted; an on/off is a tint bar with a key cell
+   that fills when on. In a box a setting reads name | control; on
+   phones the name goes above its control. */
+html.pm:root .settings-panes { --pm-label-w: 18ch; --set-h: var(--pm-lh); }
+html.pm:root .settings-pane { gap: calc(var(--pm-lh) * 1.5); padding-top: calc(var(--pm-lh) / 2); }
+html.pm:root .settings-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--pm-lh) / 2);
+  margin: 0;
+  padding: var(--pm-lh) 2ch;
+  border: 1px solid var(--pm-rule);
 }
 html.pm:root .settings-pane > .settings-group:first-child { margin-top: 0; }
 html.pm:root .settings-pane > .settings-note { padding-top: calc(var(--pm-lh) / 4); }
@@ -1952,32 +1878,56 @@ html.pm:root .settings-row {
   grid-template-columns: var(--pm-label-w) minmax(0, 1fr);
   gap: calc(var(--pm-lh) / 4) 2ch;
 }
-html.pm:root .settings-row-text { display: contents; }
-html.pm:root .settings-row-title { grid-column: 1; grid-row: 1 / span 2; color: var(--pm-muted); }
-html.pm:root .settings-row .info,
-html.pm:root .settings-row .btn-text { grid-column: 2; }
-html.pm:root .settings-pane > :is(.settings-footnote, .settings-import-actions) { margin-left: calc(var(--pm-label-w) + 2ch); }
-html.pm:root .settings-pane > .settings-footnote { padding-top: calc(var(--pm-lh) / 4); }
-html.pm:root .settings-import-actions { justify-content: flex-start; padding-top: calc(var(--pm-lh) / 4); }
-/* A button that is a switch (Larp mode): On inverted, Off muted, like the On/Off rows. */
-html.pm:root .settings-panes .btn-text.settings-toggle[aria-pressed="true"] { background: var(--pm-ink); color: var(--bg); }
-html.pm:root .settings-panes .btn-text.settings-toggle[aria-pressed="false"] { background: none; color: var(--pm-muted); }
+html.pm:root .settings-box > .settings-switch + .settings-switch { margin-top: calc(var(--pm-lh) / -4); }
+html.pm:root :is(.settings-switch, .column-order__show) input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+html.pm:root .settings-switch__state {
+  order: -1;
+  flex: none;
+  width: 3ch;
+  background: var(--pm-tint-2);
+  color: var(--bg);
+  line-height: var(--set-h);
+  text-align: center;
+}
+html.pm:root .settings-switch__state::after { content: "\00a0"; }
+html.pm:root :is(input:checked + .settings-switch__state, [aria-pressed="true"] > .settings-switch__state) { background: var(--pm-ink); }
+html.pm:root .column-order__show input:disabled + .settings-switch__state { background: var(--pm-muted); }
+html.pm:root .settings-box > .settings-switch:has(input:focus-visible),
+html.pm:root .settings-box > button.settings-switch:focus-visible,
+html.pm:root .column-order__show:has(input:focus-visible) { outline: 1px solid var(--pm-ink); outline-offset: 0; }
 @media (hover: hover) {
-  html.pm:root .settings-panes .btn-text.settings-toggle[aria-pressed="false"]:hover { background: none; color: var(--pm-ink); }
+  html.pm:root .settings-box > .settings-switch:hover { background: var(--pm-tint-2); }
 }
 
-/* On/off rows: the name in the label column, On or Off where the control goes. */
-html.pm:root .settings-pane > label.settings-switch { position: relative; cursor: pointer; }
-/* On is inverted like the chosen Width and Align; Off is muted like the choice not taken. */
-html.pm:root .settings-pane > label.settings-switch > .settings-switch__state { justify-self: start; padding: 0 1ch; color: var(--pm-muted); line-height: var(--pm-lh); text-transform: uppercase; }
-html.pm:root .settings-switch__state::after { content: "Off"; }
-html.pm:root .settings-pane > label.settings-switch > input:checked + .settings-switch__state { background: var(--pm-ink); color: var(--bg); }
-html.pm:root .settings-switch input:checked + .settings-switch__state::after { content: "On"; }
-html.pm:root .settings-switch input:focus-visible + .settings-switch__state { outline: 1px solid var(--pm-ink); outline-offset: 0; }
-@media (hover: hover) {
-  html.pm:root .settings-pane > label.settings-switch:hover > input:not(:checked) + .settings-switch__state { color: var(--pm-ink); }
+/* Columns: one tint bar per column: its key cell, its name (the grip), then ↑ ↓.
+   A hidden column's name is muted; the bar being dragged is inverted. */
+html.pm:root .column-order { display: flex; flex-direction: column; gap: calc(var(--pm-lh) / 4); margin: 0; padding: 0; list-style: none; }
+html.pm:root .column-order li { display: flex; align-items: center; gap: 1ch; background: var(--pm-tint); line-height: var(--set-h); }
+html.pm:root .column-order__show { position: relative; display: flex; flex: none; margin: 0; cursor: pointer; }
+html.pm:root .column-order__show:has(input:disabled) { cursor: default; }
+html.pm:root .column-order__grip { flex: 1 1 auto; min-width: 0; cursor: grab; touch-action: none; user-select: none; }
+html.pm:root .column-order li[data-off] .column-order__grip { color: var(--pm-muted); }
+html.pm:root .column-order li.is-dragging { background: var(--pm-ink); color: var(--bg); }
+html.pm:root .column-order li.is-dragging .column-order__grip { color: var(--bg); cursor: grabbing; }
+html.pm:root .column-order__keys { display: flex; flex: none; }
+html.pm:root .column-order__move {
+  min-width: 0;
+  min-height: 0;
+  padding: 0 1ch;
+  border: 0;
+  background: var(--pm-tint-2);
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: var(--set-h);
+  cursor: pointer;
 }
-html.pm:root .settings-rule { border-top: 1px solid var(--pm-rule); }
+html.pm:root .column-order__move:disabled { color: var(--pm-muted); cursor: default; } /* first ↑, last ↓ */
+html.pm:root .column-order__move:focus-visible { outline: none; background: var(--pm-ink); color: var(--bg); }
+@media (hover: hover) {
+  html.pm:root .column-order__move:not(:disabled):hover { background: var(--pm-ink); color: var(--bg); }
+}
+
+html.pm:root .settings-pane > .settings-footnote { margin: 0; }
 
 /* Phones: the whole screen, the title on a bar at the top. */
 @media (max-width: 620px) {
@@ -2001,36 +1951,6 @@ html.pm:root .settings-rule { border-top: 1px solid var(--pm-rule); }
     border-bottom: 1px solid var(--pm-rule);
   }
   /* Tabs stay one line and scroll sideways when they don't fit. */
-
-  /* Spec sheet: the name on the left, the control on the right edge. A field takes
-     the room the name leaves. A box (Addresses, Columns) goes under its name, full width. */
-  html.pm:root .settings-pane > label:not(.check),
-  html.pm:root #larpRoot > label,
-  html.pm:root .settings-pane .row > label,
-  html.pm:root .settings-pane .settings-field { grid-template-columns: minmax(max-content, 16ch) minmax(0, 1fr); } /* short names share one edge, so fields line up */
-  html.pm:root .settings-pane > label:not(.check) > *,
-  html.pm:root #larpRoot > label > *,
-  html.pm:root .settings-pane .row > label > *,
-  html.pm:root .settings-pane .settings-field > *,
-  html.pm:root .settings-pane > label.settings-switch > .settings-switch__state { justify-self: end; text-align: right; }
-  html.pm:root .settings-pane .settings-field > :is(label, .settings-label) { justify-self: start; text-align: left; }
-  html.pm:root .settings-pane .settings-inline { width: 100%; justify-content: flex-end; }
-  html.pm:root .settings-pane .settings-inline > .settings-key-status { flex-basis: 100%; text-align: right; }
-  html.pm:root :is(#larpRoot, .settings-pane) :is(input, textarea) { text-align: left; } /* #larpRoot: as specific as the rows' rule */
-  html.pm:root .settings-pane .select { min-width: 0; }
-  html.pm:root .settings-pane > label.settings-wide,
-  html.pm:root .settings-pane .settings-field:has(> .column-order) { grid-template-columns: minmax(0, 1fr); }
-  html.pm:root .settings-pane > label.settings-wide > *,
-  html.pm:root .settings-pane .settings-field:has(> .column-order) > * { grid-column: 1; justify-self: stretch; text-align: left; }
-  html.pm:root .column-order { max-width: none; }
-
-  /* Backup and Larp: the title, what it does, then its button, one under the other. */
-  html.pm:root .settings-row { grid-template-columns: minmax(0, 1fr); }
-  html.pm:root .settings-row-title,
-  html.pm:root .settings-row .info,
-  html.pm:root .settings-row .btn-text { grid-column: 1; grid-row: auto; }
-  html.pm:root .settings-pane > :is(.settings-footnote, .settings-import-actions) { margin-left: 0; }
-  html.pm:root .settings-import-actions { justify-content: flex-end; }
   html.pm:root .settings-nav {
     flex-wrap: nowrap;
     padding: calc(var(--pm-lh) / 2) 2ch;
@@ -2064,6 +1984,20 @@ html.pm:root .pm-keys-window { width: min(72ch, calc(100vw - 3ch)); }
 html.pm:root .pm-keys {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(32ch, 1fr));
+
+  /* Each name goes above its control, as in a form. */
+  html.pm:root .settings-box { padding: var(--pm-lh) 1ch; }
+  html.pm:root .settings-box > .settings-group { left: 0; }
+  html.pm:root :is(.settings-pane, .settings-box) > label:not(.check):not(.settings-switch),
+  html.pm:root .settings-pane .row > label,
+  html.pm:root .settings-pane .settings-field { grid-template-columns: minmax(0, 1fr); gap: calc(var(--pm-lh) / 4); }
+  html.pm:root :is(.settings-pane, .settings-box) > label:not(.check):not(.settings-switch) > *,
+  html.pm:root .settings-pane .row > label > *,
+  html.pm:root .settings-pane .settings-field > :not(label),
+  html.pm:root .settings-pane .settings-field > .settings-label { grid-column: 1; }
+  html.pm:root .settings-box > :is(label:not(.settings-switch), .settings-field) { line-height: var(--pm-lh); }
+  html.pm:root .settings-box :is(input[type="text"], input:not([type]), .select) { max-width: none; }
+  html.pm:root :is(.settings-pane, .settings-box) > .settings-note { margin-left: 0; }
   gap: calc(var(--pm-lh) / 3) 3ch;
   margin: 0;
 }

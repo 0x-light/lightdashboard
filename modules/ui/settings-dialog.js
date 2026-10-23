@@ -91,8 +91,9 @@ function fillColumnOrder(order, hidden) {
     const label = escapeHtml(col?.label || key);
     const move = (dir, glyph, word, disabled) =>
       `<button type="button" class="column-order__move" data-move="${dir}" aria-label="Move ${label} ${word}"${disabled ? ' disabled' : ''}>${glyph}</button>`;
-    const show = `<input type="checkbox" class="column-order__show" aria-label="Show ${label}"` +
-      `${off.includes(key) ? '' : ' checked'}${col?.fixed ? ' disabled' : ''}>`;
+    const show = `<label class="column-order__show"><input type="checkbox" aria-label="Show ${label}"` +
+      `${off.includes(key) ? '' : ' checked'}${col?.fixed ? ' disabled' : ''}>` +
+      '<span class="settings-switch__state" aria-hidden="true"></span></label>';
     return `<li data-key="${key}"${off.includes(key) ? ' data-off' : ''}>${show}` +
       `<span class="column-order__grip" aria-hidden="true">${label}</span>` +
       `<span class="column-order__keys">${move(-1, '↑', 'up', i === 0)}${move(1, '↓', 'down', i === keys.length - 1)}</span></li>`;
@@ -109,7 +110,7 @@ function readHiddenColumns() {
   const list = document.getElementById('newColumnOrder');
   if (!list) return null;
   return Array.from(list.querySelectorAll('li[data-key]'))
-    .filter(li => !li.querySelector('.column-order__show')?.checked)
+    .filter(li => !li.querySelector('.column-order__show input')?.checked)
     .map(li => li.dataset.key);
 }
 
@@ -349,8 +350,8 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
   // its tab's name. Clearing it, or picking a tab, goes back to the tab.
   const findEmpty = document.getElementById('settingsFindEmpty');
   const NOT_SETTINGS = '.settings-group, .settings-note, .settings-rule, .settings-footnote, .info, textarea, .settings-import-actions';
-  const findItems = (pane) => Array.from(pane.children)
-    .flatMap(el => (el.classList.contains('row') ? Array.from(el.children) : [el]))
+  const findItems = (parent) => Array.from(parent.children)
+    .flatMap(el => (el.matches('.row, .settings-box') ? findItems(el) : [el]))
     .filter(el => !el.hidden && !el.matches(NOT_SETTINGS));
   function runFind() {
     const words = (find?.value || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -374,9 +375,9 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
           if (hit) hits++;
         });
       }
-      // A row of settings goes when none of its settings matched.
-      pane.querySelectorAll(':scope > .row').forEach(row => {
-        row.classList.toggle('settings-miss', Array.from(row.children).every(el => el.classList.contains('settings-miss')));
+      // A row or box of settings goes when none of its settings matched.
+      pane.querySelectorAll('.row, .settings-box').forEach(group => {
+        group.classList.toggle('settings-miss', findItems(group).every(el => el.classList.contains('settings-miss')));
       });
       pane.hidden = hits === 0;
       found ||= hits > 0;
@@ -573,7 +574,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
   });
   dialog.querySelector('.settings-panes')?.addEventListener('change', (e) => {
     if (e.target === exportArea || e.target.id === 'newWeatherCity') return;
-    if (e.target.classList.contains('column-order__show')) e.target.closest('li')?.toggleAttribute('data-off', !e.target.checked);
+    if (e.target.closest('.column-order__show')) e.target.closest('li')?.toggleAttribute('data-off', !e.target.checked);
     if (e.target.id === 'newPortfolioBaseCurrency') showCurrencyUnit();
     saveForm();
   });

@@ -132,13 +132,15 @@ function renderSection(sec, config) {
       <button type="button" class="larp-remove" data-remove="${sec.id}" data-i="${i}" aria-label="Remove ${esc(sec.title)} row">×</button>
     </div>`).join('');
   return `
-    <h3 class="settings-group">${esc(sec.title)}</h3>
-    ${hintOf(sec) ? `<div class="info">${hintOf(sec)}</div>` : ''}
-    <div class="larp-list" data-list="${sec.id}">
-      ${rows.length ? `<div class="larp-row larp-head">${head}<span class="larp-remove-gap"></span></div>` : ''}
-      ${body}
-    </div>
-    <button type="button" class="btn-text" data-add="${sec.id}">Add</button>`;
+    <section class="settings-box">
+      <h3 class="settings-group">${esc(sec.title)}</h3>
+      ${hintOf(sec) ? `<div class="info">${hintOf(sec)}</div>` : ''}
+      <div class="larp-list" data-list="${sec.id}">
+        ${rows.length ? `<div class="larp-row larp-head">${head}<span class="larp-remove-gap"></span></div>` : ''}
+        ${body}
+      </div>
+      <button type="button" class="btn-text" data-add="${sec.id}">Add</button>
+    </section>`;
 }
 
 export function setupLarpSettings() {
@@ -161,41 +163,46 @@ export function setupLarpSettings() {
   const render = () => {
     const c = config();
     root.innerHTML = `
-      <div class="settings-row">
-        <div class="settings-row-text">
-          <div class="settings-row-title">Larp mode</div>
-          <div class="info">${larp.on
-            ? 'The page shows the portfolio below. Your own data is hidden and stays as it is.'
-            : 'Show a made-up portfolio. Your own data stays hidden. Use it for screenshots.'}</div>
-        </div>
-        <button type="button" class="btn-text settings-toggle" id="larpToggle" aria-label="Larp mode" aria-pressed="${larp.on}">${larp.on ? 'On' : 'Off'}</button>
-      </div>
-      <div class="info larp-apply" id="larpApply" hidden>You changed the portfolio. <button type="button" class="btn-text" id="larpReload">Reload</button></div>
+      <section class="settings-box">
+        <h3 class="settings-group">Larp mode</h3>
+        <button type="button" class="settings-switch" id="larpToggle" aria-pressed="${larp.on}"><span class="settings-switch__state" aria-hidden="true"></span>Show a made-up portfolio</button>
+        <div class="info">Your own data stays hidden and as it is. Use it for screenshots.</div>
+        <div class="info larp-apply" id="larpApply" hidden>You changed the portfolio. <button type="button" class="btn-text" id="larpReload">Reload</button></div>
+      </section>
 
-      <label>Your name
-        <input type="text" class="settings-input" id="larpName" value="${esc(c.name)}" autocomplete="off" placeholder="Not set">
-      </label>
-      <div class="settings-field">
-        <label for="larpCity">City</label>
-        <input type="text" class="settings-input" id="larpCity" value="${esc(placeText(c.place))}" autocomplete="off" placeholder="New York">
-        <ul class="city-options" id="larpCityList" role="listbox" aria-label="Matching places" hidden></ul>
-        <span class="info" id="larpCityHint" aria-live="polite"></span>
-      </div>
+      <section class="settings-box">
+        <h3 class="settings-group">Greeting</h3>
+        <label>Your name
+          <input type="text" class="settings-input" id="larpName" value="${esc(c.name)}" autocomplete="off" placeholder="Not set">
+        </label>
+        <div class="settings-field">
+          <label for="larpCity">City</label>
+          <input type="text" class="settings-input" id="larpCity" value="${esc(placeText(c.place))}" autocomplete="off" placeholder="New York">
+          <ul class="city-options" id="larpCityList" role="listbox" aria-label="Matching places" hidden></ul>
+          <span class="info" id="larpCityHint" aria-live="polite"></span>
+        </div>
+      </section>
 
       ${SECTIONS.map(sec => renderSection(sec, c)).join('')}
 
-      <h3 class="settings-group">Hyperliquid staking</h3>
-      <label>Staked HYPE
-        <input type="number" step="any" class="settings-input settings-input-short" id="larpStaked" value="${esc(c.hlStaked)}">
-      </label>
+      <section class="settings-box">
+        <h3 class="settings-group">Hyperliquid staking</h3>
+        <label>Staked HYPE
+          <input type="number" step="any" class="settings-input settings-input-short" id="larpStaked" value="${esc(c.hlStaked)}">
+        </label>
+      </section>
 
-      <h3 class="settings-group">Watchlist</h3>
-      <label>Symbols
-        <input type="text" class="settings-input" id="larpWatchlist" value="${esc(c.watchlist)}" autocomplete="off" spellcheck="false" placeholder="TSLA, GC=F">
-      </label>
+      <section class="settings-box">
+        <h3 class="settings-group">Watchlist</h3>
+        <label>Symbols
+          <input type="text" class="settings-input" id="larpWatchlist" value="${esc(c.watchlist)}" autocomplete="off" spellcheck="false" placeholder="TSLA, GC=F">
+        </label>
+      </section>
 
-      <h3 class="settings-group">Sample portfolio</h3>
-      <button type="button" class="btn-text" id="larpReset">Reset to the sample</button>`;
+      <section class="settings-box">
+        <h3 class="settings-group">Sample portfolio</h3>
+        <button type="button" class="btn-text" id="larpReset">Reset to the sample</button>
+      </section>`;
   };
 
   // City: suggestions as you type. Pick one, or press Enter for the first.

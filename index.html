@@ -462,236 +462,250 @@
                     <section class="settings-panes">
                         <!-- General: who you are and where you are, as the greeting and the weather use them, and the money unit. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-general" aria-labelledby="settingsTab-general" data-pane="general">
-                            <label>
-                                Your name
-                                <input id="newUserName" type="text" class="settings-input" placeholder="Not set" autocomplete="given-name">
-                            </label>
-                            <div class="settings-field">
-                                <label for="newWeatherCity">City</label>
-                                <div class="settings-inline">
-                                    <input id="newWeatherCity" type="text" class="settings-input" placeholder="Not set" autocomplete="off" aria-describedby="newWeatherCityHint">
-                                    <button id="newUseMyLocationBtn" type="button" class="btn-text">Use my location</button>
+                            <section class="settings-box">
+                                <h3 class="settings-group">About you</h3>
+                                <label>
+                                    Your name
+                                    <input id="newUserName" type="text" class="settings-input" placeholder="Not set" autocomplete="given-name">
+                                </label>
+                                <div class="settings-field">
+                                    <label for="newWeatherCity">City</label>
+                                    <div class="settings-inline">
+                                        <input id="newWeatherCity" type="text" class="settings-input" placeholder="Not set" autocomplete="off" aria-describedby="newWeatherCityHint">
+                                        <button id="newUseMyLocationBtn" type="button" class="btn-text">Use my location</button>
+                                    </div>
+                                    <ul id="newWeatherCityList" class="city-options" role="listbox" aria-label="Matching places" hidden></ul>
+                                    <span id="newWeatherCityHint" class="info" aria-live="polite"></span>
                                 </div>
-                                <ul id="newWeatherCityList" class="city-options" role="listbox" aria-label="Matching places" hidden></ul>
-                                <span id="newWeatherCityHint" class="info" aria-live="polite"></span>
-                            </div>
-                            <label>
-                                Currency
-                                <span class="select">
-                                    <select id="newPortfolioBaseCurrency" class="settings-input">
-                                        <option value="USD">USD</option>
-                                        <option value="EUR">EUR</option>
-                                        <option value="GBP">GBP</option>
-                                    </select>
-                                </span>
-                            </label>
+                            </section>
+
+                            <section class="settings-box">
+                                <h3 class="settings-group">Money</h3>
+                                <label>
+                                    Currency
+                                    <span class="select">
+                                        <select id="newPortfolioBaseCurrency" class="settings-input">
+                                            <option value="USD">USD</option>
+                                            <option value="EUR">EUR</option>
+                                            <option value="GBP">GBP</option>
+                                        </select>
+                                    </span>
+                                </label>
+                            </section>
                         </div>
 
                         <!-- Accounts: where positions come from. Wallets and the keys that read them, then the broker. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-accounts" aria-labelledby="settingsTab-accounts" data-pane="accounts" hidden>
-                            <h3 class="settings-group">Wallets</h3>
-                            <label class="settings-wide">
-                                Addresses
-                                <textarea id="newAddresses" class="settings-input" rows="6" spellcheck="false" autocapitalize="off"
-                                    placeholder="One address on each line"></textarea>
-                                <span id="newAddressesHint" class="info" aria-live="polite">EVM, Solana, Bitcoin or Zcash (t-addr).</span>
-                            </label>
-                            <label>
-                                Zerion
-                                <span class="settings-inline settings-key">
-                                    <input id="newZerionApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
-                                        placeholder="Not set">
-                                    <span class="settings-key-status" data-source="zerion" data-get-key="https://developers.zerion.io/reference/intro/getting-started" data-get-key-label="Get a key" aria-live="polite"></span>
-                                </span>
-                            </label>
-                            <label>
-                                Cielo
-                                <span class="settings-inline settings-key">
-                                    <input id="newCieloApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
-                                        placeholder="Not set">
-                                    <span class="settings-key-status" data-source="cielo" data-get-key="https://build.cielo.finance/" data-get-key-label="Get a key" aria-live="polite"></span>
-                                </span>
-                            </label>
-                            <p id="newWalletKeyNote" class="info settings-note">Add a Zerion or Cielo key to read wallet balances.</p>
+                            <section class="settings-box">
+                                <h3 class="settings-group">Wallets</h3>
+                                <label class="settings-wide">
+                                    Addresses
+                                    <textarea id="newAddresses" class="settings-input" rows="6" spellcheck="false" autocapitalize="off"
+                                        placeholder="One address on each line"></textarea>
+                                    <span id="newAddressesHint" class="info" aria-live="polite">EVM, Solana, Bitcoin or Zcash (t-addr).</span>
+                                </label>
+                                <label>
+                                    Zerion
+                                    <span class="settings-inline settings-key">
+                                        <input id="newZerionApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
+                                            placeholder="Not set">
+                                        <span class="settings-key-status" data-source="zerion" data-get-key="https://developers.zerion.io/reference/intro/getting-started" data-get-key-label="Get a key" aria-live="polite"></span>
+                                    </span>
+                                </label>
+                                <label>
+                                    Cielo
+                                    <span class="settings-inline settings-key">
+                                        <input id="newCieloApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
+                                            placeholder="Not set">
+                                        <span class="settings-key-status" data-source="cielo" data-get-key="https://build.cielo.finance/" data-get-key-label="Get a key" aria-live="polite"></span>
+                                    </span>
+                                </label>
+                                <p id="newWalletKeyNote" class="info settings-note">Add a Zerion or Cielo key to read wallet balances.</p>
+                            </section>
 
-                            <h3 class="settings-group">More keys</h3>
-                            <label>
-                                Alchemy · EVM
-                                <span class="settings-inline settings-key">
-                                    <input id="newAlchemyApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
-                                        placeholder="Not set">
-                                    <span class="settings-key-status" data-source="alchemy" data-get-key="https://www.alchemy.com/" data-get-key-label="Get a key" aria-live="polite"></span>
-                                </span>
-                            </label>
-                            <label>
-                                Helius · Solana
-                                <span class="settings-inline settings-key">
-                                    <input id="newHeliusApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
-                                        placeholder="Not set">
-                                    <span class="settings-key-status" data-source="helius" data-get-key="https://www.helius.dev/" data-get-key-label="Get a key" aria-live="polite"></span>
-                                </span>
-                            </label>
+                            <section class="settings-box">
+                                <h3 class="settings-group">More keys</h3>
+                                <label>
+                                    Alchemy · EVM
+                                    <span class="settings-inline settings-key">
+                                        <input id="newAlchemyApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
+                                            placeholder="Not set">
+                                        <span class="settings-key-status" data-source="alchemy" data-get-key="https://www.alchemy.com/" data-get-key-label="Get a key" aria-live="polite"></span>
+                                    </span>
+                                </label>
+                                <label>
+                                    Helius · Solana
+                                    <span class="settings-inline settings-key">
+                                        <input id="newHeliusApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
+                                            placeholder="Not set">
+                                        <span class="settings-key-status" data-source="helius" data-get-key="https://www.helius.dev/" data-get-key-label="Get a key" aria-live="polite"></span>
+                                    </span>
+                                </label>
+                            </section>
 
-                            <h3 class="settings-group">Interactive Brokers</h3>
-                            <label>
-                                Flex token
-                                <span class="settings-inline settings-key">
-                                    <input id="newIbkrFlexToken" type="text" class="settings-input" spellcheck="false" autocomplete="off"
-                                        inputmode="numeric"
-                                        placeholder="Not set">
-                                    <span class="settings-key-status" data-source="ibkr" data-get-key="https://www.ibkrguides.com/orgportal/performanceandstatements/flex.htm" data-get-key-label="How to set up" aria-live="polite"></span>
-                                </span>
-                            </label>
-                            <label>
-                                Flex query ID
-                                <input id="newIbkrFlexQueryId" type="text" class="settings-input settings-input-short" spellcheck="false" autocomplete="off"
-                                    inputmode="numeric" placeholder="Not set">
-                            </label>
-                            <p class="info settings-note">Positions update once a day.</p>
+                            <section class="settings-box">
+                                <h3 class="settings-group">Interactive Brokers</h3>
+                                <label>
+                                    Flex token
+                                    <span class="settings-inline settings-key">
+                                        <input id="newIbkrFlexToken" type="text" class="settings-input" spellcheck="false" autocomplete="off"
+                                            inputmode="numeric"
+                                            placeholder="Not set">
+                                        <span class="settings-key-status" data-source="ibkr" data-get-key="https://www.ibkrguides.com/orgportal/performanceandstatements/flex.htm" data-get-key-label="How to set up" aria-live="polite"></span>
+                                    </span>
+                                </label>
+                                <label>
+                                    Flex query ID
+                                    <input id="newIbkrFlexQueryId" type="text" class="settings-input settings-input-short" spellcheck="false" autocomplete="off"
+                                        inputmode="numeric" placeholder="Not set">
+                                </label>
+                                <p class="info settings-note">Positions update once a day.</p>
+                            </section>
                         </div>
 
                         <!-- Positions: what the table shows and how. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-positions" aria-labelledby="settingsTab-positions" data-pane="positions" hidden>
-                            <label>
-                                Hide under
-                                <span class="settings-inline">
-                                    <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100" inputmode="decimal" class="settings-input settings-input-short">
-                                    <span id="newMinBalanceUnit" class="info">USD</span>
-                                </span>
-                            </label>
+                            <section class="settings-box">
+                                <h3 class="settings-group">Rows</h3>
+                                <label>
+                                    Hide under
+                                    <span class="settings-inline">
+                                        <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100" inputmode="decimal" class="settings-input settings-input-short">
+                                        <span id="newMinBalanceUnit" class="info">USD</span>
+                                    </span>
+                                </label>
+                                <label class="settings-switch" data-find="group spot perps options">
+                                    Group spot, perps and options
+                                    <input id="newGroupPositions" type="checkbox" role="switch" class="settings-input">
+                                    <span class="settings-switch__state" aria-hidden="true"></span>
+                                </label>
+                                <label class="settings-switch" data-find="combine option legs name">
+                                    Combine option legs by name
+                                    <input id="newCombineOptionLegs" type="checkbox" role="switch" class="settings-input">
+                                    <span class="settings-switch__state" aria-hidden="true"></span>
+                                </label>
+                            </section>
 
-                            <h3 class="settings-group">Rows</h3>
-                            <label class="settings-switch" data-find="group spot perps options">
-                                Group by type
-                                <input id="newGroupPositions" type="checkbox" role="switch" class="settings-input">
-                                <span class="settings-switch__state" aria-hidden="true"></span>
-                            </label>
-                            <label class="settings-switch" data-find="combine option legs name">
-                                Combine option legs
-                                <input id="newCombineOptionLegs" type="checkbox" role="switch" class="settings-input">
-                                <span class="settings-switch__state" aria-hidden="true"></span>
-                            </label>
+                            <section class="settings-box">
+                                <h3 class="settings-group">Numbers</h3>
+                                <label class="settings-switch" data-find="color gains losses green red">
+                                    Color gains and losses
+                                    <input id="newUseColoredPnL" type="checkbox" role="switch" class="settings-input">
+                                    <span class="settings-switch__state" aria-hidden="true"></span>
+                                </label>
+                                <label class="settings-switch" data-find="show exact amounts decimals">
+                                    Show exact amounts
+                                    <input id="newShowExactAmounts" type="checkbox" role="switch" class="settings-input">
+                                    <span class="settings-switch__state" aria-hidden="true"></span>
+                                </label>
+                            </section>
 
-                            <h3 class="settings-group">Numbers</h3>
-                            <label class="settings-switch" data-find="color gains losses green red">
-                                Color P&amp;L
-                                <input id="newUseColoredPnL" type="checkbox" role="switch" class="settings-input">
-                                <span class="settings-switch__state" aria-hidden="true"></span>
-                            </label>
-                            <label class="settings-switch" data-find="show exact amounts decimals">
-                                Exact amounts
-                                <input id="newShowExactAmounts" type="checkbox" role="switch" class="settings-input">
-                                <span class="settings-switch__state" aria-hidden="true"></span>
-                            </label>
-
-                            <h3 class="settings-group">Columns</h3>
-                            <div class="settings-field">
-                                <label id="newColumnOrderLabel">Show and order</label>
-                                <ol id="newColumnOrder" class="column-order" aria-labelledby="newColumnOrderLabel"></ol>
-                            </div>
+                            <section class="settings-box">
+                                <h3 class="settings-group">Columns</h3>
+                                <ol id="newColumnOrder" class="column-order" aria-label="Columns"></ol>
+                            </section>
                         </div>
 
                         <!-- Appearance: type, layout, and which parts of the page show. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-appearance" aria-labelledby="settingsTab-appearance" data-pane="appearance" hidden>
-                            <h3 class="settings-group">Page</h3>
-                            <div class="row">
-                                <label>
-                                    Theme
-                                    <span class="select"><button type="button" id="settingsThemeBtn" class="settings-input" aria-haspopup="dialog"><span class="js-pm-theme-label"></span></button></span>
-                                </label>
-                                <label>
-                                    Font
-                                    <span class="select">
-                                        <select id="newFontSelect" class="settings-input">
-                                            <option value="system">System</option>
-                                            <option value="berkeley">Berkeley Mono</option>
-                                            <option value="commit">Commit Mono</option>
-                                            <option value="departure">Departure Mono</option>
-                                            <option value="sf">SF Mono</option>
-                                        </select>
+                            <section class="settings-box">
+                                <h3 class="settings-group">Page</h3>
+                                <div class="row">
+                                    <label>
+                                        Theme
+                                        <span class="select"><button type="button" id="settingsThemeBtn" class="settings-input" aria-haspopup="dialog"><span class="js-pm-theme-label"></span></button></span>
+                                    </label>
+                                    <label>
+                                        Font
+                                        <span class="select">
+                                            <select id="newFontSelect" class="settings-input">
+                                                <option value="system">System</option>
+                                                <option value="berkeley">Berkeley Mono</option>
+                                                <option value="commit">Commit Mono</option>
+                                                <option value="departure">Departure Mono</option>
+                                                <option value="sf">SF Mono</option>
+                                            </select>
+                                        </span>
+                                    </label>
+                                </div>
+                                <div class="settings-field" data-find="font size bigger smaller">
+                                    <span class="settings-label" id="newFontSizeLabel">Text size</span>
+                                    <span class="settings-stepper" role="group" aria-labelledby="newFontSizeLabel">
+                                        <button type="button" class="settings-step" data-step="-1" aria-label="Smaller text">−</button>
+                                        <output id="newFontSizeOut" aria-live="polite">14px</output>
+                                        <button type="button" class="settings-step" data-step="1" aria-label="Larger text">+</button>
+                                        <input id="newFontSizeSelect" type="hidden" value="14">
                                     </span>
+                                </div>
+                                <div class="settings-field" data-find="layout full window">
+                                    <span class="settings-label" id="newWidthLabel">Width</span>
+                                    <span class="settings-choice" role="radiogroup" aria-labelledby="newWidthLabel">
+                                        <label><input type="radio" name="newWidth" value="off"><span>Column</span></label>
+                                        <label><input type="radio" name="newWidth" value="on"><span>Full</span></label>
+                                    </span>
+                                </div>
+                                <div id="newAlignField" class="settings-field" data-find="layout center middle">
+                                    <span class="settings-label" id="newAlignLabel">Align</span>
+                                    <span class="settings-choice" role="radiogroup" aria-labelledby="newAlignLabel">
+                                        <label><input type="radio" name="newAlign" value="off"><span>Left</span></label>
+                                        <label><input type="radio" name="newAlign" value="on"><span>Center</span></label>
+                                    </span>
+                                </div>
+                            </section>
+
+                            <section class="settings-box">
+                                <h3 class="settings-group">Show</h3>
+                                <label class="settings-switch" data-find="history">
+                                    Value chart
+                                    <input id="newShowValueChart" type="checkbox" role="switch" class="settings-input">
+                                    <span class="settings-switch__state" aria-hidden="true"></span>
                                 </label>
-                            </div>
-                            <div class="settings-field" data-find="font size bigger smaller">
-                                <span class="settings-label" id="newFontSizeLabel">Text size</span>
-                                <span class="settings-stepper" role="group" aria-labelledby="newFontSizeLabel">
-                                    <button type="button" class="settings-step" data-step="-1" aria-label="Smaller text">−</button>
-                                    <output id="newFontSizeOut" aria-live="polite">14px</output>
-                                    <button type="button" class="settings-step" data-step="1" aria-label="Larger text">+</button>
-                                    <input id="newFontSizeSelect" type="hidden" value="14">
-                                </span>
-                            </div>
-                            <div class="settings-field" data-find="layout full window">
-                                <span class="settings-label" id="newWidthLabel">Width</span>
-                                <span class="settings-choice" role="radiogroup" aria-labelledby="newWidthLabel">
-                                    <label><input type="radio" name="newWidth" value="off"><span>Column</span></label>
-                                    <label><input type="radio" name="newWidth" value="on"><span>Full</span></label>
-                                </span>
-                            </div>
-                            <div id="newAlignField" class="settings-field" data-find="layout center middle">
-                                <span class="settings-label" id="newAlignLabel">Align</span>
-                                <span class="settings-choice" role="radiogroup" aria-labelledby="newAlignLabel">
-                                    <label><input type="radio" name="newAlign" value="off"><span>Left</span></label>
-                                    <label><input type="radio" name="newAlign" value="on"><span>Center</span></label>
-                                </span>
-                            </div>
-                            <h3 class="settings-group">Show</h3>
-                            <label class="settings-switch" data-find="history">
-                                Value chart
-                                <input id="newShowValueChart" type="checkbox" role="switch" class="settings-input">
-                                <span class="settings-switch__state" aria-hidden="true"></span>
-                            </label>
-                            <label class="settings-switch" data-find="sparkline">
-                                Price charts
-                                <input id="newShowPriceChart" type="checkbox" role="switch" class="settings-input">
-                                <span class="settings-switch__state" aria-hidden="true"></span>
-                            </label>
-                            <label class="settings-switch" data-find="section">
-                                Watchlist
-                                <input id="newShowWatchlist" type="checkbox" role="switch" class="settings-input">
-                                <span class="settings-switch__state" aria-hidden="true"></span>
-                            </label>
-                            <label class="settings-switch" data-find="section">
-                                Comic strip
-                                <input id="newShowComic" type="checkbox" role="switch" class="settings-input">
-                                <span class="settings-switch__state" aria-hidden="true"></span>
-                            </label>
-                            <label class="settings-switch" data-find="browser tab">
-                                Value in title
-                                <input id="newValueInTitle" type="checkbox" role="switch" class="settings-input">
-                                <span class="settings-switch__state" aria-hidden="true"></span>
-                            </label>
+                                <label class="settings-switch" data-find="sparkline">
+                                    Price charts
+                                    <input id="newShowPriceChart" type="checkbox" role="switch" class="settings-input">
+                                    <span class="settings-switch__state" aria-hidden="true"></span>
+                                </label>
+                                <label class="settings-switch" data-find="section">
+                                    Watchlist
+                                    <input id="newShowWatchlist" type="checkbox" role="switch" class="settings-input">
+                                    <span class="settings-switch__state" aria-hidden="true"></span>
+                                </label>
+                                <label class="settings-switch" data-find="section">
+                                    Comic strip
+                                    <input id="newShowComic" type="checkbox" role="switch" class="settings-input">
+                                    <span class="settings-switch__state" aria-hidden="true"></span>
+                                </label>
+                                <label class="settings-switch" data-find="browser tab">
+                                    Value in the tab title
+                                    <input id="newValueInTitle" type="checkbox" role="switch" class="settings-input">
+                                    <span class="settings-switch__state" aria-hidden="true"></span>
+                                </label>
+                            </section>
                         </div>
 
                         <!-- Backup: the settings as text, out and in, and a hard reload. -->
                         <div class="settings-pane settings-pane-rows" role="tabpanel" id="settingsPane-backup" aria-labelledby="settingsTab-backup" data-pane="backup" hidden>
-                            <div class="settings-row">
-                                <div class="settings-row-text">
-                                    <div class="settings-row-title">Export settings</div>
-                                    <div class="info">Copy your settings as text.</div>
-                                </div>
+                            <section class="settings-box">
+                                <h3 class="settings-group">Export settings</h3>
+                                <p class="info">Copy your settings as text.</p>
                                 <button type="button" id="newExportSettingsBtn" class="btn-text">Export</button>
-                            </div>
-                            <div class="settings-row">
-                                <div class="settings-row-text">
-                                    <div class="settings-row-title">Import settings</div>
-                                    <div class="info">Paste exported settings. They replace your current settings.</div>
-                                </div>
+                            </section>
+                            <section class="settings-box">
+                                <h3 class="settings-group">Import settings</h3>
+                                <p class="info">Paste exported settings. They replace your current settings.</p>
                                 <button type="button" id="newImportSettingsBtn" class="btn-text">Import</button>
-                            </div>
+                            </section>
                             <textarea id="newSettingsExportArea" class="settings-input" aria-label="Exported settings"
                                 style="display: none; min-height: 100px;" spellcheck="false" readonly></textarea>
                             <div id="newImportActions" class="settings-import-actions" hidden>
                                 <button type="button" id="newImportCancelBtn" class="btn-text">Cancel</button>
                                 <button type="button" id="newImportApplyBtn" class="btn-text btn-primary">Apply</button>
                             </div>
-                            <div class="settings-row">
-                                <div class="settings-row-text">
-                                    <div class="settings-row-title">Force update</div>
-                                    <div class="info">Clear the caches and reload. Your settings stay.</div>
-                                </div>
+                            <section class="settings-box">
+                                <h3 class="settings-group">Force update</h3>
+                                <p class="info">Clear the caches and reload. Your settings stay.</p>
                                 <button type="button" id="newForceUpdateBtn" class="btn-text">Force update</button>
-                            </div>
+                            </section>
                             <div class="info settings-footnote">Your settings stay in this browser only.</div>
                         </div>
 
