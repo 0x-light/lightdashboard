@@ -127,15 +127,20 @@ function stakingSection(st) {
   ]));
 }
 
-const failed = (title) => section(title, '', '<p class="acct__muted">Cannot load. Try again later.</p>');
+const failed = (title) => section(title, '',
+  '<p class="acct__muted">Cannot load. <button type="button" class="link-button js-acct-retry">Try again</button></p>');
+
+// Hyperliquid answers a burst of requests (the page's own refresh) with errors now and
+// then: one more try a moment later gets most of them.
+const twice = (load) => load().catch(() => new Promise(r => setTimeout(r, 1500)).then(load));
 
 // One wallet's sections, each passed to `put(index, html)` as soon as its data arrives.
 function loadWallet(address, put) {
   return Promise.all([
-    getMargin(address).then(marginSection, () => failed('Margin')).then(h => put(0, h)),
-    getFundingByDay(address, 30).then(fundingSection, () => failed('Funding')).then(h => put(1, h)),
-    getFees(address).then(feesSection, () => failed('Fees')).then(h => put(2, h)),
-    getStaking(address).then(stakingSection, () => failed('Staking')).then(h => put(3, h))
+    twice(() => getMargin(address)).then(marginSection, () => failed('Margin')).then(h => put(0, h)),
+    twice(() => getFundingByDay(address, 30)).then(fundingSection, () => failed('Funding')).then(h => put(1, h)),
+    twice(() => getFees(address)).then(feesSection, () => failed('Fees')).then(h => put(2, h)),
+    twice(() => getStaking(address)).then(stakingSection, () => failed('Staking')).then(h => put(3, h))
   ]);
 }
 
@@ -408,6 +413,7 @@ export function openAccountWindow() {
     content.addEventListener('click', (e) => {
       const b = e.target.closest('.acct__venue');
       if (b) selectTab(b.dataset.tab);
+      if (e.target.closest('.js-acct-retry')) fill(win);
     });
     content.addEventListener('mouseover', showDay);
     content.addEventListener('mouseleave', () => content.querySelectorAll('.acct__readout').forEach(r => { r.textContent = r.dataset.rest; }));

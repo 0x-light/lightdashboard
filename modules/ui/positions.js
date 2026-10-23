@@ -1001,6 +1001,12 @@ function groupTotals(rows) {
   return { value: sum(computeValue), pnl: sum(p => p.pnl), funding: sum(p => p.funding) };
 }
 
+// A perp's value is its notional, size × price, not money in the account: the perps head
+// says so, so its total isn't read as part of the portfolio's.
+function notionalNote(group) {
+  return group.kind === 'perp' ? ' <span class="position-group__label">notional</span>' : '';
+}
+
 // The head of a run of rows: the kind on the left, its totals under the Value, P&L
 // and Funding heads. Not a position: it does not open.
 function createGroupRow(doc, group, opts) {
@@ -1012,7 +1018,7 @@ function createGroupRow(doc, group, opts) {
   const cells = {
     asset: `<span class="position-group__label">${KIND_LABELS[group.kind]}</span><span class="position-group__count">${positionsIn(group.rows)}</span>`
   };
-  if (totals.value !== null) cells.value = formatBaseMoney(totals.value, amountVisible, baseCurrency);
+  if (totals.value !== null) cells.value = formatBaseMoney(totals.value, amountVisible, baseCurrency) + notionalNote(group);
   if (totals.pnl !== null) cells.pnl = formatBaseMoney(totals.pnl, amountVisible, baseCurrency, true);
   if (group.kind === 'perp' && totals.funding !== null) cells.funding = formatBaseMoney(totals.funding, amountVisible, baseCurrency, true);
   for (const col of columnsFor(opts)) {
@@ -1031,7 +1037,7 @@ function createMobileGroupLine(doc, group, opts) {
   const line = doc.createElement('div');
   line.className = 'mobile-positions-group';
   line.innerHTML = `<span class="card-asset">${KIND_LABELS[group.kind]}</span>` +
-    (totals.value !== null ? `<span class="card-value">${formatBaseMoney(totals.value, amountVisible, baseCurrency)}</span>` : '');
+    (totals.value !== null ? `<span class="card-value">${formatBaseMoney(totals.value, amountVisible, baseCurrency)}${notionalNote(group)}</span>` : '');
   return line;
 }
 
