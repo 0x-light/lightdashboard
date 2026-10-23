@@ -544,10 +544,13 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
   // Export: copies everything, including wallet entry prices kept under their own key
   const exportBtn = document.getElementById('newExportSettingsBtn');
   const importBtn = document.getElementById('newImportSettingsBtn');
+  const importActions = document.getElementById('newImportActions');
+  const importApplyBtn = document.getElementById('newImportApplyBtn');
+  const importCancelBtn = document.getElementById('newImportCancelBtn');
   let importMode = false;
   const resetImport = () => {
     importMode = false;
-    if (importBtn) importBtn.textContent = 'Import';
+    if (importActions) importActions.hidden = true;
     if (exportArea) {
       exportArea.style.display = 'none';
       exportArea.value = '';
@@ -575,24 +578,21 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     });
   }
 
-  // Import: first click opens the box, second click applies what was pasted (or cancels if empty)
-  if (importBtn && exportArea) {
+  // Import: opens the box; Apply sits under it, Enter does the same (the export is one line)
+  if (importBtn && exportArea && importActions) {
     importBtn.addEventListener('click', () => {
-      if (!importMode) {
-        importMode = true;
-        importBtn.textContent = 'Apply';
-        exportArea.value = '';
-        exportArea.placeholder = 'Paste exported settings here, then press Apply';
-        exportArea.style.display = 'block';
-        exportArea.removeAttribute('readonly');
-        exportArea.focus();
-        return;
-      }
+      if (importMode) { exportArea.focus(); return; }
+      importMode = true;
+      exportArea.value = '';
+      exportArea.placeholder = 'Paste exported settings here';
+      exportArea.style.display = 'block';
+      exportArea.removeAttribute('readonly');
+      importActions.hidden = false;
+      exportArea.focus();
+    });
+    const applyImport = () => {
       const pasted = exportArea.value.trim();
-      if (!pasted) {
-        resetImport();
-        return;
-      }
+      if (!pasted) { exportArea.focus(); return; }
       try {
         const imported = decodeBackup(pasted);
         const walletPrices = imported.__walletAssetEntryPrices;
@@ -606,6 +606,14 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
         exportArea.focus();
         alert('Cannot read these settings. Paste all of the exported text.');
         console.error('[Import] Failed to import settings:', err);
+      }
+    };
+    importApplyBtn?.addEventListener('click', applyImport);
+    importCancelBtn?.addEventListener('click', resetImport);
+    exportArea.addEventListener('keydown', (e) => {
+      if (importMode && e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        applyImport();
       }
     });
   }

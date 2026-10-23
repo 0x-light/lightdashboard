@@ -1298,7 +1298,7 @@ html.pm:root .sticker-window-header .btn-text::before {
 }
 
 /* The window's main action: a key chip at the bottom right, Enter does the same. */
-html.pm:root .sticker-window-content .btn-text.btn-primary {
+html.pm:root :is(.sticker-window-content, .settings-panes) .btn-text.btn-primary {
   display: flex;
   width: max-content;
   gap: 1ch;
@@ -1308,7 +1308,7 @@ html.pm:root .sticker-window-content .btn-text.btn-primary {
   color: var(--pm-ink);
 }
 
-html.pm:root .sticker-window-content .btn-text.btn-primary::before {
+html.pm:root :is(.sticker-window-content, .settings-panes) .btn-text.btn-primary::before {
   content: "↵";
   padding: 0 1ch;
   background: var(--pm-ink);
@@ -1758,17 +1758,29 @@ html.pm:root .settings-pane > label.settings-wide { grid-template-columns: minma
 html.pm:root .settings-pane > label.settings-wide > * { grid-column: 1; }
 
 /* Backup: what it does on the left, its button on the right. */
+/* The action sits under its text, where the eye ends, not far off on the right. */
 html.pm:root .settings-row {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 2ch;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--pm-lh) / 2);
   padding: 0 0 calc(var(--pm-lh) / 2);
   border-bottom: 1px solid var(--pm-rule);
 }
 html.pm:root .settings-row-title { color: var(--pm-ink); text-transform: uppercase; }
 html.pm:root .settings-row .btn-text { flex: none; }
 html.pm:root .settings-footnote { margin: 0; }
+/* Import: Apply and Cancel sit right under the box they act on. */
+html.pm:root .settings-import-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1ch;
+  padding: 0 0 calc(var(--pm-lh) / 2);
+  border-bottom: 1px solid var(--pm-rule);
+}
+html.pm:root .settings-import-actions[hidden] { display: none; }
+html.pm:root .settings-import-actions .btn-text.btn-primary { margin: 0; }
 
 /* Phones: the whole screen, the title on a bar at the top. */
 @media (max-width: 620px) {
