@@ -381,6 +381,7 @@
   }
 
   function chooseTheme(value) {
+    themeBefore = value; // a late mouseleave on the hidden list previews this, not the old theme
     themeSelect.value = value;
     themeSelect.dispatchEvent(new Event("change"));
     syncThemeName();
@@ -409,6 +410,7 @@
     if (opt) previewTheme(opt.dataset.value);
   });
   themeGrid.addEventListener("mouseleave", function () {
+    if (themeWindow.style.display === "none") return;
     var focused = document.activeElement && document.activeElement.closest(".pm-theme-option");
     previewTheme(focused ? focused.dataset.value : themeBefore);
   });

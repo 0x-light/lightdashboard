@@ -1367,12 +1367,14 @@ html.pm:root .sticker-window-content .help {
   text-transform: none;
 }
 
-/* One-line fields: tint fill, no border, the text on the grid. */
+/* One-line fields: tint fill, no border, 0.2 of a line above and below the text.
+   The Theme button in Settings is a field too. */
 html.pm:root .settings-panes input:not([type="checkbox"]):not([type="range"]),
 html.pm:root .settings-panes select,
+html.pm:root .settings-panes .select button,
 html.pm:root .sticker-window-content input:not([type="checkbox"]):not([type="range"]),
 html.pm:root .sticker-window-content select {
-  height: var(--pm-lh);
+  height: calc(var(--pm-lh) * 1.4);
   min-height: 0;
   padding: 0 1ch;
   border: 0;
@@ -2229,6 +2231,7 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
   }
   html.pm:root .settings-panes input:not([type="checkbox"]):not([type="range"]),
   html.pm:root .settings-panes select,
+  html.pm:root .settings-panes .select button,
   html.pm:root .sticker-window-content input:not([type="checkbox"]):not([type="range"]),
   html.pm:root .sticker-window-content select { height: var(--pm-tall); }
   html.pm:root .column-order { display: grid; gap: calc(var(--pm-lh) / 3); }
