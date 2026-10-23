@@ -397,11 +397,14 @@ export function openAccountWindow() {
       const b = e.target.closest('.acct__tab');
       if (b) selectTab(b.dataset.tab);
     });
-    // ← → choose the next or previous account, Home and End the first or last
-    win.querySelector('.acct__tabs').addEventListener('keydown', (e) => {
+    // ← → choose the next or previous account from anywhere in the window; on the tabs,
+    // Home and End choose the first or last
+    win.addEventListener('keydown', (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || win.querySelector('.acct__tabs').hidden) return;
       const tabs = [...win.querySelectorAll('.acct__tab')];
-      const i = tabs.indexOf(e.target);
-      const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+      const onTab = tabs.includes(e.target);
+      const i = tabs.findIndex(t => t.getAttribute('aria-selected') === 'true');
+      const next = { ArrowRight: i + 1, ArrowLeft: i - 1, ...(onTab && { Home: 0, End: tabs.length - 1 }) }[e.key];
       if (i < 0 || next === undefined) return;
       e.preventDefault();
       e.stopPropagation();
@@ -430,9 +433,11 @@ export function openAccountWindow() {
   backdrop.style.display = 'block';
   win.style.display = 'flex';
   document.body.classList.add('modal-open');
-  win.querySelector('.js-acct-close').focus({ preventScroll: true });
   try { tab = localStorage.getItem('pmAccountTab') || 'all'; } catch (_) {}
   fill(win);
+  // Focus starts on the chosen account's tab, so the arrows work straight away
+  const current = win.querySelector('.acct__tabs:not([hidden]) .acct__tab[aria-selected="true"]');
+  (current || win.querySelector('.js-acct-close')).focus({ preventScroll: true });
 }
 
 export default { openAccountWindow };
