@@ -426,14 +426,6 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     if (addresses && addressesHint) addressesHint.textContent = describeAddresses(addresses.value);
   };
 
-  // General reads as sentences; each blank is as wide as what it holds.
-  const sizeBlank = (el) => {
-    const chars = Math.max(String(el.value).length, el.placeholder.length, 3);
-    el.style.width = `${Math.min(chars, 30) + 3}ch`;
-  };
-  const sizeBlanks = () => dialog.querySelectorAll('input.settings-blank').forEach(sizeBlank);
-  dialog.querySelectorAll('input.settings-blank').forEach(el => el.addEventListener('input', () => sizeBlank(el)));
-
   // Align only matters in the column; a full-width page has nothing to center.
   const alignField = document.getElementById('newAlignField');
   const showAlign = () => {
@@ -921,7 +913,6 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     fillForm(s);
     showAddressesHint();
     showCurrencyUnit();
-    sizeBlanks();
     showFontSize();
     showAlign();
     setCityHint(defaultCityHint);

@@ -462,20 +462,29 @@
                     <section class="settings-panes">
                         <!-- General: who you are and where you are, as the greeting and the weather use them, and the money unit. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-general" aria-labelledby="settingsTab-general" data-pane="general">
-                            <div class="settings-sentence" data-find="name city location weather">
-                                Call me <input id="newUserName" type="text" class="settings-input settings-blank" placeholder="name" aria-label="Your name" autocomplete="given-name">.
-                                I am in <span class="settings-blank-wrap"><input id="newWeatherCity" type="text" class="settings-input settings-blank" placeholder="city" aria-label="City" autocomplete="off" aria-describedby="newWeatherCityHint"><ul id="newWeatherCityList" class="city-options" role="listbox" aria-label="Matching places" hidden></ul></span>
-                                <span class="settings-nowrap">(<button id="newUseMyLocationBtn" type="button" class="settings-aside">use my location</button>).</span>
+                            <label>
+                                Your name
+                                <input id="newUserName" type="text" class="settings-input" placeholder="Not set" autocomplete="given-name">
+                            </label>
+                            <div class="settings-field">
+                                <label for="newWeatherCity">City</label>
+                                <div class="settings-inline">
+                                    <input id="newWeatherCity" type="text" class="settings-input" placeholder="Not set" autocomplete="off" aria-describedby="newWeatherCityHint">
+                                    <button id="newUseMyLocationBtn" type="button" class="btn-text">Use my location</button>
+                                </div>
+                                <ul id="newWeatherCityList" class="city-options" role="listbox" aria-label="Matching places" hidden></ul>
+                                <span id="newWeatherCityHint" class="info" aria-live="polite"></span>
                             </div>
-                            <div class="settings-sentence" data-find="currency hide under minimum balance small">
-                                My currency is <span class="select settings-blank"><select id="newPortfolioBaseCurrency" class="settings-input" aria-label="Currency">
-                                    <option value="USD">USD</option>
-                                    <option value="EUR">EUR</option>
-                                    <option value="GBP">GBP</option>
-                                </select></span>.
-                                Hide positions under <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100" inputmode="decimal" class="settings-input settings-blank" aria-label="Hide positions under"> <span id="newMinBalanceUnit">USD</span>.
-                            </div>
-                            <span id="newWeatherCityHint" class="info" aria-live="polite"></span>
+                            <label>
+                                Currency
+                                <span class="select">
+                                    <select id="newPortfolioBaseCurrency" class="settings-input">
+                                        <option value="USD">USD</option>
+                                        <option value="EUR">EUR</option>
+                                        <option value="GBP">GBP</option>
+                                    </select>
+                                </span>
+                            </label>
                         </div>
 
                         <!-- Accounts: where positions come from. Wallets and the keys that read them, then the broker. -->
@@ -543,6 +552,14 @@
 
                         <!-- Positions: what the table shows and how. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-positions" aria-labelledby="settingsTab-positions" data-pane="positions" hidden>
+                            <label>
+                                Hide under
+                                <span class="settings-inline">
+                                    <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100" inputmode="decimal" class="settings-input settings-input-short">
+                                    <span id="newMinBalanceUnit" class="info">USD</span>
+                                </span>
+                            </label>
+
                             <h3 class="settings-group">Rows</h3>
                             <label class="settings-switch" data-find="group spot perps options">
                                 Group by type

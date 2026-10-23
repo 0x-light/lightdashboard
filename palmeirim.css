@@ -1855,52 +1855,6 @@ html.pm:root .settings-import-actions {
 html.pm:root .settings-import-actions[hidden] { display: none; }
 html.pm:root .settings-import-actions .btn-text.btn-primary { margin: 0; }
 
-/* General: two sentences with the settings as blanks in them. */
-html.pm:root .settings-pane .settings-sentence {
-  margin: 0;
-  color: var(--pm-ink);
-  line-height: calc(var(--pm-lh) * 1.6);
-  text-transform: none;
-}
-html.pm:root .settings-pane .settings-sentence input.settings-blank { display: inline-block; max-width: 100%; vertical-align: baseline; }
-html.pm:root .settings-pane .settings-sentence input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
-html.pm:root .settings-pane .settings-sentence input[type="number"]::-webkit-inner-spin-button,
-html.pm:root .settings-pane .settings-sentence input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-html.pm:root .settings-pane .settings-sentence .select { display: inline-block; width: auto; min-width: 0; vertical-align: baseline; }
-html.pm:root .settings-pane .settings-sentence .select select { width: auto; }
-html.pm:root .settings-blank-wrap { position: relative; display: inline-block; max-width: 100%; }
-html.pm:root .settings-blank-wrap .city-options {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 2;
-  width: max-content;
-  min-width: 100%;
-  max-width: min(48ch, 80vw);
-  background: var(--bg);
-  line-height: var(--pm-lh);
-}
-html.pm:root .settings-nowrap { white-space: nowrap; }
-html.pm:root .settings-aside {
-  display: inline;
-  width: auto;
-  height: auto;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--pm-muted);
-  font: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-html.pm:root .settings-aside:disabled { text-decoration: none; cursor: default; }
-html.pm:root .settings-aside:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 0; color: var(--pm-ink); }
-@media (hover: hover) {
-  html.pm:root .settings-aside:not(:disabled):hover { color: var(--pm-ink); }
-}
-
 /* Accounts: field, then what the key did on the last load. A saved key shows as dots. */
 html.pm:root .settings-pane .settings-key-status { color: var(--pm-muted); white-space: nowrap; }
 html.pm:root .settings-pane .settings-key-status.is-error { color: var(--pm-ink); }
