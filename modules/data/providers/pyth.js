@@ -554,6 +554,32 @@ async function getKeylessHistory(ids, points, endTime) {
   return results;
 }
 
+/**
+ * Price history per feed id over a longer window, from the same keyless sources as the quotes:
+ * `{ ms, hl, yahoo: [range, interval] }` names the window, the Hyperliquid candle interval and
+ * the Yahoo chart range. Points are `{ timestamp (ms), price }`, at most `points` of them.
+ */
+export async function getPeriodHistoryByFeedIds(feedIds, { ms, hl, yahoo }, points = 120) {
+  const ids = Array.from(new Set((feedIds || []).map(normalizeFeedId).filter(Boolean)));
+  if (ids.length === 0) return {};
+  const quotes = await getKeylessQuotes(ids);
+  const now = Date.now();
+  const results = {};
+  await Promise.all(ids.map(async (id) => {
+    const quote = quotes[id];
+    let history = [];
+    if (quote?.source === 'hyperliquid') {
+      const candles = await Hyperliquid.fetchCandles(quote.coin, hl, now - ms, now, 8000).catch(() => []);
+      history = candles.map(c => ({ timestamp: c.t, price: c.c * quote.scale }));
+    } else if (quote?.source === 'yahoo') {
+      const [range, interval] = yahoo;
+      history = await Stocks.get24hPriceHistory(quote.yahooSymbol, { range, interval, timeoutMs: 8000 }).catch(() => []);
+    }
+    results[id] = downsample(history.filter(p => Number.isFinite(p.price) && p.price > 0), points);
+  }));
+  return results;
+}
+
 async function getKeylessPricesAt(ids, timestampSeconds) {
   const quotes = await getKeylessQuotes(ids);
   const prices = {};

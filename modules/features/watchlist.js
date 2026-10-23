@@ -14,6 +14,25 @@ import { formatPrice } from '../utils/currency.js';
 const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
 let lastGoodWatchlistData = null;
 
+// The chart period every tile shows. 'day' is the 24h chart and change the quotes carry; the
+// others fetch a longer history per item, and the change runs from its first point to now.
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const PERIODS = {
+  day: null,
+  week: { ms: 7 * DAY_MS, hl: '1h', yahoo: ['5d', '1h'] },
+  month: { ms: 30 * DAY_MS, hl: '4h', yahoo: ['1mo', '1h'] },
+  year: { ms: 365 * DAY_MS, hl: '1d', yahoo: ['1y', '1d'] }
+};
+const PERIOD_KEY = 'pmWatchlistPeriod';
+const PERIOD_TTL_MS = 5 * 60 * 1000;
+const periodHistory = new Map(); // `${period}|${key}` -> { at, points }
+let period = 'day';
+try {
+  const saved = localStorage.getItem(PERIOD_KEY);
+  if (saved && saved in PERIODS) period = saved;
+} catch (_) { /* storage blocked: stay on day */ }
+let providers = {}; // { pythProvider, stocksProvider } from the last render
+
 function cloneWatchlistData(data) {
   if (!Array.isArray(data)) return null;
   return data.map(item => ({
@@ -275,6 +294,79 @@ async function enrichYahooWithHistory(yahooItems, stocksProvider, onProgress = n
   if (any && onProgress) onProgress();
 }
 
+// --- Longer periods: one history per item, cached five minutes ---
+
+function thin(points, count = 120) {
+  if (!Array.isArray(points) || points.length <= count) return points || [];
+  const step = (points.length - 1) / (count - 1);
+  return Array.from({ length: count }, (_, i) => points[Math.round(i * step)]);
+}
+
+function historyFor(item) {
+  if (period === 'day') return item.priceHistory;
+  return periodHistory.get(`${period}|${item.key}`)?.points;
+}
+
+function changeFor(item, history) {
+  if (period === 'day') return item.change24h;
+  if (!Array.isArray(history) || history.length < 2) return null;
+  const first = history[0].price;
+  const last = Number.isFinite(item.price) ? item.price : history[history.length - 1].price;
+  return first > 0 ? ((last - first) / first) * 100 : null;
+}
+
+// Fetches the chosen period for items without a fresh history, then redraws. Entries are
+// claimed before the requests go out, so the redraws this causes find nothing left to do.
+async function loadPeriodHistory(items) {
+  const spec = PERIODS[period];
+  if (!spec) return;
+  const forPeriod = period;
+  const now = Date.now();
+  const due = items.filter((item) => {
+    if (!item.key || item.unavailable || isStablecoin(item.symbol)) return false;
+    const hit = periodHistory.get(`${forPeriod}|${item.key}`);
+    return !hit || now - hit.at > PERIOD_TTL_MS;
+  });
+  if (due.length === 0) return;
+  for (const item of due) {
+    const hit = periodHistory.get(`${forPeriod}|${item.key}`);
+    periodHistory.set(`${forPeriod}|${item.key}`, { at: now, points: hit?.points ?? null });
+  }
+
+  const { pythProvider, stocksProvider } = providers;
+  const pythItems = due.filter(i => i.provider === 'pyth' && i.feedId);
+  const yahooItems = due.filter(i => i.provider === 'yahoo');
+  const [pythResults, yahooResults] = await Promise.all([
+    pythItems.length > 0 && pythProvider?.getPeriodHistoryByFeedIds
+      ? pythProvider.getPeriodHistoryByFeedIds(pythItems.map(i => i.feedId), spec).catch(() => ({}))
+      : {},
+    Promise.all(yahooItems.map((item) => {
+      if (!stocksProvider?.get24hPriceHistory) return [];
+      const [range, interval] = spec.yahoo;
+      return stocksProvider.get24hPriceHistory(item.symbol, { range, interval, timeoutMs: 8000 }).catch(() => []);
+    }))
+  ]);
+
+  for (const item of pythItems) {
+    periodHistory.set(`${forPeriod}|${item.key}`, { at: now, points: pythResults[item.feedId] || [] });
+  }
+  yahooItems.forEach((item, i) => {
+    periodHistory.set(`${forPeriod}|${item.key}`, { at: now, points: thin(yahooResults[i]) });
+  });
+  if (forPeriod === period) rerenderOpenState();
+}
+
+export function getPeriod() {
+  return period;
+}
+
+export function setPeriod(next) {
+  if (!(next in PERIODS) || next === period) return;
+  period = next;
+  try { localStorage.setItem(PERIOD_KEY, period); } catch (_) { /* per-viewer convenience only */ }
+  rerenderOpenState();
+}
+
 // --- Rendering ---
 
 function escapeHtml(value) {
@@ -299,10 +391,17 @@ function renderRows(container, data, options) {
 
   const openKey = typeof window !== 'undefined' ? window.openWatchlistKey : null;
 
+  if (typeof document !== 'undefined') {
+    document.querySelectorAll('.wl-period').forEach((b) => {
+      b.setAttribute('aria-checked', String(b.dataset.period === period));
+    });
+  }
+
   const html = data.map(item => {
     const symbol = escapeHtml(item.symbol);
     const price = item.price;
-    const change24h = item.change24h;
+    const history = historyFor(item);
+    const change = changeFor(item, history);
     const key = item.key || (item.feedId ? `pyth:${item.feedId}` : `yahoo:${(item.symbol || '').toUpperCase()}`);
     const keyAttr = escapeHtml(key);
     const isOpen = openKey === key;
@@ -314,11 +413,11 @@ function renderRows(container, data, options) {
 
     let changeColor = '';
     let changeText = '—';
-    if (change24h !== null && change24h !== undefined) {
-      const isPos = change24h >= 0;
+    if (change !== null && change !== undefined) {
+      const isPos = change >= 0;
       changeColor = useColoredPnL ? (isPos ? 'var(--green)' : 'var(--red)') : '';
-      changeText = `${isPos ? '+' : ''}${change24h.toFixed(2)}%`;
-    } else if (!isStablecoin(item.symbol) && !item.unavailable) {
+      changeText = `${isPos ? '+' : ''}${change.toFixed(2)}%`;
+    } else if (!isStablecoin(item.symbol) && !item.unavailable && !(period !== 'day' && Array.isArray(history))) {
       changeText = '<span class="cell-loading">—</span>';
     }
 
@@ -327,8 +426,10 @@ function renderRows(container, data, options) {
       chartHtml = '';
     } else if (isStablecoin(item.symbol) || item.unavailable) {
       chartHtml = '—';
-    } else if (item.priceHistory && item.priceHistory.length > 1) {
-      chartHtml = createSparkline(item.priceHistory, 60, 24, change24h) || '<span class="cell-loading">—</span>';
+    } else if (history && history.length > 1) {
+      chartHtml = createSparkline(history, 60, 24, change) || '<span class="cell-loading">—</span>';
+    } else if (Array.isArray(history)) {
+      chartHtml = '—'; // the source has no history for this period
     } else {
       chartHtml = '<span class="cell-loading">—</span>';
     }
@@ -369,6 +470,8 @@ function renderRows(container, data, options) {
     const target = focusedAction ? row?.querySelector(`[data-shortcut="${focusedAction}"]`) : row;
     target?.focus({ preventScroll: true });
   }
+
+  loadPeriodHistory(data);
 }
 
 // Redraw the last render with the current open item; no fetching.
@@ -389,6 +492,7 @@ export async function render(container, {
   forceRefresh = false
 }) {
   if (!container) return;
+  providers = { pythProvider, stocksProvider };
 
   // Accept either the legacy `feedIds: string[]` (implicitly pyth) or the new rich `entries`.
   const normalized = Array.isArray(entries) && entries.length > 0
@@ -572,4 +676,4 @@ export async function fetchPrices(feedIds, pythProvider, includePriceHistory = f
   return prices;
 }
 
-export default { fetchPrices, render, normalizeEntries };
+export default { fetchPrices, render, normalizeEntries, getPeriod, setPeriod, PERIODS };

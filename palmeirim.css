@@ -755,6 +755,10 @@ html.pm:root #newWatchlistTable {
 
 html.pm:root #newWatchlistTable thead { display: none; }
 
+/* The period switch follows the title; with nothing to chart it goes. */
+html.pm:root .wl-periods { display: flex; }
+html.pm:root #watchlistSection:has(.watchlist-empty-row) .wl-periods { display: none; }
+
 html.pm:root #newWatchlistBody {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(24ch, 1fr));
@@ -1875,7 +1879,7 @@ html.pm:root .pm-value__change { margin-left: auto; }
 
 /* ── Pickers: one look for every choose-one row (chart periods, comics, Settings
    tabs, themes). Plain muted labels; the chosen one inverts; pointing brightens. ── */
-html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option, .acct__tab) {
+html.pm:root :is(.pm-value__period, .wl-period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option, .acct__tab) {
   min-height: 0;
   padding: 0 1ch;
   border: 0;
@@ -1891,22 +1895,22 @@ html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segment
 
 /* The first label's text lines up with the text above it; theme options sit in a
    grid, so each one does. */
-html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .acct__tab):first-child,
+html.pm:root :is(.pm-value__period, .wl-period, .comic-tab, .sticker-window-content .segmented .btn-tab, .acct__tab):first-child,
 html.pm:root .pm-theme-option { margin-left: -1ch; }
 
-html.pm:root :is(.pm-value__period[aria-checked="true"], .comic-tab.active, .sticker-window-content .segmented .btn-tab.active, .pm-theme-option[aria-selected="true"], .acct__tab[aria-selected="true"]) {
+html.pm:root :is(.pm-value__period[aria-checked="true"], .wl-period[aria-checked="true"], .comic-tab.active, .sticker-window-content .segmented .btn-tab.active, .pm-theme-option[aria-selected="true"], .acct__tab[aria-selected="true"]) {
   background: var(--pm-ink);
   color: var(--bg);
 }
 
-html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option, .acct__tab):focus-visible {
+html.pm:root :is(.pm-value__period, .wl-period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option, .acct__tab):focus-visible {
   outline: 1px solid var(--pm-ink);
   outline-offset: 0;
 }
 
 @media (hover: hover) {
-  html.pm:root :is(.pm-value__period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option, .acct__tab):hover { color: var(--pm-ink); }
-  html.pm:root :is(.pm-value__period[aria-checked="true"], .comic-tab.active, .sticker-window-content .segmented .btn-tab.active, .pm-theme-option[aria-selected="true"], .acct__tab[aria-selected="true"]):hover { color: var(--bg); }
+  html.pm:root :is(.pm-value__period, .wl-period, .comic-tab, .sticker-window-content .segmented .btn-tab, .pm-theme-option, .acct__tab):hover { color: var(--pm-ink); }
+  html.pm:root :is(.pm-value__period[aria-checked="true"], .wl-period[aria-checked="true"], .comic-tab.active, .sticker-window-content .segmented .btn-tab.active, .pm-theme-option[aria-selected="true"], .acct__tab[aria-selected="true"]):hover { color: var(--bg); }
 }
 
 html.pm:root .pm-value__chart {

@@ -1490,6 +1490,14 @@ function setupControls() {
   // Expose watchlist renderer for lifecycle code outside setupControls().
   window.renderWatchlistPanel = renderWatchlistPanel;
 
+  // 1D / 1W / 1M / 1Y: every tile's chart and change over that period.
+  document.querySelector('#watchlistSection .wl-periods')?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.wl-period');
+    if (!btn) return;
+    const mod = await import('./modules/features/watchlist.js');
+    mod.setPeriod(btn.dataset.period);
+  });
+
   // Composite key that uniquely identifies a watchlist entry across providers. Matches the
   // key format used by modules/features/watchlist.js so UI events and storage stay in sync.
   function watchlistEntryKey(entry) {
