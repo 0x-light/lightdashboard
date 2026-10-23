@@ -3,16 +3,6 @@
 let initialized = false;
 let enabled = false;
 
-// Modal selectors to check for open state
-const MODAL_SELECTORS = [
-    '#newSettingsDialog',
-    '#newWatchlistSearchWindow',
-    '#newDonateWindow',
-    '#newAddPositionModal',
-    '#stickerWindow',
-    '#newMobileMenu'
-];
-
 function isElementVisible(el) {
     if (!el) return false;
     const style = window.getComputedStyle(el);
@@ -26,28 +16,20 @@ function getPinnedScrollPosition() {
     return Number.isFinite(parsed) ? Math.abs(parsed) : 0;
 }
 
-// Check if any modal is currently open
+// Any pop-up on screen: the app's own, and the theme, shortcuts, account and comic windows.
+// The phone menu is always laid out, so it counts only while it's open.
 function isModalOpen() {
-    for (const selector of MODAL_SELECTORS) {
-        const el = document.querySelector(selector);
-        if (selector === '#newMobileMenu') {
-            if (el?.classList.contains('active') || document.body.classList.contains('mobile-menu-open')) {
-                return true;
-            }
-            continue;
-        }
-        if (isElementVisible(el)) {
-            return true;
-        }
-    }
-    return false;
+    const mobileMenu = document.getElementById('newMobileMenu');
+    if (mobileMenu?.classList.contains('active') || document.body.classList.contains('mobile-menu-open')) return true;
+    return [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')]
+        .some(el => el !== mobileMenu && isElementVisible(el));
 }
 
 // Check if user is typing in an input field
 function isTyping(target) {
     if (!target) return false;
     const tag = target.tagName?.toLowerCase();
-    return tag === 'input' || tag === 'textarea' || target.isContentEditable;
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
 }
 
 // Close any open modal
@@ -138,76 +120,82 @@ function handleKeydown(e) {
         return;
     }
 
-    // Don't handle shortcuts when typing in inputs (except Esc)
-    if (isTyping(target)) return;
+    // Leave the browser's own keys alone (⌘R reloads, ⌘W closes the tab)
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-    // Don't handle letter shortcuts when modal is open
-    if (isModalOpen() && (key === 'r' || key === 'R' || key === 's' || key === 'S' || key === 'w' || key === 'W')) {
-        return;
-    }
+    // Don't handle shortcuts when typing in inputs (except Esc), or behind a pop-up
+    if (isTyping(target) || isModalOpen()) return;
 
-    switch (key) {
-        case 'r':
-        case 'R':
-            e.preventDefault();
-            // Trigger refresh
-            if (typeof window.renderPortfolioIncremental === 'function') {
-                window.renderPortfolioIncremental();
-            } else {
-                // Fallback: click greeting to trigger refresh
-                const greeting = document.querySelector('.greeting-container');
-                if (greeting) greeting.click();
-            }
-            break;
-
-        case 's':
-        case 'S':
-            e.preventDefault();
-            // Open settings
-            const settingsBtn = document.getElementById('newSettingsBtn');
-            if (settingsBtn) settingsBtn.click();
-            break;
-
-        case 'w':
-        case 'W':
-            e.preventDefault();
-            // Open watchlist search and focus input
-            const addBtn = document.getElementById('newAddToWatchlistBtn');
-            if (addBtn) {
-                addBtn.click();
-                // Focus input after modal opens
-                setTimeout(() => {
-                    const input = document.getElementById('newWatchlistSearchInput');
-                    if (input) input.focus();
-                }, 100);
-            }
-            break;
-
-        case 'ArrowLeft':
-            // Previous comic (only if comic section is visible)
-            if (!isModalOpen()) {
-                const comicSection = document.getElementById('comicSection');
-                if (comicSection && comicSection.offsetParent !== null) {
-                    e.preventDefault();
-                    const prevBtn = document.getElementById('newComicPrevBtn');
-                    if (prevBtn && !prevBtn.disabled) prevBtn.click();
-                }
-            }
-            break;
-
-        case 'ArrowRight':
-            // Next comic (only if comic section is visible)
-            if (!isModalOpen()) {
-                const comicSection = document.getElementById('comicSection');
-                if (comicSection && comicSection.offsetParent !== null) {
-                    e.preventDefault();
-                    const nextBtn = document.getElementById('newComicNextBtn');
-                    if (nextBtn && !nextBtn.disabled) nextBtn.click();
-                }
-            }
-            break;
-    }
+    const action = SHORTCUTS[key.length === 1 ? key.toLowerCase() : key];
+    if (action && action(e) !== false) e.preventDefault();
 }
+
+const click = (id) => () => {
+    const btn = document.getElementById(id);
+    if (!btn || btn.disabled || !btn.getClientRects().length && !btn.closest('#pmTools')) return false;
+    btn.click();
+};
+
+// Comic keys work only while the comic section is on the page
+const comicClick = (id) => () => {
+    const comicSection = document.getElementById('comicSection');
+    if (!comicSection || comicSection.offsetParent === null) return false;
+    return click(id)();
+};
+
+// 1–4 jump to a section and put focus on it, so Tab carries on from there
+const SECTIONS = ['pmTop', 'positionsSection', 'watchlistSection', 'comicSection'];
+const goToSection = (index) => () => {
+    const section = document.getElementById(SECTIONS[index]);
+    if (!section || section.offsetParent === null) return false;
+    if (!section.hasAttribute('tabindex')) section.tabIndex = -1;
+    section.focus({ preventScroll: true });
+    section.scrollIntoView({ block: 'start' });
+};
+
+// The next or previous comic strip tab
+const stepComicTab = (e) => {
+    const tabs = [...document.querySelectorAll('#comicSection .comic-tab')].filter(t => t.offsetParent !== null);
+    if (!tabs.length) return false;
+    const i = tabs.findIndex(t => t.classList.contains('active'));
+    tabs[(i + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length].click();
+};
+
+// Keys handled here. T, H, A, M and ? live in palmeirim.js; rows and windows handle their own.
+const SHORTCUTS = {
+    r: () => {
+        // Trigger refresh
+        if (typeof window.renderPortfolioIncremental === 'function') {
+            window.renderPortfolioIncremental();
+        } else {
+            // Fallback: click greeting to trigger refresh
+            const greeting = document.querySelector('.greeting-container');
+            if (greeting) greeting.click();
+        }
+    },
+    s: click('newSettingsBtn'),
+    p: click('newAddPositionBtn'),
+    w: () => {
+        // Open watchlist search and focus input
+        const addBtn = document.getElementById('newAddToWatchlistBtn');
+        if (!addBtn) return false;
+        addBtn.click();
+        setTimeout(() => document.getElementById('newWatchlistSearchInput')?.focus(), 100);
+    },
+    n: click('newToggleSnowBtn'),
+    y: click('newToggleRainBtn'),
+    k: click('newStickersBtn'),
+    g: click('newDonateBtn'),
+    1: goToSection(0),
+    2: goToSection(1),
+    3: goToSection(2),
+    4: goToSection(3),
+    c: stepComicTab,
+    x: comicClick('newComicRandomBtn'),
+    d: comicClick('newComicDownloadBtn'),
+    ArrowLeft: comicClick('newComicPrevBtn'),
+    ArrowRight: comicClick('newComicNextBtn')
+};
 
 // Initialize the keyboard shortcuts
 export function init() {
@@ -216,7 +204,7 @@ export function init() {
     enabled = true;
 
     document.addEventListener('keydown', handleKeydown);
-    console.log('[Keyboard] Shortcuts enabled: R=Refresh, S=Settings, W=Watchlist, Esc=Close, ←→=Comic nav');
+    console.log('[Keyboard] Shortcuts enabled; press ? for the list');
 }
 
 // Disable shortcuts (for cleanup)

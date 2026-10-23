@@ -329,7 +329,7 @@ async function fill(win) {
   else if (tab !== 'all' && !list.some(a => a.id === tab)) tab = 'all';
   tabs.hidden = list.length < 2;
   tabs.innerHTML = [{ id: 'all', name: 'All' }, ...list].map(a =>
-    `<button type="button" class="acct__tab" role="tab" data-tab="${a.id}" aria-selected="${a.id === tab}">${esc(a.name)}</button>`).join('');
+    `<button type="button" class="acct__tab" role="tab" data-tab="${a.id}" aria-selected="${a.id === tab}" tabindex="${a.id === tab ? 0 : -1}">${esc(a.name)}</button>`).join('');
 
   const account = list.find(a => a.id === tab);
   if (tab === 'all') {
@@ -391,6 +391,18 @@ export function openAccountWindow() {
     win.querySelector('.acct__tabs').addEventListener('click', (e) => {
       const b = e.target.closest('.acct__tab');
       if (b) selectTab(b.dataset.tab);
+    });
+    // ← → choose the next or previous account, Home and End the first or last
+    win.querySelector('.acct__tabs').addEventListener('keydown', (e) => {
+      const tabs = [...win.querySelectorAll('.acct__tab')];
+      const i = tabs.indexOf(e.target);
+      const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+      if (i < 0 || next === undefined) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const id = tabs[(next + tabs.length) % tabs.length].dataset.tab;
+      selectTab(id);
+      win.querySelector(`.acct__tab[data-tab="${id}"]`)?.focus();
     });
     const content = win.querySelector('.acct');
     content.addEventListener('click', (e) => {

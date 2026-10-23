@@ -276,6 +276,7 @@ function createStickySticker(imageSrc, x, y, width = null, height = null, rotati
     makeDraggable(sticker);
     makeResizable(sticker, resizeHandle);
     makeRotatable(sticker, rotateHandle);
+    makeKeyboardMovable(sticker);
 
     // Save to data
     if (save) {
@@ -342,6 +343,51 @@ function makeDraggable(element) {
     element.addEventListener('pointercancel', () => {
         isDragging = false;
         element.classList.remove('dragging');
+    });
+}
+
+/**
+ * Keyboard: a sticker takes focus. Arrows move it (Shift: further), + and − resize it,
+ * [ and ] turn it, Delete or Backspace removes it.
+ */
+function makeKeyboardMovable(element) {
+    element.tabIndex = 0;
+    element.setAttribute('role', 'group');
+    element.setAttribute('aria-label', 'Sticker. Arrows move it, + and − resize it, [ and ] turn it, Delete removes it.');
+
+    element.addEventListener('keydown', (e) => {
+        if (e.target !== element || e.metaKey || e.ctrlKey || e.altKey) return;
+        const id = parseFloat(element.dataset.id);
+        const data = stickyStickersData.find(s => s.id === id);
+        if (!data) return;
+        const step = e.shiftKey ? 50 : 10;
+        const move = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+
+        if (move) {
+            data.x = element.offsetLeft + move[0];
+            data.y = element.offsetTop + move[1];
+            element.style.left = `${data.x}px`;
+            element.style.top = `${data.y}px`;
+        } else if (['+', '=', '-', '_'].includes(e.key)) {
+            const aspectRatio = parseFloat(element.dataset.aspectRatio) || 1;
+            data.width = Math.max(50, element.offsetWidth + (e.key === '+' || e.key === '=' ? 1 : -1) * step);
+            data.height = data.width / aspectRatio;
+            element.style.width = `${data.width}px`;
+            element.style.height = `${data.height}px`;
+        } else if (e.key === '[' || e.key === ']') {
+            data.rotation = (data.rotation || 0) + (e.key === ']' ? 1 : -1) * 15;
+            element.style.transform = `rotate(${data.rotation}deg)`;
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+            const stickers = [...document.querySelectorAll('.sticky-sticker')];
+            const next = stickers[stickers.indexOf(element) + 1] || stickers[stickers.indexOf(element) - 1];
+            removeStickySticker(id);
+            next?.focus();
+        } else {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation(); // not the comic's ← →
+        saveToStorage();
     });
 }
 

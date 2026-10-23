@@ -2,15 +2,10 @@
 // inert, so Tab can't wander onto controls hidden by the backdrop. When it closes, focus goes
 // back to whatever opened it. It watches each pop-up's visibility rather than hooking every
 // open and close path (buttons, Esc, backdrop clicks, keyboard shortcuts all toggle display).
+// Every modal pop-up counts, including ones added to the page later (theme, shortcuts,
+// account, comic viewer).
 
-const DIALOG_IDS = [
-  'newSettingsDialog',
-  'newWatchlistSearchWindow',
-  'newDonateWindow',
-  'newAddPositionModal',
-  'stickerWindow',
-  'newMobileMenu'
-];
+const DIALOG_SELECTOR = '[role="dialog"][aria-modal="true"]';
 
 const FOCUSABLE = [
   'button:not([disabled])',
@@ -22,7 +17,7 @@ const FOCUSABLE = [
 ].join(',');
 
 function isShown(el) {
-  return el.style.display !== 'none' && getComputedStyle(el).display !== 'none';
+  return el.isConnected && el.style.display !== 'none' && getComputedStyle(el).display !== 'none';
 }
 
 function isFocusableNow(el) {
@@ -30,15 +25,13 @@ function isFocusableNow(el) {
 }
 
 export function setupDialogFocus() {
-  const dialogs = DIALOG_IDS.map(id => document.getElementById(id)).filter(Boolean);
-  const selector = DIALOG_IDS.map(id => `#${id}`).join(',');
 
   // The control that opened a pop-up. Buttons don't always take focus on click (Safari), so
   // pointer presses count too.
   let lastTrigger = null;
   const remember = (e) => {
     const target = e.target.closest?.('button, a, [tabindex], select');
-    if (target && !target.closest(selector)) lastTrigger = target;
+    if (target && !target.closest(DIALOG_SELECTOR)) lastTrigger = target;
   };
   document.addEventListener('focusin', remember, true);
   document.addEventListener('pointerdown', remember, true);
@@ -92,13 +85,22 @@ export function setupDialogFocus() {
     else if (!shown && state.has(dialog)) close(dialog);
   };
 
+  const watched = new WeakSet();
   const observer = new MutationObserver(records => {
     new Set(records.map(r => r.target)).forEach(sync);
   });
-  dialogs.forEach(dialog => {
-    observer.observe(dialog, { attributes: true, attributeFilter: ['style', 'class'] });
+  const watch = (dialog) => {
+    if (watched.has(dialog)) return;
+    watched.add(dialog);
+    observer.observe(dialog, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
     sync(dialog);
-  });
+  };
+  document.querySelectorAll(DIALOG_SELECTOR).forEach(watch);
+
+  // Pop-ups made later are appended to <body>
+  new MutationObserver(records => records.forEach(r => r.addedNodes.forEach(node => {
+    if (node.nodeType === 1 && node.matches(DIALOG_SELECTOR)) watch(node);
+  }))).observe(document.body, { childList: true });
 }
 
 export default { setupDialogFocus };

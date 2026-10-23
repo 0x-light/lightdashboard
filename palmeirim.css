@@ -150,10 +150,10 @@ html.pm:root .header-actions .btn-text::before {
 html.pm:root #newRefreshBtn::before { content: "R"; }
 html.pm:root #newToggleAmountsBtn::before { content: "H"; }
 html.pm:root #newSettingsBtn::before { content: "S"; }
-html.pm:root #newStickersBtn::before { content: "★"; }
-html.pm:root #newDonateBtn::before { content: "♥"; }
-html.pm:root #newToggleSnowBtn::before { content: "❄"; }
-html.pm:root #newToggleRainBtn::before { content: "☂"; }
+html.pm:root #newStickersBtn::before { content: "K"; }
+html.pm:root #newDonateBtn::before { content: "G"; }
+html.pm:root #newToggleSnowBtn::before { content: "N"; }
+html.pm:root #newToggleRainBtn::before { content: "Y"; }
 
 /* Theme moves to the footer, as on the site. */
 html.pm:root .header-actions .theme-select-wrapper { display: none !important; }
@@ -171,13 +171,17 @@ html.pm:root .pm-menu-btn {
   line-height: var(--pm-lh);
 }
 
-/* MENU and the phone section chip have no key cell beside them, so their label
-   takes the stronger fill that + ADD and SHOW use. */
-html.pm:root :is(.pm-menu-btn, .pm-section-btn) .chip__label { background: var(--pm-tint-2); }
-
+/* MENU: a key cell and a label, like ACCOUNT. Open, the label is inverted. */
 html.pm:root .pm-menu-btn[aria-expanded="true"] .chip__label { background: var(--pm-ink); color: var(--bg); }
+html.pm:root .pm-menu-btn:focus-visible kbd { background: var(--pm-ink); color: var(--bg); }
 
 @media (hover: hover) {
+  html.pm:root .pm-menu-btn:hover kbd { background: var(--pm-ink); color: var(--bg); }
+}
+
+/* Without its key cell (touch), the label takes the stronger fill that + ADD and SHOW use. */
+@media (hover: none), (pointer: coarse), (max-width: 640px) {
+  html.pm:root .pm-menu-btn .chip__label { background: var(--pm-tint-2); }
   html.pm:root .pm-menu-btn:hover .chip__label { background: var(--pm-ink); color: var(--bg); }
 }
 
@@ -473,7 +477,10 @@ html.pm:root .comic-header h2.sr-only {
 html.pm:root .panel-count { color: var(--pm-muted); }
 html.pm:root .panel-count:empty { display: none; }
 
-/* + Add sits at the end of the title line as a filled button. */
+/* + Add sits at the end of the title line as a filled button, its key in front. */
+html.pm:root #newAddPositionBtn::before { content: "P"; margin-right: 1ch; }
+html.pm:root #newAddToWatchlistBtn::before { content: "W"; margin-right: 1ch; }
+
 html.pm:root .panel-action {
   margin-left: auto;
   padding: 0 1ch;
@@ -978,7 +985,8 @@ html.pm:root .panel-foot .btn-text {
 /* Comic paging keeps its arrow keys visible, like the site's key hints. */
 html.pm:root #newComicPrevBtn::before { content: "←"; }
 html.pm:root #newComicNextBtn::before { content: "→"; }
-html.pm:root #newComicDownloadBtn::before { content: "↓"; }
+html.pm:root #newComicRandomBtn::before { content: "X"; }
+html.pm:root #newComicDownloadBtn::before { content: "D"; }
 html.pm:root .calvin-controls .comic-download { margin-left: auto; }
 
 /* ── Comics: tabs as the site's radio-style sort line ── */
@@ -2048,7 +2056,21 @@ html.pm:root .city-options li[aria-selected="true"] .city-option__region { backg
   html.pm:root .header-actions .btn-text { padding-left: 1ch; }
   html.pm:root .header-actions .btn-text::before,
   html.pm:root #newComicPrevBtn::before,
-  html.pm:root #newComicNextBtn::before { display: none; }
+  html.pm:root #newComicNextBtn::before,
+  html.pm:root #newComicRandomBtn::before,
+  html.pm:root #newComicDownloadBtn::before,
+  html.pm:root .panel-action::before,
+  html.pm:root .settings-form > header .btn-text::before,
+  html.pm:root .sticker-window-header .btn-text::before,
+  html.pm:root .sticker-window-content .btn-text.btn-primary::before,
+  html.pm:root .sticker-window-content .btn-text.form-delete::before { display: none; }
+  /* Their labels lose the key cell they sat against */
+  html.pm:root .settings-form > header .btn-text,
+  html.pm:root .sticker-window-header .btn-text,
+  html.pm:root .sticker-window-content .btn-text.btn-primary,
+  html.pm:root .sticker-window-content .btn-text.form-delete { padding-left: 1ch; }
+  /* No keyboard, no list of keys */
+  html.pm:root #pmKeysBtn { display: none !important; }
 }
 
 /* Tables stay tables at every width, as on the site: when they don't fit, they
@@ -2195,3 +2217,29 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
   html.pm:root .column-order__name { flex: 1 1 auto; }
   html.pm:root .column-order__move { min-width: 4ch; padding: var(--pm-pad) 1ch; text-align: center; }
 }
+
+/* ── Keyboard focus for controls without a fill of their own ── */
+
+html.pm:root :is(.link-button, #newComic a, .pm-value__chart, .sticky-sticker):focus-visible {
+  outline: 1px solid var(--pm-ink);
+  outline-offset: 2px;
+}
+
+/* A focused sticker shows its handles, as pointing at it does. */
+html.pm:root .sticky-sticker:focus-within :is(.resize-handle, .rotate-handle, .remove-btn) { opacity: 1; }
+
+html.pm:root :is(.sticker-window-header, .settings-form > header) .btn-text:focus-visible,
+html.pm:root :is(.sticker-window-header, .settings-form > header) .btn-text:focus-visible::before,
+html.pm:root .watchlist-search-result .btn-text:focus-visible,
+html.pm:root .copy-address-btn:focus-visible,
+html.pm:root .settings-pane .btn-text:focus-visible,
+html.pm:root .sticker-window-content .btn-text.btn-primary:focus-visible,
+html.pm:root .hero-amount-toggle:focus-visible {
+  background: var(--pm-ink);
+  color: var(--bg);
+}
+
+/* Fields are already filled, so focus draws a rule round them */
+html.pm:root :is(.settings-input, .larp-cell):focus-visible { outline: 1px solid var(--pm-ink); outline-offset: -1px; }
+
+html.pm:root .sticker-item:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 2px; }
