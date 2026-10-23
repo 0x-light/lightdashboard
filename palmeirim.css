@@ -10,6 +10,7 @@ html.pm:root {
   --pm-ink: var(--text-bright, var(--text));
   --pm-tint:   color-mix(in srgb, var(--pm-ink) 8%, var(--bg));
   --pm-tint-2: color-mix(in srgb, var(--pm-ink) 18%, var(--bg));
+  --pm-tint-3: color-mix(in srgb, var(--pm-ink) 28%, var(--bg));
   --pm-rule:   color-mix(in srgb, var(--pm-ink) 30%, var(--bg));
   --pm-muted:  color-mix(in srgb, var(--pm-ink) 58%, var(--bg));
   --pm-lh: calc(1rem * 18 / 14);
@@ -155,98 +156,88 @@ html.pm:root #newDonateBtn::before { content: "G"; }
 html.pm:root #newToggleSnowBtn::before { content: "N"; }
 html.pm:root #newToggleRainBtn::before { content: "Y"; }
 
-/* Theme moves to the footer, as on the site. */
+/* The theme selects stay hidden; THEME opens the list. */
 html.pm:root .header-actions .theme-select-wrapper { display: none !important; }
 
-/* All tools live behind one MENU chip at the right of the bar: a framed popover
-   that drops down under it. Every tool is always
-   listed (snow, rain, stickers and donate included), so nothing needs switching on. */
-html.pm:root .pm-menu-btn {
+/* ── ACCOUNT · THEME · MENU: flush in one framed strip, as sacred.computer's action bar ──
+   Each is a key cell and a label outlined in the key's fill. Pointing inverts the key and
+   outlines the label in ink; an open one inverts its label. */
+html.pm:root .pm-bar {
   display: inline-flex;
   flex: none;
-  margin-left: auto;
-  padding: 0;
-  border: 0;
-  background: none;
-  line-height: var(--pm-lh);
+  box-shadow: inset 0 0 0 1px var(--pm-tint-2);
 }
 
-/* MENU: a key cell and a label, like ACCOUNT. Open, the label is inverted. */
-html.pm:root .pm-menu-btn[aria-expanded="true"] .chip__label { background: var(--pm-ink); color: var(--bg); }
-html.pm:root .pm-menu-btn:focus-visible kbd { background: var(--pm-ink); color: var(--bg); }
+html.pm:root .pm-dd-anchor { position: relative; display: inline-flex; }
 
-@media (hover: hover) {
-  html.pm:root .pm-menu-btn:hover kbd { background: var(--pm-ink); color: var(--bg); }
-}
-
-/* Without its key cell (touch), the label takes the stronger fill that + ADD and SHOW use. */
-@media (hover: none), (pointer: coarse), (max-width: 640px) {
-  html.pm:root .pm-menu-btn .chip__label { background: var(--pm-tint-2); }
-  html.pm:root .pm-menu-btn:hover .chip__label { background: var(--pm-ink); color: var(--bg); }
-}
-
-html.pm:root .app-header { position: sticky; }
-html.pm:root .app-header:not(.pm-menu-open) .header-actions { display: none !important; }
-
-html.pm:root .app-header.pm-menu-open .header-actions {
-  position: absolute;
-  top: calc(100% + var(--pm-lh) / 2);
-  right: 1ch;
-  z-index: 60;
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr);
-  justify-content: stretch;
-  justify-items: stretch;
-  gap: calc(var(--pm-lh) / 3);
-  min-width: 30ch;
-  padding: var(--pm-lh) 1ch calc(var(--pm-lh) / 2 + 2px);
-  border: 1px solid var(--pm-ink);
-  background: var(--bg);
-  box-shadow: 1ch calc(var(--pm-lh) / 2) 0 var(--pm-tint-2);
-}
-
-html.pm:root .app-header.pm-menu-open .header-actions::before {
-  content: "MENU";
-  position: absolute;
-  top: calc(var(--pm-lh) / -2);
-  left: 1ch;
-  padding: 0 1ch;
-  background: var(--bg);
-  line-height: var(--pm-lh);
-}
-
-/* Menu order: Settings first, then the everyday tools, then the decorations. */
-html.pm:root #pmTools #newSettingsBtn { order: -5; }
-html.pm:root #pmTools #pmThemeBtn { order: -4; }
-/* Account sits at the left of the bar: a key cell and a label. */
-html.pm:root .pm-account-btn {
+html.pm:root :is(.pm-bar, .pm-dd__foot) .chip {
   flex: none;
   padding: 0;
   border: 0;
   background: none;
+  color: var(--pm-ink);
+  font: inherit;
   line-height: var(--pm-lh);
   cursor: pointer;
 }
 
-html.pm:root .pm-account-btn:focus-visible kbd { background: var(--pm-ink); color: var(--bg); }
+html.pm:root :is(.pm-bar, .pm-dd__foot) .chip__label { box-shadow: inset 0 0 0 2px var(--pm-tint-2); }
+html.pm:root :is(.pm-bar, .pm-dd__foot) .chip:focus-visible kbd { background: var(--pm-ink); color: var(--bg); }
+html.pm:root :is(.pm-bar, .pm-dd__foot) .chip:focus-visible .chip__label { box-shadow: inset 0 0 0 2px var(--pm-ink); }
+html.pm:root .pm-bar .chip[aria-expanded="true"] .chip__label { background: var(--pm-ink); color: var(--bg); box-shadow: inset 0 0 0 2px var(--pm-ink); }
 
 @media (hover: hover) {
-  html.pm:root .pm-account-btn:hover kbd { background: var(--pm-ink); color: var(--bg); }
+  html.pm:root :is(.pm-bar, .pm-dd__foot) .chip:hover kbd { background: var(--pm-ink); color: var(--bg); }
+  html.pm:root :is(.pm-bar, .pm-dd__foot) .chip:hover .chip__label { box-shadow: inset 0 0 0 2px var(--pm-ink); }
 }
 
-/* Without its key cell (touch), the label takes the stronger fill, like MENU. */
+/* Without the key cell (touch), the label takes the stronger fill. */
 @media (hover: none), (pointer: coarse), (max-width: 640px) {
-  html.pm:root .pm-account-btn .chip__label { background: var(--pm-tint-2); }
+  html.pm:root .pm-bar .chip__label { background: var(--pm-tint-2); box-shadow: none; }
+  html.pm:root .pm-dd__hint { display: none; }
 }
+
+/* ── Drop-downs: hang from their trigger at its left edge. No frame, title or shadow;
+   rows touch, a key or icon column then the text; a footer band to close. ── */
+html.pm:root .app-header:not(.pm-menu-open) .header-actions { display: none !important; }
+
+html.pm:root .app-header.pm-menu-open .header-actions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 60;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  min-width: 30ch;
+  margin: 0;
+  padding: 0;
+  background: var(--pm-tint);
+}
+
+html.pm:root .app-header.pm-menu-open .header-actions .btn-text { width: 100%; gap: 0; padding: 0 1ch 0 0; white-space: nowrap; }
+html.pm:root .app-header.pm-menu-open .header-actions .btn-text::before { flex: none; width: 3ch; margin-right: 1ch; padding: 0; text-align: center; }
+html.pm:root .app-header.pm-menu-open .header-actions .pm-theme-current { margin-left: auto; padding-left: 2ch; }
+
+html.pm:root .pm-dd__foot {
+  order: 99;
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  padding: calc(var(--pm-lh) / 2) 1ch;
+  background: var(--pm-tint-3);
+  white-space: nowrap;
+}
+
+html.pm:root .pm-dd__foot .chip__label { background: var(--pm-tint); }
+
+/* Menu order: Settings first, then the everyday tools, then the decorations. */
+html.pm:root #pmTools #newSettingsBtn { order: -5; }
 html.pm:root #pmTools #newRefreshBtn { order: -2; }
 html.pm:root #pmTools #newToggleAmountsBtn { order: -1; }
-html.pm:root #pmThemeBtn::before { content: "T"; }
 html.pm:root #pmKeysBtn::before { content: "?"; }
 html.pm:root #pmTools #pmKeysBtn { order: 1; }
 html.pm:root .pm-theme-current { color: var(--pm-muted); text-transform: lowercase; }
-
-/* Full-width rows: easier to hit, and they line up like a list. */
-html.pm:root .app-header.pm-menu-open .header-actions .btn-text { width: 100%; }
 
 /* Always listed, whatever the old "Menu bar" settings in storage say. */
 html.pm:root body #newToggleSnowBtn,
@@ -254,17 +245,95 @@ html.pm:root body #newToggleRainBtn,
 html.pm:root body #newStickersBtn,
 html.pm:root body #newDonateBtn { display: inline-flex !important; }
 
-
-/* Phones: the menu drops down from the bar. */
+/* Phones: MENU sits too far right for its list to hang from it, so the list spans the bar. */
 @media (max-width: 720px) {
   html.pm:root .app-header { flex-wrap: nowrap; align-items: center; gap: 1ch; }
+  html.pm:root .pm-dd-anchor { position: static; }
+  html.pm:root .app-header.pm-menu-open .header-actions { left: 1ch; right: 1ch; min-width: 0; }
+}
 
-  /* MENU drops down under its chip, as wide as its items. */
-  html.pm:root .app-header.pm-menu-open .header-actions {
-    right: 1ch;
-    min-width: 24ch;
-    max-width: calc(100vw - 3ch);
-  }
+/* Theme list (and Settings → Theme): placed by palmeirim.js under its opener. */
+html.pm:root .pm-dd {
+  position: fixed;
+  z-index: 1100; /* over Settings */
+  width: 36ch;
+  max-width: calc(100vw - 16px);
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+  line-height: var(--pm-lh);
+}
+
+html.pm:root .pm-dd[hidden] { display: none; }
+html.pm:root .pm-dd__list { overflow-y: auto; overscroll-behavior: contain; }
+html.pm:root .pm-dd__row { display: flex; }
+
+html.pm:root .pm-dd__item {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: var(--pm-lh);
+  text-align: left;
+  cursor: pointer;
+}
+
+html.pm:root .pm-dd__ic { flex: none; width: 3ch; text-align: center; background: var(--pm-tint-2); }
+html.pm:root .pm-dd__tx { display: flex; flex: 1; gap: 2ch; min-width: 0; padding: 0 1ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.pm:root .pm-dd__tx em { margin-left: auto; font-style: normal; color: var(--pm-muted); }
+html.pm:root .pm-dd__item[aria-selected="true"] .pm-dd__ic,
+html.pm:root .pm-dd__item:focus-visible .pm-dd__ic { background: var(--pm-ink); color: var(--bg); }
+html.pm:root .pm-dd__item:focus-visible .pm-dd__tx { box-shadow: inset 0 0 0 1px var(--pm-ink); }
+
+html.pm:root .pm-dd__edit {
+  flex: none;
+  padding: 0 1ch;
+  border: 0;
+  background: none;
+  color: var(--pm-muted);
+  font: inherit;
+  line-height: var(--pm-lh);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+html.pm:root .pm-dd__edit:focus-visible { background: var(--pm-ink); color: var(--bg); }
+/* Rules sit outside the rows, so the search and New theme are a full line like each theme. */
+html.pm:root .pm-dd__new { border-top: 1px solid var(--pm-rule); }
+html.pm:root .pm-dd__empty { margin: 0; padding: 0 1ch 0 4ch; color: var(--pm-muted); }
+
+html.pm:root .pm-dd__search { display: flex; border-bottom: 1px solid var(--pm-rule); }
+html.pm:root .pm-dd__search,
+html.pm:root .pm-dd__new { box-sizing: content-box; height: var(--pm-lh); }
+html.pm:root .pm-dd__search input { box-sizing: border-box; }
+html.pm:root .pm-dd__search input {
+  flex: 1;
+  min-width: 0;
+  height: var(--pm-lh);
+  margin: 0;
+  padding: 0 1ch;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: var(--pm-lh);
+  caret-color: var(--pm-ink);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+html.pm:root .pm-dd__search input::placeholder { color: var(--pm-muted); opacity: 1; }
+html.pm:root .pm-dd__search input::-webkit-search-cancel-button { display: none; }
+html.pm:root .pm-dd__search:focus-within .pm-dd__ic { background: var(--pm-ink); color: var(--bg); }
+
+@media (hover: hover) {
+  html.pm:root .pm-dd__item:hover .pm-dd__ic { background: var(--pm-ink); color: var(--bg); }
+  html.pm:root .pm-dd__edit:hover { color: var(--pm-ink); }
 }
 
 /* Search results and similar rows: an inverted row inverts everything in it. */
@@ -1219,6 +1288,9 @@ html.pm:root .status-bar {
 
 html.pm:root .last-update-timestamp { color: var(--pm-muted); }
 
+/* In the top bar, the update time sits at the right. */
+html.pm:root .app-header .last-update-timestamp { margin-left: auto; line-height: var(--pm-lh); }
+
 /* ── Pop-ups: the page's own vocabulary in a frame ──
    Everything sits on the line grid: one-line fields, uppercase muted labels,
    help as plain muted text, choices as radio lines, filled uppercase buttons.
@@ -1966,17 +2038,76 @@ html.pm:root .settings-pane > .settings-footnote { margin: 0; }
   html.pm:root .settings-pane > .settings-note { margin-left: 0; }
 }
 
-/* ── Theme window: every theme as a radio line; pointing previews it ── */
-html.pm:root .pm-theme-window { width: min(76ch, calc(100vw - 3ch)); }
-html.pm:root .pm-theme-window .sticker-window-content { max-height: min(60vh, calc(var(--pm-lh) * 24)); overflow-y: auto; }
-
-html.pm:root .pm-theme-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16ch, 1fr));
-  gap: 0 2ch;
+/* ── New theme: a name and four colours, each a colour well and its hex ── */
+html.pm:root .pm-maker { width: min(46ch, calc(100vw - 3ch)); }
+html.pm:root .pm-maker__form { display: grid; gap: calc(var(--pm-lh) / 2); }
+html.pm:root .pm-maker__field { display: grid; grid-template-columns: minmax(0, 1fr) 3ch 10ch; gap: 0 1ch; align-items: center; }
+html.pm:root .pm-maker__field > label { color: var(--pm-ink); text-transform: none; }
+html.pm:root .pm-maker__field input[type="text"]:not(.pm-maker__hex) { grid-column: span 2; width: 100%; }
+html.pm:root .pm-maker__hex { width: 100%; text-transform: lowercase; }
+html.pm:root .sticker-window-content .pm-maker__field input[type="color"] {
+  width: 3ch;
+  height: calc(var(--pm-lh) * 1.4);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
 }
+html.pm:root .pm-maker__field input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+html.pm:root .pm-maker__field input[type="color"]::-webkit-color-swatch { border: 1px solid var(--pm-rule); border-radius: 0; }
+html.pm:root .pm-maker__field input[type="color"]::-moz-color-swatch { border: 1px solid var(--pm-rule); border-radius: 0; }
+html.pm:root .pm-maker__field input[type="color"]:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 1px; }
+html.pm:root .pm-maker__sample { margin: 0; padding: calc(var(--pm-lh) / 2) 1ch; background: var(--pm-tint); }
+html.pm:root .pm-maker__up { color: var(--green); }
+html.pm:root .pm-maker__down { color: var(--red); }
+html.pm:root .pm-maker__muted,
+html.pm:root .pm-maker__note { color: var(--pm-muted); }
+html.pm:root .pm-maker__note { margin: 0; }
 
-html.pm:root .pm-theme-option { justify-self: start; text-align: left; white-space: nowrap; }
+/* ── Settings drop-downs, as SRCL's select: a ▼ cell, then the value. With a mouse the
+   options open in place under the field (palmeirim.js); touch keeps the native picker. ── */
+html.pm:root .settings-panes .select::after { content: none; }
+html.pm:root .settings-panes .select::before {
+  content: "▼";
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: 3ch;
+  height: var(--set-h, calc(var(--pm-lh) * 1.4));
+  line-height: var(--set-h, calc(var(--pm-lh) * 1.4));
+  text-align: center;
+  background: var(--pm-tint-2);
+  color: var(--pm-ink);
+  pointer-events: none;
+}
+html.pm:root .settings-panes .select.is-open::before { background: var(--pm-ink); color: var(--bg); }
+html.pm:root .settings-panes .select > :is(select, button) { padding-left: 4ch !important; padding-right: 1ch !important; }
+html.pm:root .settings-panes .select > :is(select, button):hover,
+html.pm:root .settings-panes .select > :is(select, button)[aria-expanded="true"] { background: var(--pm-tint-2); }
+html.pm:root .settings-panes .select:has(> button[aria-expanded="true"])::before { background: var(--pm-ink); color: var(--bg); }
+
+html.pm:root .pm-sel__list { margin-left: 3ch; background: var(--pm-tint); }
+html.pm:root .pm-sel__list button {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0 1ch;
+  border: 0;
+  background: none;
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: var(--pm-lh);
+  text-align: left;
+  text-transform: none;
+  cursor: pointer;
+}
+html.pm:root .pm-sel__list button[aria-selected="true"] { background: var(--pm-tint-2); }
+html.pm:root .pm-sel__list button:focus-visible { background: var(--pm-ink); color: var(--bg); outline: none; }
+html.pm:root .pm-sel__list button:disabled { color: var(--pm-muted); cursor: default; }
+@media (hover: hover) {
+  html.pm:root .pm-sel__list button:not(:disabled):hover { background: var(--pm-ink); color: var(--bg); }
+}
 
 /* ── Shortcuts window: key cell, then what it does, two columns when there's room ── */
 html.pm:root .pm-keys-window { width: min(72ch, calc(100vw - 3ch)); }
@@ -2353,6 +2484,7 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
   /* Reach: the chip, plus a little above and below it. */
   html.pm:root .pm-menu-btn,
   html.pm:root .pm-account-btn,
+  html.pm:root #pmThemeChip,
   html.pm:root .header-actions .btn-text,
   html.pm:root .th-sort,
   html.pm:root .row-action,
@@ -2364,6 +2496,7 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
   html.pm:root .column-order__move { position: relative; }
   html.pm:root .pm-menu-btn::after,
   html.pm:root .pm-account-btn::after,
+  html.pm:root #pmThemeChip::after,
   html.pm:root .header-actions .btn-text::after,
   html.pm:root .th-sort::before,
   html.pm:root .row-action::after,

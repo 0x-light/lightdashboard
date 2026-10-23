@@ -97,7 +97,27 @@
     <link rel="modulepreload" href="/modules/data/fetchers/alchemy-helius-fetcher.js">
     <!-- Apply theme synchronously to prevent flash of wrong theme -->
     <script>
+        // A theme you made: four colours, the rest derived. palmeirim.js uses it too.
+        window.pmThemeCss = function (t) {
+            var hex = /^#[0-9a-f]{6}$/i;
+            if (!t || !/^custom-[a-z0-9-]+$/.test(t.id) || ![t.bg, t.ink, t.green, t.red].every(function (c) { return hex.test(c); })) return '';
+            var mix = function (p, b) { return 'color-mix(in srgb, ' + t.ink + ' ' + p + '%, ' + b + ')'; };
+            return 'html[data-theme="' + t.id + '"] {' +
+                ' --bg: ' + t.bg + '; --bg-elev: ' + mix(8, t.bg) + '; --card-bg: ' + mix(5, t.bg) + ';' +
+                ' --text: ' + mix(85, t.bg) + '; --text-bright: ' + t.ink + '; --accent: ' + t.ink + ';' +
+                ' --muted: color-mix(in srgb, var(--text) 60%, transparent); --border: ' + mix(10, 'transparent') + ';' +
+                ' --green: ' + t.green + '; --red: ' + t.red + '; }';
+        };
         (function () {
+            try {
+                var custom = JSON.parse(localStorage.getItem('myDashboardCustomThemes') || '[]');
+                if (custom.length) {
+                    var style = document.createElement('style');
+                    style.id = 'pmCustomThemes';
+                    style.textContent = custom.map(window.pmThemeCss).join('\n');
+                    document.head.appendChild(style);
+                }
+            } catch (e) {}
             try {
                 var rawSettings = localStorage.getItem('myDashboardSettings.v2') || localStorage.getItem('myDashboardSettings.v1') || localStorage.getItem('dashboardSettings') || '{}';
                 var settings = JSON.parse(rawSettings);
