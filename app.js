@@ -371,6 +371,24 @@ async function _doRenderPortfolioIncremental() {
 
   // Initialize Portfolio Manager and Fetchers (Singleton pattern)
   if (!window._portfolioManager) {
+    const makeRenderer = () => new IncrementalPortfolioRenderer({
+      providers,
+      settings,
+      containers: {
+        positionsBody: document.getElementById('newPositionsBody'),
+        mobileContainer: document.getElementById('newMobilePositionsContainer'),
+        summaryEl: document.getElementById('newSummary'),
+        providerStatusEl: document.getElementById('newProviderStatus'),
+        lastUpdatedEl: document.getElementById('lastUpdateTimestamp')
+      },
+      ui: { HeroUI, PositionsUI },
+      expectedProviders
+    });
+    // Made before the fetchers load, so the saved snapshot is in the first frame. Demo mode
+    // swaps the providers first, so it waits for them.
+    const larp = document.documentElement.dataset.larp === 'on';
+    let renderer = larp ? null : makeRenderer();
+
     // Load all fetchers in one parallel wave (sequential awaits cost one round trip each on a cold load).
     const [
       { HyperliquidFetcher },
@@ -393,23 +411,10 @@ async function _doRenderPortfolioIncremental() {
     ]);
 
     // Demo mode (?demo): sample accounts in place of the real exchange and broker data
-    if (document.documentElement.dataset.larp === 'on') {
+    if (larp) {
       (await import('./modules/larp/larp-data.js')).installLarp(providers);
+      renderer = makeRenderer();
     }
-
-    const renderer = new IncrementalPortfolioRenderer({
-      providers,
-      settings,
-      containers: {
-        positionsBody: document.getElementById('newPositionsBody'),
-        mobileContainer: document.getElementById('newMobilePositionsContainer'),
-        summaryEl: document.getElementById('newSummary'),
-        providerStatusEl: document.getElementById('newProviderStatus'),
-        lastUpdatedEl: document.getElementById('lastUpdateTimestamp')
-      },
-      ui: { HeroUI, PositionsUI },
-      expectedProviders
-    });
 
     // Make renderer globally available for updates
     window._portfolioRenderer = renderer;
@@ -2435,7 +2440,9 @@ function setupControls() {
   });
 }
 
-window.addEventListener('DOMContentLoaded', async () => {
+// Module scripts run after the document is parsed, so boot now rather than at DOMContentLoaded:
+// index.html makes this script render-blocking, and the saved snapshot then lands in the first frame.
+const boot = async () => {
   // Check if app has been closed for a while (detect stale sessions)
   const lastLoadTime = localStorage.getItem('lastLoadTime');
   const now = Date.now();
@@ -3451,4 +3458,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
 
 
-});
+};
+if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', boot, { once: true });
+else boot();

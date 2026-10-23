@@ -839,6 +839,17 @@ body.portfolio-empty #positionsSection {
   shape-rendering: geometricPrecision;
 }
 
+/* Placeholders hold the width of what replaces them, so the columns don't move when it lands:
+   the dash is as wide as the chart, and 24h % has room for "−12.34%". */
+.data-table td.chart .chart-loading {
+  display: inline-block;
+  width: 8ch;
+}
+
+#newPositionsTable td.col-change {
+  min-width: 7ch;
+}
+
 .sparkline polyline {
   vector-effect: non-scaling-stroke;
   stroke-width: 1.25;

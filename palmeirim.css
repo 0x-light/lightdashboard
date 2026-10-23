@@ -769,6 +769,11 @@ html.pm:root #newWatchlistBody > tr.watchlist-row > td.wl-change { right: 1ch; c
 html.pm:root #newWatchlistBody > tr.watchlist-row > td.wl-chart { margin: calc(var(--pm-lh) / 4) -1ch 0; }
 html.pm:root #newWatchlistBody > tr.watchlist-row:not(.is-open) > td.wl-chart { margin-bottom: calc(var(--pm-lh) / -2); }
 
+/* Heights held while loading, so the comic below doesn't move: the chart's line before it
+   arrives, and one row of tiles before the watchlist renders. */
+html.pm:root #newWatchlistBody > tr.watchlist-row > td.wl-chart { min-height: calc(var(--pm-lh) * 1.5); }
+html.pm:root #newWatchlistBody > tr:only-child > td.loading { min-height: calc(var(--pm-lh) * 3.5 + 2px); }
+
 html.pm:root #newWatchlistBody .wl-chart .sparkline {
   display: block;
   width: 100%;

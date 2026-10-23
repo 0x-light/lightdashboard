@@ -171,7 +171,7 @@ export async function renderComic(container, comicKey = 'calvinandhobbes', date 
 
   // If no existing content, show loading message
   if (!hasExistingContent) {
-    container.innerHTML = '<div style="text-align: center; padding: 10px 0;">Loading...</div>';
+    container.innerHTML = '<span class="loading-terminal">Loading</span>'; // as index.html ships it, so nothing moves
   }
 
   const result = await fetchComicImage(comicKey, date);

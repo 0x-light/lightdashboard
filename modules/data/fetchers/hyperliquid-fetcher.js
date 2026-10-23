@@ -66,7 +66,8 @@ export class HyperliquidFetcher {
             const emit = (market, { enrich }) => {
                 for (const { wallet, data, error } of results) {
                     if (error) {
-                        if (enrich) console.warn(`[Hyperliquid] Failed for wallet ${wallet}:`, error);
+                        // Marked failed, so its last known rows stay when the round ends.
+                        if (enrich) this.renderer.markProviderFailed(`Hyperliquid_${wallet}`, error);
                         continue;
                     }
                     try {

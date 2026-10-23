@@ -146,6 +146,10 @@
             }
         })();
     </script>
+    <!-- Modules run once the page is parsed. app.js is render-blocking (only allowed in <head>): it
+         paints the saved portfolio as it runs, so the first frame already has it and nothing jumps. -->
+    <script type="module" src="./modules/app-init.js?v=2.10.0"></script>
+    <script type="module" src="./app.js?v=2.10.0" blocking="render"></script>
 </head>
 
 <body class="hide-snow-btn hide-rain-btn hide-font-size hide-stickers-btn hide-donate-btn">
@@ -945,9 +949,8 @@
         </div>
     </div>
 
-    <script type="module" src="./modules/app-init.js?v=2.10.0" defer></script>
-    <script type="module" src="./app.js?v=2.10.0" defer></script>
-    <script src="./palmeirim.js?v=2.10.0" defer></script>
+    <!-- Not deferred: it reshapes the header and the portfolio card, so it runs before the first frame. -->
+    <script src="./palmeirim.js?v=2.10.0"></script>
 
     <!-- Service Worker Registration -->
     <script defer>

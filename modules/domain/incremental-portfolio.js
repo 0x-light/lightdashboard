@@ -196,17 +196,19 @@ export class IncrementalPortfolioRenderer {
   }
 
   /**
-   * Clear all positions and reset status (for hard refresh)
+   * Start a hard refresh: reset every source's status and reload its rows
    */
   clearPositions() {
-    this.allPositions = [];
+    // The rows stay on screen while they reload, as after a snapshot: each is replaced when its
+    // source reports, and dropped once every source has reported if it no longer exists.
+    this.allPositions.forEach(row => { row._stale = true; });
     this._staleCarry.clear();
     this._positionsToken++;
     this.providerStatus.clear();
     this.providerErrors.clear();
     this.isLoading = true;
     this.showGreetingLoader();
-    this.render(); // Clear UI immediately
+    this.render();
   }
 
   /**
@@ -579,7 +581,9 @@ export class IncrementalPortfolioRenderer {
     if (failed.length > 0) {
       const failedText = failed.map(provider => {
         const message = this.providerErrors.get(provider);
-        return message ? `${provider} (${message})` : provider;
+        // One wallet's source is "Hyperliquid_0x…": name it as "Hyperliquid 0xfc66…ca06"
+        const name = provider.replace(/_(\w{6})\w+(\w{4})$/, ' $1…$2');
+        return message ? `${name} (${message})` : name;
       }).join(', ');
       parts.push(`Failed: ${failedText}`);
     }
