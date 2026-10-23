@@ -1757,8 +1757,8 @@ function setupControls() {
     });
   }
 
-  // Watchlist: an item opens in place (click it, or Enter when it has focus) to show its
-  // name and a Remove action. Removing saves straight away and offers an undo line.
+  // Watchlist: an item opens the chart window (click it, or Enter when it has focus),
+  // which also has its Remove action. Removing saves straight away and offers an undo line.
   const watchlistTable = document.getElementById('newWatchlistTable');
 
   function watchlistItems() {
@@ -1771,10 +1771,22 @@ function setupControls() {
     });
   }
 
-  async function setOpenWatchlistItem(key) {
-    window.openWatchlistKey = key;
-    const mod = await import('./modules/features/watchlist.js');
-    mod.rerenderOpenState();
+  async function openWatchlistChart(key) {
+    const [watchlist, chartWindow] = await Promise.all([
+      import('./modules/features/watchlist.js'),
+      import('./modules/ui/chart-window.js')
+    ]);
+    chartWindow.openChartWindow({
+      key,
+      tilePeriod: watchlist.getPeriod(),
+      // The saved list decides, so a removed item drops out at once and an undo brings it back.
+      items: () => {
+        const saved = new Set((getSettings().watchlist || []).map(watchlistEntryKey));
+        return watchlist.chartItems().filter(i => saved.has(i.key));
+      },
+      onRemove: removeFromWatchlist,
+      onClose: (shownKey) => { if (shownKey) focusWatchlistItem(shownKey); }
+    });
   }
 
   // Remove by composite key so mixed Pyth/Yahoo entries can all be deleted the same way.
@@ -1796,7 +1808,6 @@ function setupControls() {
       if (cachedWatchlistData) {
         cachedWatchlistData = cachedWatchlistData.filter(item => item.key !== targetKey);
       }
-      window.openWatchlistKey = null;
       renderWatchlistPanel({
         entriesOverride: s.watchlist,
         forceRefresh: false,
@@ -1821,27 +1832,19 @@ function setupControls() {
   }
 
   watchlistTable?.addEventListener('click', (e) => {
-    const btn = e.target.closest('button.watchlist-remove-btn');
-    if (btn) {
-      removeFromWatchlist(btn.getAttribute('data-entry-key'));
-      return;
-    }
     if (window.getSelection()?.toString()) return;
     const item = e.target.closest('tr.watchlist-row');
-    if (!item) return;
-    const key = item.dataset.entryKey;
-    setOpenWatchlistItem(window.openWatchlistKey === key ? null : key).then(() => focusWatchlistItem(key));
+    if (item) openWatchlistChart(item.dataset.entryKey);
   });
 
-  // ←/→ and ↑/↓ move between items, Enter opens, Esc closes, Delete/Backspace removes the
-  // open item. Handled here so the arrows don't also page the comic.
+  // ←/→ and ↑/↓ move between items, Enter opens the chart. Handled here so the arrows
+  // don't also page the comic.
   watchlistTable?.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const item = e.target.closest('tr.watchlist-row');
     if (!item) return;
     const items = watchlistItems();
     const index = items.indexOf(item);
-    const key = item.dataset.entryKey;
 
     if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
       e.preventDefault();
@@ -1852,21 +1855,7 @@ function setupControls() {
     }
     if ((e.key === 'Enter' || e.key === ' ') && e.target === item) {
       e.preventDefault();
-      setOpenWatchlistItem(window.openWatchlistKey === key ? null : key).then(() => focusWatchlistItem(key));
-      return;
-    }
-    if (e.key === 'Escape' && window.openWatchlistKey) {
-      e.preventDefault();
-      e.stopPropagation();
-      setOpenWatchlistItem(null).then(() => focusWatchlistItem(key));
-      return;
-    }
-    if ((e.key === 'Backspace' || e.key === 'Delete') && window.openWatchlistKey === key) {
-      e.preventDefault();
-      e.stopPropagation();
-      const next = items[index + 1] || items[index - 1];
-      removeFromWatchlist(key);
-      if (next) focusWatchlistItem(next.dataset.entryKey);
+      openWatchlistChart(item.dataset.entryKey);
     }
   });
 

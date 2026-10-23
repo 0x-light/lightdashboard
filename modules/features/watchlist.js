@@ -399,8 +399,8 @@ function escapeHtml(value) {
 // The last render, so opening or closing an item can redraw without refetching.
 let lastRender = null;
 
-// Each item opens in place (click, or Enter when focused) to show its name and a
-// Remove action. app.js sets `window.openWatchlistKey` and handles the clicks and keys.
+// Each item opens the chart window (click, or Enter when focused); app.js handles the
+// clicks and keys.
 function renderRows(container, data, options) {
   const { useColoredPnL, showPriceChart, prevPriceMap } = options;
   lastRender = { container, data, options: { ...options, prevPriceMap: {} } };
@@ -409,8 +409,6 @@ function renderRows(container, data, options) {
     container.innerHTML = '<tr class="watchlist-empty-row"><td colspan="4">Your watchlist is empty.</td></tr>';
     return;
   }
-
-  const openKey = typeof window !== 'undefined' ? window.openWatchlistKey : null;
 
   if (typeof document !== 'undefined') {
     document.querySelectorAll('.wl-period').forEach((b) => {
@@ -425,7 +423,6 @@ function renderRows(container, data, options) {
     const change = changeFor(item, history);
     const key = item.key || (item.feedId ? `pyth:${item.feedId}` : `yahoo:${(item.symbol || '').toUpperCase()}`);
     const keyAttr = escapeHtml(key);
-    const isOpen = openKey === key;
 
     // Quote currency (EUR for VWCE.DE, GBp for LSE…); Pyth feeds are USD-quoted.
     const priceFormatted = price == null
@@ -461,43 +458,38 @@ function renderRows(container, data, options) {
       flashClass = price > prevPrice ? ' flash-green' : ' flash-red';
     }
 
-    const facts = [item.name, item.category, item.unavailable ? 'quote unavailable' : '']
-      .filter(Boolean).map(escapeHtml).join(' · ');
-    const detail = isOpen
-      ? `<td class="wl-detail">${facts ? `<div class="wl-detail__facts">${facts}</div>` : ''}` +
-        `<div class="wl-detail__actions"><button type="button" class="row-action watchlist-remove-btn" data-entry-key="${keyAttr}" data-shortcut="delete" aria-label="Remove ${symbol} from watchlist"><kbd>⌫</kbd><span>Remove</span></button></div></td>`
-      : '';
-
     return `
-      <tr class="watchlist-row${flashClass}${isOpen ? ' is-open' : ''}" data-entry-key="${keyAttr}" tabindex="0" aria-expanded="${isOpen}">
+      <tr class="watchlist-row${flashClass}" data-entry-key="${keyAttr}" tabindex="0" aria-haspopup="dialog">
         <td class="wl-symbol"><span class="symbol">${symbol}</span></td>
         <td class="wl-price text-right font-mono"${item.unavailable ? ' title="Quote unavailable"' : ''}>${priceFormatted}</td>
         <td class="wl-chart text-center chart">${chartHtml}</td>
         <td class="wl-change text-right font-mono" style="color: ${changeColor}">${changeText}</td>
-        ${detail}
       </tr>
     `;
   }).join('');
 
-  // Rows are rebuilt on every refresh; hand keyboard focus (an item or its action) back.
+  // Rows are rebuilt on every refresh; hand keyboard focus back to the item that had it.
   const active = container.ownerDocument?.activeElement;
   const focusedKey = container.contains(active) ? active.closest('tr')?.dataset.entryKey : null;
-  const focusedAction = focusedKey ? active.dataset?.shortcut : null;
 
   container.innerHTML = html;
 
   if (focusedKey) {
     const row = Array.from(container.querySelectorAll('tr.watchlist-row')).find(r => r.dataset.entryKey === focusedKey);
-    const target = focusedAction ? row?.querySelector(`[data-shortcut="${focusedAction}"]`) : row;
-    target?.focus({ preventScroll: true });
+    row?.focus({ preventScroll: true });
   }
 
   loadPeriodHistory(data);
 }
 
-// Redraw the last render with the current open item; no fetching.
+// Redraw the last render; no fetching.
 export function rerenderOpenState() {
   if (lastRender) renderRows(lastRender.container, lastRender.data, lastRender.options);
+}
+
+// The items as the tiles show them, in order, for the chart window.
+export function chartItems() {
+  return lastRender?.data || [];
 }
 
 export async function render(container, {
@@ -506,7 +498,7 @@ export async function render(container, {
   pythProvider,
   stocksProvider,
   useColoredPnL = true,
-  editMode: _editMode = false, // accepted for older callers; items open in place instead
+  editMode: _editMode = false, // accepted for older callers; items open the chart window instead
   cachedData = null,
   previousData = null,
   showPriceChart = true,
@@ -698,4 +690,4 @@ export async function fetchPrices(feedIds, pythProvider, includePriceHistory = f
   return prices;
 }
 
-export default { fetchPrices, render, normalizeEntries, getPeriod, setPeriod, PERIODS };
+export default { fetchPrices, render, normalizeEntries, getPeriod, setPeriod, chartItems, PERIODS };
