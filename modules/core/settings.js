@@ -25,7 +25,7 @@ const REMOVED_KEYS = [
   'refreshMinutes', 'usePythPrices', 'enableRealTimeUpdates', 'realTimeUpdateInterval',
   'showCompactBtn', 'showSettingsBtn', 'compactList', 'buttonBackgrounds', 'hideThemeBtn',
   'hideAmountsBtn', 'hideFontSize', 'onchainProvider', 'comicCollapsed', 'watchlistCollapsed',
-  'enableKeyboardShortcuts'
+  'enableKeyboardShortcuts', 'openSeaApiKey'
 ];
 
 export function loadSettings() {
@@ -53,7 +53,6 @@ export function loadSettings() {
     if (s.walletAddresses) s.walletAddresses = simpleDecrypt(s.walletAddresses);
     if (s.alchemyApiKey) s.alchemyApiKey = simpleDecrypt(s.alchemyApiKey);
     if (s.heliusApiKey) s.heliusApiKey = simpleDecrypt(s.heliusApiKey);
-    if (s.openSeaApiKey) s.openSeaApiKey = simpleDecrypt(s.openSeaApiKey);
     if (s.hyperliquidAddress) s.hyperliquidAddress = simpleDecrypt(s.hyperliquidAddress);
     if (s.lighterAddress) s.lighterAddress = simpleDecrypt(s.lighterAddress);
     if (s.zerionApiKey) s.zerionApiKey = simpleDecrypt(s.zerionApiKey);
@@ -82,7 +81,6 @@ export function getDefaultSettings() {
     unrecognizedAddresses: '', // Pasted addresses no chain pattern matched; kept so they aren't lost
     alchemyApiKey: '',
     heliusApiKey: '',
-    openSeaApiKey: '',
     zerionApiKey: '',
     cieloApiKey: '',
     ibkrFlexToken: '', // Interactive Brokers Flex Web Service token (read-only)

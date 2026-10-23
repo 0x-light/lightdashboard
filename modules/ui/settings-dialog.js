@@ -4,7 +4,8 @@ import { POSITION_COLUMNS, normalizeColumnOrder, normalizeHiddenColumns } from '
 
 const STORAGE_KEY = 'myDashboardSettings.v2';
 
-// type: text | number | select | check. `invert` means the checkbox shows the opposite of the
+// type: text | number | select | check | choice. A choice is a pair of radios under `name`,
+// "off" then "on", stored as one flag. `invert` means the checkbox shows the opposite of the
 // stored flag ("Show watchlist" is stored as hideWatchlist) so older saved settings keep working.
 const FIELDS = [
   // General
@@ -17,15 +18,14 @@ const FIELDS = [
   { id: 'newCieloApiKey', key: 'cieloApiKey', type: 'text', fallback: '', data: true },
   { id: 'newAlchemyApiKey', key: 'alchemyApiKey', type: 'text', fallback: '', data: true },
   { id: 'newHeliusApiKey', key: 'heliusApiKey', type: 'text', fallback: '', data: true },
-  { id: 'newOpenSeaApiKey', key: 'openSeaApiKey', type: 'text', fallback: '', data: true },
   { id: 'newIbkrFlexToken', key: 'ibkrFlexToken', type: 'text', fallback: '', data: true },
   { id: 'newIbkrFlexQueryId', key: 'ibkrFlexQueryId', type: 'text', fallback: '', data: true },
 
   // Appearance
   { id: 'newFontSelect', key: 'font', type: 'select', fallback: 'sf' },
   { id: 'newFontSizeSelect', key: 'fontSize', type: 'number', fallback: 14 },
-  { id: 'newFullWidth', key: 'fullWidth', type: 'check', fallback: false },
-  { id: 'newCenterLayout', key: 'centerLayout', type: 'check', fallback: false },
+  { name: 'newWidth', key: 'fullWidth', type: 'choice', fallback: false },
+  { name: 'newAlign', key: 'centerLayout', type: 'choice', fallback: false },
   { id: 'newValueInTitle', key: 'valueInTitle', type: 'check', fallback: true },
   { id: 'newShowValueChart', key: 'showValueChart', type: 'check', fallback: true },
   { id: 'newUseColoredPnL', key: 'useColoredPnL', type: 'check', fallback: true },
@@ -56,6 +56,24 @@ const ADDRESS_PATTERNS = [
 ];
 
 const FONT_CLASSES = ['berkeley', 'commit', 'departure', 'sf'];
+const FONT_SIZES = [12, 13, 14, 15, 16, 18];
+
+// Each key's status in Accounts comes from the last load: the renderer's sources for it.
+// `uses` says whether the app reads the key with what else is set; `needs` names what else it needs;
+// `wallet` keys need an EVM address.
+const KEY_SOURCES = {
+  zerion: { field: 'zerionApiKey', sources: ['Zerion'], wallet: true, uses: () => true },
+  cielo: { field: 'cieloApiKey', sources: ['Cielo'], wallet: true, uses: s => !s.zerionApiKey },
+  alchemy: { field: 'alchemyApiKey', sources: ['Alchemy/Helius'], wallet: true, uses: s => !s.zerionApiKey && !s.cieloApiKey },
+  helius: { field: 'heliusApiKey', sources: ['Alchemy/Helius'], uses: s => !s.zerionApiKey && !s.cieloApiKey, needs: s => (listOf(s.solanaAddresses).length ? '' : 'Add an address') },
+  ibkr: { field: 'ibkrFlexToken', sources: ['IBKR'], uses: () => true, needs: s => (s.ibkrFlexQueryId ? '' : 'Add the query ID') }
+};
+
+function fieldInputs(field) {
+  if (field.name) return Array.from(document.getElementsByName(field.name));
+  const el = document.getElementById(field.id);
+  return el ? [el] : [];
+}
 
 // Columns: one line per column with a show box and ↑ ↓ keys; the list's order is the
 // order setting, the unticked boxes the hidden one. Asset is always on.
@@ -171,10 +189,13 @@ function placeText(weather) {
 
 function fillForm(settings) {
   for (const field of FIELDS) {
-    const el = document.getElementById(field.id);
+    const inputs = fieldInputs(field);
+    const el = inputs[0];
     if (!el) continue;
     const value = settings[field.key] ?? field.fallback;
-    if (field.type === 'check') {
+    if (field.type === 'choice') {
+      inputs.forEach(input => { input.checked = input.value === (value ? 'on' : 'off'); });
+    } else if (field.type === 'check') {
       el.checked = field.invert ? !value : !!value;
     } else {
       el.value = value;
@@ -190,9 +211,12 @@ function fillForm(settings) {
 function readForm(settings) {
   const next = { ...settings };
   for (const field of FIELDS) {
-    const el = document.getElementById(field.id);
+    const inputs = fieldInputs(field);
+    const el = inputs[0];
     if (!el) continue;
-    if (field.type === 'check') {
+    if (field.type === 'choice') {
+      next[field.key] = inputs.some(input => input.checked && input.value === 'on');
+    } else if (field.type === 'check') {
       next[field.key] = field.invert ? !el.checked : el.checked;
     } else if (field.type === 'number') {
       const parsed = parseFloat(el.value);
@@ -267,15 +291,32 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
   const backdrop = document.getElementById('newSettingsBackdrop');
   if (!dialog || !backdrop) return {};
 
+  // "Saved" on the title bar for a moment after each change that reached storage.
+  const savedEl = document.getElementById('settingsSaved');
+  let savedTimer = null;
   const save = (settings) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    const text = JSON.stringify(settings);
+    const changed = localStorage.getItem(STORAGE_KEY) !== text;
+    localStorage.setItem(STORAGE_KEY, text);
     invalidateSettingsCache();
+    if (changed && savedEl && dialog.style.display !== 'none') {
+      savedEl.textContent = 'Saved';
+      clearTimeout(savedTimer);
+      savedTimer = setTimeout(() => { savedEl.textContent = ''; }, 2000);
+    }
   };
 
   // Tabs: vertical list on desktop, a scrolling row on phones
   const tabs = Array.from(dialog.querySelectorAll('.settings-tab'));
   const panes = dialog.querySelector('.settings-panes');
+  const find = document.getElementById('settingsFind');
+  let currentTab = tabs[0]?.dataset.tab;
   const selectTab = (name) => {
+    currentTab = name;
+    if (find?.value) {
+      find.value = '';
+      runFind();
+    }
     tabs.forEach(tab => {
       const selected = tab.dataset.tab === name;
       tab.setAttribute('aria-selected', String(selected));
@@ -298,6 +339,78 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
       next.focus();
     });
   });
+  tabs.forEach(tab => {
+    const pane = document.getElementById(tab.getAttribute('aria-controls'));
+    if (pane) pane.dataset.title = tab.textContent.trim();
+  });
+
+  // Find: "/" opens it; it shows every setting whose words match, from all tabs, each under
+  // its tab's name. Clearing it, or picking a tab, goes back to the tab.
+  const findEmpty = document.getElementById('settingsFindEmpty');
+  const NOT_SETTINGS = '.settings-group, .settings-note, .settings-rule, .settings-footnote, .info, textarea, .settings-import-actions';
+  const findItems = (pane) => Array.from(pane.children)
+    .flatMap(el => (el.classList.contains('row') ? Array.from(el.children) : [el]))
+    .filter(el => !el.hidden && !el.matches(NOT_SETTINGS));
+  function runFind() {
+    const words = (find?.value || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const finding = words.length > 0;
+    dialog.classList.toggle('is-finding', finding);
+    let found = false;
+    dialog.querySelectorAll('.settings-pane').forEach(pane => {
+      const items = findItems(pane);
+      if (!finding) {
+        pane.querySelectorAll('.settings-miss').forEach(el => el.classList.remove('settings-miss'));
+        pane.hidden = pane.dataset.pane !== currentTab;
+        return;
+      }
+      let hits = 0;
+      if (pane.dataset.pane !== 'larp') {
+        items.forEach(el => {
+          const names = Array.from(el.querySelectorAll('[aria-label]')).map(n => n.getAttribute('aria-label')).join(' ');
+          const text = `${el.textContent} ${el.dataset.find || ''} ${names}`.toLowerCase();
+          const hit = words.every(w => text.includes(w));
+          el.classList.toggle('settings-miss', !hit);
+          if (hit) hits++;
+        });
+      }
+      // A row of settings goes when none of its settings matched.
+      pane.querySelectorAll(':scope > .row').forEach(row => {
+        row.classList.toggle('settings-miss', Array.from(row.children).every(el => el.classList.contains('settings-miss')));
+      });
+      pane.hidden = hits === 0;
+      found ||= hits > 0;
+    });
+    if (findEmpty) findEmpty.hidden = !finding || found;
+    if (panes) panes.scrollTop = 0;
+  }
+  const firstFoundControl = () => {
+    for (const pane of dialog.querySelectorAll('.settings-pane:not([hidden])')) {
+      for (const item of findItems(pane)) {
+        if (item.classList.contains('settings-miss')) continue;
+        const control = item.matches('input, select, button') ? item
+          : item.querySelector('input:not([type="hidden"]), select, button');
+        if (control) return control;
+      }
+    }
+    return null;
+  };
+  find?.addEventListener('input', runFind);
+  find?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'ArrowDown') {
+      const control = firstFoundControl();
+      if (control) {
+        e.preventDefault();
+        control.focus();
+      }
+    } else if (e.key === 'Escape' && find.value) {
+      // Clear the search, not close the Settings window.
+      e.preventDefault();
+      e.stopPropagation();
+      find.value = '';
+      runFind();
+    }
+  });
+
   if (tabs.length) selectTab(tabs[0].dataset.tab);
 
   const addresses = document.getElementById('newAddresses');
@@ -311,6 +424,94 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
   const showAddressesHint = () => {
     if (addresses && addressesHint) addressesHint.textContent = describeAddresses(addresses.value);
   };
+
+  // General reads as sentences; each blank is as wide as what it holds.
+  const sizeBlank = (el) => {
+    const chars = Math.max(String(el.value).length, el.placeholder.length, 3);
+    el.style.width = `${Math.min(chars, 30) + 3}ch`;
+  };
+  const sizeBlanks = () => dialog.querySelectorAll('input.settings-blank').forEach(sizeBlank);
+  dialog.querySelectorAll('input.settings-blank').forEach(el => el.addEventListener('input', () => sizeBlank(el)));
+
+  // Align only matters in the column; a full-width page has nothing to center.
+  const alignField = document.getElementById('newAlignField');
+  const showAlign = () => {
+    if (alignField) alignField.hidden = !!document.querySelector('input[name="newWidth"][value="on"]')?.checked;
+  };
+  document.getElementsByName('newWidth').forEach(input => input.addEventListener('change', showAlign));
+
+  // Text size: − and + step through the sizes; the ends can't go further.
+  const fontSizeInput = document.getElementById('newFontSizeSelect');
+  const fontSizeOut = document.getElementById('newFontSizeOut');
+  const stepButtons = Array.from(dialog.querySelectorAll('.settings-step'));
+  const sizeIndex = () => {
+    const size = Number(fontSizeInput?.value) || 14;
+    const exact = FONT_SIZES.indexOf(size);
+    return exact >= 0 ? exact : FONT_SIZES.findIndex(s => s >= size);
+  };
+  const showFontSize = () => {
+    if (!fontSizeInput) return;
+    const i = sizeIndex();
+    if (fontSizeOut) fontSizeOut.textContent = `${fontSizeInput.value || 14}px`;
+    stepButtons.forEach(btn => {
+      btn.disabled = Number(btn.dataset.step) < 0 ? i <= 0 : i < 0 || i >= FONT_SIZES.length - 1;
+    });
+  };
+  stepButtons.forEach(btn => btn.addEventListener('click', () => {
+    const i = sizeIndex() + Number(btn.dataset.step);
+    if (i < 0 || i >= FONT_SIZES.length) return;
+    fontSizeInput.value = FONT_SIZES[i];
+    showFontSize();
+    saveForm();
+    // At an end the pressed key is disabled; keep the focus in the stepper.
+    if (btn.disabled) stepButtons.find(b => b !== btn)?.focus();
+  }));
+
+  // Accounts: each key says what it did on the last load, or why the app does not read it.
+  // A key changed since the window opened loads when it closes.
+  const walletKeyNote = document.getElementById('newWalletKeyNote');
+  let keysAtOpen = {};
+  const sourceRows = (renderer, names) => (renderer?.allPositions || [])
+    .filter(p => names.some(name => p._source === name || String(p._source || '').startsWith(`${name}_`)));
+  const timeText = (t) => {
+    const d = new Date(t);
+    const hm = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    return d.toDateString() === new Date().toDateString() ? `today ${hm}` : `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${hm}`;
+  };
+  const keyStatus = (id, s) => {
+    const src = KEY_SOURCES[id];
+    if (!src) return { text: '' };
+    if (!s[src.field]) return src.uses(s) ? { link: true } : { text: 'Not needed' };
+    if (!src.uses(s)) return { text: 'Not used' };
+    const need = src.needs?.(s) || (src.wallet && !listOf(s.walletAddresses).length ? 'Add an address' : '');
+    if (need) return { text: need };
+    if (s[src.field] !== keysAtOpen[src.field]) return { text: 'Loads on close' };
+    const renderer = window._portfolioRenderer;
+    const states = src.sources.map(name => renderer?.providerStatus?.get?.(name));
+    if (states.includes('failed')) return { text: 'Cannot read', error: true };
+    if (!states.includes('completed')) return { text: 'Loading' };
+    const rows = sourceRows(renderer, src.sources);
+    const count = rows.length === 0 ? 'No rows' : `${rows.length} ${rows.length === 1 ? 'row' : 'rows'}`;
+    const asOf = rows.find(row => row.asOf)?.asOf;
+    return { text: asOf ? `${count} · ${timeText(asOf)}` : count };
+  };
+  const showKeyStatus = () => {
+    const s = readForm(getSettings());
+    dialog.querySelectorAll('.settings-key-status').forEach(el => {
+      const status = keyStatus(el.dataset.source, s);
+      const key = JSON.stringify(status);
+      if (el.dataset.shown === key) return;
+      el.dataset.shown = key;
+      el.classList.toggle('is-error', !!status.error);
+      if (status.link) {
+        el.innerHTML = `<a class="settings-link" href="${escapeHtml(el.dataset.getKey)}" target="_blank" rel="noopener noreferrer">${escapeHtml(el.dataset.getKeyLabel)}</a>`;
+      } else {
+        el.textContent = status.text;
+      }
+    });
+    if (walletKeyNote) walletKeyNote.hidden = !!(s.zerionApiKey || s.cieloApiKey);
+  };
+  let keyStatusTimer = null;
 
   // Auto-save: every edit writes settings and applies what can change without a refetch
   let snapshotAtOpen = '';
@@ -326,6 +527,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
   dialog.querySelector('.settings-panes')?.addEventListener('input', (e) => {
     if (e.target === exportArea || e.target.id === 'newWeatherCity') return;
     if (e.target === addresses) showAddressesHint();
+    if (e.target.closest('[data-pane="accounts"]')) showKeyStatus();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveForm, 250);
   });
@@ -684,9 +886,18 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     fillForm(s);
     showAddressesHint();
     showCurrencyUnit();
+    sizeBlanks();
+    showFontSize();
+    showAlign();
     setCityHint(defaultCityHint);
     snapshotAtOpen = dataSnapshot(s);
-    if (tab) selectTab(tab);
+    keysAtOpen = Object.fromEntries(Object.values(KEY_SOURCES).map(src => [src.field, s[src.field] || '']));
+    showKeyStatus();
+    // Sources can finish while the window is open; keep the statuses current.
+    clearInterval(keyStatusTimer);
+    keyStatusTimer = setInterval(showKeyStatus, 1000);
+    if (savedEl) savedEl.textContent = '';
+    selectTab(tab || currentTab);
     dialog.style.display = 'block';
     backdrop.style.display = 'block';
     document.body.classList.add('modal-open');
@@ -698,6 +909,7 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
     saveForm();
     if (cityInput && document.activeElement === cityInput) lookUpCity();
     resetImport();
+    clearInterval(keyStatusTimer);
     dialog.style.display = 'none';
     backdrop.style.display = 'none';
     document.body.classList.remove('modal-open');
@@ -710,6 +922,13 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
   document.getElementById('newCloseSettingsBtn')?.addEventListener('click', close);
   backdrop.addEventListener('click', close);
   dialog.addEventListener('keydown', (e) => {
+    const typing = e.target.matches?.('input, textarea, select') || e.target.isContentEditable;
+    if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey && find) {
+      e.preventDefault();
+      find.focus();
+      find.select();
+      return;
+    }
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();

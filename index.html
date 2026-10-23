@@ -87,7 +87,6 @@
     <link rel="modulepreload" href="/modules/data/providers/ibkr.js">
     <link rel="modulepreload" href="/modules/data/providers/alchemy.js">
     <link rel="modulepreload" href="/modules/data/providers/helius.js">
-    <link rel="modulepreload" href="/modules/data/providers/opensea.js">
     <link rel="modulepreload" href="/modules/data/fetchers/hyperliquid-fetcher.js">
     <link rel="modulepreload" href="/modules/data/fetchers/lighter-fetcher.js">
     <link rel="modulepreload" href="/modules/data/fetchers/manual-fetcher.js">
@@ -441,6 +440,11 @@
             <div class="settings-form">
                 <header>
                     <h2 id="settingsTitle">Settings</h2>
+                    <span id="settingsSaved" class="settings-saved" role="status" aria-live="polite"></span>
+                    <div class="settings-find" role="search">
+                        <label class="table-search__key" for="settingsFind"><kbd>/</kbd></label>
+                        <input id="settingsFind" type="search" class="table-search__input" placeholder="Search" aria-label="Search settings" autocomplete="off" spellcheck="false">
+                    </div>
                     <button id="newCloseSettingsBtn" class="btn-text">Close</button>
                 </header>
 
@@ -453,33 +457,25 @@
                         <button type="button" class="settings-tab" role="tab" id="settingsTab-backup" aria-controls="settingsPane-backup" data-tab="backup">Backup</button>
                         <button type="button" class="settings-tab" role="tab" id="settingsTab-larp" aria-controls="settingsPane-larp" data-tab="larp">Larp</button>
                     </nav>
+                    <p id="settingsFindEmpty" class="info settings-find-empty" hidden>No setting matches.</p>
 
                     <section class="settings-panes">
                         <!-- General: who you are and where you are, as the greeting and the weather use them, and the money unit. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-general" aria-labelledby="settingsTab-general" data-pane="general">
-                            <label>
-                                Your name
-                                <input id="newUserName" type="text" class="settings-input" placeholder="Not set" autocomplete="given-name">
-                            </label>
-                            <div class="settings-field">
-                                <label for="newWeatherCity">City</label>
-                                <div class="settings-inline">
-                                    <input id="newWeatherCity" type="text" class="settings-input" placeholder="Not set" autocomplete="off" aria-describedby="newWeatherCityHint">
-                                    <button id="newUseMyLocationBtn" type="button" class="btn-text">Use my location</button>
-                                </div>
-                                <ul id="newWeatherCityList" class="city-options" role="listbox" aria-label="Matching places" hidden></ul>
-                                <span id="newWeatherCityHint" class="info" aria-live="polite"></span>
+                            <div class="settings-sentence" data-find="name city location weather">
+                                Call me <input id="newUserName" type="text" class="settings-input settings-blank" placeholder="name" aria-label="Your name" autocomplete="given-name">.
+                                I am in <span class="settings-blank-wrap"><input id="newWeatherCity" type="text" class="settings-input settings-blank" placeholder="city" aria-label="City" autocomplete="off" aria-describedby="newWeatherCityHint"><ul id="newWeatherCityList" class="city-options" role="listbox" aria-label="Matching places" hidden></ul></span>
+                                <span class="settings-nowrap">(<button id="newUseMyLocationBtn" type="button" class="settings-aside">use my location</button>).</span>
                             </div>
-                            <label>
-                                Currency
-                                <span class="select">
-                                    <select id="newPortfolioBaseCurrency" class="settings-input">
-                                        <option value="USD">USD</option>
-                                        <option value="EUR">EUR</option>
-                                        <option value="GBP">GBP</option>
-                                    </select>
-                                </span>
-                            </label>
+                            <div class="settings-sentence" data-find="currency hide under minimum balance small">
+                                My currency is <span class="select settings-blank"><select id="newPortfolioBaseCurrency" class="settings-input" aria-label="Currency">
+                                    <option value="USD">USD</option>
+                                    <option value="EUR">EUR</option>
+                                    <option value="GBP">GBP</option>
+                                </select></span>.
+                                Hide positions under <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100" inputmode="decimal" class="settings-input settings-blank" aria-label="Hide positions under"> <span id="newMinBalanceUnit">USD</span>.
+                            </div>
+                            <span id="newWeatherCityHint" class="info" aria-live="polite"></span>
                         </div>
 
                         <!-- Accounts: where positions come from. Wallets and the keys that read them, then the broker. -->
@@ -493,57 +489,48 @@
                             </label>
                             <label>
                                 Zerion
-                                <span class="settings-inline">
+                                <span class="settings-inline settings-key">
                                     <input id="newZerionApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
                                         placeholder="Not set">
-                                    <a class="settings-link" href="https://developers.zerion.io/reference/intro/getting-started" target="_blank" rel="noopener noreferrer">Get a key</a>
+                                    <span class="settings-key-status" data-source="zerion" data-get-key="https://developers.zerion.io/reference/intro/getting-started" data-get-key-label="Get a key" aria-live="polite"></span>
                                 </span>
                             </label>
                             <label>
                                 Cielo
-                                <span class="settings-inline">
+                                <span class="settings-inline settings-key">
                                     <input id="newCieloApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
                                         placeholder="Not set">
-                                    <a class="settings-link" href="https://build.cielo.finance/" target="_blank" rel="noopener noreferrer">Get a key</a>
+                                    <span class="settings-key-status" data-source="cielo" data-get-key="https://build.cielo.finance/" data-get-key-label="Get a key" aria-live="polite"></span>
                                 </span>
                             </label>
-                            <p class="info settings-note">Wallet balances come from Zerion or Cielo. Add one key.</p>
+                            <p id="newWalletKeyNote" class="info settings-note">Add a Zerion or Cielo key to read wallet balances.</p>
 
                             <h3 class="settings-group">More keys</h3>
                             <label>
                                 Alchemy · EVM
-                                <span class="settings-inline">
+                                <span class="settings-inline settings-key">
                                     <input id="newAlchemyApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
                                         placeholder="Not set">
-                                    <a class="settings-link" href="https://www.alchemy.com/" target="_blank" rel="noopener noreferrer">Get a key</a>
+                                    <span class="settings-key-status" data-source="alchemy" data-get-key="https://www.alchemy.com/" data-get-key-label="Get a key" aria-live="polite"></span>
                                 </span>
                             </label>
                             <label>
                                 Helius · Solana
-                                <span class="settings-inline">
+                                <span class="settings-inline settings-key">
                                     <input id="newHeliusApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
                                         placeholder="Not set">
-                                    <a class="settings-link" href="https://www.helius.dev/" target="_blank" rel="noopener noreferrer">Get a key</a>
+                                    <span class="settings-key-status" data-source="helius" data-get-key="https://www.helius.dev/" data-get-key-label="Get a key" aria-live="polite"></span>
                                 </span>
                             </label>
-                            <label>
-                                OpenSea · NFTs
-                                <span class="settings-inline">
-                                    <input id="newOpenSeaApiKey" type="text" class="settings-input" spellcheck="false" autocomplete="off"
-                                        placeholder="Not set">
-                                    <a class="settings-link" href="https://opensea.io/account/developer" target="_blank" rel="noopener noreferrer">Get a key</a>
-                                </span>
-                            </label>
-                            <p class="info settings-note">Alchemy and Helius read balances when there is no Zerion or Cielo key. OpenSea adds NFTs.</p>
 
                             <h3 class="settings-group">Interactive Brokers</h3>
                             <label>
                                 Flex token
-                                <span class="settings-inline">
+                                <span class="settings-inline settings-key">
                                     <input id="newIbkrFlexToken" type="text" class="settings-input" spellcheck="false" autocomplete="off"
                                         inputmode="numeric"
                                         placeholder="Not set">
-                                    <a class="settings-link" href="https://www.ibkrguides.com/orgportal/performanceandstatements/flex.htm" target="_blank" rel="noopener noreferrer">How to set up</a>
+                                    <span class="settings-key-status" data-source="ibkr" data-get-key="https://www.ibkrguides.com/orgportal/performanceandstatements/flex.htm" data-get-key-label="How to set up" aria-live="polite"></span>
                                 </span>
                             </label>
                             <label>
@@ -556,14 +543,6 @@
 
                         <!-- Positions: what the table shows and how. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-positions" aria-labelledby="settingsTab-positions" data-pane="positions" hidden>
-                            <label>
-                                Hide under
-                                <span class="settings-inline">
-                                    <input id="newMinBalanceThreshold" type="number" min="0" step="10" value="100" inputmode="decimal" class="settings-input settings-input-short">
-                                    <span id="newMinBalanceUnit" class="info">USD</span>
-                                </span>
-                            </label>
-
                             <h3 class="settings-group">Rows</h3>
                             <label class="check">
                                 <input id="newGroupPositions" type="checkbox" class="settings-input">
@@ -610,55 +589,55 @@
                                         </select>
                                     </span>
                                 </label>
-                                <label>
-                                    Text size
-                                    <span class="select">
-                                        <select id="newFontSizeSelect" class="settings-input">
-                                            <option value="12">12px</option>
-                                            <option value="13">13px</option>
-                                            <option value="14">14px</option>
-                                            <option value="15">15px</option>
-                                            <option value="16">16px</option>
-                                            <option value="18">18px</option>
-                                        </select>
-                                    </span>
-                                </label>
                             </div>
-
-                            <h3 class="settings-group">Layout</h3>
-                            <label class="check">
-                                <input id="newFullWidth" type="checkbox" class="settings-input">
-                                Full window width
+                            <div class="settings-field" data-find="font size bigger smaller">
+                                <span class="settings-label" id="newFontSizeLabel">Text size</span>
+                                <span class="settings-stepper" role="group" aria-labelledby="newFontSizeLabel">
+                                    <button type="button" class="settings-step" data-step="-1" aria-label="Smaller text">−</button>
+                                    <output id="newFontSizeOut" aria-live="polite">14px</output>
+                                    <button type="button" class="settings-step" data-step="1" aria-label="Larger text">+</button>
+                                    <input id="newFontSizeSelect" type="hidden" value="14">
+                                </span>
+                            </div>
+                            <div class="settings-field" data-find="layout full window">
+                                <span class="settings-label" id="newWidthLabel">Width</span>
+                                <span class="settings-choice" role="radiogroup" aria-labelledby="newWidthLabel">
+                                    <label><input type="radio" name="newWidth" value="off"><span>Column</span></label>
+                                    <label><input type="radio" name="newWidth" value="on"><span>Full</span></label>
+                                </span>
+                            </div>
+                            <div id="newAlignField" class="settings-field" data-find="layout center middle">
+                                <span class="settings-label" id="newAlignLabel">Align</span>
+                                <span class="settings-choice" role="radiogroup" aria-labelledby="newAlignLabel">
+                                    <label><input type="radio" name="newAlign" value="off"><span>Left</span></label>
+                                    <label><input type="radio" name="newAlign" value="on"><span>Center</span></label>
+                                </span>
+                            </div>
+                            <div class="settings-rule" role="presentation"></div>
+                            <label class="settings-switch" data-find="history">
+                                Value chart
+                                <input id="newShowValueChart" type="checkbox" role="switch" class="settings-input">
+                                <span class="settings-switch__state" aria-hidden="true"></span>
                             </label>
-                            <label class="check">
-                                <input id="newCenterLayout" type="checkbox" class="settings-input">
-                                Center the page
+                            <label class="settings-switch" data-find="sparkline">
+                                Price charts
+                                <input id="newShowPriceChart" type="checkbox" role="switch" class="settings-input">
+                                <span class="settings-switch__state" aria-hidden="true"></span>
                             </label>
-
-                            <h3 class="settings-group">Charts</h3>
-                            <label class="check">
-                                <input id="newShowValueChart" type="checkbox" class="settings-input">
-                                Show the value chart
+                            <label class="settings-switch" data-find="section">
+                                Watchlist
+                                <input id="newShowWatchlist" type="checkbox" role="switch" class="settings-input">
+                                <span class="settings-switch__state" aria-hidden="true"></span>
                             </label>
-                            <label class="check">
-                                <input id="newShowPriceChart" type="checkbox" class="settings-input">
-                                Show price charts
+                            <label class="settings-switch" data-find="section">
+                                Comic strip
+                                <input id="newShowComic" type="checkbox" role="switch" class="settings-input">
+                                <span class="settings-switch__state" aria-hidden="true"></span>
                             </label>
-
-                            <h3 class="settings-group">Sections</h3>
-                            <label class="check">
-                                <input id="newShowWatchlist" type="checkbox" class="settings-input">
-                                Show watchlist
-                            </label>
-                            <label class="check">
-                                <input id="newShowComic" type="checkbox" class="settings-input">
-                                Show comic strip
-                            </label>
-
-                            <h3 class="settings-group">Browser tab</h3>
-                            <label class="check">
-                                <input id="newValueInTitle" type="checkbox" class="settings-input">
-                                Show the value in the tab title
+                            <label class="settings-switch" data-find="browser tab">
+                                Value in title
+                                <input id="newValueInTitle" type="checkbox" role="switch" class="settings-input">
+                                <span class="settings-switch__state" aria-hidden="true"></span>
                             </label>
                         </div>
 

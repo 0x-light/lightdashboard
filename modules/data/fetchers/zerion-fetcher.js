@@ -10,10 +10,13 @@ export class ZerionFetcher {
 
     async fetch(wallets) {
         try {
+            let failed = 0;
             await Promise.all(wallets.map(async (wallet) => {
                 const walletRows = [];
                 try {
                     const positionsData = await this.providers.zerion.getWalletPositions(wallet, this.settings.zerionApiKey, { timeoutMs: 5000 });
+                    // The provider answers null when the request fails (a wrong key, a timeout).
+                    if (!positionsData) throw new Error('No answer from Zerion');
 
                     if (positionsData?.data) {
                         for (const item of positionsData.data) {
@@ -48,6 +51,8 @@ export class ZerionFetcher {
                     }
                 } catch (err) {
                     console.warn(`[Zerion] Failed for wallet ${wallet}:`, err);
+                    failed++;
+                    return;
                 }
 
                 // Enrich with CoinGecko (Basic implementation, can be improved)
@@ -62,6 +67,8 @@ export class ZerionFetcher {
                 this.enrichWithPythHistory(walletRows, wallet);
             }));
 
+            // Every wallet failed: most likely the key. Settings shows this as "Cannot read".
+            if (wallets.length > 0 && failed === wallets.length) throw new Error('Zerion read no wallet');
             // Mark the main 'Zerion' provider as completed
             this.renderer.appendPositions([], 'Zerion');
         } catch (e) {
