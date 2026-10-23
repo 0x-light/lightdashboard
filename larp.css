@@ -1,12 +1,17 @@
-/* Settings > Larp: the lists that edit the made-up portfolio. */
+/* Settings > Demo: the lists that edit the made-up portfolio. */
 html.pm:root #larpRoot { display: grid; gap: calc(var(--pm-lh) / 2); align-content: start; }
 html.pm:root .larp-list { display: grid; gap: 0; }
 html.pm:root .larp-row { display: flex; gap: 1ch; align-items: center; min-width: 0; }
 html.pm:root .larp-head { color: var(--pm-muted); text-transform: uppercase; }
 html.pm:root .larp-head-cell,
-html.pm:root .larp-row .larp-cell { flex: 1 1 0; min-width: 0; }
-html.pm:root .larp-row input.larp-cell { width: auto; max-width: none; }
-html.pm:root .larp-row .select.larp-cell { width: auto; min-width: 0; }
+html.pm:root .larp-row .larp-cell { flex: var(--w, 1) 1 0; min-width: 0; } /* --w: the column's share */
+html.pm:root .larp-cell { display: grid; }
+html.pm:root .larp-cell input { width: 100%; max-width: none; min-width: 0; }
+html.pm:root .larp-cell .select { width: 100%; max-width: none; min-width: 0; }
+/* The header names the columns; each cell's own label is for screen readers, and for phones. */
+html.pm:root .larp-cell-label {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
 html.pm:root .larp-remove,
 html.pm:root .larp-remove-gap { flex: 0 0 3ch; width: 3ch; }
 html.pm:root .larp-remove {
@@ -20,9 +25,27 @@ html.pm:root .larp-remove {
 }
 html.pm:root .larp-remove:hover,
 html.pm:root .larp-remove:focus-visible { color: var(--pm-ink); outline: none; }
-html.pm:root .larp-apply { display: flex; gap: 1ch; align-items: center; flex-wrap: wrap; }
-html.pm:root .larp-apply[hidden] { display: none; }
+/* A cell with a problem: a dashed frame (the palette has no red), said in words under the list. */
+html.pm:root .larp-row [aria-invalid="true"] { outline: 1px dashed var(--pm-ink); outline-offset: -1px; }
+html.pm:root .larp-row .select:has([aria-invalid="true"]) { outline: 1px dashed var(--pm-ink); outline-offset: -1px; }
+html.pm:root .larp-row .select [aria-invalid="true"] { outline: none; }
+html.pm:root .larp-problems { margin: 0; color: var(--pm-ink); }
+html.pm:root #larpRoot :is(.larp-problems, .larp-status, button)[hidden] { display: none; }
+/* Phones: each row is a card of labelled fields, three to a line, × at the top right. */
 @media (max-width: 640px) {
-  html.pm:root .larp-row { flex-wrap: wrap; }
-  html.pm:root .larp-row .larp-cell { flex: 1 1 8ch; }
+  html.pm:root .larp-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: calc(var(--pm-lh) / 4) 1ch;
+    padding: calc(var(--pm-lh) / 2) 3ch calc(var(--pm-lh) / 2) 0;
+    border-top: 1px solid var(--pm-rule);
+  }
+  html.pm:root .larp-cell-label {
+    position: static; width: auto; height: auto; overflow: visible; clip-path: none;
+    color: var(--pm-muted); text-transform: uppercase;
+  }
+  html.pm:root .larp-row.larp-head { display: none; }
+  html.pm:root .larp-cell:has([data-c="venue"], [type="date"]) { grid-column: span 2; }
+  html.pm:root .larp-remove { position: absolute; top: calc(var(--pm-lh) / 2); right: 0; }
 }

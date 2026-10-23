@@ -14,10 +14,15 @@ function labelForCategory(category) {
   }
 }
 
+// Demo positions (larp-data.js) give a gain in percent; their entry follows the live price.
+function entryOf(pos, price) {
+  return globalThis.larp?.entryOf?.(pos, price) ?? parseFloat(pos.entryPrice || 0);
+}
+
 function buildStockRow(pos, quote = null, { quoteLoading = false, quoteUnavailable = false } = {}) {
   const amount = parseFloat(pos.amount || 0);
-  const entryPrice = parseFloat(pos.entryPrice || 0);
   const currentPrice = Number.isFinite(quote?.price) ? quote.price : 0;
+  const entryPrice = entryOf(pos, currentPrice);
   const value = amount * currentPrice;
   const pnl = entryPrice > 0 && currentPrice > 0 ? (currentPrice - entryPrice) * amount : null;
   const category = pos.category || 'equity';
@@ -203,7 +208,7 @@ export class ManualFetcher {
                         ? pythPrice
                         : (Number(fallback?.price) > 0 ? Number(fallback.price) : 0);
                     const amount = parseFloat(pos.amount || 0);
-                    const entryPrice = parseFloat(pos.entryPrice || 0);
+                    const entryPrice = entryOf(pos, currentPrice);
                     const value = amount * currentPrice;
                     // Without a live price there is no P&L — never report "0 − entry" as a loss.
                     const pnl = entryPrice > 0 && currentPrice > 0 ? (currentPrice - entryPrice) * amount : null;

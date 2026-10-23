@@ -6,6 +6,13 @@ import { fetchInfo, fetchPerpDexs, getUserDexes } from './providers/hyperliquid.
 
 const cache = new Map(); // key -> { at, promise }
 
+// Demo mode answers these itself (larp-data.js): the sample address has no account.
+let override = null;
+export function overrideAccount(fakes) {
+  override = fakes;
+  cache.clear();
+}
+
 function cached(key, ttlMs, load) {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < ttlMs) return hit.promise;
@@ -37,6 +44,7 @@ async function dexesOf(address) {
  * Trigger orders (TP/SL) use their trigger price; limits use their limit price.
  */
 export function getOpenOrders(addresses) {
+  if (override?.getOpenOrders) return override.getOpenOrders(addresses);
   const key = `orders:${addresses.join(',')}`;
   return cached(key, 30 * 1000, async () => {
     const lists = await Promise.all(addresses.map(async user => {
@@ -70,6 +78,7 @@ export function getOpenOrders(addresses) {
 
 /** Margin across every dex the address trades on. */
 export function getMargin(address) {
+  if (override?.getMargin) return override.getMargin(address);
   return cached(`margin:${address}`, 30 * 1000, async () => {
     const dexes = await dexesOf(address);
     const states = await Promise.all(dexes.map(dex =>
@@ -106,6 +115,7 @@ export function getMargin(address) {
  *   { day: { values: [[t, v]], pnl: [[t, v]] }, week: …, month: …, allTime: … }
  */
 export function getPortfolio(address) {
+  if (override?.getPortfolio) return override.getPortfolio(address);
   return cached(`portfolio:${address}`, 5 * 60 * 1000, async () => {
     const data = await fetchInfo({ type: 'portfolio', user: address }, 10000);
     const out = {};
@@ -127,6 +137,7 @@ export function getPortfolio(address) {
  * days are always right; `known: false` marks days the budget didn't reach.
  */
 export function getFundingByDay(address, days = 30) {
+  if (override?.getFundingByDay) return override.getFundingByDay(address, days);
   return cached(`funding:${address}:${days}`, 60 * 60 * 1000, async () => {
     const DAY = 24 * 60 * 60 * 1000;
     const end = Date.now();
@@ -179,6 +190,7 @@ export function getFundingByDay(address, days = 30) {
 
 /** Fee tier: taker and maker rates, discounts, and 14-day volume. */
 export function getFees(address) {
+  if (override?.getFees) return override.getFees(address);
   return cached(`fees:${address}`, 24 * 60 * 60 * 1000, async () => {
     const f = await fetchInfo({ type: 'userFees', user: address }, 10000);
     if (!f) return null;
@@ -195,6 +207,7 @@ export function getFees(address) {
 
 /** Staked HYPE and rewards earned (all time and last 30 days). */
 export function getStaking(address) {
+  if (override?.getStaking) return override.getStaking(address);
   return cached(`staking:${address}`, 60 * 60 * 1000, async () => {
     const [summary, rewards] = await Promise.all([
       fetchInfo({ type: 'delegatorSummary', user: address }, 10000), // a failure here is an error, not "nothing staked"

@@ -221,6 +221,17 @@ export async function getPortfolioHistory(period, {
   const usd = rate('USD');
   const inBase = (series) => series.map(([t, v]) => [t, v * usd]);
   const groups = plan(rows);
+  const symbol = SYMBOLS[currency] || `${currency} `;
+
+  // Demo mode: a made-up line that ends at today's total (larp-data.js).
+  const made = typeof window !== 'undefined' ? window.larp?.history : null;
+  if (made) {
+    const sum = (map) => Array.from(map.values()).reduce((a, b) => a + b, 0);
+    const total = sum(groups.hl) + sum(groups.lighter) + sum(groups.zerion) + (groups.ibkr || 0)
+      + groups.priced.reduce((a, p) => a + num(p.value), 0);
+    return { values: made(cfg.ms, now, total), currency, symbol };
+  }
+
   const tasks = [];
 
   // Account series: fetched (cached), clipped to the window, ending at the live value.
@@ -257,7 +268,7 @@ export async function getPortfolioHistory(period, {
   }
 
   const parts = await Promise.all(tasks);
-  return { values: sumSeries(parts, since), currency, symbol: SYMBOLS[currency] || `${currency} ` };
+  return { values: sumSeries(parts, since), currency, symbol };
 }
 
 /** True once every provider has reported this round, so live values are the real ones. */

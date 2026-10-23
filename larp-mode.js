@@ -1,14 +1,19 @@
-// Larp mode: a made-up portfolio for screenshots. Settings > Larp turns it on and edits it;
+// Larp mode: a made-up portfolio for screenshots. Settings > Demo turns it on and edits it;
 // ?larp turns it on and ?larp=off turns it off.
 // Runs before everything else. While it is on, localStorage is a throw-away copy filled from
 // the larp config, so the real wallets, keys and positions are never read, shown or written.
-// Prices stay live. The larp config itself is kept in the real localStorage (pmLarp.v1).
+// Prices stay live. The larp config itself is kept in the real localStorage (pmLarp.v1), and
+// the last good prices in pmLarp.prices.v1, so a failed price request never drops a row.
 (function () {
   var KEY = 'pmLarp.v1';
+  var PRICES_KEY = 'pmLarp.prices.v1';
+  var SETTINGS_KEY = 'myDashboardSettings.v2';
   var real;
   try { real = window.localStorage; } catch (_) { return; }
 
   var NEW_YORK = { label: 'New York', region: 'New York, United States', lat: 40.7128, lon: -74.006, tz: 'America/New_York' };
+  // Any address and token do: the providers that read them are replaced (larp-data.js).
+  var WALLET = '0xa1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5';
 
   // gain is a percent on the position, as profit: +10 is up 10%, whether long or short.
   // Entry prices follow the live price, so P&L stays believable whatever the market does.
@@ -16,10 +21,10 @@
     name: 'Alex',
     place: NEW_YORK,
     manual: [
-      { type: 'pyth', symbol: 'BTC', name: 'Bitcoin', feedId: '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43', amount: 0.85, entryPrice: 61000, category: 'crypto', currency: 'USD' },
-      { type: 'pyth', symbol: 'ETH', name: 'Ethereum', feedId: '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace', amount: 12, entryPrice: 2900, category: 'crypto', currency: 'USD' },
-      { type: 'pyth', symbol: 'SOL', name: 'Solana', feedId: '0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d', amount: 140, entryPrice: 120, category: 'crypto', currency: 'USD' },
-      { type: 'stock', symbol: 'AAPL', name: 'Apple', amount: 80, entryPrice: 170, category: 'equity', currency: 'USD', exchange: 'NASDAQ' },
+      { type: 'pyth', symbol: 'BTC', name: 'Bitcoin', feedId: '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43', amount: 0.85, gain: 34, category: 'crypto', currency: 'USD' },
+      { type: 'pyth', symbol: 'ETH', name: 'Ethereum', feedId: '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace', amount: 12, gain: -12, category: 'crypto', currency: 'USD' },
+      { type: 'pyth', symbol: 'SOL', name: 'Solana', feedId: '0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d', amount: 140, gain: 18, category: 'crypto', currency: 'USD' },
+      { type: 'stock', symbol: 'AAPL', name: 'Apple', amount: 80, gain: 64, category: 'equity', currency: 'USD', exchange: 'NASDAQ' },
       { type: 'custom', name: 'Gold bars', symbol: 'Gold bars', amount: 1, price: 24000, value: 24000, currency: 'USD' },
       { type: 'custom', name: 'Cash', symbol: 'Cash', amount: 1, price: 18000, value: 18000, currency: 'USD' }
     ],
@@ -60,13 +65,33 @@
 
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
 
-  var state = { on: false, config: null };
+  var state = { on: false, config: null, saved: {} };
   try { state = Object.assign(state, JSON.parse(real.getItem(KEY) || 'null') || {}); } catch (_) { /* keep defaults */ }
+  if (!state.saved || typeof state.saved !== 'object') state.saved = {};
   var config = Object.assign(clone(PRESET), state.config || {});
   if (!config.place || !Number.isFinite(config.place.lat)) config.place = clone(NEW_YORK); // older saves named a city
 
+  var prices = { hl: {}, yahoo: {}, feed: {}, manual: {} };
+  try { prices = Object.assign(prices, JSON.parse(real.getItem(PRICES_KEY) || 'null') || {}); } catch (_) { /* start empty */ }
+
+  // Older saves gave manual positions an entry price. Turn it into a gain where a price is known.
+  (config.manual || []).forEach(function (row) {
+    var price = prices.manual[String(row.symbol || '').toUpperCase()];
+    if (row.type !== 'custom' && !Number.isFinite(row.gain) && row.entryPrice > 0 && price > 0) {
+      row.gain = Math.round((price / row.entryPrice - 1) * 100);
+      delete row.entryPrice;
+    }
+  });
+
   function persist() {
-    try { real.setItem(KEY, JSON.stringify({ on: state.on, config: config })); } catch (_) { /* not saved */ }
+    try { real.setItem(KEY, JSON.stringify({ on: state.on, config: config, saved: state.saved })); } catch (_) { /* not saved */ }
+  }
+  var pricesTimer = null;
+  function persistPrices() {
+    clearTimeout(pricesTimer);
+    pricesTimer = setTimeout(function () {
+      try { real.setItem(PRICES_KEY, JSON.stringify(prices)); } catch (_) { /* not saved */ }
+    }, 1000);
   }
 
   try {
@@ -81,36 +106,53 @@
     }
   } catch (_) { /* leave as saved */ }
 
+  // The settings that come from the larp config. The rest of the copy is the app's own.
+  function larpSettings(c) {
+    var place = c.place || NEW_YORK;
+    return {
+      userName: c.name || '',
+      weather: { label: place.label, region: place.region, lat: place.lat, lon: place.lon },
+      walletAddresses: WALLET,
+      ibkrFlexToken: 'larp',
+      ibkrFlexQueryId: 'larp',
+      cryptoPositions: clone(c.manual || []),
+      watchlist: String(c.watchlist || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean)
+        .map(function (symbol) { return { provider: 'yahoo', symbol: symbol, name: null, category: null }; })
+    };
+  }
+
+  var data = Object.create(null);
+
   window.larp = {
     on: state.on,
     config: config,
+    prices: prices,
+    rememberPrices: persistPrices,
     preset: function () { return clone(PRESET); },
     save: function (next) { config = next; window.larp.config = next; persist(); },
-    setOn: function (on) { state.on = !!on; persist(); }
+    setOn: function (on) { state.on = !!on; persist(); },
+    saved: function () { return state.saved; },
+    keep: function (name, c) { state.saved[name] = clone(c); persist(); },
+    forget: function (name) { delete state.saved[name]; persist(); },
+    // Writes the config into the page's copy of the settings. Returns false when larp is off.
+    apply: function () {
+      if (!state.on) return false;
+      var current = {};
+      try { current = JSON.parse(data[SETTINGS_KEY] || '{}') || {}; } catch (_) { /* start again */ }
+      data[SETTINGS_KEY] = JSON.stringify(Object.assign(current, larpSettings(config)));
+      window.larpTimeZone = (config.place && config.place.tz) || undefined;
+      return true;
+    }
   };
 
   if (!state.on) return;
 
-  var place = config.place;
-  var settings = {
+  data[SETTINGS_KEY] = JSON.stringify(Object.assign({
     theme: 'dark',
-    userName: config.name || '',
     portfolioBaseCurrency: 'USD',
     minBalanceThreshold: 0,
-    weather: { label: place.label, region: place.region, lat: place.lat, lon: place.lon },
-    // A sample wallet and broker login switch those providers on; their data is made up.
-    walletAddresses: (config.hlPerps || []).length + (config.hlSpot || []).length + (config.lighterPerps || []).length + (+config.hlStaked > 0 ? 1 : 0)
-      ? '0xa1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5' : '',
-    ibkrFlexToken: (config.stocks || []).length + (config.options || []).length + (config.ibkrCash || []).length ? 'larp' : '',
-    ibkrFlexQueryId: (config.stocks || []).length + (config.options || []).length + (config.ibkrCash || []).length ? 'larp' : '',
-    cryptoPositions: clone(config.manual || []),
-    watchlist: String(config.watchlist || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean)
-      .map(function (symbol) { return { provider: 'yahoo', symbol: symbol, name: null, category: null }; }),
     hideComic: true
-  };
-
-  var data = Object.create(null);
-  data['myDashboardSettings.v2'] = JSON.stringify(settings);
+  }, larpSettings(config)));
 
   var methods = {
     getItem: function (k) { k = String(k); return k in data ? data[k] : null; },
@@ -137,5 +179,5 @@
     Object.defineProperty(window, 'localStorage', { value: fake, configurable: true });
   } catch (_) { window.larp.on = false; return; }
   document.documentElement.dataset.larp = 'on';
-  window.larpTimeZone = place.tz || undefined; // clocks show the sample location's time, not the real one
+  window.larpTimeZone = config.place.tz || undefined; // clocks show the sample location's time, not the real one
 })();
