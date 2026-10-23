@@ -16,6 +16,7 @@ import {
   breakevens
 } from '../modules/domain/instruments.js';
 import { ManualFetcher } from '../modules/data/fetchers/manual-fetcher.js';
+import { IbkrFetcher, yahooSymbolsFor } from '../modules/data/fetchers/ibkr-fetcher.js';
 import { AlchemyHeliusFetcher } from '../modules/data/fetchers/alchemy-helius-fetcher.js';
 import { LighterFetcher } from '../modules/data/fetchers/lighter-fetcher.js';
 import { HyperliquidFetcher } from '../modules/data/fetchers/hyperliquid-fetcher.js';
@@ -245,6 +246,52 @@ function testIbkrCashDebitCountsAgainstTotal() {
     { exchange: 'Ethereum', value: -50, pnl: null }
   ]);
   assert.equal(totals.totalValue, 99200, 'IBKR debits and shorts are owed; other negative rows still add nothing');
+}
+
+function testDailyChangePercentOfHeadlineValue() {
+  // Headline value 100k − 10k debit = 90k after a 9k fall: 9k of 99k before it.
+  const breakdown = calculatePortfolioBreakdown([
+    { asset: 'VWCE', exchange: 'IBKR', value: 100000, change24h: -8.256880733944953 },
+    { asset: 'EUR', exchange: 'IBKR', value: -10000, change24h: null, category: 'cash' }
+  ]);
+  assert.equal(Math.round(breakdown.change24h), -9000);
+  assert.equal(Math.round(breakdown.change24hPercent * 100) / 100, -9.09, 'today % is of the headline value, debits included');
+}
+
+function testIbkrYahooSymbolCandidates() {
+  const etf = { assetCategory: 'ETF', symbol: 'VWCE', currency: 'EUR' };
+  assert.deepEqual(yahooSymbolsFor({ ...etf, listingExchange: 'IBIS2' }).slice(0, 2), ['VWCE.DE', 'VWCE.AS'], 'listing exchange first, then the currency\'s');
+  assert.equal(yahooSymbolsFor({ ...etf, listingExchange: '' })[0], 'VWCE.DE', 'no listing exchange still finds a ticker');
+  assert.equal(yahooSymbolsFor({ ...etf, listingExchange: 'SOMEMTF' })[0], 'VWCE.DE', 'an unknown listing exchange still finds a ticker');
+  assert.deepEqual(yahooSymbolsFor({ assetCategory: 'STK', symbol: 'BRK B', currency: 'USD', listingExchange: 'NYSE' }), ['BRK-B']);
+  assert.deepEqual(yahooSymbolsFor({ assetCategory: 'STK', symbol: 'SAP', currency: 'USD', listingExchange: 'IBIS' }), [], 'a USD line on a foreign exchange is not the plain ticker');
+  assert.deepEqual(yahooSymbolsFor({ assetCategory: 'STK', symbol: '700', currency: 'HKD', listingExchange: 'SEHK' }), ['0700.HK']);
+  assert.deepEqual(yahooSymbolsFor({ assetCategory: 'CASH', symbol: 'EUR.USD', currency: 'USD' }), []);
+}
+
+async function testIbkrTakesFirstQuoteInOwnCurrency() {
+  const statement = { generatedAt: '', accounts: [{ positions: [{
+    accountId: 'U1', conid: '1', symbol: 'VWCE', description: 'VANG FTSE AW', assetCategory: 'ETF',
+    listingExchange: 'SOMEMTF', currency: 'EUR', position: 10, multiplier: 1, markPrice: 169.28,
+    positionValue: 1692.8, costBasisMoney: 1500
+  }], cash: [] }] };
+  let asked = [];
+  let rows = [];
+  const fetcher = new IbkrFetcher({
+    ibkr: { getStatement: async () => ({ statement, stale: false }) },
+    stocks: { getQuotes: async (symbols) => {
+      asked = symbols;
+      // The first candidate is quoted in another currency; the second matches.
+      return {
+        'VWCE.DE': { price: 1.5, change24h: 50, currency: 'USD' },
+        'VWCE.AS': { price: 170, change24h: -1, currency: 'EUR', priceHistory: [] }
+      };
+    } }
+  }, { appendPositions: (r) => { rows = r; }, markProviderFailed: (_, e) => { throw e; } }, { ibkrFlexToken: 't', ibkrFlexQueryId: 'q' });
+  await fetcher.fetch();
+  assert.ok(asked.includes('VWCE.DE') && asked.includes('VWCE.AS'));
+  assert.equal(rows[0].price, 170);
+  assert.equal(rows[0].change24h, -1, 'the move comes from the quote in the holding\'s own currency');
 }
 
 function testCostBasisOnLosses() {
@@ -1341,6 +1388,9 @@ async function run() {
   await testCurrencyFormattingAndFxRates();
   testManualPositionDeletionHandlesStocksAndCategoryKeys();
   testEmptyAndMalformedInputs();
+  testDailyChangePercentOfHeadlineValue();
+  testIbkrYahooSymbolCandidates();
+  await testIbkrTakesFirstQuoteInOwnCurrency();
   await testAlchemyHeliusRowShape();
   await testLighterAlternateSchemaRows();
   await testLighterObjectMapSchemaRows();

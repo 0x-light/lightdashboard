@@ -23,17 +23,28 @@ const CATEGORY = {
   BOND: 'bond', CASH: 'fx', WAR: 'equity', CFD: 'equity', CRYPTO: 'crypto'
 };
 
-function yahooSymbolFor(pos) {
-  if (!QUOTABLE.has(pos.assetCategory)) return null;
+// Where a currency's listings usually trade, for a holding whose listing exchange is missing
+// from the statement or from YAHOO_SUFFIX. A candidate counts only when its quote is in the
+// holding's own currency (livePriceFor).
+const SUFFIXES_BY_CURRENCY = {
+  EUR: ['.DE', '.AS', '.PA', '.MI', '.MC', '.BR', '.LS', '.VI', '.HE', '.F'],
+  GBP: ['.L'], CHF: ['.SW'], CAD: ['.TO', '.V'], AUD: ['.AX'], HKD: ['.HK'], JPY: ['.T'],
+  SGD: ['.SI'], INR: ['.NS'], SEK: ['.ST'], DKK: ['.CO'], NOK: ['.OL'], PLN: ['.WA']
+};
+
+// Yahoo tickers to try for a holding, best first: its listing exchange, then its currency's.
+export function yahooSymbolsFor(pos) {
+  if (!QUOTABLE.has(pos.assetCategory)) return [];
   const exchange = pos.listingExchange;
   const symbol = pos.symbol.trim().replace(/\s+/g, '-'); // "BRK B" -> "BRK-B"
-  if (!/^[A-Za-z0-9.\-]{1,12}$/.test(symbol)) return null;
-  if (!exchange || US_EXCHANGES.has(exchange)) return pos.currency === 'USD' ? symbol.toUpperCase() : null;
-  const suffix = YAHOO_SUFFIX[exchange];
-  if (!suffix) return null;
+  if (!/^[A-Za-z0-9.\-]{1,12}$/.test(symbol)) return [];
+  if (pos.currency === 'USD') return !exchange || US_EXCHANGES.has(exchange) ? [symbol.toUpperCase()] : [];
+  const suffixes = [YAHOO_SUFFIX[exchange], ...(SUFFIXES_BY_CURRENCY[pos.currency] || [])].filter(Boolean);
   // Hong Kong tickers are numeric and Yahoo pads them to four digits: "700" -> "0700.HK".
-  const base = suffix === '.HK' && /^\d+$/.test(symbol) ? symbol.padStart(4, '0') : symbol.toUpperCase();
-  return `${base}${suffix}`;
+  return [...new Set(suffixes)].map(suffix => {
+    const base = suffix === '.HK' && /^\d+$/.test(symbol) ? symbol.padStart(4, '0') : symbol.toUpperCase();
+    return `${base}${suffix}`;
+  });
 }
 
 // A Yahoo price in the position's own currency, or null when the two can't be matched
@@ -175,17 +186,18 @@ export class IbkrFetcher {
             const cash = statement.accounts.flatMap(a => a.cash);
             const cashRows = cash.map(buildCashRow);
 
-            const symbols = new Map(); // position -> Yahoo symbol
+            const symbols = new Map(); // position -> Yahoo symbols to try, best first
             const underlyings = new Map(); // option position -> Yahoo symbol of its underlying
             for (const pos of positions) {
-                const yahoo = yahooSymbolFor(pos) || optionSymbolFor(pos);
-                if (yahoo) symbols.set(pos, yahoo);
+                const option = optionSymbolFor(pos);
+                const candidates = option ? [option] : yahooSymbolsFor(pos);
+                if (candidates.length > 0) symbols.set(pos, candidates);
                 const underlying = underlyingSymbolFor(pos);
                 if (underlying) underlyings.set(pos, underlying);
             }
 
             let quotes = {};
-            const wanted = [...new Set([...symbols.values(), ...underlyings.values()])];
+            const wanted = [...new Set([...[...symbols.values()].flat(), ...underlyings.values()])];
             if (wanted.length > 0 && this.providers.stocks?.getQuotes) {
                 try {
                     quotes = await this.providers.stocks.getQuotes(wanted, { timeoutMs: 5000 }) || {};
@@ -194,7 +206,9 @@ export class IbkrFetcher {
                 }
             }
 
-            const rows = positions.map(pos => buildPositionRow(pos, quotes[symbols.get(pos)], quotes[underlyings.get(pos)]));
+            // The first candidate with a price in the holding's own currency.
+            const quoteFor = pos => (symbols.get(pos) || []).map(sym => quotes[sym]).find(q => livePriceFor(pos, q) !== null);
+            const rows = positions.map(pos => buildPositionRow(pos, quoteFor(pos), quotes[underlyings.get(pos)]));
             // When IBKR made the statement, so the Account window can say how old the holdings are.
             const asOf = flexTime(statement.generatedAt);
             const all = [...rows, ...cashRows];

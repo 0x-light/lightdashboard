@@ -274,7 +274,8 @@ function venueOf(p) {
  * - shareByRow: { 'ASSET_EXCHANGE': share } for each row, on the same split, so a table row
  *   can show its own part of the total.
  * - change24h / change24hPercent: price-driven move over the last 24h. Perps contribute their
- *   signed notional exposure (shorts gain when price falls); spot contributes its value.
+ *   signed notional exposure (shorts gain when price falls); spot contributes its value. The
+ *   percent is of the headline value before the move, IBKR debits included.
  *   null when no position reports a 24h change.
  */
 export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
@@ -291,6 +292,8 @@ export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
   const slices = new Map();
   const rowValues = new Map();
   let totalValue = 0;
+  // IBKR debits and shorts: no slice, but they lower the headline value the move is measured against.
+  let owed = 0;
   let change = 0;
   let hasChange = false;
 
@@ -329,7 +332,9 @@ export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
       (p.isLeveraged || p.exchange === 'HL Perps' ? v.perps : v.spot).push(p);
       continue;
     }
-    addSlice(sliceLabel(p), finiteOrZero(Number(p.value)), p);
+    const value = finiteOrZero(Number(p.value));
+    if (value < 0 && p.exchange === 'IBKR') owed += value;
+    addSlice(sliceLabel(p), value, p);
   }
 
   for (const { equity, spot, perps } of venues.values()) {
@@ -363,7 +368,8 @@ export function calculatePortfolioBreakdown(positions, { maxSlices = 6 } = {}) {
   const shareByRow = {};
   if (totalValue > 0) rowValues.forEach((value, key) => { shareByRow[key] = value / totalValue; });
 
-  const previousValue = totalValue - change;
+  // The headline value (calculatePortfolioTotals) as it was before the move.
+  const previousValue = totalValue + owed - change;
   return {
     allocation,
     shareByRow,
