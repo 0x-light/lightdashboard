@@ -419,10 +419,11 @@ export class IncrementalPortfolioRenderer {
     const updatedAt = new Date();
     const time = updatedAt.toLocaleTimeString(undefined, {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      timeZone: window.larpTimeZone
     });
     el.textContent = `Updated ${time}`;
-    el.title = updatedAt.toLocaleString();
+    el.title = updatedAt.toLocaleString(undefined, { timeZone: window.larpTimeZone });
   }
 
   beginRefresh(expectedProviders = this.expectedProviders) {

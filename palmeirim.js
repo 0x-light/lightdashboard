@@ -1,5 +1,5 @@
 // palmeirim.com skin: reshapes the dashboard chrome into that site's vocabulary
-// (numbered page chips, a framed portfolio card with time and weather in its
+// (an account chip, a framed portfolio card with time and weather in its
 // border, a theme chip in the footer). Only moves and adds nodes; every
 // element app.js looks up by id stays where it can find it.
 (function () {
@@ -15,86 +15,7 @@
     return node;
   }
 
-  function chip(key, label) {
-    return '<kbd>' + key + '</kbd><span class="chip__label">' + label + '</span>';
-  }
-
-  // ── Top bar: one chip per section ──
-
-  var SECTIONS = [
-    { id: "pmTop", label: "Portfolio" },
-    { id: "positionsSection", label: "Positions" },
-    { id: "watchlistSection", label: "Watchlist" },
-    { id: "comicSection", label: "Comics" }
-  ];
-
   var header = $(".app-header");
-  var nav = el("nav", { class: "pm-nav", id: "pmNav", "aria-label": "Sections" });
-  header.insertBefore(nav, header.firstChild);
-
-  // Phones: one chip naming the section in view ("Positions") opens the list of
-  // sections, framed like the menu. On wider screens the chips sit in the bar.
-  var sectionBtn = el("button", { type: "button", class: "pm-section-btn chip", "aria-expanded": "false", "aria-controls": "pmNav" },
-    '<span class="chip__label"><span class="js-pm-current">Portfolio</span></span>');
-  header.insertBefore(sectionBtn, nav);
-
-  function visibleSections() {
-    return SECTIONS.filter(function (s) {
-      var node = document.getElementById(s.id);
-      return node && node.offsetParent !== null;
-    });
-  }
-
-  // Number only the sections that are showing, so the keys stay 1, 2, 3…
-  function renderNav() {
-    var shown = visibleSections();
-    var sig = shown.map(function (s) { return s.id; }).join();
-    if (nav.dataset.sig === sig) return;
-    nav.dataset.sig = sig;
-    nav.innerHTML = shown.map(function (s, i) {
-      return '<a class="chip" href="#' + s.id + '">' + chip(i + 1, s.label) + '</a>';
-    }).join("");
-    markCurrent();
-  }
-
-  function markCurrent() {
-    var links = $$("a", nav);
-    var line = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--pm-lh")) || 18;
-    var current = links[0];
-    links.forEach(function (a) {
-      var target = document.getElementById(a.hash.slice(1));
-      if (target && target.getBoundingClientRect().top <= line * 4) current = a;
-    });
-    // At the very bottom the last short section may never reach the top.
-    var scroller = document.scrollingElement;
-    if (scroller.scrollTop > 0 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) current = links[links.length - 1];
-    // A section you just jumped to stays current until you scroll away from it, even
-    // when the page is too short for it to reach the top.
-    if (lastJump && Math.abs(scroller.scrollTop - lastJump.top) < 4 && links[lastJump.index]) current = links[lastJump.index];
-    links.forEach(function (a) {
-      if (a === current) a.setAttribute("aria-current", "true");
-      else a.removeAttribute("aria-current");
-    });
-    var name = current ? $(".chip__label", current).textContent : "";
-    var label = $(".js-pm-current", sectionBtn);
-    if (label.textContent !== name) label.textContent = name;
-    sectionBtn.setAttribute("aria-label", "Section: " + name + ". Go to another section");
-  }
-
-  document.addEventListener("scroll", markCurrent, { capture: true, passive: true });
-
-  var lastJump = null;
-
-  function goTo(index) {
-    var link = $$("a", nav)[index];
-    if (!link) return;
-    var target = document.getElementById(link.hash.slice(1));
-    if (index === 0) window.scrollTo({ top: 0 });
-    else if (target) target.scrollIntoView();
-    lastJump = { index: index, top: document.scrollingElement.scrollTop };
-    markCurrent();
-    history.replaceState(null, "", index === 0 ? location.pathname + location.search : link.hash);
-  }
 
   // ── Tools fold into one MENU chip that drops down a framed list ──
   // It is the header's own tool row, restyled, so every button keeps the listeners
@@ -103,24 +24,16 @@
   var tools = $(".header-actions", header);
   tools.id = "pmTools";
   tools.setAttribute("aria-label", "Menu");
-  var menuBtn = el("button", { type: "button", class: "pm-menu-btn chip", "aria-expanded": "false", "aria-controls": "pmTools" },
-    '<span class="chip__label">Menu</span>');
+  var menuBtn = el("button", { type: "button", class: "pm-menu-btn chip", "aria-expanded": "false", "aria-controls": "pmTools", "aria-keyshortcuts": "M" },
+    '<kbd aria-hidden="true">M</kbd><span class="chip__label">Menu</span>');
   header.insertBefore(menuBtn, tools);
 
   function setMenu(open) {
     header.classList.toggle("pm-menu-open", open);
     menuBtn.setAttribute("aria-expanded", String(open));
-    if (open) setSections(false);
-  }
-
-  function setSections(open) {
-    header.classList.toggle("pm-sections-open", open);
-    sectionBtn.setAttribute("aria-expanded", String(open));
-    if (open) setMenu(false);
   }
 
   menuBtn.addEventListener("click", function () { setMenu(!header.classList.contains("pm-menu-open")); });
-  sectionBtn.addEventListener("click", function () { setSections(!header.classList.contains("pm-sections-open")); });
 
   // Close after the tool's own click handler has run.
   tools.addEventListener("click", function (e) {
@@ -129,25 +42,44 @@
 
   document.addEventListener("click", function (e) {
     if (header.classList.contains("pm-menu-open") && !tools.contains(e.target) && !menuBtn.contains(e.target)) setMenu(false);
-    if (header.classList.contains("pm-sections-open") && !nav.contains(e.target) && !sectionBtn.contains(e.target)) setSections(false);
   });
 
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
     if (header.classList.contains("pm-menu-open")) { setMenu(false); menuBtn.focus(); }
-    if (header.classList.contains("pm-sections-open")) { setSections(false); sectionBtn.focus(); }
   });
 
-  // Crossing the phone breakpoint closes both, so they never jump between layouts.
-  window.matchMedia("(max-width: 720px)").addEventListener("change", function () { setMenu(false); setSections(false); });
+  // In the open list ↑ ↓ move between tools, Home and End go to the ends. Tabbing out closes it.
+  function menuItems() {
+    // In the order they're shown: CSS moves Settings and Theme to the top
+    return $$("button", tools).filter(function (b) { return !b.disabled && b.getClientRects().length; })
+      .sort(function (a, b) { return a.getBoundingClientRect().top - b.getBoundingClientRect().top; });
+  }
 
-  nav.addEventListener("click", function (e) {
-    var link = e.target.closest("a");
-    if (!link) return;
-    e.preventDefault();
-    goTo($$("a", nav).indexOf(link));
-    setSections(false);
+  function openMenuAt(index) {
+    setMenu(true);
+    var items = menuItems();
+    if (items.length) items[(index + items.length) % items.length].focus();
+  }
+
+  [menuBtn, tools].forEach(function (node) {
+    node.addEventListener("keydown", function (e) {
+      var items = menuItems();
+      var i = items.indexOf(document.activeElement);
+      var open = header.classList.contains("pm-menu-open");
+      if (e.key === "ArrowDown" && (open || e.target === menuBtn)) { e.preventDefault(); openMenuAt(i + 1); }
+      else if (e.key === "ArrowUp" && (open || e.target === menuBtn)) { e.preventDefault(); openMenuAt(i < 0 ? -1 : i - 1); }
+      else if (e.key === "Home" && open && i >= 0) { e.preventDefault(); openMenuAt(0); }
+      else if (e.key === "End" && open && i >= 0) { e.preventDefault(); openMenuAt(-1); }
+    });
   });
+
+  tools.addEventListener("focusout", function (e) {
+    if (e.relatedTarget && !tools.contains(e.relatedTarget) && e.relatedTarget !== menuBtn) setMenu(false);
+  });
+
+  // Crossing the phone breakpoint closes the menu, so it never jumps between layouts.
+  window.matchMedia("(max-width: 720px)").addEventListener("change", function () { setMenu(false); });
 
   // ── Intro: a framed card (title and time/place cut into the top border) holding
   // the portfolio sentence and the allocation ──
@@ -281,7 +213,7 @@
     }
     var when = new Date(near.t);
     var label = valuePeriod === "day"
-      ? when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+      ? when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZone: window.larpTimeZone })
       : when.toLocaleDateString(undefined, { month: "short", day: "numeric", year: valuePeriod === "allTime" ? "numeric" : undefined });
     readout.textContent = label + " · " + money(near.v);
     readout.hidden = false;
@@ -315,6 +247,25 @@
   valueChart.addEventListener("pointercancel", endScrub);
   valueChart.addEventListener("pointerleave", function (e) { if (e.pointerType === "mouse") endScrub(); });
 
+  // By keyboard: focus the chart, ← → step along the line, Home and End jump to its ends.
+  // Starts at the latest point.
+  var valueIndex = -1;
+  valueChart.tabIndex = 0;
+  valueChart.addEventListener("keydown", function (e) {
+    if (!valueSeries.length || e.metaKey || e.ctrlKey || e.altKey) return;
+    var last = valueSeries.length - 1;
+    var from = valueIndex < 0 || valueIndex > last ? last : valueIndex;
+    var step = Math.max(1, Math.round(valueSeries.length / 40));
+    var next = { ArrowLeft: from - step, ArrowRight: from + step, Home: 0, End: last }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    e.stopPropagation(); // not the comic's ← →
+    valueIndex = valueIndex < 0 && (e.key === "ArrowLeft" || e.key === "ArrowRight") ? last : Math.max(0, Math.min(last, next));
+    var p = valueSeries[valueIndex];
+    scrub({ clientX: valueChart.getBoundingClientRect().left + p.x, pointerType: "mouse" });
+  });
+  valueChart.addEventListener("blur", function () { valueIndex = -1; endScrub(); });
+
   var valueResize = null;
   window.addEventListener("resize", function () {
     clearTimeout(valueResize);
@@ -325,11 +276,9 @@
   setInterval(loadValue, 60 * 1000);
 
   function tick() {
-    var now = new Date();
-    var hh = String(now.getHours()).padStart(2, "0");
-    var mm = String(now.getMinutes()).padStart(2, "0");
+    var text = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: window.larpTimeZone });
     var time = $(".js-pm-time");
-    if (time.textContent !== hh + ":" + mm) time.textContent = hh + ":" + mm;
+    if (time.textContent !== text) time.textContent = text;
   }
   tick();
   setInterval(tick, 15000);
@@ -464,22 +413,35 @@
   // ── Shortcuts: ? (or the menu's last item) lists every key in a window ──
 
   var SHORTCUTS = [
-    ["1–4", "Go to a section"],
     ["/", "Search positions"],
     ["↑ ↓", "Move between rows"],
     ["↵", "Open or close a row"],
     ["E", "Edit the open position"],
     ["H", "Hide or show the open position"],
     ["⌫", "Delete or remove the open item"],
-    ["U", "Undo the last change"],
-    ["H", "Hide or show amounts (no row open)"],
-    ["R", "Refresh"],
-    ["S", "Settings"],
-    ["A", "Account: margin, funding, fees"],
-    ["T", "Next theme (Shift+T: previous)"],
-    ["W", "Add to the watchlist"],
-    ["← →", "Previous or next comic"],
     ["Esc", "Close"],
+    ["U", "Undo the last change"],
+    ["1–4", "Go to Portfolio, Positions, Watchlist, Comics"],
+    ["H", "Hide or show amounts"],
+    ["R", "Refresh"],
+    ["P", "Add a position"],
+    ["W", "Add to the watchlist"],
+    ["A", "Account: margin, funding, fees"],
+    ["S", "Settings"],
+    ["M", "Menu"],
+    ["T", "Next theme (Shift+T: previous)"],
+    ["N", "Snow on or off"],
+    ["Y", "Rain on or off"],
+    ["K", "Stickers"],
+    ["G", "Donate"],
+    ["← →", "Previous or next comic"],
+    ["C", "Next comic strip (Shift+C: previous)"],
+    ["X", "Random comic"],
+    ["D", "Download the comic"],
+    ["← →", "In a chart: move along the line"],
+    ["← → ↑ ↓", "On a sticker: move it (Shift: further)"],
+    ["+ −", "On a sticker: make it bigger or smaller"],
+    ["[ ]", "On a sticker: turn it"],
     ["?", "Show these keys"]
   ];
 
@@ -487,10 +449,10 @@
   tools.appendChild(keysItem);
 
   // Account: Hyperliquid margin, funding, fees and staking, in a window of its own.
-  // A chip of its own in the bar, beside MENU, so it's one click away.
-  var accountItem = el("button", { type: "button", id: "pmAccountBtn", class: "pm-account-btn chip", "aria-haspopup": "dialog" },
-    '<kbd>A</kbd><span class="chip__label">Account</span>');
-  header.insertBefore(accountItem, menuBtn);
+  // A chip of its own at the left of the bar, so it's one click away.
+  var accountItem = el("button", { type: "button", id: "pmAccountBtn", class: "pm-account-btn chip", "aria-haspopup": "dialog", "aria-keyshortcuts": "A" },
+    '<kbd aria-hidden="true">A</kbd><span class="chip__label">Account</span>');
+  header.insertBefore(accountItem, header.firstChild);
   function openAccount() {
     import("./modules/ui/account-window.js").then(function (m) { m.openAccountWindow(); });
   }
@@ -546,8 +508,8 @@
   syncColorScheme();
   if (themeSelect) themeSelect.addEventListener("change", syncThemeName);
 
-  // ── Keys: 1–4 sections, T / Shift+T step through themes, H amounts ──
-  // R, S, W and ←/→ are already handled by the app's own shortcuts.
+  // ── Keys: ? lists them, A account, M menu, T / Shift+T step through themes, H amounts ──
+  // The rest are the app's own shortcuts (modules/features/keyboard-shortcuts.js).
 
   function typing(t) {
     var tag = t && t.tagName ? t.tagName.toLowerCase() : "";
@@ -575,9 +537,13 @@
 
   document.addEventListener("keydown", function (e) {
     if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || modalOpen()) return;
-    if (/^[1-9]$/.test(e.key)) { e.preventDefault(); goTo(Number(e.key) - 1); return; }
     if (e.key === "?") { e.preventDefault(); openKeys(); return; }
     if (e.key === "a" || e.key === "A") { e.preventDefault(); openAccount(); return; }
+    if (e.key === "m" || e.key === "M") {
+      e.preventDefault();
+      if (header.classList.contains("pm-menu-open")) { setMenu(false); menuBtn.focus(); } else openMenuAt(0);
+      return;
+    }
     if (e.key === "t" || e.key === "T") { e.preventDefault(); cycleTheme(e.shiftKey ? -1 : 1); return; }
     if (e.key === "h" || e.key === "H") {
       var btn = $("#newToggleAmountsBtn");
@@ -586,7 +552,7 @@
   });
 
   // The app renders asynchronously and hides sections from settings; follow along.
-  new MutationObserver(function () { syncWeather(); syncSparks(); renderNav(); }).observe($("#main"), { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "hidden", "class"] });
+  new MutationObserver(function () { syncWeather(); syncSparks(); }).observe($("#main"), { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "hidden", "class"] });
 
   // app.js sets the theme select's value after this runs.
   // ── 24h sparklines: the same dim dither as the allocation tracks, under the line ──
@@ -632,7 +598,6 @@
     });
   });
 
-  window.addEventListener("load", function () { syncThemeName(); syncWeather(); syncSparks(); renderNav(); });
+  window.addEventListener("load", function () { syncThemeName(); syncWeather(); syncSparks(); });
   syncThemeName();
-  renderNav();
 })();

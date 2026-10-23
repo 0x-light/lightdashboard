@@ -1,0 +1,28 @@
+/* Settings > Larp: the lists that edit the made-up portfolio. */
+html.pm:root #larpRoot { display: grid; gap: calc(var(--pm-lh) / 2); align-content: start; }
+html.pm:root .larp-list { display: grid; gap: 0; }
+html.pm:root .larp-row { display: flex; gap: 1ch; align-items: center; min-width: 0; }
+html.pm:root .larp-head { color: var(--pm-muted); text-transform: uppercase; }
+html.pm:root .larp-head-cell,
+html.pm:root .larp-row .larp-cell { flex: 1 1 0; min-width: 0; }
+html.pm:root .larp-row input.larp-cell { width: auto; max-width: none; }
+html.pm:root .larp-row .select.larp-cell { width: auto; min-width: 0; }
+html.pm:root .larp-remove,
+html.pm:root .larp-remove-gap { flex: 0 0 3ch; width: 3ch; }
+html.pm:root .larp-remove {
+  height: var(--pm-lh);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pm-muted);
+  font: inherit;
+  cursor: pointer;
+}
+html.pm:root .larp-remove:hover,
+html.pm:root .larp-remove:focus-visible { color: var(--pm-ink); outline: none; }
+html.pm:root .larp-apply { display: flex; gap: 1ch; align-items: center; flex-wrap: wrap; }
+html.pm:root .larp-apply[hidden] { display: none; }
+@media (max-width: 640px) {
+  html.pm:root .larp-row { flex-wrap: wrap; }
+  html.pm:root .larp-row .larp-cell { flex: 1 1 8ch; }
+}

@@ -11,7 +11,9 @@ import {
 } from './modules/features/manual-positions.js';
 import { closeMobileMenuWithScroll } from './modules/ui/mobile-menu.js';
 import { setupSettingsDialog, applyAppearance } from './modules/ui/settings-dialog.js';
+import { setupLarpSettings } from './modules/ui/larp-settings.js';
 import { setupDialogFocus } from './modules/ui/dialog-focus.js';
+import { setupRadioGroups } from './modules/ui/radio-groups.js';
 import { setupTableScrollCues } from './modules/ui/table-scroll-cue.js';
 import { showUndo } from './modules/ui/undo.js';
 import { getRandomSpinner } from './modules/ui/unicode-animations.js';
@@ -335,7 +337,7 @@ async function _doRenderPortfolioIncremental() {
           else if (phase < 0.9375) { moonIcon = '☾'; moonName = 'waning crescent'; }
           else { moonIcon = '○'; moonName = 'new moon'; }
 
-          const hour = now.getHours();
+          const hour = Number(now.toLocaleString('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: window.larpTimeZone }));
           const showMoon = hour >= 18 || hour < 6;
           // Avoid "new moon moon" / "full moon moon": moonName already contains "moon" for
           // the cardinal phases, so only append the word for the crescent/gibbous/quarter ones.
@@ -387,6 +389,11 @@ async function _doRenderPortfolioIncremental() {
       import('./modules/data/fetchers/manual-fetcher.js'),
       import('./modules/data/fetchers/ibkr-fetcher.js')
     ]);
+
+    // Demo mode (?demo): sample accounts in place of the real exchange and broker data
+    if (document.documentElement.dataset.larp === 'on') {
+      (await import('./modules/larp/larp-data.js')).installLarp(providers);
+    }
 
     const renderer = new IncrementalPortfolioRenderer({
       providers,
@@ -650,7 +657,7 @@ function setupPullToRefresh() {
 function updateGreeting() {
   const greetingEl = document.getElementById('newGreeting');
   if (greetingEl) {
-    const hour = new Date().getHours();
+    const hour = Number(new Date().toLocaleString('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: window.larpTimeZone }));
     let timeOfDay = 'Good morning';
     if (hour >= 12 && hour < 18) timeOfDay = 'Good afternoon';
     else if (hour >= 18) timeOfDay = 'Good evening';
@@ -668,6 +675,8 @@ function setupControls() {
 
   // Pop-ups take focus when they open and hand it back when they close
   setupDialogFocus();
+  // Chart period switches: arrow keys choose, one Tab stop per group
+  setupRadioGroups();
   setupTableScrollCues();
 
   // Toggle groups (comic strip, position type) mark the current choice with `.active`; mirror it
@@ -1105,6 +1114,7 @@ function setupControls() {
 
   // Settings dialog (modules/ui/settings-dialog.js). Changes save as you go; closing refetches
   // positions only when wallets, keys or number formatting changed.
+  setupLarpSettings();
   setupSettingsDialog({
     getSettings,
     invalidateSettingsCache,
@@ -1695,6 +1705,31 @@ function setupControls() {
     watchlistSearchInput.addEventListener('input', (e) => {
       const query = e.target.value.trim();
       performSearch(query);
+    });
+
+    // ↵ in the box adds the first match. ↓ moves into the results and ↑ ↓ between their Add
+    // buttons; ↑ from the first goes back to the box.
+    const resultButtons = () => Array.from(watchlistSearchResults?.querySelectorAll('button:not([disabled])') || []);
+    watchlistSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') {
+        const first = resultButtons()[0];
+        if (first) {
+          e.preventDefault();
+          first.focus();
+        }
+      } else if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        resultButtons().find(b => b.getAttribute('aria-disabled') !== 'true')?.click();
+      }
+    });
+    watchlistSearchResults?.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      const buttons = resultButtons();
+      const i = buttons.indexOf(e.target);
+      if (i < 0) return;
+      e.preventDefault();
+      const next = buttons[i + (e.key === 'ArrowDown' ? 1 : -1)];
+      (next || (e.key === 'ArrowUp' ? watchlistSearchInput : null))?.focus();
     });
   }
 
