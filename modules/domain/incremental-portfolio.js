@@ -12,6 +12,10 @@ import {
 } from '../utils/currency.js';
 import { calculatePortfolioBreakdown, calculatePortfolioTotals } from './portfolio.js';
 
+function escapeHtml(text) {
+  return String(text ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
 // Last finished portfolio, kept so the next page load can paint real numbers immediately instead
 // of "Loading portfolio..." while every provider round-trips. Rows from it are marked `_stale` and
 // replaced source by source as fresh data arrives.
@@ -70,6 +74,7 @@ export class IncrementalPortfolioRenderer {
     this.allPositions = initialPositions || window.cachedPositions || [];
     this.providerStatus = new Map(); // track which providers finished
     this.providerErrors = new Map();
+    this.providerDoneAt = new Map(); // when each source last loaded; kept across refreshes
     this.renderDebounce = null;
     // If we have initial positions, we're not really "loading" - just refreshing in background
     this.isLoading = this.allPositions.length === 0;
@@ -332,6 +337,7 @@ export class IncrementalPortfolioRenderer {
       if (markCompleted) {
         this.providerStatus.set(source, 'completed');
         this.providerErrors.delete(source);
+        this.providerDoneAt.set(source, Date.now());
         this.checkIfAllProvidersFinished();
       }
       this.renderProviderStatus();
@@ -377,6 +383,7 @@ export class IncrementalPortfolioRenderer {
     this.providerErrors.delete(source);
     if (markCompleted) {
       this.providerStatus.set(source, 'completed');
+      this.providerDoneAt.set(source, Date.now());
 
       // Check if all providers finished
       this.checkIfAllProvidersFinished();
@@ -562,44 +569,50 @@ export class IncrementalPortfolioRenderer {
     return (Array.isArray(positions) ? positions : []).map(position => this.convertPositionToBase(position));
   }
 
+  // The footer: each source on its own line, as SRCL's table with a block loader. A spinner
+  // while a source loads for the first time; a tick and the time it last loaded; an inverted
+  // × with the reason and a Retry chip when it failed. A source that loaded before keeps its
+  // tick during the next refresh, so the footer doesn't flicker every 30 seconds.
   renderProviderStatus() {
     const el = this.containers?.providerStatusEl || document.getElementById('newProviderStatus');
     if (!el) return;
 
-    const expected = Array.from(new Set(this.expectedProviders || []));
-    const failed = [];
-    const pending = [];
-    for (const provider of expected) {
+    const names = Array.from(new Set([...(this.expectedProviders || []), ...this.providerStatus.keys()]));
+    // One wallet's source is "Hyperliquid_0x…": name it as "Hyperliquid 0xfc66…ca06"
+    const label = (provider) => escapeHtml(provider.replace(/_(\w{6})\w+(\w{4})$/, ' $1…$2'));
+    const time = (t) => new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: window.larpTimeZone });
+    let failed = 0;
+    let pending = 0;
+    const lines = names.map(provider => {
       const status = this.providerStatus.get(provider);
-      if (status === 'failed') failed.push(provider);
-      else if (!status && this.isLoading) pending.push(provider);
-    }
-    for (const [provider, status] of this.providerStatus.entries()) {
-      if (status === 'failed' && !failed.includes(provider)) failed.push(provider);
-    }
-
-    const parts = [];
-    if (pending.length > 0) parts.push(`Loading: ${pending.join(', ')}`);
-    if (failed.length > 0) {
-      const failedText = failed.map(provider => {
+      const doneAt = this.providerDoneAt.get(provider);
+      if (status === 'failed') {
+        failed++;
         const message = this.providerErrors.get(provider);
-        // One wallet's source is "Hyperliquid_0x…": name it as "Hyperliquid 0xfc66…ca06"
-        const name = provider.replace(/_(\w{6})\w+(\w{4})$/, ' $1…$2');
-        return message ? `${name} (${message})` : name;
-      }).join(', ');
-      parts.push(`Failed: ${failedText}`);
-    }
+        return `<span class="provider-line is-failed"><span class="provider-line__mark">×</span><span>${label(provider)}</span>` +
+          (message ? `<span class="provider-line__note">${escapeHtml(message)}</span>` : '') +
+          '<button type="button" class="chip provider-line__retry"><kbd aria-hidden="true">R</kbd><span class="chip__label">Retry</span></button></span>';
+      }
+      if (status === 'completed' || doneAt) {
+        return `<span class="provider-line"><span class="provider-line__mark">✓</span><span>${label(provider)}</span>` +
+          (doneAt ? `<span class="provider-line__note">${time(doneAt)}</span>` : '') + '</span>';
+      }
+      if (!this.isLoading) return '';
+      pending++;
+      return `<span class="provider-line"><span class="loading-terminal">${label(provider)}</span></span>`;
+    }).join('');
 
-    if (parts.length === 0) {
+    if (!lines) {
       el.hidden = true;
-      el.textContent = '';
+      el.innerHTML = '';
       delete el.dataset.state;
       return;
     }
 
     el.hidden = false;
-    el.dataset.state = failed.length > 0 ? 'failed' : 'loading';
-    el.textContent = parts.join(' · ');
+    el.dataset.state = failed ? 'failed' : pending ? 'loading' : 'done';
+    // Same lines: leave them, so the spinners keep turning instead of starting over.
+    if (el.innerHTML !== lines) el.innerHTML = lines;
   }
 
   /**

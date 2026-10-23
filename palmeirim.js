@@ -698,6 +698,13 @@
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeMaker(false); }
   });
 
+  // The footer's Retry, on a source that failed, refreshes everything, as R does.
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest || !e.target.closest(".provider-line__retry")) return;
+    var refresh = $("#newRefreshBtn");
+    if (refresh) refresh.click();
+  });
+
   // ── Settings drop-downs, as SRCL's select: a ▼ cell, then the value; open, the options
   // list in place under the field and the window grows. With a mouse only: touch keeps the
   // phone's own picker. The <select> stays the source of truth, so the app still reads it

@@ -355,8 +355,31 @@ html.pm:root .position-group__label,
 html.pm:root .position-group__count { color: var(--pm-muted); }
 html.pm:root .position-group__count { margin-left: 1ch; }
 html.pm:root .asset-terms { margin-left: 1ch; color: var(--pm-muted); }
-/* A leg under its underlying's row sits in from the edge. */
-html.pm:root .asset-leg { padding-left: 2ch; }
+/* Legs under their underlying's row hang off it as a tree, as SRCL's tree view:
+   ├─ for each leg, └─ for the last, in the rule's muted ink. */
+html.pm:root .asset-leg__branch { margin-right: 1ch; color: var(--pm-muted); }
+
+/* A group head folds its rows, as SRCL's accordion: ▾ open, ▸ folded. The kind is the
+   control; the totals stay put. */
+html.pm:root .position-group__fold {
+  display: inline-flex;
+  min-height: 0;
+  margin: 0 0 0 -1ch;
+  padding: 0 1ch;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+html.pm:root .position-group__mark { width: 2ch; color: var(--pm-muted); }
+html.pm:root .position-group__fold:focus-visible,
+html.pm:root .position-group__fold:focus-visible * { background: var(--pm-ink); color: var(--bg) !important; }
+@media (hover: hover) {
+  html.pm:root .position-group__fold:hover * { color: var(--pm-ink); }
+}
 
 /* A position hidden in edit mode reads as off: muted (the app's rule) and struck. */
 html.pm:root .position-row-hidden .asset-cell { text-decoration: line-through; text-decoration-color: var(--pm-muted); }
@@ -640,7 +663,60 @@ html.pm:root .pm-spark-dot { fill: var(--pm-rule); }
 html.pm:root .data-table .loading,
 html.pm:root .watchlist-empty-row td { color: var(--pm-muted); text-align: left; }
 
+/* Loading: a one-character braille spinner ("breathe") before the label, as SRCL's block loader.
+   It takes 1ch plus a space, so nothing moves when the content arrives. */
 html.pm:root .loading-terminal { color: var(--pm-muted); }
+html.pm:root .loading-terminal::after { content: none; }
+html.pm:root .loading-terminal::before {
+  content: "⠀";
+  display: inline-block;
+  width: 1ch;
+  margin-right: 1ch;
+  color: var(--pm-ink);
+  animation: pm-spin 1.6s steps(1) infinite;
+}
+
+/* A loader that is the only thing in its panel sits in the middle of it, as SRCL's block
+   loader does. In a line of text (the footer's sources) it stays inline. */
+html.pm:root :is(#newSummary, #newComic, .data-table td.loading, .wlc__empty, .acct__muted, .ladder__note):has(> .loading-terminal:only-child) { text-align: center; }
+html.pm:root .wlc__chart:has(> .wlc__empty > .loading-terminal:only-child) { display: grid; place-items: center; }
+/* The sentence keeps a reading width; while it loads, the card's middle is the box's middle. */
+html.pm:root #newSummary:has(> .loading-terminal:only-child) { max-width: none; }
+
+@keyframes pm-spin {
+  0%     { content: "⠀"; }
+  6.25%  { content: "⠂"; }
+  12.5%  { content: "⠌"; }
+  18.75% { content: "⡑"; }
+  25%    { content: "⢕"; }
+  31.25% { content: "⢝"; }
+  37.5%  { content: "⣫"; }
+  43.75% { content: "⣟"; }
+  50%    { content: "⣿"; }
+  56.25% { content: "⣟"; }
+  62.5%  { content: "⣫"; }
+  68.75% { content: "⢝"; }
+  75%    { content: "⢕"; }
+  81.25% { content: "⡑"; }
+  87.5%  { content: "⠌"; }
+  93.75% { content: "⠂"; }
+}
+
+/* A changed price, value or P&L fills with the tint and fades out, as SRCL's tables do.
+   Text keeps its colour. */
+@keyframes pm-flash {
+  from { background-color: var(--pm-tint-2); }
+  to   { background-color: transparent; }
+}
+
+html.pm:root .cell-flash,
+html.pm:root #newWatchlistBody > tr:is(.flash-green, .flash-red) > td.wl-price { animation: pm-flash 2s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  html.pm:root .loading-terminal::before { content: "⢕"; animation: none; }
+  html.pm:root .cell-flash,
+  html.pm:root #newWatchlistBody > tr:is(.flash-green, .flash-red) > td.wl-price { animation: none; }
+}
 
 /* ── Positions search and sortable headers ── */
 /* Search sits in the title line, between the count and + Add: a "/" key cell joined
@@ -2559,3 +2635,89 @@ html.pm:root .hero-amount-toggle:focus-visible {
 html.pm:root :is(.settings-input, .larp-cell):focus-visible { outline: 1px solid var(--pm-ink); outline-offset: -1px; }
 
 html.pm:root .sticker-item:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 2px; }
+
+/* ── Footer: each source on its own line (incremental-portfolio.js) ── */
+html.pm:root .provider-status:not([hidden]) { display: grid; gap: 0; overflow: visible; }
+html.pm:root .provider-status[data-state="failed"] { color: inherit; }
+html.pm:root .provider-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1ch; }
+html.pm:root .provider-line__mark { flex: none; width: 1ch; color: var(--pm-ink); }
+html.pm:root .provider-line__note { color: var(--pm-muted); }
+html.pm:root .provider-line.is-failed { color: var(--pm-ink); }
+html.pm:root .provider-line.is-failed .provider-line__mark { background: var(--pm-ink); color: var(--bg); text-align: center; }
+html.pm:root .provider-line__retry,
+html.pm:root .pm-banner__btn {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: var(--pm-lh);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+html.pm:root :is(.provider-line__retry, .pm-banner__btn) .chip__label { background: var(--pm-tint-2); }
+html.pm:root :is(.provider-line__retry, .pm-banner__btn):focus-visible :is(kbd, .chip__label) { background: var(--pm-ink); color: var(--bg); }
+@media (hover: hover) {
+  html.pm:root :is(.provider-line__retry, .pm-banner__btn):hover :is(kbd, .chip__label) { background: var(--pm-ink); color: var(--bg); }
+}
+
+/* ── Alerts: the undo line and errors are SRCL banners. A tint fill and a solid shadow,
+   no border: a message, not a window. ── */
+html.pm:root .undo-line,
+html.pm:root .pm-banner {
+  border: 0;
+  background: var(--pm-tint);
+  box-shadow: 1ch calc(var(--pm-lh) / 2) 0 var(--pm-tint-2);
+}
+html.pm:root .pm-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 2ch;
+  margin: 0 1ch calc(var(--pm-lh) / 2) 0;
+  padding: calc(var(--pm-lh) / 2) 1ch;
+  color: var(--pm-ink);
+}
+html.pm:root .comic-error { padding: var(--pm-lh) 0; text-align: left; }
+html.pm:root .comic-error a { color: var(--pm-muted); }
+
+/* ── Fields: SRCL's block caret, and the focused field's label inverts ── */
+html.pm:root :is(.sticker-window-content, .settings-panes, .table-search, .pm-dd__search) :is(input, textarea) { caret-shape: block; }
+html.pm:root .modal-field:focus-within > label,
+html.pm:root .form-row:focus-within > .form-row__label {
+  justify-self: start;
+  width: max-content;
+  margin-left: -1ch;
+  padding: 0 1ch;
+  background: var(--pm-ink);
+  color: var(--bg);
+}
+
+/* ── Tooltips: lighter than a window. The strong tint, a half-ch shadow, no border. ── */
+html.pm:root .funding-rate-tooltip {
+  max-width: 30ch;
+  border: 0;
+  background: var(--pm-tint-2);
+  box-shadow: 0.5ch calc(var(--pm-lh) / 4) 0 var(--pm-tint);
+}
+
+/* ── Chart window title: a path, as SRCL's breadcrumbs (chart-window.js) ── */
+html.pm:root .pm-chart-window .window-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1ch; }
+html.pm:root .wlc__crumb {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pm-muted);
+  font: inherit;
+  line-height: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+html.pm:root .wlc__crumb:focus-visible { background: var(--pm-ink); color: var(--bg); outline: none; }
+html.pm:root .wlc__sep { color: var(--pm-muted); }
+@media (hover: hover) {
+  html.pm:root .wlc__crumb:hover { color: var(--pm-ink); text-decoration: underline; }
+}

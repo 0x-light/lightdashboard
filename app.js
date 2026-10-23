@@ -2838,7 +2838,7 @@ const boot = async () => {
         updateComicButtons(comicKey, date);
       } catch (e) {
         console.error(`[Comics] Failed to load ${comicKey}:`, e);
-        comicEl.textContent = 'Loading...';
+        comicEl.innerHTML = '<span class="loading-terminal">Loading</span>';
       }
     };
 
@@ -3305,7 +3305,7 @@ const boot = async () => {
   if (!settings.hideWatchlist && watchlistBody) {
     const loadWatchlist = async () => {
       if ((!Array.isArray(cachedWatchlistData) || cachedWatchlistData.length === 0) && !watchlistBody.querySelector('tr')) {
-        watchlistBody.innerHTML = `<tr><td colspan="4" class="loading">Loading...</td></tr>`;
+        watchlistBody.innerHTML = `<tr><td colspan="4" class="loading"><span class="loading-terminal">Loading</span></td></tr>`;
       }
       try {
         const watchlistIds = settings.watchlist || [];

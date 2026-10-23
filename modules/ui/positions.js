@@ -266,7 +266,7 @@ function ladderHtml(pos, quoteCurrency) {
   }
   const pct = pctFrom(now);
   const note = loading && !orders
-    ? '<p class="ladder__note">Loading orders…</p>'
+    ? '<p class="ladder__note"><span class="loading-terminal">Loading orders</span></p>'
     : (orders && !triggers.length && !limits.length ? '<p class="ladder__note">No open orders.</p>' : '');
   const label = `Price levels for ${escapeAttr(pos.asset)} ${isShort ? 'short' : 'long'}` +
     (liq ? `, liquidation ${pct(liq)} from now` : ', no liquidation price');
@@ -653,7 +653,9 @@ function formatAssetCellHtml(pos, { leg = false } = {}) {
   if (leg) {
     const option = optionOf(pos);
     const arrow = isShortPosition(pos) ? '<span class="short-arrow"> short</span>' : '';
-    return `<span class="asset-leg">${escapeHtml(optionTerms(option))}${arrow}</span>`;
+    // Drawn as a tree, as SRCL's tree view: ├─ for each leg, └─ for the last.
+    const branch = leg === 'last' ? '└─' : '├─';
+    return `<span class="asset-leg"><span class="asset-leg__branch" aria-hidden="true">${branch}</span>${escapeHtml(optionTerms(option))}${arrow}</span>`;
   }
   const label = formatAssetLabelHtml(pos);
   const name = String(pos?.assetName || '').trim();
@@ -1023,16 +1025,36 @@ function notionalNote(group) {
   return group.kind === 'perp' ? ' <span class="position-group__label">notional</span>' : '';
 }
 
+// A group folds to its head, as SRCL's accordion: ▾ open, ▸ folded. The totals stay in
+// the head. Which kinds are folded is kept in this browser for the next visit.
+const FOLD_KEY = 'positionsFolded';
+function foldedKinds() {
+  try { return new Set(JSON.parse(localStorage.getItem(FOLD_KEY) || '[]')); } catch (_) { return new Set(); }
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest?.('.position-group__fold');
+  if (!btn) return;
+  const kind = btn.dataset.kind;
+  const folded = foldedKinds();
+  if (folded.has(kind)) folded.delete(kind); else folded.add(kind);
+  try { localStorage.setItem(FOLD_KEY, JSON.stringify([...folded])); } catch (_) {}
+  window._portfolioRenderer?.render?.();
+  document.querySelector(`.position-group__fold[data-kind="${kind}"]`)?.focus({ preventScroll: true });
+});
+
 // The head of a run of rows: the kind on the left, its totals under the Value, P&L
-// and Funding heads. Not a position: it does not open.
-function createGroupRow(doc, group, opts) {
+// and Funding heads. Not a position: it does not open; its kind folds the group.
+function createGroupRow(doc, group, opts, folded) {
   const amountVisible = !!opts.amountsVisible;
   const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
   const totals = groupTotals(group.rows);
   const tr = doc.createElement('tr');
-  tr.className = `position-group position-group--${group.kind}`;
+  tr.className = `position-group position-group--${group.kind}${folded ? ' is-folded' : ''}`;
   const cells = {
-    asset: `<span class="position-group__label">${KIND_LABELS[group.kind]}</span><span class="position-group__count">${positionsIn(group.rows)}</span>`
+    asset: `<button type="button" class="position-group__fold" data-kind="${group.kind}" aria-expanded="${!folded}">` +
+      `<span class="position-group__mark" aria-hidden="true">${folded ? '▸' : '▾'}</span>` +
+      `<span class="position-group__label">${KIND_LABELS[group.kind]}</span><span class="position-group__count">${positionsIn(group.rows)}</span></button>`
   };
   if (totals.value !== null) cells.value = formatBaseMoney(totals.value, amountVisible, baseCurrency) + notionalNote(group);
   if (totals.pnl !== null) cells.pnl = formatBaseMoney(totals.pnl, amountVisible, baseCurrency, true);
@@ -1273,10 +1295,12 @@ export function renderPositions({ positions, containers, options, previousPositi
       ? KIND_ORDER.map(kind => ({ kind, rows: filtered.filter(p => positionKind(p) === kind) })).filter(g => g.rows.length)
       : [{ kind: 'all', rows: filtered }];
     opts.optionLegs = legsByUnderlying(list);
+    const folded = foldedKinds();
     for (const group of groups) {
       if (groups.length > 1) {
-        frag.appendChild(createGroupRow(doc, group, opts));
+        frag.appendChild(createGroupRow(doc, group, opts, folded.has(group.kind)));
         if (containers.mobilePositionsContainer) mobileFrag.appendChild(createMobileGroupLine(doc, group, opts));
+        if (folded.has(group.kind)) continue;
       }
       const addRow = (pos, leg) => {
         frag.appendChild(createTableRow(doc, pos, opts, prevDataMap, { leg }));
@@ -1295,7 +1319,7 @@ export function renderPositions({ positions, containers, options, previousPositi
         const { underlying, legs } = pos._strategy;
         frag.appendChild(createStrategyRow(doc, underlying, legs, opts));
         if (opts.openKey === strategyKey(underlying, legs)) {
-          for (const leg of legs) addRow(leg.pos, true);
+          legs.forEach((leg, i) => addRow(leg.pos, i === legs.length - 1 ? 'last' : 'mid'));
           frag.appendChild(createStrategyDetailRow(doc, underlying, legs, opts, colSpan));
         }
         if (containers.mobilePositionsContainer) {

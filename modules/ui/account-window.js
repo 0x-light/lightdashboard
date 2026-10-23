@@ -301,12 +301,12 @@ async function fillHl(content, draw) {
     if (draw !== drawn) return;
     const shown = list.map((a, i) => [a, parts[i].join('')]).filter(([, html]) => html);
     if (!shown.length) {
-      content.innerHTML = pending ? '<p class="acct__muted">Loading…</p>' : '<p class="acct__muted">Your wallets have no Hyperliquid account.</p>';
+      content.innerHTML = pending ? '<p class="acct__muted"><span class="loading-terminal">Loading</span></p>' : '<p class="acct__muted">Your wallets have no Hyperliquid account.</p>';
       return;
     }
     content.innerHTML = (shown.length === 1 && list.length === 1 ? shown[0][1] : shown.map(([a, html]) =>
       `<div class="acct__wallet"><p class="acct__address">${esc(a.slice(0, 6))}…${esc(a.slice(-4))}</p>${html}</div>`).join('')) +
-      (pending ? '<p class="acct__muted">Loading…</p>' : '');
+      (pending ? '<p class="acct__muted"><span class="loading-terminal">Loading</span></p>' : '');
   };
   render();
   await Promise.all(list.map((address, i) => loadWallet(address, (k, html) => {
@@ -326,7 +326,7 @@ async function fill(win) {
   const draw = ++drawn;
   if (!list.length) {
     tabs.hidden = true;
-    content.innerHTML = '<p class="acct__muted">Loading…</p>';
+    content.innerHTML = '<p class="acct__muted"><span class="loading-terminal">Loading</span></p>';
     return;
   }
   // One account: no tabs, its own view straight away.
