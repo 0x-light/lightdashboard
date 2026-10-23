@@ -24,7 +24,7 @@ import * as HyperliquidProvider from '../modules/data/providers/hyperliquid.js';
 import * as StocksProvider from '../modules/data/providers/stocks.js';
 import { _internal as pythInternal } from '../modules/data/providers/pyth.js';
 import { normalizeEntries } from '../modules/features/watchlist.js';
-import { anchored, clip, getPortfolioHistory, plan, priceKeyOf, scaled, sumSeries } from '../modules/data/portfolio-history.js';
+import { anchored, clip, getPortfolioHistory, netOfTransfers, plan, priceKeyOf, scaled, sumSeries } from '../modules/data/portfolio-history.js';
 import { pnlSeries } from '../modules/data/providers/lighter.js';
 import { chartPoints } from '../modules/data/providers/zerion.js';
 import {
@@ -1161,6 +1161,11 @@ function testPortfolioHistorySeriesMath() {
   assert.deepEqual(scaled([], 300, 3), [[3, 300]]);
   // A series ending at or below zero can't be scaled: shifted instead.
   assert.deepEqual(scaled([[1, -5], [2, 0]], 300, 3), [[1, 295], [2, 300], [3, 300]]);
+  // An account's line leaves out a withdrawal: value fell 100 → 60, but P&L rose 0 → 10.
+  assert.deepEqual(netOfTransfers([[1, 100], [2, 60]], [[1, 0], [2, 10]], 60, 3), [[1, 50], [2, 60], [3, 60]]);
+  // P&L larger than the value: the value history instead.
+  assert.deepEqual(netOfTransfers([[1, 100], [2, 60]], [[1, 0], [2, 80]], 60, 3), [[1, 100], [2, 60], [3, 60]]);
+  assert.deepEqual(netOfTransfers([], [], 60, 3), [[3, 60]]);
 }
 
 function testPortfolioHistoryPlanAndPriceKeys() {

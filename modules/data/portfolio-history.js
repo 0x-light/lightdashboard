@@ -1,6 +1,8 @@
 // The portfolio's value over a period, one series per account from that account's own
 // source, so every device draws the same line:
-//   Hyperliquid   the portfolio endpoint (hl-account.js), per address
+//   Hyperliquid   the portfolio endpoint (hl-account.js), per address: its P&L history, so
+//                 deposits and withdrawals don't show as gains or losses (its value
+//                 history when the P&L line would dip below zero)
 //   Lighter       its P&L history per account: the value's changes, hourly or daily
 //   EVM wallets   Zerion's balance chart per wallet
 //   IBKR          the daily net asset value in the Flex statement, if the query includes it
@@ -103,6 +105,14 @@ export function scaled(series, live, now) {
   const last = series.length ? series[series.length - 1][1] : 0;
   if (!(last > 0)) return anchored(series, live, now);
   return series.map(([t, v]) => [t, live * v / last]).concat([[now, live]]);
+}
+
+// An account's line without its deposits and withdrawals: today's value less the P&L made
+// since each point. Its value history instead when that would dip below zero, as for an
+// account that took out more than it now holds.
+export function netOfTransfers(values, pnl, live, now) {
+  const net = pnl.length ? anchored(pnl, live, now) : [];
+  return net.length && net.every(([, v]) => v >= 0) ? net : scaled(values, live, now);
 }
 
 // ── Which rows belong to which account ──
@@ -216,7 +226,9 @@ export async function getPortfolioHistory(period, {
     cached(key, load).catch(() => []).then(series => fit(clip(series, since), live, now))
   );
   for (const [wallet, live] of groups.hl) {
-    account(`hl:${wallet}:${period}`, live, () => getPortfolio(wallet).then(p => inBase(p?.[period]?.values || [])));
+    tasks.push(cached(`hl:${wallet}:${period}`, () => getPortfolio(wallet).then(p => p?.[period] || {}))
+      .catch(() => ({}))
+      .then(p => netOfTransfers(clip(inBase(p.values || []), since), clip(inBase(p.pnl || []), since), live, now)));
   }
   for (const [index, live] of groups.lighter) {
     if (!/^\d+$/.test(index)) { tasks.push(Promise.resolve([[now, live]])); continue; }
