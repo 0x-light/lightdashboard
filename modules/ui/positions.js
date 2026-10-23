@@ -938,7 +938,7 @@ function createStrategyRow(doc, underlying, legs, opts) {
     asset: `${escapeHtml(underlying)}<span class="asset-terms">${escapeHtml(strategyTag(legs))}</span>`,
     expiry: escapeHtml(expiriesText(legs)),
     underlying: now ? formatPrice(now, true, quoteCurrency) : '—',
-    price: '',
+    price: now ? formatPrice(now, true, quoteCurrency) : '—',
     chart: chart || '—',
     value: totals.value !== null ? formatBaseMoney(totals.value, amountVisible, baseCurrency) : '—',
     pnl: totals.pnl !== null ? formatBaseMoney(totals.pnl, amountVisible, baseCurrency, true) : '—',
