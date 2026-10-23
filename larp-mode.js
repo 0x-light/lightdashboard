@@ -8,21 +8,13 @@
   var real;
   try { real = window.localStorage; } catch (_) { return; }
 
-  var CITIES = {
-    'New York': { lat: 40.7128, lon: -74.006, tz: 'America/New_York' },
-    'San Francisco': { lat: 37.7749, lon: -122.4194, tz: 'America/Los_Angeles' },
-    'London': { lat: 51.5072, lon: -0.1276, tz: 'Europe/London' },
-    'Berlin': { lat: 52.52, lon: 13.405, tz: 'Europe/Berlin' },
-    'Dubai': { lat: 25.2048, lon: 55.2708, tz: 'Asia/Dubai' },
-    'Singapore': { lat: 1.3521, lon: 103.8198, tz: 'Asia/Singapore' },
-    'Tokyo': { lat: 35.6762, lon: 139.6503, tz: 'Asia/Tokyo' }
-  };
+  var NEW_YORK = { label: 'New York', region: 'New York, United States', lat: 40.7128, lon: -74.006, tz: 'America/New_York' };
 
   // gain is a percent on the position, as profit: +10 is up 10%, whether long or short.
   // Entry prices follow the live price, so P&L stays believable whatever the market does.
   var PRESET = {
     name: 'Alex',
-    city: 'New York',
+    place: NEW_YORK,
     manual: [
       { type: 'pyth', symbol: 'BTC', name: 'Bitcoin', feedId: '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43', amount: 0.85, entryPrice: 61000, category: 'crypto', currency: 'USD' },
       { type: 'pyth', symbol: 'ETH', name: 'Ethereum', feedId: '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace', amount: 12, entryPrice: 2900, category: 'crypto', currency: 'USD' },
@@ -71,6 +63,7 @@
   var state = { on: false, config: null };
   try { state = Object.assign(state, JSON.parse(real.getItem(KEY) || 'null') || {}); } catch (_) { /* keep defaults */ }
   var config = Object.assign(clone(PRESET), state.config || {});
+  if (!config.place || !Number.isFinite(config.place.lat)) config.place = clone(NEW_YORK); // older saves named a city
 
   function persist() {
     try { real.setItem(KEY, JSON.stringify({ on: state.on, config: config })); } catch (_) { /* not saved */ }
@@ -90,7 +83,6 @@
 
   window.larp = {
     on: state.on,
-    cities: CITIES,
     config: config,
     preset: function () { return clone(PRESET); },
     save: function (next) { config = next; window.larp.config = next; persist(); },
@@ -99,13 +91,13 @@
 
   if (!state.on) return;
 
-  var city = CITIES[config.city] || CITIES['New York'];
+  var place = config.place;
   var settings = {
     theme: 'dark',
     userName: config.name || '',
     portfolioBaseCurrency: 'USD',
     minBalanceThreshold: 0,
-    weather: { label: CITIES[config.city] ? config.city : 'New York', lat: city.lat, lon: city.lon },
+    weather: { label: place.label, region: place.region, lat: place.lat, lon: place.lon },
     // A sample wallet and broker login switch those providers on; their data is made up.
     walletAddresses: (config.hlPerps || []).length + (config.hlSpot || []).length + (config.lighterPerps || []).length + (+config.hlStaked > 0 ? 1 : 0)
       ? '0xa1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5' : '',
@@ -145,5 +137,5 @@
     Object.defineProperty(window, 'localStorage', { value: fake, configurable: true });
   } catch (_) { window.larp.on = false; return; }
   document.documentElement.dataset.larp = 'on';
-  window.larpTimeZone = city.tz; // clocks show the sample location's time, not the real one
+  window.larpTimeZone = place.tz || undefined; // clocks show the sample location's time, not the real one
 })();

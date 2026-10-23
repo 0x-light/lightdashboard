@@ -83,6 +83,22 @@ const SECTIONS = [
   }
 ];
 
+// Places matching a typed name (Open-Meteo), with the time zone the clocks need.
+async function searchPlaces(name) {
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=6&language=en&format=json`;
+  const resp = await fetch(url);
+  if (!resp.ok) return [];
+  return ((await resp.json()).results || []).map(r => ({
+    label: r.name,
+    region: [r.admin1, r.country].filter((part, i, all) => part && part !== r.name && all.indexOf(part) === i).join(', '),
+    lat: r.latitude,
+    lon: r.longitude,
+    tz: r.timezone
+  }));
+}
+
+const placeText = place => (place?.region ? `${place.label}, ${place.region}` : place?.label || '');
+
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function cell(sec, ci, col, row, i) {
@@ -135,7 +151,6 @@ export function setupLarpSettings() {
 
   const render = () => {
     const c = config();
-    const cities = Object.keys(larp.cities).map(name => `<option${name === c.city ? ' selected' : ''}>${esc(name)}</option>`).join('');
     root.innerHTML = `
       <div class="settings-row">
         <div class="settings-row-text">
@@ -151,9 +166,12 @@ export function setupLarpSettings() {
       <label>Your name
         <input type="text" class="settings-input" id="larpName" value="${esc(c.name)}" autocomplete="off" placeholder="there">
       </label>
-      <label>City
-        <span class="select"><select class="settings-input" id="larpCity">${cities}</select></span>
-      </label>
+      <div class="settings-field">
+        <label for="larpCity">City</label>
+        <input type="text" class="settings-input" id="larpCity" value="${esc(placeText(c.place))}" autocomplete="off" placeholder="New York">
+        <ul class="city-options" id="larpCityList" role="listbox" aria-label="Matching places" hidden></ul>
+        <span class="info" id="larpCityHint" aria-live="polite"></span>
+      </div>
       <div class="info">Gain is the profit in %. Enter a negative size for a short.</div>
 
       ${SECTIONS.map(sec => renderSection(sec, c)).join('')}
@@ -172,13 +190,61 @@ export function setupLarpSettings() {
       <button type="button" class="btn-text" id="larpReset">Reset to the sample</button>`;
   };
 
+  // City: suggestions as you type. Pick one, or press Enter for the first.
+  let seq = 0;
+  let found = [];
+  const cityList = () => root.querySelector('#larpCityList');
+  const cityHint = text => { const el = root.querySelector('#larpCityHint'); if (el) el.textContent = text; };
+  const choose = (place) => {
+    config().place = place;
+    found = [];
+    const input = root.querySelector('#larpCity');
+    if (input) input.value = placeText(place);
+    const list = cityList();
+    if (list) { list.hidden = true; list.innerHTML = ''; }
+    cityHint('');
+    touch();
+  };
+  const suggest = () => {
+    const input = root.querySelector('#larpCity');
+    const name = input.value.trim();
+    const mine = ++seq;
+    if (name.length < 2) { found = []; cityList().hidden = true; return; }
+    searchPlaces(name).then(places => {
+      if (mine !== seq) return;
+      found = places;
+      const list = cityList();
+      list.innerHTML = places.map((p, i) => `<li role="option" tabindex="-1" data-place="${i}">${esc(placeText(p))}</li>`).join('');
+      list.hidden = places.length === 0;
+      cityHint(places.length ? '' : `Cannot find "${name}". Try a larger city near it.`);
+    }).catch(() => { if (mine === seq) cityHint('Cannot find the city. Check your connection.'); });
+  };
+  root.addEventListener('keydown', (e) => {
+    if (e.target.id !== 'larpCity') return;
+    if (e.key === 'Enter' && found[0]) { e.preventDefault(); e.stopPropagation(); choose(found[0]); }
+    else if (e.key === 'Escape' && !cityList().hidden) { e.stopPropagation(); cityList().hidden = true; }
+  });
+  root.addEventListener('mousedown', (e) => {
+    const li = e.target.closest('[data-place]');
+    if (!li) return;
+    e.preventDefault();
+    choose(found[Number(li.dataset.place)]);
+  });
+  root.addEventListener('focusout', (e) => {
+    if (e.target.id !== 'larpCity') return;
+    const list = cityList();
+    if (list) list.hidden = true;
+    // Leaving the field with no pick: show the saved city again.
+    e.target.value = placeText(config().place);
+  });
+
   // Typing in this pane must not reach the settings form's own auto-save.
   root.addEventListener('input', (e) => {
     e.stopPropagation();
     const t = e.target;
     const c = config();
     if (t.id === 'larpName') c.name = t.value;
-    else if (t.id === 'larpCity') c.city = t.value;
+    else if (t.id === 'larpCity') { suggest(); return; }
     else if (t.id === 'larpStaked') c.hlStaked = Number(t.value) || 0;
     else if (t.id === 'larpWatchlist') c.watchlist = t.value;
     else if (t.dataset.sec) {
