@@ -1,7 +1,7 @@
 // Service Worker for Light Dashboard
 // Provides offline support, intelligent caching, and automatic updates
-const CACHE_VERSION = 'v2.10.6';
-const BUILD_TIMESTAMP = '2026-10-21T17:44:19Z';
+const CACHE_VERSION = 'v2.10.7';
+const BUILD_TIMESTAMP = '2026-10-25T16:00:00Z';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
 // Force clear all caches on install - enabled to ensure users get new versions
@@ -124,6 +124,23 @@ function staleWhileRevalidate(event, request, cacheKey) {
     }));
 }
 
+// Helper: answer from the network and keep a copy; the copy answers only when the network fails
+function networkFirst(request, cacheKey) {
+  return fetch(request).then(async (response) => {
+    if (response.ok && response.type === 'basic' && !response.redirected) {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(cacheKey, response.clone());
+    }
+    return response;
+  }).catch(() => caches.open(CACHE_NAME)
+    .then(cache => cache.match(cacheKey))
+    .then(cached => cached || new Response('Offline - please check your connection', {
+      status: 503,
+      statusText: 'Service Unavailable',
+      headers: { 'Content-Type': 'text/plain' }
+    })));
+}
+
 // Helper: Get cache duration for URL
 function getCacheDuration(url) {
   for (const [pattern, duration] of Object.entries(API_CACHE_CONFIG)) {
@@ -160,15 +177,18 @@ self.addEventListener('fetch', (event) => {
       return;
     }
 
-    // App shell (HTML, JS, CSS, images, fonts): stale-while-revalidate. Serving from cache makes
-    // repeat loads instant and offline-capable; the background fetch refreshes the cache for the
-    // next load. A deploy that changes sw.js (CACHE_VERSION / BUILD_TIMESTAMP) installs a new worker,
-    // which clears these caches and reloads open pages, so a release is picked up within one visit.
+    // Code (HTML, JS, CSS, JSON): network first, the cache only when offline. Served from cache,
+    // each file was one visit behind and lazily imported modules lagged on their own, so a device
+    // that opens the app now and then ran old and new modules together and showed wrong totals.
+    // Deploys don't change sw.js, so they can't be relied on to clear the cache.
+    // Images and fonts: stale-while-revalidate, as they rarely change and a stale one is harmless.
     const isDocument = request.mode === 'navigate' || request.destination === 'document';
+    const isCode = isDocument || ['script', 'style', 'worker', 'manifest'].includes(request.destination) ||
+      /\.(m?js|css|json|html)$/.test(url.pathname);
     // Every route serves index.html (see _redirects), so all navigations share one cache entry.
     // '/index.html' itself 308s to '/' on Pages, and a redirected response can't answer a navigation.
     const cacheKey = isDocument ? '/' : request;
-    event.respondWith(staleWhileRevalidate(event, request, cacheKey));
+    event.respondWith(isCode ? networkFirst(request, cacheKey) : staleWhileRevalidate(event, request, cacheKey));
     return;
   }
 
