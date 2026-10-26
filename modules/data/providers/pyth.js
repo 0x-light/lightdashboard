@@ -65,12 +65,12 @@ async function fetchPyth(path, timeoutMs = 10000, bypassCache = false) {
 let feedsCache = null;
 let feedsCacheTimestamp = 0;
 let feedsMetadataCache = null;
-// v3 adds the Commodities.Index feeds (24/7 Brent) that v2 lists leave out.
-const FEEDS_CACHE_KEY = 'pyth_price_feeds_v3';
-const FEEDS_METADATA_CACHE_KEY = 'pyth_feed_metadata_v3';
+// v4 adds the Commodities.Index feeds (24/7 Brent) and plain commodity names.
+const FEEDS_CACHE_KEY = 'pyth_price_feeds_v4';
+const FEEDS_METADATA_CACHE_KEY = 'pyth_feed_metadata_v4';
 const FEEDS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 const FEED_ID_PATTERN = /^0x[a-f0-9]{64}$/;
-const LEGACY_FEEDS_CACHE_KEYS = ['pyth_price_feeds_v1', 'pyth_price_feeds_v2', 'pyth_feed_metadata_v2'];
+const LEGACY_FEEDS_CACHE_KEYS = ['pyth_price_feeds_v1', 'pyth_price_feeds_v2', 'pyth_price_feeds_v3', 'pyth_feed_metadata_v2', 'pyth_feed_metadata_v3'];
 
 // Pyth symbols are structured as `<Category>.<Rest>/<Quote>`. We extract a compact
 // symbol (AAPL, BTC, EUR/USD, XAU) and the category so the UI can label stocks distinctly
@@ -108,6 +108,15 @@ const FEED_PARSERS = [
   }
 ];
 
+// Pyth describes its commodity feeds as "PYTH PRICE IN USD FOR BRENT 24/7": the asset is the rest.
+const FEED_NAMES = { BRENT: 'Brent crude', WTI: 'WTI crude' };
+function feedName(feed, symbol) {
+  const description = feed?.attributes?.description || feed?.attributes?.display_symbol || symbol;
+  const commodity = /^PYTH PRICE IN USD FOR (.+?)(?: 24\/7)?$/i.exec(description);
+  if (!commodity) return description;
+  return FEED_NAMES[symbol] || commodity[1];
+}
+
 function parsePythFeed(feed) {
   const symbolField = feed?.attributes?.symbol;
   const id = feed?.id;
@@ -124,7 +133,7 @@ function parsePythFeed(feed) {
         id: normalizedId,
         category: parser.category,
         // display/description come from Pyth metadata when available — e.g. "Apple Inc.", "Bitcoin / US Dollar"
-        name: feed?.attributes?.description || feed?.attributes?.display_symbol || symbol,
+        name: feedName(feed, symbol),
         displaySymbol: feed?.attributes?.display_symbol || feed?.attributes?.generic_symbol || null,
         assetType: feed?.attributes?.asset_type || null,
         // Flag stocks as market-hours-sensitive so the UI can hint that prices may be stale off-hours.

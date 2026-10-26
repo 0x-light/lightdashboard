@@ -79,6 +79,12 @@ let gridAdded = []; // [{ list, key }] from the other lists
 let gridOrder = null; // keys, once you have moved one
 let gridDragged = false; // the click that ends a drag opens nothing
 let cellHover = null; // { key, x } of the cell chart being pointed at
+// What + Add's search found and you added: the Added list, until the window closes.
+let added = [];
+let search = null; // the caller's search: query -> items, or null
+let found = []; // the search's last items
+let searchSeq = 0;
+let searchWait = null;
 
 function loadLayers() {
   const on = Object.fromEntries(LAYERS.map(l => [l.id, true]));
@@ -1071,28 +1077,77 @@ function removeCell(k) {
   draw();
 }
 
-// + Add: the watchlist's search for the watchlist's grid; for the positions', a menu of the
-// positions you hid and the watchlist's items.
+// + Add: the watchlist's search for the watchlist's grid; for the positions', a search over
+// the positions you hid, the other lists' items and, as you type, all assets.
 function addMenu(open) {
   const menu = win.querySelector('.wlc__menu');
   const button = win.querySelector('.js-wlc-grid-add');
   const l = gridList();
-  if (!open || !l) { menu.hidden = true; button.setAttribute('aria-expanded', 'false'); return; }
+  if (!open || !l) {
+    // Focus inside the menu goes back to its button, so the window's keys still work.
+    const inside = menu.contains(document.activeElement);
+    menu.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+    if (inside) (button.hidden ? win.querySelector('.wlc') : button).focus({ preventScroll: true });
+    return;
+  }
   if (l.onAdd) { l.onAdd(); return; }
+  const input = menu.querySelector('.wlc__menu-search');
+  input.value = '';
+  found = [];
+  ++searchSeq;
+  menuRows();
+  menu.hidden = false;
+  button.setAttribute('aria-expanded', 'true');
+  input.focus();
+}
+
+const matches = (i, q) => !q || [i.label, i.symbol, i.name].some(v => String(v || '').toLowerCase().includes(q));
+
+function menuRows() {
+  const menu = win.querySelector('.wlc__menu');
+  const l = gridList();
+  const q = menu.querySelector('.wlc__menu-search').value.trim().toLowerCase();
   const shown = new Set(gridItems().map(i => i.key));
   const hidden = ownItems(l.id).filter(i => !shown.has(i.key));
   const others = lists.filter(x => x.id !== l.id).flatMap(x => gridItems(x.id)).filter(i => !shown.has(i.key));
-  const rows = [...hidden, ...others];
-  menu.innerHTML = rows.length
+  const rows = [...hidden, ...others].filter(i => matches(i, q))
+    .map(i => ({ ...i, from: lists.find(x => x.id === i.list)?.title || '' }));
+  const known = new Set([...shown, ...rows.map(i => i.key)]);
+  if (q) rows.push(...found.filter(i => !known.has(i.key)).map(i => ({ ...i, list: 'found', from: i.kind || '' })));
+  menu.querySelector('.wlc__menu-rows').innerHTML = rows.length
     ? rows.map(i => `<button type="button" class="wlc__menu-item" data-key="${esc(i.key)}" data-list="${esc(i.list)}">` +
-      `<span>${esc(i.label || i.symbol || '')}</span><span class="wlc__menu-from">${esc(lists.find(x => x.id === i.list)?.title || '')}</span></button>`).join('')
-    : '<p class="wlc__empty">Nothing more to add.</p>';
-  menu.hidden = false;
-  button.setAttribute('aria-expanded', 'true');
-  menu.querySelector('button')?.focus();
+      `<span>${esc(i.label || i.symbol || '')}</span><span class="wlc__menu-from">${esc(i.from)}</span></button>`).join('')
+    : `<p class="wlc__empty">${q ? (search ? 'Searching…' : 'No results.') : 'Nothing more to add.'}</p>`;
+}
+
+// Typing filters the menu at once and asks the search after a pause.
+function searchMenu() {
+  const q = win.querySelector('.wlc__menu-search').value.trim();
+  const seq = ++searchSeq;
+  found = [];
+  menuRows();
+  clearTimeout(searchWait);
+  if (!q || !search) return;
+  searchWait = setTimeout(async () => {
+    let result = [];
+    try { result = await search(q); } catch (_) { /* no results */ }
+    if (seq !== searchSeq || win.querySelector('.wlc__menu').hidden) return;
+    found = result || [];
+    menuRows();
+    if (!found.length && !win.querySelector('.wlc__menu-item')) {
+      win.querySelector('.wlc__menu-rows').innerHTML = '<p class="wlc__empty">No results.</p>';
+    }
+  }, 250);
 }
 
 function addCell(listOf, k) {
+  if (listOf === 'found') {
+    const item = found.find(i => i.key === k);
+    if (!item) return;
+    if (!added.some(i => i.key === k)) added.push(item);
+    listOf = 'added';
+  }
   if (listOf === grid) gridHidden.delete(k);
   else gridAdded.push({ list: listOf, key: k });
   gridOrder?.push(k);
@@ -1181,7 +1236,8 @@ function build() {
     '<div class="wlc__all" role="group" aria-label="Grid"></div>' +
     '<div class="wlc__grid-tools"><button type="button" class="wlc__layer js-wlc-grid-price" aria-pressed="false">Price</button>' +
     '<button type="button" class="wlc__layer js-wlc-grid-add" aria-expanded="false">+ Add</button>' +
-    '<div class="wlc__menu" hidden></div></div>' +
+    '<div class="wlc__menu" hidden><input type="search" class="wlc__menu-search" placeholder="Search" aria-label="Search assets" autocomplete="off" spellcheck="false">' +
+    '<div class="wlc__menu-rows"></div></div></div>' +
     // The cells' dither, defined once where it is never hidden.
     '<svg width="0" height="0" class="wlc__defs" aria-hidden="true"><defs><pattern id="wlcCellDz" width="2" height="2" patternUnits="userSpaceOnUse">' +
     '<rect class="pm-value__dot" width="1" height="1"/><rect class="pm-value__dot" x="1" y="1" width="1" height="1"/></pattern></defs></svg>' +
@@ -1231,6 +1287,24 @@ function build() {
     }
     const b = e.target.closest('.wlc__menu-item');
     if (b) addCell(b.dataset.list, b.dataset.key);
+  });
+  // ↵ in the box adds the first row; ↓ moves into the rows and ↑ ↓ between them.
+  const menu = win.querySelector('.wlc__menu');
+  menu.querySelector('.wlc__menu-search').addEventListener('input', searchMenu);
+  menu.addEventListener('keydown', (e) => {
+    const rows = [...menu.querySelectorAll('.wlc__menu-item')];
+    const input = menu.querySelector('.wlc__menu-search');
+    if (e.target === input && e.key === 'Enter' && !e.isComposing) {
+      e.preventDefault();
+      rows[0]?.click();
+      return;
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    e.stopPropagation();
+    const i = rows.indexOf(e.target);
+    const next = e.target === input ? (e.key === 'ArrowDown' ? rows[0] : null) : rows[i + (e.key === 'ArrowDown' ? 1 : -1)];
+    (next || (e.key === 'ArrowUp' ? input : null))?.focus();
   });
   win.querySelector('.wlc__periods').addEventListener('click', (e) => {
     const b = e.target.closest('.wlc__period');
@@ -1316,6 +1390,8 @@ function build() {
   // clears a measured range, or closes the add menu or leaves the grid, first; then closes.
   win.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // Typing in the search box is typing; only Esc acts.
+    if (e.target.matches('input') && e.key !== 'Escape') return;
     const nth = PERIODS[Number(e.key) - 1];
     if (/^[1-9]$/.test(e.key) && nth) {
       e.preventDefault();
@@ -1358,9 +1434,11 @@ function build() {
 }
 
 // Opens on one item of one list; a list without onRemove (the positions) leaves out Remove.
-export function openChartWindow({ key: openKey, list: openList, lists: allLists, tilePeriod }) {
+export function openChartWindow({ key: openKey, list: openList, lists: allLists, tilePeriod, search: searchAssets = null }) {
   if (!win) build();
-  lists = allLists;
+  added = [];
+  search = searchAssets;
+  lists = [...allLists, { id: 'added', title: 'Added', items: () => added }];
   listId = openList;
   key = openKey;
   period = FROM_TILES[tilePeriod] || '1d';

@@ -2544,11 +2544,25 @@ html.pm:root .wlc__menu {
   max-height: calc(var(--pm-lh) * 14);
   margin-top: calc(var(--pm-lh) / 2);
   padding: calc(var(--pm-lh) / 2) 0;
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--bg);
   border: 1px solid var(--pm-tint-2);
 }
 html.pm:root .wlc__menu[hidden] { display: none; }
+html.pm:root .wlc__menu-rows { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+html.pm:root .wlc__menu-search {
+  min-width: 0;
+  margin: 0 1ch calc(var(--pm-lh) / 2);
+  padding: 0 1ch;
+  border: 0;
+  border-radius: 0;
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: calc(var(--pm-lh) * 1.5);
+}
+html.pm:root .wlc__menu-search::placeholder { color: var(--pm-muted); }
+html.pm:root .wlc__menu-search::-webkit-search-cancel-button { display: none; }
 html.pm:root .wlc__menu-item {
   display: flex;
   justify-content: space-between;
