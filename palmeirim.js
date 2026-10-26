@@ -149,7 +149,7 @@
   }
 
   function chartHeight() {
-    return Math.round((parseFloat(getComputedStyle(document.documentElement).getPropertyValue("font-size")) || 14) * 18 / 14 * 3);
+    return Math.round((parseFloat(getComputedStyle(document.documentElement).getPropertyValue("font-size")) || 14) * 18 / 14 * 6);
   }
 
   function drawValue() {
