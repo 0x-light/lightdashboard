@@ -2326,6 +2326,7 @@ html.pm:root .pm-chart-window { width: min(76ch, calc(100vw - 3ch)); }
   html.pm:root .pm-chart-window { width: min(112ch, calc(100vw - 6ch)); top: calc(var(--pm-lh) * 3); transform: translateX(-50%); }
 }
 html.pm:root .wlc p { margin: 0; }
+html.pm:root .wlc__ticker { color: var(--pm-muted); }
 html.pm:root .wlc__head { display: flex; justify-content: space-between; align-items: baseline; gap: 0 2ch; flex-wrap: wrap; }
 /* The latest price is the one large figure: double size, two lines high, so the grid holds. */
 html.pm:root .wlc__price { font-size: 200%; line-height: calc(var(--pm-lh) * 2); }

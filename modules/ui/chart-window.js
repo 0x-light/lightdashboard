@@ -304,6 +304,16 @@ function chartHeight() {
 
 // The line over the dim dither, drawn at the box's pixel size so the dither stays crisp.
 // Points are spaced evenly, so a closed market's nights and weekends take no room.
+// Above the price: the asset's name and its ticker, as "Bitcoin BTC". A feed's name is the
+// pair in capitals ("BITCOIN / US DOLLAR"): only the asset is kept, in title case.
+function nameLine(item) {
+  const ticker = item.label || item.symbol || '';
+  let name = String(item.name || '').split(' / ')[0].trim();
+  if (name && name === name.toUpperCase()) name = name.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  if (!name || name.toUpperCase() === ticker.toUpperCase()) return esc(ticker);
+  return `${esc(name)} <span class="wlc__ticker">${esc(ticker)}</span>`;
+}
+
 // The title is a path, as SRCL's breadcrumbs: Watchlist ❯ BTC. The first part, where the
 // window came from, goes back; the period shows in its own row.
 function title(item) {
@@ -324,8 +334,8 @@ function draw() {
   });
   const log = win.querySelector('.wlc__log');
   log.setAttribute('aria-pressed', String(logScale()));
-  const facts = [item.name, item.category].filter(Boolean).map(esc).join(' · ');
-  win.querySelector('.wlc__facts').innerHTML = facts;
+  win.querySelector('.wlc__name').innerHTML = nameLine(item);
+  win.querySelector('.wlc__facts').textContent = item.category || '';
   pos = positionFor(item);
 
   const box = win.querySelector('.wlc__chart');
@@ -745,6 +755,7 @@ function build() {
     '<div class="sticker-window-header"><h2 id="pmChartTitle" class="window-title"></h2>' +
     '<button type="button" class="btn-text js-wlc-close">Close</button></div>' +
     '<div class="sticker-window-content wlc" tabindex="-1">' +
+    '<p class="wlc__name"></p>' +
     '<p class="wlc__head" aria-live="polite"><span class="wlc__price"></span><span class="wlc__change"></span></p>' +
     `<div class="wlc__periods" role="radiogroup" aria-label="Period">${PERIODS.map(p =>
       `<button type="button" role="radio" class="wlc__period" data-period="${p.id}">${p.label}</button>`).join('')}</div>` +
