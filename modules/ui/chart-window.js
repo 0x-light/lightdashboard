@@ -14,7 +14,7 @@
 // watchlist's grid changes the watchlist, the positions' grid only itself, until it closes.
 import { getPeriodHistoryByFeedIds, historySource } from '../data/providers/pyth.js';
 import { get24hPriceHistory } from '../data/providers/stocks.js';
-import { fetchCandles } from '../data/providers/hyperliquid.js';
+import { recentCandles } from '../data/candle-cache.js';
 import { formatPrice, formatLevel } from '../utils/currency.js';
 
 const MIN = 60 * 1000;
@@ -311,8 +311,7 @@ async function fetchPoints(item, p) {
     return get24hPriceHistory(item.yahooSymbol || item.symbol, { range, interval, timeoutMs: 8000 });
   }
   if (item.provider === 'hyperliquid') {
-    const now = Date.now();
-    const candles = await fetchCandles(item.coin, p.hl, now - p.ms, now, 8000);
+    const candles = await recentCandles(item.coin, p.hl, p.ms, 8000);
     return (candles || []).map(c => ({ timestamp: c.t, price: Number(c.c), volume: Number(c.v) }));
   }
   if (!item.feedId) return [];

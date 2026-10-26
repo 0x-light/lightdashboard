@@ -13,10 +13,12 @@
 // Every series is scaled to end at the value the page shows for it (Lighter's, a series of
 // changes, is shifted instead), so the line ends at the portfolio total and never dips
 // below zero. A holding with no history stays flat at its value. Before its first point a
-// series holds that point's value.
-// Fetched only for the period on screen, each series cached five minutes.
+// series holds that point's value; between points it runs straight from one to the next,
+// so an hourly source doesn't draw stairs.
+// Fetched only for the period on screen, each series cached five minutes; the price
+// histories three at a time.
 import { getPortfolio } from './hl-account.js';
-import { fetchCandles } from './providers/hyperliquid.js';
+import { recentCandles } from './candle-cache.js';
 import { fetchPnlHistory } from './providers/lighter.js';
 import { getWalletChart } from './providers/zerion.js';
 import { getStatement } from './providers/ibkr.js';
@@ -51,6 +53,27 @@ function cached(key, load) {
   });
   cache.set(key, { at: Date.now(), promise });
   return promise;
+}
+
+// Price histories run three at a time: Hyperliquid and Yahoo refuse a burst of requests.
+const PRICE_CONCURRENCY = 3;
+let pricesRunning = 0;
+const priceQueue = [];
+function limited(load) {
+  return new Promise((resolve, reject) => {
+    priceQueue.push({ load, resolve, reject });
+    nextPrice();
+  });
+}
+function nextPrice() {
+  while (pricesRunning < PRICE_CONCURRENCY && priceQueue.length) {
+    const { load, resolve, reject } = priceQueue.shift();
+    pricesRunning++;
+    Promise.resolve().then(load).then(resolve, reject).finally(() => {
+      pricesRunning--;
+      nextPrice();
+    });
+  }
 }
 
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -170,10 +193,9 @@ export function priceKeyOf(p) {
 
 async function hlPrices(coin, period) {
   const cfg = PERIODS[period];
-  const now = Date.now();
-  const start = now - Math.min(cfg.ms, YEAR_MS);
-  let candles = await fetchCandles(coin, cfg.hl, start, now, 8000);
-  if (!candles.length) candles = await fetchCandles(`${coin}/USDC`, cfg.hl, start, now, 8000);
+  const windowMs = Math.min(cfg.ms, YEAR_MS);
+  let candles = await recentCandles(coin, cfg.hl, windowMs, 8000);
+  if (!candles.length) candles = await recentCandles(`${coin}/USDC`, cfg.hl, windowMs, 8000);
   return candles.map(c => [num(c.t), num(c.c)]).filter(([t, c]) => t > 0 && c > 0).sort((a, b) => a[0] - b[0]);
 }
 
@@ -185,7 +207,7 @@ async function yahooPrices(symbol, period) {
 
 function prices(key, period) {
   const [source, name] = key.split(':');
-  return cached(`price:${key}:${period}`, () => (source === 'yahoo' ? yahooPrices(name, period) : hlPrices(name, period)));
+  return cached(`price:${key}:${period}`, () => limited(() => (source === 'yahoo' ? yahooPrices(name, period) : hlPrices(name, period))));
 }
 
 // IBKR's end-of-day totals, summed over accounts, each in the statement's currency

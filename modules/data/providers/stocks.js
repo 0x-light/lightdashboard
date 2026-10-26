@@ -111,11 +111,41 @@ function saveListingCurrencies() {
   }
 }
 
+// Tickers Yahoo doesn't know: most of a currency's suffix guesses (VWCE.PA, VWCE.MC…). Kept a
+// day, so each load doesn't ask for them again.
+const LISTING_MISS_KEY = 'yahoo_listing_miss_v1';
+const LISTING_MISS_TTL_MS = 24 * 60 * 60 * 1000;
+let listingMisses = null; // symbol -> when Yahoo said it has no such ticker
+
+function loadListingMisses() {
+  if (listingMisses) return listingMisses;
+  listingMisses = new Map();
+  try {
+    const stored = JSON.parse(globalThis.window?.localStorage?.getItem(LISTING_MISS_KEY) || '{}');
+    for (const [sym, at] of Object.entries(stored)) {
+      if (Date.now() - Number(at) < LISTING_MISS_TTL_MS) listingMisses.set(sym, Number(at));
+    }
+  } catch (_) {
+    // Storage unavailable — ask again per session.
+  }
+  return listingMisses;
+}
+
+function saveListingMisses() {
+  try {
+    globalThis.window?.localStorage?.setItem(LISTING_MISS_KEY, JSON.stringify(Object.fromEntries(listingMisses)));
+  } catch (_) {
+    // Best effort only.
+  }
+}
+
 async function resolveListingCurrencies(symbols, timeoutMs) {
   loadListingCurrencies();
-  const missing = symbols.filter(sym => !listingCurrencies.has(sym));
+  const misses = loadListingMisses();
+  const missing = symbols.filter(sym => !listingCurrencies.has(sym) && !misses.has(sym));
   if (missing.length === 0) return;
   let found = false;
+  let missed = false;
   await Promise.all(missing.map(async (sym) => {
     try {
       const data = await HttpClient.getJson(
@@ -126,12 +156,20 @@ async function resolveListingCurrencies(symbols, timeoutMs) {
       if (typeof currency === 'string' && currency) {
         listingCurrencies.set(sym, currency);
         found = true;
+      } else {
+        misses.set(sym, Date.now());
+        missed = true;
       }
-    } catch (_) {
-      // Leave unresolved; we retry on the next quote request.
+    } catch (e) {
+      // Yahoo answers an unknown ticker with 404. Anything else (timeout, rate limit) is asked again.
+      if (/^HTTP 404\b/.test(String(e?.message))) {
+        misses.set(sym, Date.now());
+        missed = true;
+      }
     }
   }));
   if (found) saveListingCurrencies();
+  if (missed) saveListingMisses();
 }
 
 const PREPOST_BROKEN_KEY = 'yahoo_prepost_spark_broken_until';
@@ -168,7 +206,9 @@ function markPrePostSparkBroken() {
  */
 export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
   if (!Array.isArray(symbols) || symbols.length === 0) return {};
-  const unique = Array.from(new Set(symbols.map(s => String(s || '').trim()).filter(Boolean)));
+  // Tickers Yahoo said it doesn't know have no quote to fetch.
+  const misses = loadListingMisses();
+  const unique = Array.from(new Set(symbols.map(s => String(s || '').trim()).filter(s => s && !misses.has(s))));
   if (unique.length === 0) return {};
 
   // Yahoo rejects spark requests with more than 20 symbols ("less than or equal to 20").
@@ -351,8 +391,9 @@ export async function get24hPriceHistory(symbol, { timeoutMs = 5000, range = '1d
     const series = [];
     for (let i = 0; i < timestamps.length; i++) {
       const ts = Number(timestamps[i]);
-      const price = Number(closes[i]);
-      if (Number.isFinite(ts) && Number.isFinite(price)) {
+      // Closed-market hours come back as null closes; Number(null) would read as 0.
+      const price = closes[i] == null ? NaN : Number(closes[i]);
+      if (Number.isFinite(ts) && price > 0) {
         series.push({ timestamp: ts * 1000, price, volume: Number(volumes[i]) || 0 });
       }
     }
