@@ -94,6 +94,14 @@
     <link rel="modulepreload" href="/modules/data/fetchers/cielo-fetcher.js">
     <link rel="modulepreload" href="/modules/data/fetchers/ibkr-fetcher.js">
     <link rel="modulepreload" href="/modules/data/fetchers/alchemy-helius-fetcher.js">
+    <link rel="modulepreload" href="/modules/domain/instruments.js">
+    <link rel="modulepreload" href="/modules/ui/larp-settings.js">
+    <link rel="modulepreload" href="/modules/larp/larp-presets.js">
+    <link rel="modulepreload" href="/modules/ui/radio-groups.js">
+    <!-- palmeirim.js imports the value chart's history at load, and the watchlist shows at boot -->
+    <link rel="modulepreload" href="/modules/data/portfolio-history.js">
+    <link rel="modulepreload" href="/modules/data/hl-account.js">
+    <link rel="modulepreload" href="/modules/features/watchlist.js">
     <!-- Apply theme synchronously to prevent flash of wrong theme -->
     <script>
         // A theme you made: four colours, the rest derived. palmeirim.js uses it too.
@@ -308,6 +316,8 @@
                         <option value="jarvis">J.A.R.V.I.S.</option>
                         <option value="westworld">Westworld</option>
                         <option value="shodan">SHODAN</option>
+                        <option value="christmas">Christmas</option>
+                        <option value="halloween">Halloween</option>
                     </select>
                     <span class="theme-select-label">Theme</span>
                 </span>
@@ -434,6 +444,8 @@
                         <option value="jarvis">J.A.R.V.I.S.</option>
                         <option value="westworld">Westworld</option>
                         <option value="shodan">SHODAN</option>
+                        <option value="christmas">Christmas</option>
+                        <option value="halloween">Halloween</option>
                     </select>
                     <span class="theme-select-label">Theme</span>
                 </span>
@@ -474,7 +486,7 @@
                         <button type="button" class="settings-tab" role="tab" id="settingsTab-positions" aria-controls="settingsPane-positions" data-tab="positions">Positions</button>
                         <button type="button" class="settings-tab" role="tab" id="settingsTab-appearance" aria-controls="settingsPane-appearance" data-tab="appearance">Appearance</button>
                         <button type="button" class="settings-tab" role="tab" id="settingsTab-backup" aria-controls="settingsPane-backup" data-tab="backup">Backup</button>
-                        <button type="button" class="settings-tab" role="tab" id="settingsTab-larp" aria-controls="settingsPane-larp" data-tab="larp">Larp</button>
+                        <button type="button" class="settings-tab" role="tab" id="settingsTab-larp" aria-controls="settingsPane-larp" data-tab="larp">Demo</button>
                     </nav>
                     <p id="settingsFindEmpty" class="info settings-find-empty" hidden>No setting matches.</p>
 
@@ -603,6 +615,11 @@
                                     <input id="newCombineOptionLegs" type="checkbox" role="switch" class="settings-input">
                                     <span class="settings-switch__state" aria-hidden="true"></span>
                                 </label>
+                                <label class="settings-switch" data-find="market hours stocks closed weekend">
+                                    Dim closed markets
+                                    <input id="newDimClosedMarkets" type="checkbox" role="switch" class="settings-input">
+                                    <span class="settings-switch__state" aria-hidden="true"></span>
+                                </label>
                             </section>
 
                             <section class="settings-box">
@@ -699,6 +716,11 @@
                                     <input id="newValueInTitle" type="checkbox" role="switch" class="settings-input">
                                     <span class="settings-switch__state" aria-hidden="true"></span>
                                 </label>
+                                <label class="settings-switch" data-find="halloween christmas holiday theme">
+                                    Seasonal themes
+                                    <input id="newSeasonalThemes" type="checkbox" role="switch" class="settings-input">
+                                    <span class="settings-switch__state" aria-hidden="true"></span>
+                                </label>
                             </section>
                         </div>
 
@@ -728,7 +750,7 @@
                             <div class="info settings-footnote">Your settings stay in this browser only.</div>
                         </div>
 
-                        <!-- Larp: a made-up portfolio for screenshots, and the lists that edit it. -->
+                        <!-- Demo (larp mode): a made-up portfolio for screenshots, and the lists that edit it. -->
                         <div class="settings-pane" role="tabpanel" id="settingsPane-larp" aria-labelledby="settingsTab-larp" data-pane="larp" hidden>
                             <div id="larpRoot"></div>
                         </div>
@@ -794,6 +816,7 @@
                         <button type="button" role="radio" class="wl-period" data-period="week" aria-checked="false">1W</button>
                         <button type="button" role="radio" class="wl-period" data-period="month" aria-checked="false">1M</button>
                         <button type="button" role="radio" class="wl-period" data-period="year" aria-checked="false">1Y</button>
+                        <button type="button" role="radio" class="wl-period" data-period="all" aria-checked="false">All</button>
                     </span>
                     <span class="panel-rule"></span>
                     <button id="newAddToWatchlistBtn" class="btn-text panel-action" aria-label="Add to watchlist">+ Add</button>
@@ -1013,6 +1036,19 @@
                     refreshing = true;
                     window.location.reload();
                 }
+            });
+
+            // The worker cached a new version of the app. Reload while the page is out of sight,
+            // so the change never interrupts what is on screen.
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                if (event.data?.type !== 'SHELL_UPDATED' || refreshing) return;
+                const reloadWhenHidden = () => {
+                    if (!document.hidden || refreshing) return;
+                    refreshing = true;
+                    window.location.reload();
+                };
+                if (document.hidden) reloadWhenHidden();
+                else document.addEventListener('visibilitychange', reloadWhenHidden);
             });
 
             window.addEventListener('load', () => {

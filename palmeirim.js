@@ -42,9 +42,36 @@
   tools.appendChild(menuFoot);
   $(".pm-dd__esc", menuFoot).addEventListener("click", function () { menuBtn.focus(); });
 
-  // The update time sits at the right of the bar.
+  // The update time sits at the right of the bar. Click it to drop down the sources,
+  // as MENU drops down its list. Clicking outside or Esc closes it.
   var stamp = $("#lastUpdateTimestamp");
-  if (stamp) header.appendChild(stamp);
+  var sources = $("#newProviderStatus");
+  var stampAnchor = el("span", { class: "pm-dd-anchor pm-stamp" });
+  if (stamp) {
+    stampAnchor.appendChild(stamp);
+    header.appendChild(stampAnchor);
+  }
+  function setSources(open) {
+    stampAnchor.classList.toggle("is-open", open);
+    if (stamp) stamp.setAttribute("aria-expanded", String(open));
+  }
+  if (stamp && sources) {
+    stampAnchor.appendChild(sources);
+    stamp.setAttribute("role", "button");
+    stamp.setAttribute("tabindex", "0");
+    stamp.setAttribute("aria-controls", "newProviderStatus");
+    stamp.setAttribute("aria-expanded", "false");
+    stamp.addEventListener("click", function () { setSources(!stampAnchor.classList.contains("is-open")); });
+    stamp.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); stamp.click(); }
+    });
+    document.addEventListener("click", function (e) {
+      if (stampAnchor.classList.contains("is-open") && !stampAnchor.contains(e.target)) setSources(false);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && stampAnchor.classList.contains("is-open")) { setSources(false); stamp.focus(); }
+    });
+  }
 
   function setMenu(open) {
     header.classList.toggle("pm-menu-open", open);
@@ -169,7 +196,8 @@
     var pct = first > 0 ? (pnl / first) * 100 : null;
     $(".pm-value__change", valueBox).textContent = money(pnl, true) + (pct !== null ? " (" + (pct >= 0 ? "+" : "−") + Math.abs(pct).toFixed(1) + "%)" : "");
 
-    // Drawn at the box's real pixel size, so the 1px dither stays crisp.
+    // Drawn at the box's real pixel size on whole pixels, so the 1px dither and the 2px
+    // line stay crisp. The right and top/bottom edges keep room for the end mark.
     var w = Math.max(100, Math.round(chart.clientWidth));
     var h = chartHeight();
     var ts = data.values.map(function (p) { return p[0]; });
@@ -177,15 +205,19 @@
     var t0 = Math.min.apply(null, ts), t1 = Math.max.apply(null, ts);
     var v0 = Math.min.apply(null, vs), v1 = Math.max.apply(null, vs);
     if (v1 === v0) { v0 -= 1; v1 += 1; }
+    var yOf = function (v) { return Math.round(3 + (1 - (v - v0) / (v1 - v0)) * (h - 7)); };
     valueSeries = data.values.map(function (p) {
-      return { t: p[0], v: p[1], x: (p[0] - t0) / (t1 - t0 || 1) * (w - 1), y: 1 + (1 - (p[1] - v0) / (v1 - v0)) * (h - 3) };
+      return { t: p[0], v: p[1], x: Math.round((p[0] - t0) / (t1 - t0 || 1) * (w - 4)), y: yOf(p[1]) };
     });
-    var pts = valueSeries.map(function (p) { return p.x.toFixed(1) + "," + p.y.toFixed(1); }).join(" ");
+    var pts = valueSeries.map(function (p) { return p.x + "," + p.y; }).join(" ");
+    var end = valueSeries[valueSeries.length - 1];
     chart.innerHTML =
       '<svg class="pm-value__svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '" aria-hidden="true">' +
       '<defs><pattern id="pmValueDz" width="2" height="2" patternUnits="userSpaceOnUse"><rect class="pm-value__dot" width="1" height="1"/><rect class="pm-value__dot" x="1" y="1" width="1" height="1"/></pattern></defs>' +
-      '<polygon points="0,' + h + " " + pts + " " + (w - 1) + "," + h + '" fill="url(#pmValueDz)"/>' +
+      '<polygon points="0,' + h + " " + pts + " " + end.x + "," + h + '" fill="url(#pmValueDz)"/>' +
       '<polyline points="' + pts + '" class="pm-value__line" fill="none"/>' +
+      // Now: a square at the line's end.
+      '<rect class="pm-value__end" width="5" height="5" x="' + (end.x - 2) + '" y="' + (end.y - 2) + '"/>' +
       // Hover marker: moved by attributes (not style), which the page observer ignores.
       '<line class="pm-value__cursor" x1="0" x2="0" y1="0" y2="' + h + '" visibility="hidden"/>' +
       '<rect class="pm-value__point" width="5" height="5" x="0" y="0" visibility="hidden"/></svg>';
@@ -212,7 +244,7 @@
         valueBox.hidden = false;
         drawValue();
         // A source that failed (Hyperliquid rate-limits bursts) gets another go soon.
-        if (!valueSettled || data.values.length < 2) setTimeout(loadValue, valueSettled ? 15000 : 4000);
+        if (!valueSettled || data.values.length < 2) setTimeout(loadValueIfSeen, valueSettled ? 15000 : 4000);
       });
     }).catch(function () { valueBox.hidden = true; });
   }
@@ -302,7 +334,18 @@
   new MutationObserver(loadValue).observe(document.documentElement, { attributes: true, attributeFilter: ["data-value-chart"] });
   drawValue();
   loadValue();
-  setInterval(loadValue, 60 * 1000);
+  // Not while the tab is in the background; once on return if a load was missed.
+  var valueMissed = false;
+  function loadValueIfSeen() {
+    if (document.hidden) { valueMissed = true; return; }
+    loadValue();
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden || !valueMissed) return;
+    valueMissed = false;
+    loadValue();
+  });
+  setInterval(loadValueIfSeen, 60 * 1000);
 
   function tick() {
     var text = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: window.larpTimeZone });
@@ -316,9 +359,10 @@
   function syncWeather() {
     var w = $("#newSummary .hero-sentence-weather");
     var place = $(".js-pm-place");
-    var temp = w && w.textContent.match(/(-?\d+)°C/);
+    // The sentence's icon (sun or moon when clear, cloud, rain, snow) goes before the temperature.
+    var temp = w && w.textContent.match(/(-?\d+)°C(?:\s+(\S+)\s+in\b)?/);
     var city = w && $("strong", w);
-    var text = temp && city ? " " + city.textContent + " · " + temp[1] + "°C" : "";
+    var text = temp && city ? " " + city.textContent + " · " + (temp[2] ? temp[2] + " " : "") + temp[1] + "°C" : "";
     // The badge lives inside the observed subtree; writing the same text would loop.
     if (place.textContent !== text) place.textContent = text;
   }
@@ -330,9 +374,11 @@
 
   var themeSelect = $("#newThemeSelect");
   var themeSelectMobile = $("#newThemeSelectMobile");
-  var themeChip = el("button", { type: "button", id: "pmThemeChip", class: "chip", "aria-haspopup": "dialog", "aria-expanded": "false", "aria-controls": "pmThemeDd", "aria-keyshortcuts": "T" },
-    '<kbd aria-hidden="true">T</kbd><span class="chip__label">Theme</span>');
-  bar.insertBefore(themeChip, menuAnchor);
+  // An item in MENU, with the current theme on its right. The list hangs from MENU,
+  // since the item itself hides as the menu closes.
+  var themeItem = el("button", { type: "button", id: "pmThemeBtn", class: "btn-text", "aria-haspopup": "dialog", "aria-controls": "pmThemeDd", "aria-keyshortcuts": "T" },
+    'Theme <span class="pm-theme-current js-pm-theme-label"></span>');
+  tools.appendChild(themeItem);
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; });
@@ -343,7 +389,6 @@
     // Settings writes it as its own list does: Dark, Game Boy
     var label = opt ? opt.textContent.trim() : "";
     $$(".js-pm-theme-label").forEach(function (n) { if (n.textContent !== label) n.textContent = label; });
-    themeChip.setAttribute("aria-label", "Theme: " + label.toLowerCase() + ". Choose a theme");
   }
 
   function previewTheme(value) {
@@ -492,7 +537,8 @@
     closeThemeDd(true);
   }
 
-  themeChip.addEventListener("click", function () { openThemeDd(themeChip); });
+  // After the menu has closed (its own click handler waits a tick too)
+  themeItem.addEventListener("click", function () { setTimeout(function () { openThemeDd(menuBtn); }, 0); });
   var settingsTheme = $("#settingsThemeBtn");
   if (settingsTheme) {
     settingsTheme.setAttribute("aria-controls", "pmThemeDd");
@@ -618,7 +664,7 @@
   function openMaker(id) {
     makerEditing = customThemes.find(function (t) { return t.id === id; }) || null;
     makerBefore = themeSelect.value;
-    makerOpener = themeOpener || themeChip;
+    makerOpener = themeOpener || menuBtn;
     makerOverModal = document.body.classList.contains("modal-open");
     $("#pmMakerTitle").textContent = makerEditing ? "Edit theme" : "New theme";
     $(".js-pm-maker-delete", maker).hidden = !makerEditing;
@@ -812,6 +858,12 @@
     ["X", "Random comic"],
     ["D", "Download the comic"],
     ["← →", "In a chart: move along the line"],
+    ["↑ ↓", "In the chart window: previous or next item"],
+    ["1–7", "In the chart window: period"],
+    ["P H V D L", "In the chart window: position, high/low, volume, days, log scale"],
+    ["A", "In the chart window: the list as a grid, or back"],
+    ["← → ↑ ↓", "In the grid: move between charts (Shift: move the chart)"],
+    ["⌫ P +", "In the grid: remove, prices, add"],
     ["← → ↑ ↓", "On a sticker: move it (Shift: further)"],
     ["+ −", "On a sticker: make it bigger or smaller"],
     ["[ ]", "On a sticker: turn it"],
@@ -917,7 +969,7 @@
       if (header.classList.contains("pm-menu-open")) { setMenu(false); menuBtn.focus(); } else openMenuAt(0);
       return;
     }
-    if (e.key === "t" || e.key === "T") { e.preventDefault(); openThemeDd(themeChip); return; }
+    if (e.key === "t" || e.key === "T") { e.preventDefault(); setMenu(false); openThemeDd(menuBtn); return; }
     if (e.key === "h" || e.key === "H") {
       var btn = $("#newToggleAmountsBtn");
       if (btn) { e.preventDefault(); btn.click(); }
@@ -925,7 +977,12 @@
   });
 
   // The app renders asynchronously and hides sections from settings; follow along.
-  new MutationObserver(function () { syncWeather(); syncSparks(); }).observe($("#main"), { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "hidden", "class"] });
+  // A render is a burst of mutations (and each flash toggles a class): one pass per frame.
+  var mainSync = 0;
+  new MutationObserver(function () {
+    if (mainSync) return;
+    mainSync = requestAnimationFrame(function () { mainSync = 0; syncWeather(); syncSparks(); });
+  }).observe($("#main"), { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "hidden", "class"] });
 
   // app.js sets the theme select's value after this runs.
   // ── 24h sparklines: the same dim dither as the allocation tracks, under the line ──
@@ -935,10 +992,10 @@
 
   var sparkSeq = 0;
 
-  function ditherSpark(svg) {
+  // rect is read by the caller, before any SVG is written, so a pass costs one layout.
+  function ditherSpark(svg, rect) {
     var line = $("polyline", svg);
     var box = svg.viewBox && svg.viewBox.baseVal;
-    var rect = svg.getBoundingClientRect();
     if (!line || !box || !box.width || !rect.width || !rect.height) return;
     var px = box.width / rect.width, py = box.height / rect.height;
     var id = "pmSparkDz" + (++sparkSeq);
@@ -959,9 +1016,9 @@
   // Inside the observed subtree: only SVGs without an area get one, so the writes
   // this makes find nothing left to do on the next pass.
   function syncSparks() {
-    $$("#main svg.sparkline").forEach(function (svg) {
-      if (!$(".pm-spark-area", svg)) ditherSpark(svg);
-    });
+    var bare = $$("#main svg.sparkline").filter(function (svg) { return !$(".pm-spark-area", svg); });
+    var rects = bare.map(function (svg) { return svg.getBoundingClientRect(); });
+    bare.forEach(function (svg, i) { ditherSpark(svg, rects[i]); });
   }
 
   // Cell widths change at breakpoints; rebuild every area at the new size.

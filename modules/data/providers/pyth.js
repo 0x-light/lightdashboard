@@ -65,12 +65,12 @@ async function fetchPyth(path, timeoutMs = 10000, bypassCache = false) {
 let feedsCache = null;
 let feedsCacheTimestamp = 0;
 let feedsMetadataCache = null;
-// v2 adds equity / FX / metal / commodity coverage — the crypto-only v1 cache would be stale.
-const FEEDS_CACHE_KEY = 'pyth_price_feeds_v2';
-const FEEDS_METADATA_CACHE_KEY = 'pyth_feed_metadata_v2';
+// v5 adds the Commodities.Index feeds (24/7 Brent) and plain commodity names.
+const FEEDS_CACHE_KEY = 'pyth_price_feeds_v5';
+const FEEDS_METADATA_CACHE_KEY = 'pyth_feed_metadata_v5';
 const FEEDS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 const FEED_ID_PATTERN = /^0x[a-f0-9]{64}$/;
-const LEGACY_FEEDS_CACHE_KEY = 'pyth_price_feeds_v1';
+const LEGACY_FEEDS_CACHE_KEYS = ['pyth_price_feeds_v1', 'pyth_price_feeds_v2', 'pyth_price_feeds_v3', 'pyth_price_feeds_v4', 'pyth_feed_metadata_v2', 'pyth_feed_metadata_v3', 'pyth_feed_metadata_v4'];
 
 // Pyth symbols are structured as `<Category>.<Rest>/<Quote>`. We extract a compact
 // symbol (AAPL, BTC, EUR/USD, XAU) and the category so the UI can label stocks distinctly
@@ -102,11 +102,20 @@ const FEED_PARSERS = [
   },
   {
     category: 'commodity',
-    // Commodities.WTI/USD, Commodity.WTI/USD
-    test: /^Commodit(?:y|ies)\.([A-Za-z0-9]+)\/USD$/i,
+    // Commodities.WTI/USD, Commodity.WTI/USD, Commodities.Index.BRENT/USD (Pyth's 24/7 spot)
+    test: /^Commodit(?:y|ies)\.(?:Index\.)?([A-Za-z0-9]+)\/USD$/i,
     extractSymbol: (m) => m[1].toUpperCase()
   }
 ];
+
+// Pyth describes its commodity feeds as "PYTH PRICE IN USD FOR BRENT 24/7": the asset is the rest.
+const FEED_NAMES = { BRENT: 'Brent crude', WTI: 'WTI crude', NATGAS: 'Natural gas' };
+function feedName(feed, symbol) {
+  const description = feed?.attributes?.description || feed?.attributes?.display_symbol || symbol;
+  const commodity = /^PYTH PRICE IN USD FOR (.+?)(?: 24\/7)?$/i.exec(description);
+  if (!commodity) return description;
+  return FEED_NAMES[symbol] || commodity[1];
+}
 
 function parsePythFeed(feed) {
   const symbolField = feed?.attributes?.symbol;
@@ -124,7 +133,7 @@ function parsePythFeed(feed) {
         id: normalizedId,
         category: parser.category,
         // display/description come from Pyth metadata when available — e.g. "Apple Inc.", "Bitcoin / US Dollar"
-        name: feed?.attributes?.description || feed?.attributes?.display_symbol || symbol,
+        name: feedName(feed, symbol),
         displaySymbol: feed?.attributes?.display_symbol || feed?.attributes?.generic_symbol || null,
         assetType: feed?.attributes?.asset_type || null,
         // Flag stocks as market-hours-sensitive so the UI can hint that prices may be stale off-hours.
@@ -305,8 +314,8 @@ async function fetchAndCacheFeeds(timeoutMs) {
     try {
       localStorage?.setItem(FEEDS_METADATA_CACHE_KEY, JSON.stringify({ timestamp: now, data: metadata }));
       localStorage?.setItem(FEEDS_CACHE_KEY, JSON.stringify({ timestamp: now, data: feedsCache }));
-      // v1 held crypto-only data and is no longer consulted; drop it to free quota.
-      localStorage?.removeItem(LEGACY_FEEDS_CACHE_KEY);
+      // Older lists are no longer consulted; drop them to free quota.
+      for (const key of LEGACY_FEEDS_CACHE_KEYS) localStorage?.removeItem(key);
     } catch (_) { /* ignore quota */ }
   }
 
@@ -393,9 +402,72 @@ let hlPrevDayCache = null; // { at, promise }
 // Yahoo tickers for the non-equity symbols Pyth uses. Spot metals and crude aren't on Yahoo's
 // spark endpoint, so the front-month future stands in (within ~1% of spot).
 const YAHOO_COMMODITY_SYMBOLS = {
-  XAU: 'GC=F', XAG: 'SI=F', XPT: 'PL=F', XPD: 'PA=F', XCU: 'HG=F',
-  WTI: 'CL=F', USOILSPOT: 'CL=F', BRENT: 'BZ=F', UKOILSPOT: 'BZ=F', NGAS: 'NG=F', NATGAS: 'NG=F'
+  XAU: 'GC=F', XAG: 'SI=F', XPT: 'PL=F', XPD: 'PA=F', XCU: 'HG=F', COPPER: 'HG=F', CU: 'HG=F',
+  WTI: 'CL=F', WTI1M: 'CL=F', USOILSPOT: 'CL=F'
 };
+const FUTURES_MONTH_CODES = 'FGHJKMNQUVXZ';
+
+const weekend = d => d.getUTCDay() === 0 || d.getUTCDay() === 6;
+
+// A month's last business day (n = 0), or the nth business day before the month starts.
+function businessDayUTC(year, month, n) {
+  if (n === 0) {
+    const d = new Date(Date.UTC(year, month + 1, 0));
+    while (weekend(d)) d.setUTCDate(d.getUTCDate() - 1);
+    return d;
+  }
+  const d = new Date(Date.UTC(year, month, 1));
+  for (let left = n; left > 0;) {
+    d.setUTCDate(d.getUTCDate() - 1);
+    if (!weekend(d)) left--;
+  }
+  return d;
+}
+
+// Futures on Yahoo by Pyth's root: Yahoo's root, exchange and when a contract for a delivery
+// month stops trading. Brent: the last business day of the second month before. Henry Hub gas:
+// three business days before the delivery month.
+const FUTURES = {
+  BRENT: { root: 'BZ', exchange: 'NYM', expiry: (y, m) => businessDayUTC(y, m - 2, 0) },
+  HN: { root: 'NG', exchange: 'NYM', expiry: (y, m) => businessDayUTC(y, m, 3) },
+  CLL: { root: 'CL', exchange: 'NYM' },
+  CA: { root: 'CC', exchange: 'NYB' }
+};
+// Pyth's spot feeds where Yahoo's continuous future (BZ=F, NG=F) rolls weeks before expiry and
+// sits off the cash price: these take the contract nearest expiry.
+const FRONT_MONTH = { BRENT: 'BRENT', BRENT1M: 'BRENT', UKOILSPOT: 'BRENT', NATGAS: 'HN', NGAS: 'HN', HHGAS1M: 'HN', HLGAS1M: 'HN' };
+
+const contractTicker = (f, year, month) =>
+  `${f.root}${FUTURES_MONTH_CODES[month]}${String(year % 100).padStart(2, '0')}.${f.exchange}`;
+
+export function frontMonthTicker(root, now = new Date()) {
+  const f = FUTURES[root];
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  for (let ahead = 0; ahead < 4; ahead++) {
+    const delivery = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + ahead, 1));
+    const y = delivery.getUTCFullYear();
+    const m = delivery.getUTCMonth();
+    if (f.expiry(y, m).getTime() >= today) return contractTicker(f, y, m);
+  }
+  return null;
+}
+
+// Pyth's dated feeds (BRENTZ6 = December 2026 Brent, CLLZ6 WTI, HNX6 gas) map to Yahoo's
+// matching contract.
+function datedContractTicker(symbol, now = new Date()) {
+  const m = /^([A-Z]+?)([FGHJKMNQUVXZ])(\d)$/.exec(symbol);
+  const f = m && FUTURES[m[1]];
+  if (!f) return null;
+  const year = now.getUTCFullYear();
+  let contractYear = year - (year % 10) + Number(m[3]);
+  if (contractYear < year - 1) contractYear += 10;
+  return contractTicker(f, contractYear, FUTURES_MONTH_CODES.indexOf(m[2]));
+}
+
+function yahooCommoditySymbol(symbol) {
+  if (FRONT_MONTH[symbol]) return frontMonthTicker(FRONT_MONTH[symbol]);
+  return YAHOO_COMMODITY_SYMBOLS[symbol] || datedContractTicker(symbol);
+}
 
 /**
  * Callers that already know a feed's symbol (manual positions store it) register it here, so
@@ -431,7 +503,7 @@ function yahooSymbolForFeed({ symbol, category }) {
     const [base, quote] = symbol.split('/');
     return base && quote ? `${base}${quote}=X` : null;
   }
-  if (category === 'metal' || category === 'commodity') return YAHOO_COMMODITY_SYMBOLS[symbol] || null;
+  if (category === 'metal' || category === 'commodity') return yahooCommoditySymbol(symbol);
   if (['equity', 'etf', 'fund', 'stock', 'index'].includes(category)) {
     return /^[A-Z^][A-Z0-9.\-=^]{0,11}$/.test(symbol) ? symbol : null;
   }
@@ -576,6 +648,11 @@ async function getKeylessHistory(ids, points, endTime) {
  * `{ ms, hl, yahoo: [range, interval] }` names the window, the Hyperliquid candle interval and
  * the Yahoo chart range. Points are `{ timestamp (ms), price, volume }`, at most `points` of them.
  */
+// Where a feed's prices come from, once it has been quoted: 'hyperliquid' or 'yahoo'.
+export function historySource(feedId) {
+  return keylessQuoteCache.get(normalizeFeedId(feedId))?.quote?.source || null;
+}
+
 export async function getPeriodHistoryByFeedIds(feedIds, { ms, hl, yahoo }, points = 120) {
   const ids = Array.from(new Set((feedIds || []).map(normalizeFeedId).filter(Boolean)));
   if (ids.length === 0) return {};

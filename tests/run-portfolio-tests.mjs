@@ -1164,13 +1164,14 @@ function testWatchlistNormalizeEntriesAcceptsLegacyAndMixed() {
 }
 
 function testPortfolioHistorySeriesMath() {
-  // Parts added on every timestamp either has; before its first point a part holds that value.
+  // Parts added on every timestamp either has: straight between a part's points, its first
+  // value before them, its last after.
   const a = [[10, 100], [20, 110], [30, 120]];
   const b = [[15, 50], [25, 70]];
-  assert.deepEqual(sumSeries([a, b]), [[10, 150], [15, 150], [20, 160], [25, 180], [30, 190]]);
-  assert.deepEqual(sumSeries([a, b], 20), [[20, 160], [25, 180], [30, 190]]);
+  assert.deepEqual(sumSeries([a, b]), [[10, 150], [15, 155], [20, 170], [25, 185], [30, 190]]);
+  assert.deepEqual(sumSeries([a, b], 20), [[20, 170], [25, 185], [30, 190]]);
   // A window between points starts at its own edge, with the value then.
-  assert.deepEqual(sumSeries([a, b], 22), [[22, 160], [25, 180], [30, 190]]);
+  assert.deepEqual(sumSeries([a, b], 22), [[22, 176], [25, 185], [30, 190]]);
   assert.deepEqual(sumSeries([[[5, 1], [5, 2]]]), [[5, 2]]);
   // The window keeps the last point before it, so the value at the start is known.
   assert.deepEqual(clip(a, 25), [[20, 110], [30, 120]]);

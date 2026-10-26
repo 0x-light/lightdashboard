@@ -33,6 +33,8 @@ const FIELDS = [
   { id: 'newShowPriceChart', key: 'showPriceChart', type: 'check', fallback: true },
   { id: 'newGroupPositions', key: 'groupPositions', type: 'check', fallback: true },
   { id: 'newCombineOptionLegs', key: 'combineOptionLegs', type: 'check', fallback: true },
+  { id: 'newDimClosedMarkets', key: 'dimClosedMarkets', type: 'check', fallback: true },
+  { id: 'newSeasonalThemes', key: 'seasonalThemes', type: 'check', fallback: true },
   { id: 'newShowWatchlist', key: 'hideWatchlist', type: 'check', invert: true, fallback: false },
   { id: 'newShowComic', key: 'hideComic', type: 'check', invert: true, fallback: false }
 ];
@@ -267,6 +269,8 @@ export function applyAppearance(settings) {
   document.documentElement.dataset.titleValue = titleValue ? 'on' : 'off';
   document.documentElement.dataset.valueChart = (settings.showValueChart ?? true) ? 'on' : 'off';
   if (!titleValue) document.title = 'Viewport';
+  // Closed markets and seasonal themes (ambient.js, once loaded)
+  window.ambient?.refresh?.();
   // The positions table reads these at render time; give it the new values and redraw.
   const renderer = typeof window !== 'undefined' ? window._portfolioRenderer : null;
   if (renderer?.settings) {

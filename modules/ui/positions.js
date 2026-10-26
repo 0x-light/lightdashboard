@@ -32,11 +32,11 @@ import {
 export const POSITION_COLUMNS = [
   { key: 'asset', label: 'Asset', sort: 'asset', cellClass: 'asset-cell', fixed: true },
   { key: 'price', label: 'Price', sort: 'price', num: true },
-  { key: 'pnl', label: 'P&L', sort: 'pnl', num: true },
-  { key: 'change', label: '24h %', sort: 'change', num: true },
   { key: 'chart', label: 'Chart', headClass: 'chart', cellClass: 'chart-cell chart' },
   { key: 'value', label: 'Value', sort: 'value', num: true },
+  { key: 'pnl', label: 'P&L', sort: 'pnl', num: true },
   { key: 'funding', label: 'Funding', sort: 'funding', num: true },
+  { key: 'change', label: '24h %', sort: 'change', num: true },
   { key: 'expiry', label: 'Expiry', sort: 'expiry' },
   { key: 'underlying', label: 'Underlying', sort: 'underlying', num: true },
   { key: 'amount', label: 'Amount', sort: 'amount', num: true },
@@ -75,6 +75,22 @@ function cellClassFor(col) {
 
 const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
 
+// Stocks, funds and options trade in market hours; ambient.js dims them while their
+// exchange is closed. The quote currency names the exchange: euro listings trade in
+// Frankfurt or on Euronext, sterling in London, the rest in New York.
+const STOCK_CATEGORIES = new Set(['equity', 'stock', 'etf', 'fund', 'index', 'option']);
+function isStockMarket(pos) {
+  return STOCK_CATEGORIES.has(String(pos.category || '').toLowerCase()) ||
+    /^Manual \((Stock|ETF|Fund|Index)\)$/.test(pos.exchange || '');
+}
+function stockMarketOf(pos) {
+  if (!isStockMarket(pos)) return null;
+  const currency = String(pos.currency || pos.sourceCurrency || '').toUpperCase();
+  if (currency === 'EUR') return 'eu';
+  if (currency === 'GBP' || currency === 'GBX') return 'uk';
+  return 'us';
+}
+
 function isStablecoin(asset) {
   return STABLECOINS.has(asset?.toUpperCase());
 }
@@ -102,11 +118,11 @@ function initFundingTooltip() {
   document.addEventListener('scroll', hideFundingTooltip, true);
 }
 
-function showFundingTooltip(e, text) {
+function showFundingTooltip(cell, e, text) {
   if (!fundingTooltipEl) initFundingTooltip();
   fundingTooltipEl.textContent = text;
   fundingTooltipEl.classList.add('visible');
-  activeTooltipCell = e.currentTarget;
+  activeTooltipCell = cell;
   updateTooltipPosition(e);
 }
 
@@ -428,11 +444,115 @@ function createDetailRow(doc, pos, opts, colSpan) {
 }
 
 // Columns a detail line should span: only the ones showing. Spanning a column that a
-// narrow screen hides would add a phantom column and shift the others.
+// narrow screen hides would add a phantom column and shift the others. Reading the
+// styles forces a style pass, so the count is kept until the columns or a class that
+// can hide one (has-funding, has-options, body.no-charts) changes.
+let columnCountCache = { signature: null, count: 0 };
 function visibleColumnCount(table) {
+  const doc = table?.ownerDocument;
+  const signature = [table?.querySelector('thead')?.dataset.columns, table?.className,
+    doc?.body?.className, doc?.documentElement?.className].join('|');
+  if (table && columnCountCache.signature === signature) return columnCountCache.count;
   const heads = Array.from(table?.querySelectorAll('thead th') || []);
   const shown = heads.filter(th => getComputedStyle(th).display !== 'none').length;
-  return shown || heads.length || 9;
+  const count = shown || heads.length || 9;
+  if (table) columnCountCache = { signature, count };
+  return count;
+}
+
+// One set of funding-tooltip listeners on the table body, for every funding cell it
+// will hold; each cell carries its text in data-funding-rate.
+const fundingTooltipBodies = new WeakSet();
+function bindFundingTooltip(body) {
+  if (fundingTooltipBodies.has(body)) return;
+  fundingTooltipBodies.add(body);
+  const cellOf = (e) => e.target.closest?.('td.funding-cell[data-funding-rate]');
+  body.addEventListener('mouseover', (e) => {
+    const cell = cellOf(e);
+    if (cell && !cell.contains(e.relatedTarget)) showFundingTooltip(cell, e, cell.dataset.fundingRate);
+  });
+  body.addEventListener('mousemove', (e) => { if (cellOf(e)) updateTooltipPosition(e); });
+  body.addEventListener('mouseout', (e) => {
+    const cell = cellOf(e);
+    if (cell && !cell.contains(e.relatedTarget)) hideFundingTooltip();
+  });
+  body.addEventListener('focusin', (e) => {
+    const cell = cellOf(e);
+    if (cell && e.target === cell) showFundingTooltipAt(cell, cell.dataset.fundingRate);
+  });
+  body.addEventListener('focusout', (e) => {
+    const cell = cellOf(e);
+    if (cell && e.target === cell) hideFundingTooltip();
+  });
+}
+
+// Which layout shows: the table, or the cards on a narrow screen. palmeirim.css keeps
+// the table at every width (html.pm), so the cards show only without it. Only the one
+// showing is built; crossing the breakpoint renders again to build the other.
+const NARROW_QUERY = '(max-width: 870px)';
+function cardsShown(doc) {
+  const media = doc.defaultView?.matchMedia?.(NARROW_QUERY);
+  if (!media) return null; // can't tell: build both
+  return !doc.documentElement.classList.contains('pm') && media.matches;
+}
+
+let layoutWatched = false;
+function watchLayout(doc) {
+  if (layoutWatched) return;
+  const media = doc.defaultView?.matchMedia?.(NARROW_QUERY);
+  if (!media?.addEventListener) return;
+  layoutWatched = true;
+  let shown = cardsShown(doc);
+  media.addEventListener('change', () => {
+    const now = cardsShown(doc);
+    if (now === shown) return;
+    shown = now;
+    window._portfolioRenderer?.render?.();
+  });
+}
+
+// What each table row was built from, so a render keeps the rows whose HTML is the
+// same (with their focus, hover and the dither palmeirim.js adds to sparklines) and
+// replaces only the ones that changed.
+const builtRows = new WeakMap(); // tr → { key, html }
+
+function rowIdentity(tr, prevKey) {
+  if (tr.dataset.key) return `row:${tr.dataset.key}`;
+  if (tr.classList.contains('position-detail')) return `detail:${prevKey}`;
+  return tr.className;
+}
+
+function patchRows(body, frag) {
+  const old = new Map();
+  for (const tr of body.children) {
+    const built = builtRows.get(tr);
+    if (built) old.set(built.key, tr);
+  }
+  const seen = new Map();
+  let prevKey = '';
+  const next = Array.from(frag.children).map(tr => {
+    const base = rowIdentity(tr, prevKey);
+    const n = seen.get(base) || 0;
+    seen.set(base, n + 1);
+    const key = n ? `${base}#${n}` : base;
+    prevKey = key;
+    const html = tr.outerHTML;
+    const kept = old.get(key);
+    // A row with a cell to flash is new every time, so the flash plays again.
+    if (kept && builtRows.get(kept).html === html && !html.includes('data-flash')) {
+      old.delete(key);
+      return kept;
+    }
+    builtRows.set(tr, { key, html });
+    return tr;
+  });
+  // In order, moving only what is out of place, then drop what is left over.
+  next.forEach((tr, i) => {
+    const at = body.children[i];
+    if (at !== tr) body.insertBefore(tr, at || null);
+  });
+  while (body.children.length > next.length) body.lastElementChild.remove();
+  for (const node of Array.from(body.childNodes)) if (node.nodeType !== 1) node.remove();
 }
 
 function hideFundingTooltip() {
@@ -755,6 +875,7 @@ function createTableRow(doc, pos, opts, prevDataMap, { leg = false } = {}) {
   tr.classList.add('position-row');
   if (isOpen) tr.classList.add('is-open');
   tr.dataset.key = rowKey;
+  if (stockMarketOf(pos)) tr.dataset.market = stockMarketOf(pos);
   tr.tabIndex = 0;
   tr.setAttribute('aria-expanded', String(isOpen));
 
@@ -858,11 +979,7 @@ function createTableRow(doc, pos, opts, prevDataMap, { leg = false } = {}) {
       // Tooltip follows the pointer; keyboard users reach the same rate by focusing the cell
       td.tabIndex = 0;
       td.setAttribute('aria-label', `${td.textContent.trim()}, ${fundingTooltipText}`);
-      td.addEventListener('mouseenter', (e) => showFundingTooltip(e, fundingTooltipText));
-      td.addEventListener('mousemove', updateTooltipPosition);
-      td.addEventListener('mouseleave', hideFundingTooltip);
-      td.addEventListener('focus', (e) => showFundingTooltipAt(e.currentTarget, fundingTooltipText));
-      td.addEventListener('blur', hideFundingTooltip);
+      // The listeners are on the table body (bindFundingTooltip), so rows carry none.
     }
     if (col.key === 'asset') {
       // The cell fills to the row's share of the portfolio: the allocation, read in place.
@@ -970,6 +1087,7 @@ function createStrategyRow(doc, underlying, legs, opts) {
   const stale = oldestStale(legs.map(l => l.pos));
   if (stale) tr.classList.add('position-row-stale');
   tr.dataset.key = rowKey;
+  if (legs.every(l => isStockMarket(l.pos))) tr.dataset.market = stockMarketOf(legs[0].pos);
   tr.tabIndex = 0;
   tr.setAttribute('aria-expanded', String(isOpen));
 
@@ -1119,6 +1237,7 @@ function createMobileCard(doc, pos, opts) {
   const card = doc.createElement('div');
   card.className = 'mobile-position-card';
   if (pos.isStale) card.classList.add('is-stale');
+  if (stockMarketOf(pos)) card.dataset.market = stockMarketOf(pos);
   const amountVisible = !!opts.amountsVisible;
   const value = computeValue(pos);
   const useColoredPnL = opts.settings?.useColoredPnL ?? true;
@@ -1263,6 +1382,12 @@ export function renderPositions({ positions, containers, options, previousPositi
     opts.largestShare = Math.max(0, ...Object.values(opts.shares || {}));
     const baseCurrency = normalizeBaseCurrency(opts.settings?.portfolioBaseCurrency);
     updateHeaders(containers.positionsBody, baseCurrency, opts);
+    bindFundingTooltip(containers.positionsBody);
+    watchLayout(doc);
+    // Only the layout showing is built (cardsShown is null when it can't tell: both).
+    const cards = cardsShown(doc);
+    const buildTable = cards !== true;
+    const mobileContainer = cards === false ? null : containers.mobilePositionsContainer;
 
     const list = Array.isArray(positions) ? positions : [];
     const query = String(opts.query || '').trim().toLowerCase();
@@ -1321,7 +1446,7 @@ export function renderPositions({ positions, containers, options, previousPositi
     // Build fragments for atomic update
     const frag = doc.createDocumentFragment();
     const mobileFrag = doc.createDocumentFragment();
-    const colSpan = visibleColumnCount(table);
+    const colSpan = buildTable ? visibleColumnCount(table) : 0;
     // Spot, perps and options are different things: each kind gets its own run of rows
     // under a head with its totals. One kind alone needs no head, and the setting can
     // ask for one list in sort order instead.
@@ -1333,11 +1458,12 @@ export function renderPositions({ positions, containers, options, previousPositi
     const folded = foldedKinds();
     for (const group of groups) {
       if (groups.length > 1) {
-        frag.appendChild(createGroupRow(doc, group, opts, folded.has(group.kind)));
-        if (containers.mobilePositionsContainer) mobileFrag.appendChild(createMobileGroupLine(doc, group, opts));
+        if (buildTable) frag.appendChild(createGroupRow(doc, group, opts, folded.has(group.kind)));
+        if (mobileContainer) mobileFrag.appendChild(createMobileGroupLine(doc, group, opts));
         if (folded.has(group.kind)) continue;
       }
       const addRow = (pos, leg) => {
+        if (!buildTable) return;
         frag.appendChild(createTableRow(doc, pos, opts, prevDataMap, { leg }));
         if (opts.openKey === `${pos.asset}_${pos.exchange}`) {
           frag.appendChild(createDetailRow(doc, pos, opts, colSpan));
@@ -1346,25 +1472,27 @@ export function renderPositions({ positions, containers, options, previousPositi
       for (const pos of group.rows) {
         if (!pos._strategy) {
           addRow(pos, false);
-          if (containers.mobilePositionsContainer) mobileFrag.appendChild(createMobileCard(doc, pos, opts));
+          if (mobileContainer) mobileFrag.appendChild(createMobileCard(doc, pos, opts));
           continue;
         }
         // Legs on one name: their row, and when open, each leg as a row and the
         // combined payoff under them.
         const { underlying, legs } = pos._strategy;
-        frag.appendChild(createStrategyRow(doc, underlying, legs, opts));
-        if (opts.openKey === strategyKey(underlying, legs)) {
-          legs.forEach((leg, i) => addRow(leg.pos, i === legs.length - 1 ? 'last' : 'mid'));
-          frag.appendChild(createStrategyDetailRow(doc, underlying, legs, opts, colSpan));
+        if (buildTable) {
+          frag.appendChild(createStrategyRow(doc, underlying, legs, opts));
+          if (opts.openKey === strategyKey(underlying, legs)) {
+            legs.forEach((leg, i) => addRow(leg.pos, i === legs.length - 1 ? 'last' : 'mid'));
+            frag.appendChild(createStrategyDetailRow(doc, underlying, legs, opts, colSpan));
+          }
         }
-        if (containers.mobilePositionsContainer) {
+        if (mobileContainer) {
           for (const leg of legs) mobileFrag.appendChild(createMobileCard(doc, leg.pos, opts));
         }
       }
     }
 
-    // Rows are rebuilt on every refresh; remember what had keyboard focus (a row or one
-    // of its actions) so it can be handed back to the new element.
+    // Changed rows are replaced; remember what had keyboard focus (a row or one of its
+    // actions) so it can be handed back to the new element.
     const active = doc.activeElement;
     const focusedRow = containers.positionsBody.contains(active)
       ? (active.closest('tr.position-detail')?.previousElementSibling || active.closest('tr'))
@@ -1372,20 +1500,19 @@ export function renderPositions({ positions, containers, options, previousPositi
     const focusedKey = focusedRow?.dataset?.key || null;
     const focusedAction = active?.dataset?.shortcut || null;
 
-    // Atomic DOM update using replaceChildren() which is truly atomic
-    // (no intermediate empty state visible to the user, unlike innerHTML = '' + appendChild)
-    containers.positionsBody.replaceChildren(frag);
+    // In one pass: rows whose HTML is the same stay, the rest are put in place.
+    if (buildTable) patchRows(containers.positionsBody, frag);
 
-    if (focusedKey) {
+    if (buildTable && focusedKey) {
       const row = Array.from(containers.positionsBody.querySelectorAll('tr.position-row'))
         .find(r => r.dataset.key === focusedKey);
       const target = focusedAction && row?.nextElementSibling?.classList.contains('position-detail')
         ? row.nextElementSibling.querySelector(`[data-shortcut="${focusedAction}"]`)
         : row;
-      target?.focus({ preventScroll: true });
+      if (target && target !== doc.activeElement) target.focus({ preventScroll: true });
     }
-    if (containers.mobilePositionsContainer) {
-      containers.mobilePositionsContainer.replaceChildren(mobileFrag);
+    if (mobileContainer) {
+      mobileContainer.replaceChildren(mobileFrag);
     }
 
     // Trigger flash animations (like watchlist)
@@ -1400,8 +1527,8 @@ export function renderPositions({ positions, containers, options, previousPositi
       });
 
       // Trigger flash animations in mobile cards
-      if (containers.mobilePositionsContainer) {
-        const mobileFlashNodes = containers.mobilePositionsContainer.querySelectorAll('[data-flash="true"]');
+      if (mobileContainer) {
+        const mobileFlashNodes = mobileContainer.querySelectorAll('[data-flash="true"]');
         mobileFlashNodes.forEach(node => {
           node.classList.add('cell-flash');
           node.addEventListener('animationend', () => {

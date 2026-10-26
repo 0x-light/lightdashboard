@@ -155,6 +155,7 @@ html.pm:root #newStickersBtn::before { content: "K"; }
 html.pm:root #newDonateBtn::before { content: "G"; }
 html.pm:root #newToggleSnowBtn::before { content: "N"; }
 html.pm:root #newToggleRainBtn::before { content: "Y"; }
+html.pm:root #pmThemeBtn::before { content: "T"; }
 
 /* The theme selects stay hidden; THEME opens the list. */
 html.pm:root .header-actions .theme-select-wrapper { display: none !important; }
@@ -235,6 +236,7 @@ html.pm:root .pm-dd__foot .chip__label { background: var(--pm-tint); }
 html.pm:root #pmTools #newSettingsBtn { order: -5; }
 html.pm:root #pmTools #newRefreshBtn { order: -2; }
 html.pm:root #pmTools #newToggleAmountsBtn { order: -1; }
+html.pm:root #pmTools #pmThemeBtn { order: -1; }
 html.pm:root #pmKeysBtn::before { content: "?"; }
 html.pm:root #pmTools #pmKeysBtn { order: 1; }
 html.pm:root .pm-theme-current { color: var(--pm-muted); text-transform: lowercase; }
@@ -502,9 +504,9 @@ html.pm:root .hero-amount-toggle {
 }
 
 html.pm:root .hero-sentence-weather { display: none; }
+html.pm:root .hero-readout-label { color: var(--pm-muted); text-transform: uppercase; }
 
 /* Allocation: a framed bar on the line grid, legend as plain text. */
-html.pm:root .hero-readout-label { color: var(--pm-muted); text-transform: uppercase; }
 html.pm:root .hero-summary > .hero-freshness { color: var(--pm-muted); }
 html.pm:root .alloc { margin-top: var(--pm-lh); }
 
@@ -663,6 +665,10 @@ html.pm:root .data-table .sparkline {
   vertical-align: top;
 }
 
+/* Positions: the sparkline fills its cell from border to border. */
+html.pm:root .data-table td.chart-cell { padding: 0 !important; }
+html.pm:root .data-table td.chart-cell .sparkline { display: block; width: 100%; min-width: 8ch; }
+
 html.pm:root .sparkline polyline { stroke: currentColor !important; }
 /* A position's 24h chart opens the chart window. */
 html.pm:root #newPositionsBody td.chart-cell svg.sparkline { cursor: pointer; }
@@ -694,7 +700,8 @@ html.pm:root .loading-terminal::before {
 /* A loader that is the only thing in its panel sits in the middle of it, as SRCL's block
    loader does. In a line of text (the footer's sources) it stays inline. */
 html.pm:root :is(#newSummary, #newComic, .data-table td.loading, .wlc__empty, .acct__muted, .ladder__note):has(> .loading-terminal:only-child) { text-align: center; }
-html.pm:root .wlc__chart:has(> .wlc__empty > .loading-terminal:only-child) { display: grid; place-items: center; }
+/* Not in the grid, which hides the one chart: shown there, it took a column of its own. */
+html.pm:root .wlc:not(.wlc--grid) > .wlc__chart:has(> .wlc__empty > .loading-terminal:only-child) { display: grid; place-items: center; }
 /* The sentence keeps a reading width; while it loads, the card's middle is the box's middle. */
 html.pm:root #newSummary:has(> .loading-terminal:only-child) { max-width: none; }
 
@@ -931,13 +938,13 @@ html.pm:root #newWatchlistBody > tr.watchlist-row > td.wl-chart { margin-bottom:
 
 /* Heights held while loading, so the comic below doesn't move: the chart's line before it
    arrives, and one row of tiles before the watchlist renders. */
-html.pm:root #newWatchlistBody > tr.watchlist-row > td.wl-chart { min-height: calc(var(--pm-lh) * 1.5); }
-html.pm:root #newWatchlistBody > tr:only-child > td.loading { min-height: calc(var(--pm-lh) * 3.5 + 2px); }
+html.pm:root #newWatchlistBody > tr.watchlist-row > td.wl-chart { min-height: calc(var(--pm-lh) * 2.5); }
+html.pm:root #newWatchlistBody > tr:only-child > td.loading { min-height: calc(var(--pm-lh) * 4.5 + 2px); }
 
 html.pm:root #newWatchlistBody .wl-chart .sparkline {
   display: block;
   width: 100%;
-  height: calc(var(--pm-lh) * 1.5);
+  height: calc(var(--pm-lh) * 2.5);
 }
 
 html.pm:root #newWatchlistBody > tr.watchlist-row:focus-visible { border-color: var(--pm-ink); outline: none; }
@@ -1093,6 +1100,8 @@ html.pm:root .undo-line {
 }
 
 html.pm:root .undo-line[hidden] { display: none; }
+/* Over the chart window while it is open: removing there offers its undo too. */
+html.pm:root:has(.pm-chart-window:not([style*="none"])) .undo-line { z-index: 10003; }
 
 html.pm:root .undo-line__text {
   min-width: 0;
@@ -1369,7 +1378,37 @@ html.pm:root .status-bar {
 html.pm:root .last-update-timestamp { color: var(--pm-muted); }
 
 /* In the top bar, the update time sits at the right. */
-html.pm:root .app-header .last-update-timestamp { margin-left: auto; line-height: var(--pm-lh); }
+html.pm:root .app-header .pm-stamp { margin-left: auto; }
+html.pm:root .app-header .last-update-timestamp { line-height: var(--pm-lh); cursor: pointer; }
+html.pm:root .app-header .last-update-timestamp:hover,
+html.pm:root .app-header .last-update-timestamp[aria-expanded="true"] { color: var(--pm-ink); }
+/* A failed source turns the update time red; its line and Retry are in the list. */
+html.pm:root .pm-stamp:has(.provider-status[data-state="failed"]) .last-update-timestamp { color: var(--red); }
+
+/* The sources: a drop-down that hangs from the update time at its right edge. */
+html.pm:root .pm-stamp:not(.is-open) .provider-status { display: none; }
+html.pm:root .pm-stamp .provider-status:not([hidden]) {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 60;
+  /* As wide as the longest line, with a short leader. */
+  grid-template-columns: 1ch auto auto minmax(4ch, 1fr) auto;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  padding: calc(var(--pm-lh) / 2) 1ch;
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+  line-height: var(--pm-lh);
+}
+/* The footer is empty now: no band of padding at the foot of the page. */
+html.pm:root .status-bar:not(:has(*)) { display: none; }
+
+/* Phones: the list spans the bar, as MENU's does. */
+@media (max-width: 720px) {
+  html.pm:root .pm-stamp { position: static; }
+  html.pm:root .pm-stamp .provider-status:not([hidden]) { left: 1ch; right: 1ch; width: auto; max-width: none; }
+}
 
 /* ── Pop-ups: the page's own vocabulary in a frame ──
    Everything sits on the line grid: one-line fields, uppercase muted labels,
@@ -2315,18 +2354,15 @@ html.pm:root .pm-value__chart {
 }
 html.pm:root .pm-value__svg { display: block; }
 html.pm:root .pm-value__dot { fill: var(--pm-rule); }
-html.pm:root .pm-value__line { stroke: var(--pm-ink); stroke-width: 1.25; }
+html.pm:root .pm-value__line { stroke: var(--pm-ink); stroke-width: 1; stroke-linejoin: round; }
+html.pm:root .pm-value__end { fill: var(--pm-ink); }
 /* The chart box bleeds to the borders; the message keeps the card's inset. */
 html.pm:root .pm-value__empty { margin: 0; padding: 0 var(--pm-card-x) var(--pm-card-x); color: var(--pm-muted); }
 html.pm:root .pm-value__cursor { stroke: var(--pm-muted); stroke-width: 1; }
-html.pm:root .pm-value__point { fill: var(--pm-ink); stroke: var(--bg); stroke-width: 1; }
+html.pm:root :is(.pm-value__point, .wlc__cell-now) { fill: var(--pm-ink); stroke: var(--bg); stroke-width: 1; }
 
 /* ── Chart window: one watchlist item, bigger. The head line reads the latest price
    and the change over the period; the point or range being pointed at reads in a tag. ── */
-html.pm:root .pm-chart-window { width: min(76ch, calc(100vw - 3ch)); }
-@media (min-width: 871px) {
-  html.pm:root .pm-chart-window { width: min(112ch, calc(100vw - 6ch)); top: calc(var(--pm-lh) * 3); transform: translateX(-50%); }
-}
 html.pm:root .wlc p { margin: 0; }
 html.pm:root .wlc__ticker { color: var(--pm-muted); }
 html.pm:root .wlc__head { display: flex; justify-content: space-between; align-items: baseline; gap: 0 2ch; flex-wrap: wrap; }
@@ -2420,6 +2456,12 @@ html.pm:root .wlc__layer {
   cursor: pointer;
 }
 html.pm:root .wlc__layer[aria-pressed="true"] { background: var(--pm-tint-2); color: var(--pm-ink); }
+/* Each button's key before its name, muted; not on a touch screen, which has no keys. */
+html.pm:root .wlc__layer[data-key]::before { content: attr(data-key); margin-right: 1ch; color: var(--pm-muted); }
+@media (hover: none) {
+  html.pm:root .wlc__layer[data-key]::before { content: none; }
+  html.pm:root .wlc__layer.js-wlc-grid-add::before { content: "+"; color: inherit; }
+}
 html.pm:root .wlc__layer:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 0; }
 @media (hover: hover) {
   html.pm:root .wlc__layer:hover { color: var(--pm-ink); }
@@ -2442,6 +2484,308 @@ html.pm:root .wlc .wlc__foot { margin-top: var(--pm-lh); }
 html.pm:root .wlc__foot .link-button { color: var(--pm-muted); }
 @media (hover: hover) {
   html.pm:root .wlc__foot .link-button:hover { color: var(--pm-ink); }
+}
+
+/* The window fills the screen inside its frame; the title and Close stay on the border.
+   The chart takes every line the head, toolbar and figures leave it, and the watchlist
+   runs down the right side.
+   ┌─ WATCHLIST ❯ GOLD ───────────────────────────── ESC CLOSE ─┐
+   │ Gold futures GOLD                        │ WATCHLIST   24H │
+   │ $4,016.60              −$116.10 (−2.81%) │ GOLD  …   −0.08% │
+   │ 1H 1D 1W …              HIGH/LOW VOLUME  │ BTC   …   −1.20% │
+   │ ~~~~~~~~~~~~~~~~ chart ~~~~~~~~~~~~~~~~~ │                  │
+   │ Open … Close … High … Low …              │                  │ */
+html.pm:root .settings-backdrop:has(+ .pm-chart-window) { background: var(--bg); }
+html.pm:root .pm-chart-window.sticker-window:not(#stickerWindow) {
+  inset: calc(var(--pm-lh) * 1.5) 2ch var(--pm-lh);
+  width: auto;
+  max-width: none;
+  height: auto;
+  max-height: none;
+  transform: none;
+  box-shadow: none;
+}
+html.pm:root .pm-chart-window .wlc {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 34ch;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto;
+  grid-template-areas:
+    "name    name   list"
+    "head    head   list"
+    "periods layers list"
+    "chart   chart  list"
+    "rows    rows   list"
+    "pos     pos    list"
+    "facts   foot   list";
+  column-gap: 2ch;
+  overflow: hidden;
+}
+html.pm:root .pm-chart-window .wlc__name { grid-area: name; }
+html.pm:root .pm-chart-window .wlc__head { grid-area: head; }
+/* The one large figure, three lines high. */
+html.pm:root .pm-chart-window .wlc__price { font-size: 300%; line-height: calc(var(--pm-lh) * 3); letter-spacing: -0.02em; }
+html.pm:root .pm-chart-window .wlc__change { font-size: 150%; line-height: calc(var(--pm-lh) * 2); }
+html.pm:root .pm-chart-window .wlc__periods { grid-area: periods; margin-top: var(--pm-lh); }
+html.pm:root .pm-chart-window .wlc__layers { grid-area: layers; margin-top: var(--pm-lh); justify-content: flex-end; }
+html.pm:root .pm-chart-window .wlc__chart { grid-area: chart; min-height: 0; overflow: hidden; margin: var(--pm-lh) 0 0 -1ch; }
+html.pm:root .pm-chart-window .wlc__rows { grid-area: rows; margin-top: var(--pm-lh); grid-template-columns: repeat(4, max-content); gap: 0 4ch; }
+html.pm:root .pm-chart-window .wlc__pos { grid-area: pos; }
+html.pm:root .pm-chart-window .wlc .wlc__facts { grid-area: facts; margin-top: var(--pm-lh); }
+html.pm:root .pm-chart-window .wlc .wlc__foot { grid-area: foot; margin-top: var(--pm-lh); text-align: right; }
+
+/* Grid: in each list's heading; narrow, with no side list, in the title bar by Close, with
+   its key. Lit while on. */
+html.pm:root .wlc__actions { display: flex; }
+html.pm:root .wlc__actions [hidden] { display: none; }
+@media (min-width: 1101px) {
+  html.pm:root .sticker-window-header .js-wlc-all { display: none; }
+}
+html.pm:root .wlc__list-tools { display: flex; gap: 0 1ch; margin-left: auto; }
+html.pm:root .wlc__list-head .js-wlc-grid[aria-pressed="true"] { background: var(--pm-ink); color: var(--bg); }
+html.pm:root .wlc__list-head .js-wlc-grid[data-key]::before { content: attr(data-key); margin-right: 1ch; }
+html.pm:root .sticker-window-header .js-wlc-all::before { content: "a"; }
+html.pm:root .sticker-window-header .js-wlc-all[aria-pressed="true"] { background: var(--pm-ink); color: var(--bg); }
+html.pm:root .sticker-window-header .js-wlc-all[aria-pressed="true"]::before { color: var(--pm-ink); }
+html.pm:root .wlc__defs { position: absolute; }
+
+/* The grid: the figures and the one chart give way to a cell for each item. The script
+   picks how many go across; the rows share the height, and a hairline parts the cells.
+   The charts run to the cells' edges, and the cells to the window's frame and the side list. */
+html.pm:root .wlc__all { display: none; }
+html.pm:root .pm-chart-window .wlc.wlc--grid {
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "periods layers list"
+    "grid    grid   list";
+}
+html.pm:root .wlc--grid > :is(.wlc__name, .wlc__head, .wlc__layers, .wlc__chart, .wlc__rows, .wlc__facts, .wlc__foot) { display: none; }
+html.pm:root .wlc--grid .wlc__all {
+  grid-area: grid;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: var(--pm-lh) -2ch calc(var(--pm-lh) * -1) -1ch;
+  border-top: 1px solid var(--pm-tint-2);
+  overflow-y: auto;
+}
+html.pm:root .wlc__grid-tools { display: none; }
+/* In the grid, the periods start at the top: no figures are above them. */
+html.pm:root .pm-chart-window .wlc--grid :is(.wlc__periods, .wlc__grid-tools) { margin-top: 0; }
+html.pm:root .wlc--grid .wlc__grid-tools { grid-area: layers; display: flex; gap: 0 1ch; justify-content: flex-end; position: relative; margin-top: var(--pm-lh); }
+html.pm:root .wlc__menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 30ch;
+  max-height: calc(var(--pm-lh) * 14);
+  margin-top: calc(var(--pm-lh) / 2);
+  padding: 0 0 calc(var(--pm-lh) / 2);
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--pm-tint-2);
+}
+html.pm:root .wlc__menu[hidden] { display: none; }
+html.pm:root .wlc__menu-rows { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+html.pm:root .wlc__menu-search {
+  min-width: 0;
+  margin: 0 0 calc(var(--pm-lh) / 2);
+  padding: 0 1ch;
+  border: 0;
+  border-radius: 0;
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: calc(var(--pm-lh) * 1.5);
+}
+html.pm:root .wlc__menu-search::placeholder { color: var(--pm-muted); }
+html.pm:root .wlc__menu-search::-webkit-search-cancel-button { display: none; }
+html.pm:root .wlc__menu-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 2ch;
+  margin: 0;
+  padding: 0 1ch;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: calc(var(--pm-lh) * 1.5);
+  text-align: left;
+  cursor: pointer;
+}
+html.pm:root .wlc__menu-from { color: var(--pm-muted); }
+html.pm:root .wlc__menu-item:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: -1px; }
+@media (hover: hover) {
+  html.pm:root .wlc__menu-item:hover { background: var(--pm-tint); }
+}
+html.pm:root .wlc__row { display: flex; flex: 1 0 calc(var(--pm-lh) * 7); min-height: 0; }
+html.pm:root .wlc__row + .wlc__row { border-top: 1px solid var(--pm-tint-2); }
+html.pm:root .wlc__cell { position: relative; display: flex; flex: 1 1 0; min-width: 0; min-height: 0; touch-action: pan-y; }
+html.pm:root .wlc__cell + .wlc__cell { border-left: 1px solid var(--pm-tint-2); }
+html.pm:root .wlc__cell.is-dragging { background: var(--pm-tint); cursor: grabbing; }
+html.pm:root .wlc__cell-open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: calc(var(--pm-lh) / 2) 1ch 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: var(--pm-lh);
+  text-align: left;
+  cursor: pointer;
+}
+/* Room at the right of the head for the remove key. */
+/* The head: ticker over your position at the left, price over its change at the right. */
+/* The head is where you take hold of a cell to move it. */
+html.pm:root .wlc__cell-head { cursor: grab; }
+html.pm:root .wlc__cell-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 2ch; margin-right: 3ch; }
+html.pm:root .wlc__cell-price, html.pm:root .wlc__cell-change { text-align: right; }
+html.pm:root .wlc__cell-pos { overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+html.pm:root .wlc__cell-pnl { color: var(--pm-ink); }
+html.pm:root .wlc__cell-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.pm:root .wlc__cell-change, html.pm:root .wlc__cell-pos { color: var(--pm-muted); }
+html.pm:root .wlc__cell-pos { min-height: var(--pm-lh); }
+html.pm:root .wlc__cell-chart { position: relative; display: block; flex: 1; min-height: calc(var(--pm-lh) * 3); margin: calc(var(--pm-lh) / 2) -1ch 0; overflow: hidden; }
+/* Price on: the latest price large in the middle of the chart, sized to the cell. */
+html.pm:root .wlc__cell-chart { container-type: size; }
+html.pm:root .wlc__cell-big {
+  display: none;
+  position: absolute;
+  inset: 0;
+  place-items: center;
+  font-size: min(28cqh, 11cqw);
+  line-height: 1;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  color: var(--pm-ink);
+  pointer-events: none;
+}
+html.pm:root .wlc--big .wlc__cell-big { display: grid; }
+/* Pointing at a cell fades its price, so the line and the readout show through. */
+@media (hover: hover) {
+  html.pm:root .wlc__cell-big { transition: opacity 120ms ease-out; }
+  html.pm:root .wlc__cell:hover .wlc__cell-big { opacity: 0.12; }
+}
+html.pm:root .wlc__cell-chart > .wlc__empty { display: grid; place-items: center; height: 100%; padding: 0; }
+html.pm:root .wlc__cell-open:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: -1px; }
+/* Remove: at the head's right, always there. */
+html.pm:root .wlc__cell-x {
+  position: absolute;
+  top: calc(var(--pm-lh) / 2);
+  right: 1ch;
+  width: 2ch;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--pm-muted);
+  font: inherit;
+  line-height: var(--pm-lh);
+  cursor: pointer;
+}
+/* The last cell of the watchlist's grid: adds to it. */
+html.pm:root .wlc__cell-add {
+  flex: 1;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--pm-muted);
+  font: inherit;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+html.pm:root .wlc__cell-add:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: -1px; color: var(--pm-ink); }
+@media (hover: hover) {
+  html.pm:root .wlc__cell-add:hover { background: var(--pm-tint); color: var(--pm-ink); }
+}
+html.pm:root .wlc__cell-x:focus-visible { outline: 1px solid var(--pm-ink); color: var(--pm-ink); }
+@media (hover: hover) {
+  html.pm:root .wlc__cell-open:hover { background: var(--pm-tint); }
+  html.pm:root .wlc__cell-x:hover { color: var(--pm-ink); }
+}
+
+/* The side list: a hairline from the plot, one item a line, the open one lit. */
+html.pm:root .wlc__list {
+  grid-area: list;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: calc(var(--pm-lh) * -1) -1ch calc(var(--pm-lh) * -1) 0;
+  padding: var(--pm-lh) 1ch;
+  border-left: 1px solid var(--pm-tint-2);
+  overflow-y: auto;
+}
+html.pm:root .wlc .wlc__list-head {
+  display: flex;
+  align-items: baseline;
+  padding: 0 1ch;
+  margin-bottom: calc(var(--pm-lh) / 2);
+  color: var(--pm-muted);
+  text-transform: uppercase;
+}
+/* A line between the positions and the watchlist. */
+html.pm:root .wlc .wlc__item + .wlc__list-head { margin-top: var(--pm-lh); }
+/* Add to watchlist opens over the chart window. */
+html.pm:root #newWatchlistSearchBackdrop { z-index: 10001; }
+html.pm:root #newWatchlistSearchWindow { z-index: 10002; }
+html.pm:root .wlc__item {
+  display: grid;
+  grid-template-columns: 6ch 1fr 9ch;
+  gap: 0 1ch;
+  min-height: 0;
+  margin: 0;
+  padding: 0 1ch;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: calc(var(--pm-lh) * 1.5);
+  text-align: left;
+  cursor: pointer;
+}
+html.pm:root .wlc__item-price { text-align: right; }
+html.pm:root .wlc__item-change { text-align: right; color: var(--pm-muted); }
+html.pm:root .wlc__item[aria-current="true"] { background: var(--pm-ink); color: var(--bg); }
+html.pm:root .wlc__item[aria-current="true"] .wlc__item-change { color: inherit; opacity: 0.65; }
+html.pm:root .wlc__item:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: -1px; }
+@media (hover: hover) {
+  html.pm:root .wlc__item:not([aria-current="true"]):hover { background: var(--pm-tint); }
+}
+
+/* Narrower: no side list. On a phone the frame comes closer to the edges and the figures pair up. */
+@media (max-width: 1100px) {
+  html.pm:root .pm-chart-window .wlc { grid-template-columns: minmax(0, 1fr) auto; }
+  html.pm:root .wlc__list { display: none; }
+  html.pm:root .pm-chart-window .wlc.wlc--grid { grid-template-areas: "periods layers" "grid grid"; }
+  html.pm:root .wlc--grid .wlc__all { margin-right: -1ch; }
+}
+@media (max-width: 870px) {
+  html.pm:root .pm-chart-window.sticker-window:not(#stickerWindow) { inset: var(--pm-lh) 1ch calc(var(--pm-lh) / 2); }
+  html.pm:root .pm-chart-window .wlc {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "name" "head" "periods" "chart" "layers" "rows" "pos" "facts" "foot";
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto auto auto;
+  }
+  html.pm:root .pm-chart-window .wlc__price { font-size: 250%; line-height: calc(var(--pm-lh) * 2.5); }
+  html.pm:root .pm-chart-window .wlc__change { font-size: inherit; line-height: var(--pm-lh); }
+  html.pm:root .pm-chart-window .wlc__chart { margin-right: -1ch; }
+  html.pm:root .pm-chart-window .wlc__layers { justify-content: flex-start; }
+  html.pm:root .pm-chart-window .wlc__rows { grid-template-columns: repeat(2, max-content); }
+  html.pm:root .pm-chart-window .wlc .wlc__foot { text-align: left; margin-top: calc(var(--pm-lh) / 2); }
+  html.pm:root .pm-chart-window .wlc.wlc--grid { grid-template-areas: "layers" "periods" "grid"; grid-template-rows: auto auto minmax(0, 1fr); }
 }
 
 /* ── Account window ── */
@@ -2662,12 +3006,6 @@ html.pm:root .table-wrapper.more-right { -webkit-mask-image: none; mask-image: n
   html.pm:root body { font-size: calc(1rem * 13 / 14); }
 }
 
-/* Phones: the sparkline is the one column dropped (24h % says the same), so P&L
-   still lands on the first screen; the rest is a swipe away. */
-@media (max-width: 520px) {
-  html.pm:root #newPositionsTable :is(.th-chart, .col-chart) { display: none; }
-}
-
 /* Allocation in place: the Asset cell fills from the left to the row's share of the
    portfolio. On an inverted (open, focused or pointed-at) row the fill inverts too. */
 html.pm:root .data-table td.asset-cell {
@@ -2713,7 +3051,6 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
   /* Reach: the chip, plus a little above and below it. */
   html.pm:root .pm-menu-btn,
   html.pm:root .pm-account-btn,
-  html.pm:root #pmThemeChip,
   html.pm:root .header-actions .btn-text,
   html.pm:root .th-sort,
   html.pm:root .row-action,
@@ -2725,7 +3062,6 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
   html.pm:root .column-order__move { position: relative; }
   html.pm:root .pm-menu-btn::after,
   html.pm:root .pm-account-btn::after,
-  html.pm:root #pmThemeChip::after,
   html.pm:root .header-actions .btn-text::after,
   html.pm:root .th-sort::before,
   html.pm:root .row-action::after,
@@ -2793,7 +3129,7 @@ html.pm:root .sticker-item:focus-visible { outline: 1px solid var(--pm-ink); out
 /* ── Footer: the sources as a telemetry readout (incremental-portfolio.js) ──
    Uppercase and spaced out, as a ship's console. Each line is a lamp, the source, its
    wallet, a dotted leader and the time; the columns line up down the list (subgrid).
-   A lamp is green when the source is online and blinks red when it failed. */
+   The lamp is a green tick when the source is online and a blinking red cross when it failed. */
 html.pm:root .provider-status:not([hidden]) {
   display: grid;
   grid-template-columns: 1ch auto auto minmax(2ch, 1fr) auto;
@@ -2834,22 +3170,16 @@ html.pm:root .provider-line__leader {
   background: radial-gradient(circle, var(--pm-rule) 0.5px, transparent 1px) 0 0 / 1ch 1px repeat-x;
 }
 
-/* The lamp */
-html.pm:root .provider-line__mark { position: relative; align-self: stretch; }
+/* The lamp: a tick, as on the Updated line; a cross when the source failed */
+html.pm:root .provider-line__mark { text-align: center; }
 html.pm:root .provider-line__mark:not(.loading-terminal)::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0.6em;
-  height: 0.6em;
-  border-radius: 50%;
-  background: var(--green);
-  transform: translate(-50%, -50%);
+  content: "✓";
+  color: var(--green);
 }
 html.pm:root .provider-line__mark.loading-terminal::before { margin-right: 0; }
 html.pm:root .provider-line.is-failed .provider-line__mark::before {
-  background: var(--red);
+  content: "✗";
+  color: var(--red);
   animation: terminal-blink 1s steps(1) infinite;
 }
 html.pm:root .provider-line.is-failed :is(.provider-line__name, .provider-line__note) { color: var(--red); }

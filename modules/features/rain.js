@@ -1,5 +1,6 @@
 // Rain and Snow effects module
 // Simplified version optimized for performance
+import { fetchForecast } from './weather.js';
 
 const canvas = document.getElementById('newRainCanvas');
 const ctx = canvas ? canvas.getContext('2d') : null;
@@ -8,6 +9,13 @@ let drops = [];
 let rainActive = false;
 let snowActive = false;
 let animationFrame = null;
+let lastDraw = 0;
+let fill = null; // the drops' colour, read again after a theme change
+
+// Motion is in 60 Hz frames; dt keeps it the same speed at any frame rate. Rain draws at
+// most 60 times a second (every other frame at 120 Hz), slow snow 30.
+const RAIN_STEP_MS = 1000 / 60;
+const SNOW_STEP_MS = 1000 / 30;
 
 // With reduced motion the effect still shows, as one still frame instead of falling drops
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -18,6 +26,15 @@ const config = {
   size: 1,
   length: 6
 };
+
+// Sideways pull, in pixels across per pixel down: the real wind plus the phone's tilt.
+// Set from ambient.js.
+let wind = 0;
+let tilt = 0;
+
+export function setWind(slope) { wind = Number.isFinite(slope) ? slope : 0; }
+export function setTilt(slope) { tilt = Number.isFinite(slope) ? slope : 0; }
+export function state() { return { rain: rainActive, snow: snowActive }; }
 
 function resizeCanvas() {
   if (!canvas) return;
@@ -49,49 +66,70 @@ function initDrops() {
   }
 }
 
-function draw() {
+function dropColor() {
+  const theme = document.documentElement.getAttribute('data-theme') || 'light';
+  const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim();
+  if (snowActive) return theme === 'light' ? (muted || '#93a1a1') : 'rgba(255, 255, 255, 0.9)';
+  if (theme === 'cyberpunk') return '#ffea00';
+  if (theme === 'light') return 'rgba(180, 190, 210, 0.6)';
+  return muted || '#586e75';
+}
+
+function draw(now = performance.now()) {
   if ((!rainActive && !snowActive) || !ctx) return;
-  
+
+  // Skip frames that come sooner than the step (2 ms early is close enough)
+  const step = snowActive ? SNOW_STEP_MS : RAIN_STEP_MS;
+  if (lastDraw && now - lastDraw < step - 2) {
+    animationFrame = requestAnimationFrame(draw);
+    return;
+  }
+  // A late frame (a hidden tab, a busy page) moves at most 4 steps
+  const dt = lastDraw ? Math.min(4, (now - lastDraw) / (1000 / 60)) : 1;
+  lastDraw = now;
+
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
   // Set pixel art style
   ctx.imageSmoothingEnabled = false;
   
-  // Get theme colors
-  const theme = document.documentElement.getAttribute('data-theme') || 'light';
-  const muted = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim();
+  if (!fill) fill = dropColor();
+  ctx.fillStyle = fill;
   
-  if (snowActive) {
-    // Snow
-    ctx.fillStyle = theme === 'light' ? (muted || '#93a1a1') : 'rgba(255, 255, 255, 0.9)';
-  } else {
-    // Rain
-    if (theme === 'cyberpunk') {
-      ctx.fillStyle = '#ffea00';
-    } else if (theme === 'light') {
-      ctx.fillStyle = 'rgba(180, 190, 210, 0.6)';
-    } else {
-      ctx.fillStyle = muted || '#586e75';
-    }
-  }
-  
+  // Snow drifts with the wind more slowly than rain is driven by it
+  const slope = (wind + tilt) * (snowActive ? 0.6 : 1);
+  const w = canvas.width;
+
   // Update and draw drops
   drops.forEach(drop => {
     // Update position
-    drop.y += drop.speed;
-    drop.wobble += drop.wobbleSpeed;
+    drop.y += drop.speed * dt;
+    drop.x += slope * drop.speed * dt;
+    drop.wobble += drop.wobbleSpeed * dt;
     const wobbleX = Math.sin(drop.wobble) * 0.5;
-    
-    // Draw
-    ctx.fillRect(Math.floor(drop.x + wobbleX), Math.floor(drop.y), drop.size, drop.length);
-    
-    // Reset if off screen
+
+    // Draw: a slanted drop is a staircase of pixels, so it stays crisp
+    const x = Math.floor(drop.x + wobbleX);
+    const y = Math.floor(drop.y);
+    if (snowActive || Math.abs(slope) < 0.08) {
+      ctx.fillRect(x, y, drop.size, drop.length);
+    } else {
+      for (let i = 0; i < drop.length; i++) {
+        ctx.fillRect(Math.floor(x - slope * i), y - i, drop.size, 1);
+      }
+    }
+
+    // Reset if off screen; a drop blown off one side comes back on the other
     if (drop.y > canvas.height) {
       drop.y = -drop.length;
-      drop.x = Math.random() * canvas.width;
+      drop.x = Math.random() * w;
+    } else if (drop.x < -20) {
+      drop.x += w + 40;
+    } else if (drop.x > w + 20) {
+      drop.x -= w + 40;
     }
   });
-  
+
   animationFrame = reducedMotion.matches ? null : requestAnimationFrame(draw);
 }
 
@@ -108,6 +146,8 @@ export function toggleRain() {
     canvas.classList.add('active');
     resizeCanvas();
     initDrops();
+    lastDraw = 0;
+    fill = null;
     draw();
   } else {
     canvas.classList.remove('active');
@@ -133,6 +173,8 @@ export function toggleSnow() {
     canvas.classList.add('active');
     resizeCanvas();
     initDrops();
+    lastDraw = 0;
+    fill = null;
     draw();
   } else {
     canvas.classList.remove('active');
@@ -162,14 +204,9 @@ export async function checkWeatherAndAutoEnable() {
       return;
     }
     
-    const response = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,precipitation&timezone=auto`,
-      { signal: AbortSignal.timeout(5000) }
-    );
-    
-    if (!response.ok) return;
-    
-    const data = await response.json();
+    // The same request as the weather line and the ambient sky
+    const data = await fetchForecast(lat, lon, 5000);
+    if (!data) return;
     const weatherCode = data.current?.weather_code;
     const precipitation = data.current?.precipitation || 0;
     
@@ -194,6 +231,8 @@ export async function checkWeatherAndAutoEnable() {
 if (canvas) {
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
+  // Read the colour again after a theme change
+  new MutationObserver(() => { fill = null; }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
 }
 
-export default { toggleRain, toggleSnow, checkWeatherAndAutoEnable };
+export default { toggleRain, toggleSnow, checkWeatherAndAutoEnable, setWind, setTilt, state };

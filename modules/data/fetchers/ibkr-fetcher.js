@@ -87,7 +87,7 @@ function multiplierOf(pos) {
   return Number.isFinite(implied) && implied > 1.5 ? Math.round(implied) : 100;
 }
 
-function buildPositionRow(pos, quote, underlyingQuote) {
+function buildPositionRow(pos, quote, underlyingQuote, yahooSymbol) {
   const multiplier = multiplierOf(pos);
   const live = livePriceFor(pos, quote);
   const price = live ?? pos.markPrice;
@@ -127,6 +127,8 @@ function buildPositionRow(pos, quote, underlyingQuote) {
     priceHistory: live !== null && Array.isArray(quote?.priceHistory) && quote.priceHistory.length > 1
       ? quote.priceHistory
       : undefined,
+    // The Yahoo ticker the live price came from ("VWCE.DE"), for the chart window.
+    yahooSymbol: live !== null ? yahooSymbol : undefined,
     category: CATEGORY[pos.assetCategory] || 'other',
     ibkrAccount: pos.accountId,
     ...(option ? {
@@ -207,8 +209,8 @@ export class IbkrFetcher {
             }
 
             // The first candidate with a price in the holding's own currency.
-            const quoteFor = pos => (symbols.get(pos) || []).map(sym => quotes[sym]).find(q => livePriceFor(pos, q) !== null);
-            const rows = positions.map(pos => buildPositionRow(pos, quoteFor(pos), quotes[underlyings.get(pos)]));
+            const symbolFor = pos => (symbols.get(pos) || []).find(sym => livePriceFor(pos, quotes[sym]) !== null);
+            const rows = positions.map(pos => buildPositionRow(pos, quotes[symbolFor(pos)], quotes[underlyings.get(pos)], symbolFor(pos)));
             // When IBKR made the statement (end of day). Every row carries it as holdingsAsOf.
             // Rows priced from the statement (no live quote) carry it as asOf, the age of
             // their numbers. Cash changes only with trades, so the latest statement's cash is
