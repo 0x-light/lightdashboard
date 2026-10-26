@@ -239,7 +239,7 @@
         valueBox.hidden = false;
         drawValue();
         // A source that failed (Hyperliquid rate-limits bursts) gets another go soon.
-        if (!valueSettled || data.values.length < 2) setTimeout(loadValue, valueSettled ? 15000 : 4000);
+        if (!valueSettled || data.values.length < 2) setTimeout(loadValueIfSeen, valueSettled ? 15000 : 4000);
       });
     }).catch(function () { valueBox.hidden = true; });
   }
@@ -329,7 +329,18 @@
   new MutationObserver(loadValue).observe(document.documentElement, { attributes: true, attributeFilter: ["data-value-chart"] });
   drawValue();
   loadValue();
-  setInterval(loadValue, 60 * 1000);
+  // Not while the tab is in the background; once on return if a load was missed.
+  var valueMissed = false;
+  function loadValueIfSeen() {
+    if (document.hidden) { valueMissed = true; return; }
+    loadValue();
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden || !valueMissed) return;
+    valueMissed = false;
+    loadValue();
+  });
+  setInterval(loadValueIfSeen, 60 * 1000);
 
   function tick() {
     var text = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: window.larpTimeZone });

@@ -3685,6 +3685,7 @@ const boot = async () => {
   let updateInterval = null;
   let refreshInProgress = false;
   let refreshQueued = false;
+  let lastRefreshAt = Date.now(); // the first load counts
 
   async function refreshPortfolio() {
     if (refreshInProgress) {
@@ -3692,6 +3693,7 @@ const boot = async () => {
       return;
     }
     refreshInProgress = true;
+    lastRefreshAt = Date.now();
 
     try {
       updateGreeting();
@@ -3729,8 +3731,9 @@ const boot = async () => {
     }
   }
 
-  // Start periodic refresh after 30 seconds, then every 30 seconds
-  setTimeout(() => {
+  // Start periodic refresh after 30 seconds, then every 30 seconds. Held in updateInterval so a
+  // hidden tab stops it too.
+  updateInterval = setTimeout(() => {
     refreshPortfolio();
     updateInterval = setInterval(refreshPortfolio, 30000);
   }, 30000);
@@ -3758,6 +3761,18 @@ const boot = async () => {
     } else {
       // Tab visible again - force full refresh to get fresh data
       if (!updateInterval) {
+        // Back before the next refresh was due: what is on screen is current, so keep the schedule
+        // instead of refetching everything. One timer id serves both: clearInterval clears a timeout.
+        const sinceRefresh = Date.now() - lastRefreshAt;
+        if (sinceRefresh < 30000) {
+          updateInterval = setTimeout(() => {
+            refreshPortfolio();
+            updateInterval = setInterval(refreshPortfolio, 30000);
+          }, 30000 - sinceRefresh);
+          tabHiddenAt = null;
+          return;
+        }
+
         // Check if tab was hidden for a long time (more than 1 minute)
         const wasHiddenLong = tabHiddenAt && (Date.now() - tabHiddenAt) > 60000;
 

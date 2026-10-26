@@ -1553,7 +1553,8 @@ export function openChartWindow({ key: openKey, list: openList, lists: allLists,
   sized.observe(win.querySelector('.wlc__all'));
   // The head's price and the axis tag follow the watchlist's refreshes.
   clearInterval(tick);
-  tick = setInterval(() => { if (!dragging) { list(); if (grid) drawGrid(); else show(); } }, 5000);
+  // A hidden page skips it: nothing is seen, and the next tick in view catches up.
+  tick = setInterval(() => { if (!dragging && !document.hidden) { list(); if (grid) drawGrid(); else show(); } }, 5000);
   load();
   // Focus starts on the window itself, so ← → step through the items straight away (on the
   // periods they choose a period, as in every period row).
