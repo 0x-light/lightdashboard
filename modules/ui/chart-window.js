@@ -6,6 +6,9 @@
 // reads the change between two points, and the range stays until the next press or Esc.
 // Layers you turn on or off: your position (entry, liquidation, TP/SL, profit at the
 // cursor), the period's high and low, volume, and day lines with weekends.
+// Every action has a key, shown on its button: P H V D the layers, ↑ ↓ any item in the side
+// list. In the grid, the arrows move between cells, ⇧ with an arrow moves the cell, ⌫ removes
+// it, P shows the prices and + adds.
 // Grid in a list's heading (or A) shows the whole list at once, each item a small chart on
 // the period; one opens on its own. In the grid you remove, drag into order and add: the
 // watchlist's grid changes the watchlist, the positions' grid only itself, until it closes.
@@ -34,10 +37,10 @@ const MAX_POINTS = 400;
 const CACHE_TTL_MS = 60 * 1000;
 // Layers on the chart, each on or off; Position and Volume show only when there is one.
 const LAYERS = [
-  { id: 'position', label: 'Position' },
-  { id: 'highlow', label: 'High/low' },
-  { id: 'volume', label: 'Volume' },
-  { id: 'days', label: 'Days' }
+  { id: 'position', label: 'Position', key: 'p' },
+  { id: 'highlow', label: 'High/low', key: 'h' },
+  { id: 'volume', label: 'Volume', key: 'v' },
+  { id: 'days', label: 'Days', key: 'd' }
 ];
 const LAYER_KEY = 'pmChartLayers';
 // Day lines and weekends read only where a period spans a few days.
@@ -746,8 +749,11 @@ function drawGrid() {
   for (let r = 0; r < cells.length; r += across) html += `<div class="wlc__row">${cells.slice(r, r + across).join('')}</div>`;
   win.querySelector('.js-wlc-grid-add').hidden = adds;
   if (html + period !== gridHtml) {
+    // The cell in focus keeps it when the cells are rebuilt (moved, removed, refreshed).
+    const focused = box.contains(document.activeElement) ? document.activeElement.closest('.wlc__cell') : null;
     box.innerHTML = html || '<p class="wlc__empty">Nothing to show. Add an item.</p>';
     gridHtml = html + period;
+    if (focused) focusCell(focused.dataset.key ?? 'add');
   }
   const label = PERIODS.find(x => x.id === period)?.label || '';
   box.querySelectorAll('.wlc__cell').forEach(cell => {
@@ -1063,7 +1069,9 @@ function showGrid(id) {
     key = items()[0]?.key;
   }
   load();
-  win.querySelector('.wlc').focus({ preventScroll: true });
+  // Into a grid, focus is on its first cell, so the arrows move between cells at once.
+  if (grid) cellRows()[0]?.[0]?.button.focus({ preventScroll: true });
+  else win.querySelector('.wlc').focus({ preventScroll: true });
 }
 
 // Remove or hide a cell: one from the watchlist's own grid leaves the watchlist; any other
@@ -1153,6 +1161,8 @@ function addCell(listOf, k) {
   gridOrder?.push(k);
   addMenu(false);
   draw();
+  // Focus on the cell just added.
+  focusCell(k);
 }
 
 // Drag a cell to move it: a mouse drags once it moves, a finger after holding still for a
@@ -1210,6 +1220,81 @@ function dragCell(e) {
   window.addEventListener('contextmenu', blockTouch);
 }
 
+function toggleLayer(id) {
+  layers[id] = !layers[id];
+  saveLayers();
+  draw();
+}
+
+// ↑ ↓ in one item's view: the item above or below in the side list, across its lists.
+function stepAll(by) {
+  const all = lists.flatMap(l => l.items().map(i => ({ list: l.id, key: i.key })));
+  const i = all.findIndex(x => x.list === listId && x.key === key);
+  if (i < 0 || all.length < 2) return;
+  ({ list: listId, key } = all[(i + by + all.length) % all.length]);
+  load();
+}
+
+// The grid's cells by row, each its focusable button; 'add' is the add cell.
+function cellRows() {
+  return [...win.querySelectorAll('.wlc__all .wlc__row')].map(r =>
+    [...r.querySelectorAll('.wlc__cell')].map(c => ({ key: c.dataset.key ?? 'add', button: c.querySelector('.wlc__cell-open, .wlc__cell-add') })));
+}
+
+function focusCell(k) {
+  cellRows().flat().find(c => c.key === k)?.button.focus({ preventScroll: false });
+}
+
+// The arrows between cells: ← → in reading order, ↑ ↓ to the cell above or below.
+function moveFocus(keyName) {
+  const rows = cellRows();
+  const flat = rows.flat();
+  if (!flat.length) return;
+  const at = flat.findIndex(c => c.button === document.activeElement);
+  if (at < 0) { flat[0].button.focus(); return; }
+  if (keyName === 'ArrowLeft' || keyName === 'ArrowRight') {
+    flat[Math.max(0, Math.min(flat.length - 1, at + (keyName === 'ArrowRight' ? 1 : -1)))].button.focus();
+    return;
+  }
+  const r = rows.findIndex(row => row.some(c => c.button === document.activeElement));
+  const target = rows[r + (keyName === 'ArrowDown' ? 1 : -1)];
+  if (!target) return;
+  const x = document.activeElement.getBoundingClientRect();
+  const mid = x.left + x.width / 2;
+  const near = target.reduce((best, c) => {
+    const b = c.button.getBoundingClientRect();
+    return Math.abs(b.left + b.width / 2 - mid) < Math.abs(best.r.left + best.r.width / 2 - mid) ? { c, r: b } : best;
+  }, { c: target[0], r: target[0].button.getBoundingClientRect() });
+  near.c.button.focus();
+}
+
+// ⇧ with an arrow moves the cell in focus: one place for ← →, a row for ↑ ↓.
+function moveCell(keyName) {
+  const k = document.activeElement?.closest('.wlc__cell')?.dataset.key;
+  if (!k) return;
+  const keys = gridItems().map(i => i.key);
+  const from = keys.indexOf(k);
+  const across = cellRows()[0]?.length || 1;
+  const by = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -across, ArrowDown: across }[keyName];
+  const to = Math.max(0, Math.min(keys.length - 1, from + by));
+  if (to === from) return;
+  keys.splice(from, 1);
+  keys.splice(to, 0, k);
+  gridOrder = keys;
+  drawGrid();
+  gridList()?.onReorder?.(gridOrder);
+}
+
+// ⌫ removes the cell in focus; focus goes to the next one.
+function removeFocused() {
+  const k = document.activeElement?.closest('.wlc__cell')?.dataset.key;
+  if (!k) return;
+  const keys = gridItems().map(i => i.key);
+  const next = keys[keys.indexOf(k) + 1] || keys[keys.indexOf(k) - 1];
+  removeCell(k);
+  if (next) focusCell(next);
+}
+
 function close() {
   if (!win || win.style.display === 'none') return;
   win.style.display = 'none';
@@ -1230,24 +1315,24 @@ function build() {
     '<div class="sticker-window-content wlc" tabindex="-1">' +
     '<p class="wlc__name"></p>' +
     '<p class="wlc__head" aria-live="polite"><span class="wlc__price"></span><span class="wlc__change"></span></p>' +
-    `<div class="wlc__periods" role="radiogroup" aria-label="Period">${PERIODS.map(p =>
-      `<button type="button" role="radio" class="wlc__period" data-period="${p.id}">${p.label}</button>`).join('')}</div>` +
+    `<div class="wlc__periods" role="radiogroup" aria-label="Period">${PERIODS.map((p, i) =>
+      `<button type="button" role="radio" class="wlc__period" data-period="${p.id}" aria-keyshortcuts="${i + 1}" title="${i + 1}">${p.label}</button>`).join('')}</div>` +
     '<div class="wlc__chart" tabindex="0"></div>' +
     '<div class="wlc__all" role="group" aria-label="Grid"></div>' +
-    '<div class="wlc__grid-tools"><button type="button" class="wlc__layer js-wlc-grid-price" aria-pressed="false">Price</button>' +
-    '<button type="button" class="wlc__layer js-wlc-grid-add" aria-expanded="false">+ Add</button>' +
+    '<div class="wlc__grid-tools"><button type="button" class="wlc__layer js-wlc-grid-price" aria-pressed="false" data-key="p" aria-keyshortcuts="P">Price</button>' +
+    '<button type="button" class="wlc__layer js-wlc-grid-add" aria-expanded="false" data-key="+" aria-keyshortcuts="+">Add</button>' +
     '<div class="wlc__menu" hidden><input type="search" class="wlc__menu-search" placeholder="Search" aria-label="Search assets" autocomplete="off" spellcheck="false">' +
     '<div class="wlc__menu-rows"></div></div></div>' +
     // The cells' dither, defined once where it is never hidden.
     '<svg width="0" height="0" class="wlc__defs" aria-hidden="true"><defs><pattern id="wlcCellDz" width="2" height="2" patternUnits="userSpaceOnUse">' +
     '<rect class="pm-value__dot" width="1" height="1"/><rect class="pm-value__dot" x="1" y="1" width="1" height="1"/></pattern></defs></svg>' +
     `<div class="wlc__layers" role="group" aria-label="Show on the chart"><span class="wlc__layers-label" aria-hidden="true">Show</span>${LAYERS.map(l =>
-      `<button type="button" class="wlc__layer" data-layer="${l.id}" aria-pressed="true">${l.label}</button>`).join('')}` +
-    '<button type="button" class="wlc__layer wlc__log" aria-pressed="false">Log</button></div>' +
+      `<button type="button" class="wlc__layer" data-layer="${l.id}" aria-pressed="true" data-key="${l.key}" aria-keyshortcuts="${l.key.toUpperCase()}">${l.label}</button>`).join('')}` +
+    '<button type="button" class="wlc__layer wlc__log" aria-pressed="false" data-key="l" aria-keyshortcuts="L">Log</button></div>' +
     '<dl class="wlc__rows"></dl>' +
     '<dl class="wlc__rows wlc__pos"></dl>' +
     '<p class="wlc__facts"></p>' +
-    '<p class="wlc__foot"><button type="button" class="link-button js-wlc-remove">Remove from watchlist</button></p>' +
+    '<p class="wlc__foot"><button type="button" class="link-button js-wlc-remove" aria-keyshortcuts="Backspace">Remove from watchlist</button></p>' +
     '<nav class="wlc__list" aria-label="Items"></nav>' +
     '</div></div>');
   document.body.append(backdrop, win);
@@ -1280,9 +1365,7 @@ function build() {
   win.querySelector('.wlc__grid-tools').addEventListener('click', (e) => {
     if (e.target.closest('.js-wlc-grid-add')) { addMenu(win.querySelector('.wlc__menu').hidden); return; }
     if (e.target.closest('.js-wlc-grid-price')) {
-      layers.gridPrice = !layers.gridPrice;
-      saveLayers();
-      draw();
+      toggleLayer('gridPrice');
       return;
     }
     const b = e.target.closest('.wlc__menu-item');
@@ -1314,9 +1397,7 @@ function build() {
     const b = e.target.closest('.wlc__layer');
     if (!b) return;
     if (!b.dataset.layer) { toggleLog(); return; }
-    layers[b.dataset.layer] = !layers[b.dataset.layer];
-    saveLayers();
-    draw();
+    toggleLayer(b.dataset.layer);
   });
   win.querySelector('.window-title').addEventListener('click', (e) => {
     if (e.target.closest('.js-wlc-back')) close();
@@ -1418,7 +1499,26 @@ function build() {
       else if (grid) showGrid(null); else close();
       return;
     }
-    if (grid) return;
+    const act = (fn) => { e.preventDefault(); e.stopPropagation(); fn(); };
+    const letter = e.key.toLowerCase();
+    if (grid) {
+      if (e.key.startsWith('Arrow')) act(() => (e.shiftKey ? moveCell(e.key) : moveFocus(e.key)));
+      else if (e.key === 'Backspace' || e.key === 'Delete') act(removeFocused);
+      else if (letter === 'p') act(() => toggleLayer('gridPrice'));
+      else if (e.key === '+' || e.key === '=') act(() => (gridList()?.onAdd ? gridList().onAdd() : addMenu(true)));
+      return;
+    }
+    // A layer by its key, when its button is there.
+    const layer = LAYERS.find(l => l.key === letter);
+    if (layer) {
+      const b = win.querySelector(`.wlc__layer[data-layer="${layer.id}"]`);
+      if (b && !b.hidden) act(() => toggleLayer(layer.id));
+      return;
+    }
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      act(() => stepAll(e.key === 'ArrowDown' ? 1 : -1));
+      return;
+    }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault();
       e.stopPropagation();

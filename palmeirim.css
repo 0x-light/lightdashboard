@@ -2424,6 +2424,12 @@ html.pm:root .wlc__layer {
   cursor: pointer;
 }
 html.pm:root .wlc__layer[aria-pressed="true"] { background: var(--pm-tint-2); color: var(--pm-ink); }
+/* Each button's key before its name, muted; not on a touch screen, which has no keys. */
+html.pm:root .wlc__layer[data-key]::before { content: attr(data-key); margin-right: 1ch; color: var(--pm-muted); }
+@media (hover: none) {
+  html.pm:root .wlc__layer[data-key]::before { content: none; }
+  html.pm:root .wlc__layer.js-wlc-grid-add::before { content: "+"; color: inherit; }
+}
 html.pm:root .wlc__layer:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 0; }
 @media (hover: hover) {
   html.pm:root .wlc__layer:hover { color: var(--pm-ink); }
