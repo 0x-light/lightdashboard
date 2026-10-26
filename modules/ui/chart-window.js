@@ -85,6 +85,73 @@ function thin(list, count) {
   return Array.from({ length: count }, (_, i) => list[Math.round(i * step)]);
 }
 
+// Price axis: round steps of 1, 2 or 5 on a linear scale. On a log scale, 1, 2 and 5 of
+// each power of ten; 1 to 9 when the range is narrow; linear steps when narrower still.
+function priceTicks(lo, hi, log, count) {
+  if (!(hi > lo)) return [lo];
+  if (log) {
+    const within = steps => {
+      const out = [];
+      for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) {
+        for (const m of steps) {
+          const v = Number((m * 10 ** e).toPrecision(12));
+          if (v >= lo && v <= hi) out.push(v);
+        }
+      }
+      return out;
+    };
+    for (const steps of [[1], [1, 2, 5], [1, 2, 3, 4, 5, 6, 7, 8, 9]]) {
+      const out = within(steps);
+      if (out.length >= 3 && out.length <= count + 2) return out;
+    }
+  }
+  const raw = (hi - lo) / count;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const unit = [1, 2, 5, 10].find(s => s * mag >= raw) * mag;
+  const out = [];
+  for (let v = Math.ceil(lo / unit) * unit; v <= hi; v += unit) out.push(Number(v.toPrecision(12)));
+  return out;
+}
+
+// As many digits as the step between labels needs, so two labels never read the same.
+function axisPrice(v, unit) {
+  const currency = current()?.currency || 'USD';
+  const digits = Math.max(1, Math.min(6, Math.floor(Math.log10(v)) - Math.floor(Math.log10(unit)) + 1));
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency', currency, notation: v >= 1e4 ? 'compact' : 'standard',
+      minimumSignificantDigits: Math.min(digits, 2), maximumSignificantDigits: Math.max(digits, 2)
+    }).format(v);
+  } catch (_) {
+    return price(v);
+  }
+}
+
+// Time axis: a label where the hour, day, month or year turns over, by period.
+function timeTicks() {
+  const parts = t => Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    timeZone: window.larpTimeZone
+  }).formatToParts(new Date(t)).map(p => [p.type, p.value]));
+  const rule = {
+    '1h': p => [`${p.hour}:${Math.floor(p.minute / 15)}`, `${p.hour}:${String(Math.floor(p.minute / 15) * 15).padStart(2, '0')}`],
+    '1d': p => [`${p.day} ${Math.floor(p.hour / 3)}`, `${String(Math.floor(p.hour / 3) * 3).padStart(2, '0')}:00`],
+    '1w': p => [`${p.month} ${p.day}`, `${p.month} ${p.day}`],
+    '1m': p => [`${p.month} ${p.day}`, `${p.month} ${p.day}`],
+    '1y': p => [`${p.year} ${p.month}`, p.month === 'Jan' ? p.year : p.month],
+    '5y': p => [p.year, p.year],
+    all: p => [p.year, p.year]
+  }[period];
+  const out = [];
+  let prev = null;
+  series.forEach((s, i) => {
+    const [bucket, label] = rule(parts(s.t));
+    if (prev !== null && bucket !== prev) out.push({ x: s.x, label });
+    prev = bucket;
+  });
+  return out;
+}
+
 // Your average entry for this item, weighted by amount, from the positions on screen in
 // the item's own currency. Null when you hold none with an entry price.
 function entryFor(item) {
@@ -143,7 +210,10 @@ async function load() {
 
 function chartHeight() {
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 14;
-  return Math.round(rem * 18 / 14 * (window.innerWidth <= 520 ? 8 : 12));
+  const unit = rem * 18 / 14;
+  if (window.innerWidth <= 520) return Math.round(unit * 8);
+  if (window.innerWidth <= 870) return Math.round(unit * 12);
+  return Math.round(Math.max(unit * 12, Math.min(unit * 20, window.innerHeight * 0.45)));
 }
 
 // The line over the dim dither, drawn at the box's pixel size so the dither stays crisp.
@@ -172,7 +242,13 @@ function draw() {
 
   const box = win.querySelector('.wlc__chart');
   const h = chartHeight();
-  box.style.height = `${h}px`;
+  // One character and one line, for the axis labels' room.
+  const cs = getComputedStyle(box);
+  const measure2d = document.createElement('canvas').getContext('2d');
+  measure2d.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const ch = measure2d.measureText('0').width || 8;
+  const axisH = Math.round(parseFloat(cs.lineHeight) || ch * 2.2);
+  box.style.height = `${h + axisH}px`;
   series = [];
   if (!points || points.length < 2) {
     box.innerHTML = `<p class="wlc__empty">${points ? 'No history for this period.' : '<span class="loading-terminal">Loading</span>'}</p>`;
@@ -182,7 +258,7 @@ function draw() {
     return;
   }
 
-  const w = Math.max(100, Math.round(box.clientWidth));
+  const full = Math.max(100, Math.round(box.clientWidth));
   const prices = points.map(x => x.price);
   const f = logScale() ? Math.log : v => v;
   let lo = Math.min(...prices);
@@ -198,6 +274,10 @@ function draw() {
   if (fhi === flo) { flo -= 1; fhi += 1; }
   const pad = Math.round(h * 0.08);
   const yOf = v => pad + (1 - (f(v) - flo) / (fhi - flo)) * (h - 2 * pad);
+  // Prices sit in a gutter at the right, as wide as the longest label.
+  const tickValues = priceTicks(Math.min(...prices), Math.max(...prices), logScale(), Math.max(3, Math.round(h / (axisH * 2.5))));
+  const ticks = tickValues.map((v, i) => ({ v, label: axisPrice(v, Math.abs((tickValues[i + 1] ?? tickValues[i - 1] ?? v) - v) || v) }));
+  const w = Math.round(full - (Math.max(...ticks.map(t => t.label.length)) + 2) * ch);
   const last = points.length - 1;
   series = points.map((x, i) => ({ t: x.timestamp, v: x.price, x: (i / last) * (w - 1), y: yOf(x.price) }));
   const pts = series.map(s => `${s.x.toFixed(1)},${s.y.toFixed(1)}`).join(' ');
@@ -211,9 +291,24 @@ function draw() {
       `<text class="wlc__label" x="${w - 4}" y="${inside ? ey - 4 : entry > hi ? 14 : h - 4}" text-anchor="end">${esc(label)}</text>`;
   }
 
+  const yAxis = ticks.map(t => ({ ...t, y: Math.round(yOf(t.v)) + 0.5 })).filter(t => t.y > axisH / 2 && t.y < h - axisH / 2)
+    .map(t => `<line class="wlc__grid" x1="0" x2="${w}" y1="${t.y}" y2="${t.y}"/>` +
+      `<text class="wlc__tick" x="${w + ch}" y="${t.y}" dominant-baseline="middle">${esc(t.label)}</text>`).join('');
+  // Time labels where they fit: every k-th turnover, none cut off at either edge.
+  const turns = timeTicks();
+  const lw = (Math.max(0, ...turns.map(t => t.label.length)) + 3) * ch;
+  const k = Math.max(1, Math.ceil(turns.length * lw / w));
+  const xAxis = turns.filter((t, i) => i % k === 0 && t.x >= lw / 2 - ch && t.x <= w - lw / 2 + ch)
+    .map(t => `<line class="wlc__grid" x1="${Math.round(t.x) + 0.5}" x2="${Math.round(t.x) + 0.5}" y1="${h}" y2="${h + 4}"/>` +
+      `<text class="wlc__tick" x="${t.x.toFixed(1)}" y="${h + axisH / 2 + 2}" text-anchor="middle" dominant-baseline="middle">${esc(t.label)}</text>`).join('');
+
   box.innerHTML =
-    `<svg class="wlc__svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">` +
+    `<svg class="wlc__svg" width="${full}" height="${h + axisH}" viewBox="0 0 ${full} ${h + axisH}" aria-hidden="true">` +
     '<defs><pattern id="wlcDz" width="2" height="2" patternUnits="userSpaceOnUse"><rect class="pm-value__dot" width="1" height="1"/><rect class="pm-value__dot" x="1" y="1" width="1" height="1"/></pattern></defs>' +
+    yAxis +
+    `<line class="wlc__axis" x1="0" x2="${w}" y1="${h - 0.5}" y2="${h - 0.5}"/>` +
+    `<line class="wlc__axis" x1="${w + 0.5}" x2="${w + 0.5}" y1="0" y2="${h}"/>` +
+    xAxis +
     `<rect class="wlc__range" x="0" y="0" width="0" height="${h}" visibility="hidden"/>` +
     `<polygon points="0,${h} ${pts} ${w - 1},${h}" fill="url(#wlcDz)"/>` +
     `<polyline points="${pts}" class="pm-value__line" fill="none"/>` +
@@ -334,7 +429,7 @@ function build() {
     '<div class="wlc__controls">' +
     `<div class="wlc__periods" role="radiogroup" aria-label="Period">${PERIODS.map(p =>
       `<button type="button" role="radio" class="wlc__period" data-period="${p.id}">${p.label}</button>`).join('')}</div>` +
-    '<button type="button" class="wlc__log" aria-pressed="false">Log</button></div>' +
+    '<button type="button" class="wlc__log" aria-pressed="false"><span class="settings-switch__state" aria-hidden="true"></span>Log</button></div>' +
     '<div class="wlc__chart" tabindex="0"></div>' +
     '<dl class="wlc__rows"></dl>' +
     '<p class="wlc__facts"></p>' +

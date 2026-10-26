@@ -2297,30 +2297,35 @@ html.pm:root .acct__venue {
    and the change over the period, or the point or range being pointed at. ── */
 html.pm:root .pm-chart-window { width: min(76ch, calc(100vw - 3ch)); }
 @media (min-width: 871px) {
-  html.pm:root .pm-chart-window { top: calc(var(--pm-lh) * 3); transform: translateX(-50%); }
+  html.pm:root .pm-chart-window { width: min(112ch, calc(100vw - 6ch)); top: calc(var(--pm-lh) * 3); transform: translateX(-50%); }
 }
 html.pm:root .wlc p { margin: 0; }
 html.pm:root .wlc__head { display: flex; justify-content: space-between; gap: 2ch; flex-wrap: wrap; }
-html.pm:root .wlc__controls { display: flex; justify-content: space-between; align-items: baseline; gap: 0 2ch; margin-top: calc(var(--pm-lh) / 2); }
+html.pm:root .wlc__controls { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 2ch; margin-top: calc(var(--pm-lh) / 2); }
 html.pm:root .wlc__periods { display: flex; gap: 0 1ch; }
-/* Log: an on/off key at the end of the period row, inverted while on like a chosen period. */
+/* Log: the settings switch at the end of the period row; its block fills while on. */
 html.pm:root .wlc__log {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
   flex: none;
+  height: auto;
   min-height: 0;
-  margin-right: -1ch;
-  padding: 0 1ch;
+  margin: 0;
+  padding: 0;
   border: 0;
+  border-radius: 0;
   background: none;
-  color: var(--pm-muted);
+  color: var(--pm-ink);
   font: inherit;
   line-height: var(--pm-lh);
   text-transform: uppercase;
   cursor: pointer;
 }
-html.pm:root .wlc__log[aria-pressed="true"] { background: var(--pm-ink); color: var(--bg); }
+html.pm:root .wlc__log .settings-switch__state { line-height: var(--pm-lh); }
 html.pm:root .wlc__log:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 0; }
 @media (hover: hover) {
-  html.pm:root .wlc__log[aria-pressed="false"]:hover { color: var(--pm-ink); }
+  html.pm:root .wlc__log[aria-pressed="false"]:hover .settings-switch__state { background: var(--pm-muted); }
 }
 html.pm:root .wlc__chart {
   /* Out to the window's side borders, like the value chart in the card. */
@@ -2337,6 +2342,10 @@ html.pm:root .wlc__svg { display: block; }
 /* The entry label keeps a background edge, so it reads where the line crosses it. */
 html.pm:root .wlc__svg text { fill: var(--pm-muted); font: inherit; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
 html.pm:root .wlc__range { fill: var(--pm-tint-2); }
+/* Axes: prices at the right, times below; faint rules across the plot at each price. */
+html.pm:root .wlc__svg .wlc__tick { stroke-width: 0; }
+html.pm:root .wlc__grid { stroke: var(--pm-tint-2); stroke-width: 1; }
+html.pm:root .wlc__axis { stroke: var(--pm-muted); stroke-width: 1; }
 html.pm:root .wlc__anchor { stroke: var(--pm-muted); stroke-width: 1; }
 html.pm:root .wlc__entry { stroke: var(--pm-muted); stroke-width: 1; stroke-dasharray: 4 3; }
 html.pm:root .wlc__empty { padding: 0 1ch; color: var(--pm-muted); }
