@@ -1051,10 +1051,10 @@ html.pm:root .ladder__note {
   color: var(--pm-muted);
 }
 
-/* ── Undo line: framed like a window, low on the left, for a few seconds ── */
+/* ── Undo line: framed like a window, low on the right, for a few seconds ── */
 html.pm:root .undo-line {
   position: fixed;
-  left: 1ch;
+  right: 2ch; /* leaves room for the shadow */
   bottom: calc(var(--pm-lh) + env(safe-area-inset-bottom, 0px));
   /* Above #mainContent (998), below Settings (1000) and the other windows. */
   z-index: 999;
@@ -1798,7 +1798,6 @@ html.pm:root .settings-find {
   background: var(--bg);
 }
 html.pm:root .settings-form > header .settings-find + .btn-text { margin-left: 0; }
-html.pm:root .is-finding .settings-box > :is(.settings-note, .info, .larp-apply),
 
 /* Finding: no tab is chosen; each pane with a match shows under its tab's name. */
 html.pm:root .is-finding .settings-tab[aria-selected="true"] { background: none; color: var(--pm-muted); }
@@ -1812,6 +1811,7 @@ html.pm:root .is-finding .settings-pane::before {
   text-transform: uppercase;
 }
 html.pm:root .is-finding .settings-pane > :is(.settings-group, .settings-note, .settings-rule, .settings-footnote, .info, textarea, .settings-import-actions),
+html.pm:root .is-finding .settings-box > :is(.settings-note, .info, .larp-apply),
 html.pm:root .settings-miss { display: none !important; }
 html.pm:root .settings-find-empty { margin: 0; padding: var(--pm-lh) 2ch 0; }
 html.pm:root .settings-find-empty[hidden] { display: none; }
@@ -1844,7 +1844,6 @@ html.pm:root .settings-tab {
   line-height: var(--pm-lh);
   text-transform: uppercase;
 }
-html.pm:root .settings-tab:first-child { margin-left: -1ch; }
 html.pm:root .settings-tab[aria-selected="true"] { background: var(--pm-ink); color: var(--bg); }
 html.pm:root .settings-tab:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 0; }
 
@@ -1988,41 +1987,76 @@ html.pm:root .settings-box {
   padding: var(--pm-lh) 2ch;
   border: 1px solid var(--pm-rule);
 }
-html.pm:root .settings-pane > .settings-group:first-child { margin-top: 0; }
-html.pm:root .settings-pane > .settings-note { padding-top: calc(var(--pm-lh) / 4); }
+html.pm:root .settings-box[hidden],
+html.pm:root .settings-box.settings-miss { display: none; }
+/* The title sits on the top border, the line running through behind it. */
+html.pm:root .settings-pane .settings-box > .settings-group {
+  position: absolute;
+  top: 0;
+  left: 1ch;
+  margin: 0;
+  padding: 0 1ch;
+  border: 0;
+  background: var(--bg);
+  line-height: var(--pm-lh);
+  transform: translateY(-50%);
+}
+html.pm:root .settings-box .row { display: contents; }
+html.pm:root .settings-box > :is(label:not(.settings-switch), .settings-field) { align-items: start; line-height: var(--set-h); }
+html.pm:root .settings-box > :is(label:not(.settings-switch), .settings-field) > * { line-height: var(--pm-lh); }
+html.pm:root .settings-box > .btn-text { align-self: flex-start; }
+html.pm:root .settings-box > .info { margin: 0; }
 
-html.pm:root .settings-choice span,
-html.pm:root .settings-switch__state,
-html.pm:root .settings-step,
-html.pm:root .settings-panes .btn-text,
-html.pm:root .column-order__move { line-height: var(--set-h) !important; }
+/* Fields and menus: one line, as wide as the column. */
+html.pm:root .settings-panes :is(input:not([type="checkbox"]):not([type="range"]):not([type="radio"]), select, .select button) { height: var(--set-h); }
+html.pm:root .settings-box :is(input[type="text"], input:not([type])) { max-width: 40ch; }
+html.pm:root .settings-box .select { width: 100%; max-width: 40ch; }
+html.pm:root .settings-panes .btn-text { line-height: var(--set-h); }
 
-/* Columns: the list is the control; its lines keep their own rules, but the last one
-   leaves the rule to the row. */
-html.pm:root .column-order li { padding: 0; }
-html.pm:root .column-order li + li { margin-top: -1px; }
-html.pm:root .column-order li:last-child { border-bottom: 0; }
+/* Width and Align: joined cells. Text size: − 14px + as joined cells. */
+html.pm:root .settings-pane .settings-choice { gap: 0; }
+html.pm:root .settings-choice span { background: var(--pm-tint); line-height: var(--set-h); }
+html.pm:root .settings-pane .settings-stepper { gap: 0; }
+html.pm:root .settings-pane .settings-stepper output { min-width: 6ch; background: var(--pm-tint); line-height: var(--set-h); }
+html.pm:root .settings-step { background: var(--pm-tint-2); line-height: var(--set-h); }
 
-/* Backup and Larp: the title in the label column, what it does and its button next. */
-html.pm:root .settings-row {
-  display: grid;
-  grid-template-columns: var(--pm-label-w) minmax(0, 1fr);
-  gap: calc(var(--pm-lh) / 4) 2ch;
+/* On/off: a tint bar, its key cell last. The bars of a list sit close together. */
+html.pm:root .settings-box > .settings-switch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 0 1ch;
+  border: 0;
+  border-radius: 0;
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+  font: inherit;
+  line-height: var(--set-h);
+  text-align: left;
+  text-transform: none;
+  cursor: pointer;
 }
 html.pm:root .settings-box > .settings-switch + .settings-switch { margin-top: calc(var(--pm-lh) / -4); }
 html.pm:root :is(.settings-switch, .column-order__show) input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
 html.pm:root .settings-switch__state {
-  order: -1;
+  order: 1;
   flex: none;
-  width: 3ch;
+  margin-left: auto;
+  width: 5ch;
   background: var(--pm-tint-2);
-  color: var(--bg);
+  color: var(--pm-muted);
   line-height: var(--set-h);
   text-align: center;
 }
-html.pm:root .settings-switch__state::after { content: "\00a0"; }
-html.pm:root :is(input:checked + .settings-switch__state, [aria-pressed="true"] > .settings-switch__state) { background: var(--pm-ink); }
-html.pm:root .column-order__show input:disabled + .settings-switch__state { background: var(--pm-muted); }
+html.pm:root .settings-switch__state::after { content: "OFF"; }
+html.pm:root :is(input:checked + .settings-switch__state, [aria-pressed="true"] > .settings-switch__state) { background: var(--pm-ink); color: var(--bg); }
+html.pm:root :is(input:checked + .settings-switch__state, [aria-pressed="true"] > .settings-switch__state)::after { content: "ON"; }
+html.pm:root .column-order__show input:disabled + .settings-switch__state { background: var(--pm-muted); color: var(--bg); }
 html.pm:root .settings-box > .settings-switch:has(input:focus-visible),
 html.pm:root .settings-box > button.settings-switch:focus-visible,
 html.pm:root .column-order__show:has(input:focus-visible) { outline: 1px solid var(--pm-ink); outline-offset: 0; }
@@ -2030,11 +2064,11 @@ html.pm:root .column-order__show:has(input:focus-visible) { outline: 1px solid v
   html.pm:root .settings-box > .settings-switch:hover { background: var(--pm-tint-2); }
 }
 
-/* Columns: one tint bar per column: its key cell, its name (the grip), then ↑ ↓.
+/* Columns: one tint bar per column: its name (the grip), ↑ ↓, then its key cell.
    A hidden column's name is muted; the bar being dragged is inverted. */
 html.pm:root .column-order { display: flex; flex-direction: column; gap: calc(var(--pm-lh) / 4); margin: 0; padding: 0; list-style: none; }
-html.pm:root .column-order li { display: flex; align-items: center; gap: 1ch; background: var(--pm-tint); line-height: var(--set-h); }
-html.pm:root .column-order__show { position: relative; display: flex; flex: none; margin: 0; cursor: pointer; }
+html.pm:root .column-order li { display: flex; align-items: center; gap: 1ch; padding-left: 1ch; background: var(--pm-tint); line-height: var(--set-h); }
+html.pm:root .column-order__show { position: relative; display: flex; flex: none; order: 1; margin: 0; cursor: pointer; }
 html.pm:root .column-order__show:has(input:disabled) { cursor: default; }
 html.pm:root .column-order__grip { flex: 1 1 auto; min-width: 0; cursor: grab; touch-action: none; user-select: none; }
 html.pm:root .column-order li[data-off] .column-order__grip { color: var(--pm-muted); }
@@ -2095,6 +2129,20 @@ html.pm:root .settings-pane > .settings-footnote { margin: 0; }
   html.pm:root .settings-panes { flex: 1; padding: var(--pm-lh) 2ch calc(var(--pm-lh) * 2 + env(safe-area-inset-bottom)); }
   html.pm:root .settings-panes { --pm-label-w: 15ch; }
   html.pm:root .settings-pane > .settings-note { margin-left: 0; }
+
+  /* Each name goes above its control, as in a form. */
+  html.pm:root .settings-box { padding: var(--pm-lh) 1ch; }
+  html.pm:root .settings-box > .settings-group { left: 0; }
+  html.pm:root :is(.settings-pane, .settings-box) > label:not(.check):not(.settings-switch),
+  html.pm:root .settings-pane .row > label,
+  html.pm:root .settings-pane .settings-field { grid-template-columns: minmax(0, 1fr); gap: calc(var(--pm-lh) / 4); }
+  html.pm:root :is(.settings-pane, .settings-box) > label:not(.check):not(.settings-switch) > *,
+  html.pm:root .settings-pane .row > label > *,
+  html.pm:root .settings-pane .settings-field > :not(label),
+  html.pm:root .settings-pane .settings-field > .settings-label { grid-column: 1; }
+  html.pm:root .settings-box > :is(label:not(.settings-switch), .settings-field) { line-height: var(--pm-lh); }
+  html.pm:root .settings-box :is(input[type="text"], input:not([type]), .select) { max-width: none; }
+  html.pm:root :is(.settings-pane, .settings-box) > .settings-note { margin-left: 0; }
 }
 
 /* ── New theme: a name and four colours, each a colour well and its hex ── */
@@ -2174,20 +2222,6 @@ html.pm:root .pm-keys-window { width: min(72ch, calc(100vw - 3ch)); }
 html.pm:root .pm-keys {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(32ch, 1fr));
-
-  /* Each name goes above its control, as in a form. */
-  html.pm:root .settings-box { padding: var(--pm-lh) 1ch; }
-  html.pm:root .settings-box > .settings-group { left: 0; }
-  html.pm:root :is(.settings-pane, .settings-box) > label:not(.check):not(.settings-switch),
-  html.pm:root .settings-pane .row > label,
-  html.pm:root .settings-pane .settings-field { grid-template-columns: minmax(0, 1fr); gap: calc(var(--pm-lh) / 4); }
-  html.pm:root :is(.settings-pane, .settings-box) > label:not(.check):not(.settings-switch) > *,
-  html.pm:root .settings-pane .row > label > *,
-  html.pm:root .settings-pane .settings-field > :not(label),
-  html.pm:root .settings-pane .settings-field > .settings-label { grid-column: 1; }
-  html.pm:root .settings-box > :is(label:not(.settings-switch), .settings-field) { line-height: var(--pm-lh); }
-  html.pm:root .settings-box :is(input[type="text"], input:not([type]), .select) { max-width: none; }
-  html.pm:root :is(.settings-pane, .settings-box) > .settings-note { margin-left: 0; }
   gap: calc(var(--pm-lh) / 3) 3ch;
   margin: 0;
 }
@@ -2222,11 +2256,6 @@ html.pm:root :is(.pm-value__period, .wl-period, .comic-tab, .sticker-window-cont
   cursor: pointer;
 }
 
-/* The first label's text lines up with the text above it; theme options sit in a
-   grid, so each one does. */
-html.pm:root :is(.pm-value__period, .wl-period, .comic-tab, .sticker-window-content .segmented .btn-tab, .acct__tab, .wlc__period):first-child,
-html.pm:root .pm-theme-option { margin-left: -1ch; }
-
 html.pm:root :is(.pm-value__period[aria-checked="true"], .wl-period[aria-checked="true"], .comic-tab.active, .sticker-window-content .segmented .btn-tab.active, .pm-theme-option[aria-selected="true"], .acct__tab[aria-selected="true"], .wlc__period[aria-checked="true"]) {
   background: var(--pm-ink);
   color: var(--bg);
@@ -2260,39 +2289,6 @@ html.pm:root .pm-value__empty { margin: 0; padding: 0 var(--pm-card-x) var(--pm-
 html.pm:root .pm-value__cursor { stroke: var(--pm-muted); stroke-width: 1; }
 html.pm:root .pm-value__point { fill: var(--pm-ink); stroke: var(--bg); stroke-width: 1; }
 
-/* ── Account window ── */
-html.pm:root .pm-account-window { width: min(76ch, calc(100vw - 3ch)); }
-/* Anchored near the top, so switching tabs grows it downward instead of moving it. */
-@media (min-width: 871px) {
-  html.pm:root .pm-account-window { top: calc(var(--pm-lh) * 3); transform: translateX(-50%); }
-}
-html.pm:root .pm-account-window .sticker-window-content { max-height: min(70vh, calc(var(--pm-lh) * 32)); overflow-y: auto; }
-
-html.pm:root .acct p { margin: 0; }
-
-/* Account tabs: one row under the title, like Settings; they scroll sideways if needed. */
-html.pm:root .acct__tabs {
-  display: flex;
-  gap: 0 1ch;
-  padding: var(--pm-lh) 1ch calc(var(--pm-lh) / 2);
-  border-bottom: 1px solid var(--pm-rule);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-html.pm:root .acct__tabs[hidden] { display: none; }
-html.pm:root .acct__tabs::-webkit-scrollbar { display: none; }
-html.pm:root .acct__tab { flex: none; }
-
-/* All: a bar per account, the largest full; each opens its tab. */
-html.pm:root .acct__venues { display: grid; gap: calc(var(--pm-lh) / 4); margin-bottom: var(--pm-lh); }
-html.pm:root .acct__venue {
-  display: grid;
-  grid-template-columns: 12ch minmax(0, 1fr) 10ch;
-  gap: 2ch;
-  align-items: center;
-  padding: 0;
-  border: 0;
-  background: none;
 /* ── Chart window: one watchlist item, bigger. The head line reads the latest price
    and the change over the period, or the point or range being pointed at. ── */
 html.pm:root .pm-chart-window { width: min(76ch, calc(100vw - 3ch)); }
@@ -2325,7 +2321,7 @@ html.pm:root .wlc__log {
 html.pm:root .wlc__log .settings-switch__state { line-height: var(--pm-lh); }
 html.pm:root .wlc__log:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 0; }
 @media (hover: hover) {
-  html.pm:root .wlc__log[aria-pressed="false"]:hover .settings-switch__state { background: var(--pm-muted); }
+  html.pm:root .wlc__log[aria-pressed="false"]:hover .settings-switch__state { background: var(--pm-muted); color: var(--bg); }
 }
 html.pm:root .wlc__chart {
   /* Out to the window's side borders, like the value chart in the card. */
@@ -2377,6 +2373,39 @@ html.pm:root .wlc__foot .link-button { color: var(--pm-muted); }
   html.pm:root .wlc__foot .link-button:hover { color: var(--pm-ink); }
 }
 
+/* ── Account window ── */
+html.pm:root .pm-account-window { width: min(76ch, calc(100vw - 3ch)); }
+/* Anchored near the top, so switching tabs grows it downward instead of moving it. */
+@media (min-width: 871px) {
+  html.pm:root .pm-account-window { top: calc(var(--pm-lh) * 3); transform: translateX(-50%); }
+}
+html.pm:root .pm-account-window .sticker-window-content { max-height: min(70vh, calc(var(--pm-lh) * 32)); overflow-y: auto; }
+
+html.pm:root .acct p { margin: 0; }
+
+/* Account tabs: one row under the title, like Settings; they scroll sideways if needed. */
+html.pm:root .acct__tabs {
+  display: flex;
+  gap: 0 1ch;
+  padding: var(--pm-lh) 1ch calc(var(--pm-lh) / 2);
+  border-bottom: 1px solid var(--pm-rule);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+html.pm:root .acct__tabs[hidden] { display: none; }
+html.pm:root .acct__tabs::-webkit-scrollbar { display: none; }
+html.pm:root .acct__tab { flex: none; }
+
+/* All: a bar per account, the largest full; each opens its tab. */
+html.pm:root .acct__venues { display: grid; gap: calc(var(--pm-lh) / 4); margin-bottom: var(--pm-lh); }
+html.pm:root .acct__venue {
+  display: grid;
+  grid-template-columns: 12ch minmax(0, 1fr) 10ch;
+  gap: 2ch;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--pm-ink);
   font: inherit;
   line-height: var(--pm-lh);
@@ -2703,14 +2732,75 @@ html.pm:root :is(.settings-input, .larp-cell):focus-visible { outline: 1px solid
 
 html.pm:root .sticker-item:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 2px; }
 
-/* ── Footer: each source on its own line (incremental-portfolio.js) ── */
-html.pm:root .provider-status:not([hidden]) { display: grid; gap: 0; overflow: visible; }
+
+/* ── Footer: the sources as a telemetry readout (incremental-portfolio.js) ──
+   Uppercase and spaced out, as a ship's console. Each line is a lamp, the source, its
+   wallet, a dotted leader and the time; the columns line up down the list (subgrid).
+   A lamp is green when the source is online and blinks red when it failed. */
+html.pm:root .provider-status:not([hidden]) {
+  display: grid;
+  grid-template-columns: 1ch auto auto minmax(2ch, 1fr) auto;
+  gap: 0 1ch;
+  /* A line of its own, as wide as the page; the phone footer centres text, the readout doesn't. */
+  flex: 1 1 100%;
+  min-width: 0;
+  overflow: visible;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
 html.pm:root .provider-status[data-state="failed"] { color: inherit; }
-html.pm:root .provider-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1ch; }
-html.pm:root .provider-line__mark { flex: none; width: 1ch; color: var(--pm-ink); }
-html.pm:root .provider-line__note { color: var(--pm-muted); }
-html.pm:root .provider-line.is-failed { color: var(--pm-ink); }
-html.pm:root .provider-line.is-failed .provider-line__mark { background: var(--pm-ink); color: var(--bg); text-align: center; }
+html.pm:root .provider-head,
+html.pm:root .provider-line {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+}
+html.pm:root .provider-head {
+  grid-template-columns: 1fr auto;
+  margin-bottom: calc(var(--pm-lh) / 2);
+  border-bottom: 1px solid var(--pm-rule);
+  color: var(--pm-muted);
+}
+html.pm:root .provider-head__count { color: var(--pm-ink); }
+html.pm:root .provider-status[data-state="failed"] .provider-head__count { color: var(--red); }
+html.pm:root .provider-line { color: var(--pm-muted); }
+html.pm:root .provider-line__name { color: var(--pm-ink); }
+/* Addresses keep their case: 0x, not 0X. */
+html.pm:root .provider-line__wallet { text-transform: none; }
+html.pm:root .provider-line__note { text-align: right; }
+html.pm:root .provider-line__leader {
+  align-self: center;
+  height: 1px;
+  background: radial-gradient(circle, var(--pm-rule) 0.5px, transparent 1px) 0 0 / 1ch 1px repeat-x;
+}
+
+/* The lamp */
+html.pm:root .provider-line__mark { position: relative; align-self: stretch; }
+html.pm:root .provider-line__mark:not(.loading-terminal)::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  background: var(--green);
+  transform: translate(-50%, -50%);
+}
+html.pm:root .provider-line__mark.loading-terminal::before { margin-right: 0; }
+html.pm:root .provider-line.is-failed .provider-line__mark::before {
+  background: var(--red);
+  animation: terminal-blink 1s steps(1) infinite;
+}
+html.pm:root .provider-line.is-failed :is(.provider-line__name, .provider-line__note) { color: var(--red); }
+html.pm:root .provider-line__error { grid-column: 2 / -1; text-transform: none; letter-spacing: 0; }
+html.pm:root .provider-line.is-failed .provider-line__retry { grid-column: 2 / -1; justify-self: start; margin-bottom: calc(var(--pm-lh) / 2); }
+@media (prefers-reduced-motion: reduce) {
+  html.pm:root .provider-line.is-failed .provider-line__mark::before { animation: none; }
+}
 html.pm:root .provider-line__retry,
 html.pm:root .pm-banner__btn {
   display: inline-flex;
@@ -2756,7 +2846,6 @@ html.pm:root .modal-field:focus-within > label,
 html.pm:root .form-row:focus-within > .form-row__label {
   justify-self: start;
   width: max-content;
-  margin-left: -1ch;
   padding: 0 1ch;
   background: var(--pm-ink);
   color: var(--bg);
