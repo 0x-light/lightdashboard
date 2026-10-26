@@ -58,6 +58,29 @@ export function loadSettings() {
     if (s.zerionApiKey) s.zerionApiKey = simpleDecrypt(s.zerionApiKey);
     if (s.cieloApiKey) s.cieloApiKey = simpleDecrypt(s.cieloApiKey);
 
+    // Columns still in the old default order with none hidden were never changed:
+    // drop them so the current defaults apply.
+    const oldOrder = ['asset', 'price', 'pnl', 'change', 'chart', 'value', 'funding', 'expiry', 'underlying', 'amount', 'exchange'];
+    const cols = s.positionColumns;
+    const untouched = !Array.isArray(cols)
+      || cols.every((k, i) => oldOrder.indexOf(k) > (i ? oldOrder.indexOf(cols[i - 1]) : -1));
+    if (untouched && !(s.hiddenPositionColumns || []).length) {
+      delete s.positionColumns;
+      delete s.hiddenPositionColumns;
+    }
+
+    // A short-lived build moved 24h % into the price cell and hid its column; show it again.
+    if (s.changeInPriceCell) {
+      const stored = JSON.parse(raw);
+      delete stored.changeInPriceCell;
+      delete s.changeInPriceCell;
+      if (Array.isArray(s.hiddenPositionColumns)) {
+        s.hiddenPositionColumns = s.hiddenPositionColumns.filter(k => k !== 'change');
+        stored.hiddenPositionColumns = s.hiddenPositionColumns;
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+    }
+
     // Merge with defaults to ensure new settings are included
     const defaults = getDefaultSettings();
     const merged = { ...defaults, ...s };
@@ -112,8 +135,8 @@ export function getDefaultSettings() {
     showPriceChart: true, // Whether to show 24h price chart column
     groupPositions: true, // Positions in runs: spot, perps, options; off for one list
     combineOptionLegs: true, // Several option legs on one name as one row that opens to them
-    positionColumns: ['asset', 'price', 'pnl', 'change', 'chart', 'value', 'funding', 'expiry', 'underlying', 'amount', 'exchange'], // Table column order
-    hiddenPositionColumns: [] // Table columns switched off in Settings
+    positionColumns: ['asset', 'price', 'chart', 'value', 'pnl', 'funding', 'change', 'expiry', 'underlying', 'amount', 'exchange'], // Table column order
+    hiddenPositionColumns: ['expiry', 'underlying', 'amount', 'exchange'] // Table columns switched off in Settings
   };
 }
 

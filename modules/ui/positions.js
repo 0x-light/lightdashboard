@@ -32,11 +32,11 @@ import {
 export const POSITION_COLUMNS = [
   { key: 'asset', label: 'Asset', sort: 'asset', cellClass: 'asset-cell', fixed: true },
   { key: 'price', label: 'Price', sort: 'price', num: true },
-  { key: 'pnl', label: 'P&L', sort: 'pnl', num: true },
-  { key: 'change', label: '24h %', sort: 'change', num: true },
   { key: 'chart', label: 'Chart', headClass: 'chart', cellClass: 'chart-cell chart' },
   { key: 'value', label: 'Value', sort: 'value', num: true },
+  { key: 'pnl', label: 'P&L', sort: 'pnl', num: true },
   { key: 'funding', label: 'Funding', sort: 'funding', num: true },
+  { key: 'change', label: '24h %', sort: 'change', num: true },
   { key: 'expiry', label: 'Expiry', sort: 'expiry' },
   { key: 'underlying', label: 'Underlying', sort: 'underlying', num: true },
   { key: 'amount', label: 'Amount', sort: 'amount', num: true },
