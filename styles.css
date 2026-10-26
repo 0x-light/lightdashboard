@@ -330,8 +330,7 @@ h6 {
   .chart-loading,
   #newSummary.fading,
   #newComic.fading,
-  .calvin-container.fading,
-  .last-update-timestamp[data-state="refreshing"]::before {
+  .calvin-container.fading {
     animation: none !important;
   }
 }
@@ -1293,13 +1292,14 @@ body.hide-comic #newComicSection {
   display: none;
 }
 
-.last-update-timestamp::before {
-  content: '●';
-  content: '●' / '';
+.last-update-mark {
+  display: inline-block;
+  width: 1ch;
+  text-align: center;
   color: var(--green);
 }
 
-.last-update-timestamp[data-state="refreshing"]::before {
+.last-update-timestamp[data-state="refreshing"] .last-update-mark {
   color: var(--muted);
   animation: terminal-blink 0.8s steps(1) infinite;
 }

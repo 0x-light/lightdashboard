@@ -446,10 +446,32 @@ export class IncrementalPortfolioRenderer {
     const el = this.containers?.lastUpdatedEl || document.getElementById('lastUpdateTimestamp');
     if (!el) return;
     el.dataset.state = state;
+    // A braille spinner while checking, a tick when done
+    let mark = el.querySelector('.last-update-mark');
+    let label = el.querySelector('.last-update-label');
+    if (!mark) {
+      el.textContent = '';
+      mark = document.createElement('span');
+      mark.className = 'last-update-mark';
+      mark.setAttribute('aria-hidden', 'true');
+      label = document.createElement('span');
+      label.className = 'last-update-label';
+      el.append(mark, label);
+    }
+    clearInterval(this.lastUpdatedSpinner);
     if (state === 'refreshing') {
-      el.textContent = 'Refreshing…';
+      const frames = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
+      let i = 0;
+      mark.textContent = frames[0];
+      if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        this.lastUpdatedSpinner = setInterval(() => {
+          mark.textContent = frames[++i % frames.length];
+        }, 80);
+      }
+      label.textContent = 'Checking';
       return;
     }
+    mark.textContent = '✓';
     const updatedAt = new Date();
     // 24-hour, like the clock on the portfolio card
     const time = updatedAt.toLocaleTimeString('en-GB', {
@@ -458,7 +480,7 @@ export class IncrementalPortfolioRenderer {
       minute: '2-digit',
       timeZone: window.larpTimeZone
     });
-    el.textContent = `Updated ${time}`;
+    label.textContent = `Updated ${time}`;
     el.title = updatedAt.toLocaleString(undefined, { timeZone: window.larpTimeZone });
   }
 
@@ -600,38 +622,60 @@ export class IncrementalPortfolioRenderer {
     return (Array.isArray(positions) ? positions : []).map(position => this.convertPositionToBase(position));
   }
 
-  // The footer: each source on its own line, as SRCL's table with a block loader. A spinner
-  // while a source loads for the first time; a tick and the time it last loaded; an inverted
-  // × with the reason and a Retry chip when it failed. A source that loaded before keeps its
-  // tick during the next refresh, so the footer doesn't flicker every 30 seconds.
+  // The footer: a telemetry readout, one source per line. Each line is a lamp, the source,
+  // its wallet, a dotted leader and the time it last loaded. A spinner while a source loads
+  // for the first time; a red blinking lamp with the reason and a Retry chip when it failed.
+  // A source that loaded before keeps its lamp during the next refresh, so the footer doesn't
+  // flicker every 30 seconds. The head line counts the sources that are online.
   renderProviderStatus() {
     const el = this.containers?.providerStatusEl || document.getElementById('newProviderStatus');
     if (!el) return;
 
     const names = Array.from(new Set([...(this.expectedProviders || []), ...this.providerStatus.keys()]));
-    // One wallet's source is "Hyperliquid_0x…": name it as "Hyperliquid 0xfc66…ca06"
-    const label = (provider) => escapeHtml(provider.replace(/_(\w{6})\w+(\w{4})$/, ' $1…$2'));
+    // One wallet's source is "Hyperliquid_0x…": split it into "Hyperliquid" and "0xfc66…ca06"
+    const split = (provider) => {
+      const m = provider.match(/^(.*)_(\w{6})\w+(\w{4})$/);
+      return m ? [m[1], `${m[2]}…${m[3]}`] : [provider, ''];
+    };
+    // Group a source's wallets together; FX and the other shared sources keep their place.
+    const order = new Map(names.map((n, i) => [split(n)[0], i]));
+    names.sort((a, b) => {
+      const [na, wa] = split(a), [nb, wb] = split(b);
+      return (order.get(na) - order.get(nb)) || wa.localeCompare(wb);
+    });
     const time = (t) => new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: window.larpTimeZone });
+    const cells = (provider) => {
+      const [name, wallet] = split(provider);
+      return `<span class="provider-line__name">${escapeHtml(name)}</span>` +
+        `<span class="provider-line__wallet">${escapeHtml(wallet)}</span><span class="provider-line__leader" aria-hidden="true"></span>`;
+    };
     let failed = 0;
     let pending = 0;
-    const lines = names.map(provider => {
+    let online = 0;
+    const rows = names.map(provider => {
       const status = this.providerStatus.get(provider);
       const doneAt = this.providerDoneAt.get(provider);
       if (status === 'failed') {
         failed++;
         const message = this.providerErrors.get(provider);
-        return `<span class="provider-line is-failed"><span class="provider-line__mark">×</span><span>${label(provider)}</span>` +
-          (message ? `<span class="provider-line__note">${escapeHtml(message)}</span>` : '') +
+        return `<span class="provider-line is-failed"><span class="provider-line__mark" aria-label="Failed"></span>${cells(provider)}` +
+          '<span class="provider-line__note">Offline</span>' +
+          (message ? `<span class="provider-line__error">${escapeHtml(message)}</span>` : '') +
           '<button type="button" class="chip provider-line__retry"><kbd aria-hidden="true">R</kbd><span class="chip__label">Retry</span></button></span>';
       }
       if (status === 'completed' || doneAt) {
-        return `<span class="provider-line"><span class="provider-line__mark">✓</span><span>${label(provider)}</span>` +
-          (doneAt ? `<span class="provider-line__note">${time(doneAt)}</span>` : '') + '</span>';
+        online++;
+        return `<span class="provider-line"><span class="provider-line__mark" aria-label="Online"></span>${cells(provider)}` +
+          `<span class="provider-line__note">${doneAt ? time(doneAt) : 'OK'}</span></span>`;
       }
       if (!this.isLoading) return '';
       pending++;
-      return `<span class="provider-line"><span class="loading-terminal">${label(provider)}</span></span>`;
+      return `<span class="provider-line is-loading"><span class="provider-line__mark loading-terminal" aria-label="Loading"></span>${cells(provider)}` +
+        '<span class="provider-line__note">…</span></span>';
     }).join('');
+    const total = online + failed + pending;
+    const lines = rows && `<span class="provider-head"><span>Sources</span><span class="provider-head__count">` +
+      `${online}/${total} online</span></span>` + rows;
 
     if (!lines) {
       el.hidden = true;
