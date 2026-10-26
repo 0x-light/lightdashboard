@@ -24,6 +24,29 @@ const SNAPSHOT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const SNAPSHOT_HISTORY_POINTS = 24;
 const SNAPSHOT_SAVE_DELAY_MS = 1500;
 
+// Last good FX rates per base currency. A failed lookup then values EUR or GBP holdings at the
+// last known rate instead of dropping them from the total.
+const FX_CACHE_KEY = 'viewport.fxRates.v1';
+const FX_REFRESH_MS = 10 * 60 * 1000;
+const FX_RETRY_MS = 30 * 1000;
+
+function loadFxCache(base) {
+  try {
+    const rates = JSON.parse(localStorage.getItem(FX_CACHE_KEY) || '{}')?.[base];
+    return Object.entries(rates || {}).filter(([, rate]) => Number(rate) > 0);
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveFxCache(base, rates) {
+  try {
+    const all = JSON.parse(localStorage.getItem(FX_CACHE_KEY) || '{}') || {};
+    all[base] = Object.fromEntries(Array.from(rates.entries()).filter(([, rate]) => Number(rate) > 0));
+    localStorage.setItem(FX_CACHE_KEY, JSON.stringify(all));
+  } catch (_) { /* storage unavailable: rates are fetched again next load */ }
+}
+
 // Hash of everything that decides which positions exist. A snapshot taken under different wallets
 // or manual positions would show holdings that are no longer tracked, so it is ignored.
 function snapshotFingerprint(settings) {
@@ -98,6 +121,8 @@ export class IncrementalPortfolioRenderer {
     this._fxRatesBase = null;
     this._fxRates = new Map();
     this._fxRatesLoading = new Set();
+    // currency -> time of the last attempt, so stale rates refresh and failed ones retry.
+    this._fxCheckedAt = new Map();
 
     // Nothing in memory yet (fresh page load): start from the last saved portfolio, if it still
     // matches the configured wallets and positions.
@@ -108,7 +133,7 @@ export class IncrementalPortfolioRenderer {
         const base = this.getBaseCurrency();
         if (snapshot.baseCurrency === base && Array.isArray(snapshot.fxRates)) {
           this._fxRatesBase = base;
-          this._fxRates = new Map(snapshot.fxRates.filter(([, rate]) => Number(rate) > 0));
+          this._fxRates = new Map([...loadFxCache(base), ...snapshot.fxRates.filter(([, rate]) => Number(rate) > 0)]);
           this._fxRates.set(base, 1);
         }
         this.isLoading = false;
@@ -455,8 +480,9 @@ export class IncrementalPortfolioRenderer {
     const base = this.getBaseCurrency();
     if (this._fxRatesBase === base) return;
     this._fxRatesBase = base;
-    this._fxRates = new Map([[base, 1]]);
+    this._fxRates = new Map([...loadFxCache(base), [base, 1]]);
     this._fxRatesLoading.clear();
+    this._fxCheckedAt.clear();
     this._fxRatesToken++;
   }
 
@@ -480,11 +506,13 @@ export class IncrementalPortfolioRenderer {
   currenciesNeedingFx(positions) {
     this.resetFxRatesIfNeeded();
     const missing = new Set();
+    const now = Date.now();
     for (const position of Array.isArray(positions) ? positions : []) {
       const currency = normalizeCurrencyCode(position?.currency || position?.sourceCurrency || 'USD', 'USD');
       if (this.localConversionRate(currency) !== null) continue;
-      if (this._fxRates.has(currency)) continue;
       if (this._fxRatesLoading.has(currency)) continue;
+      const age = now - (this._fxCheckedAt.get(currency) || 0);
+      if (age < (Number(this._fxRates.get(currency)) > 0 ? FX_REFRESH_MS : FX_RETRY_MS)) continue;
       missing.add(currency);
     }
     return Array.from(missing);
@@ -494,33 +522,36 @@ export class IncrementalPortfolioRenderer {
     const missing = this.currenciesNeedingFx(positions);
     if (missing.length === 0) return null;
     const base = this.getBaseCurrency();
-    missing.forEach(currency => this._fxRatesLoading.add(currency));
+    missing.forEach(currency => {
+      this._fxRatesLoading.add(currency);
+      this._fxCheckedAt.set(currency, Date.now());
+    });
 
     return (async () => {
+      let error = null;
       try {
         const rates = await this.providers?.stocks?.getFxRates?.(missing, base, { timeoutMs: 5000 });
-        const unresolved = [];
+        let updated = false;
         for (const currency of missing) {
           const rate = Number(rates?.[currency]);
           if (Number.isFinite(rate) && rate > 0) {
             this._fxRates.set(currency, rate);
-          } else {
-            this._fxRates.set(currency, null);
-            unresolved.push(currency);
+            updated = true;
           }
         }
+        if (updated) saveFxCache(base, this._fxRates);
+      } catch (e) {
+        error = e;
+      } finally {
+        // A failed lookup keeps the last good rate; a currency with none retries after FX_RETRY_MS.
+        const unresolved = missing.filter(currency => !(Number(this._fxRates.get(currency)) > 0));
         if (unresolved.length > 0) {
           this.providerStatus.set('FX', 'failed');
-          this.providerErrors.set('FX', `missing ${unresolved.join(', ')} rate`);
+          this.providerErrors.set('FX', error?.message || `missing ${unresolved.join(', ')} rate`);
         } else {
           this.providerStatus.set('FX', 'completed');
           this.providerErrors.delete('FX');
         }
-      } catch (e) {
-        missing.forEach(currency => this._fxRates.set(currency, null));
-        this.providerStatus.set('FX', 'failed');
-        this.providerErrors.set('FX', e?.message || String(e || 'Failed to load FX rates'));
-      } finally {
         missing.forEach(currency => this._fxRatesLoading.delete(currency));
         this._fxRatesToken++;
         this.renderProviderStatus();
