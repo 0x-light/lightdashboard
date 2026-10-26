@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import './node-globals.mjs';
 import { calculatePortfolioBreakdown, calculatePortfolioTotals } from '../modules/domain/portfolio.js';
 import {
   breakevenOf,
