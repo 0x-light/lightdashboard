@@ -459,6 +459,13 @@ html.pm:root .pm-card__meta {
 
 html.pm:root .pm-card__title { left: 1ch; text-transform: uppercase; }
 html.pm:root .pm-card__meta { right: 1ch; color: var(--pm-muted); }
+html.pm:root .pm-card__meta { white-space: nowrap; }
+html.pm:root .pm-card__meta > .panel-note-slot:not(:empty) {
+  display: inline-block;
+  max-width: calc(100vw - 32ch);
+  margin-right: 2ch;
+  vertical-align: top;
+}
 
 html.pm:root .hero-summary {
   display: block;
@@ -507,7 +514,6 @@ html.pm:root .hero-sentence-weather { display: none; }
 html.pm:root .hero-readout-label { color: var(--pm-muted); text-transform: uppercase; }
 
 /* Allocation: a framed bar on the line grid, legend as plain text. */
-html.pm:root .hero-summary > .hero-freshness { color: var(--pm-muted); }
 html.pm:root .alloc { margin-top: var(--pm-lh); }
 
 html.pm:root .alloc-bar {

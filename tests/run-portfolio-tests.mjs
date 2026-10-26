@@ -1506,7 +1506,8 @@ function testHeroFreshnessNamesOfflineSourcesAndOldestFigure() {
   const summary = summarizeFreshness(rows, { now, failing: ['Lighter_0xabc'] });
   assert.deepEqual(summary, { offline: ['Lighter'], oldestAt: now - 12 * 60_000, stale: true, unpriced: [] });
   const html = freshnessNote(summary, now);
-  assert.match(html, /Lighter offline · includes data from 12m ago/);
+  assert.match(html, />Lighter offline</);
+  assert.equal(freshnessNote({ ...summary, offline: [] }, now), '', 'old data alone: no note');
   assert.equal(freshnessNote(summarizeFreshness(rows.slice(0, 1), { now }), now), '', 'all live: no note');
   // A declared position without a price is missing from the total; a spam wallet token is not news.
   const unpriced = summarizeFreshness([

@@ -137,6 +137,9 @@
     '<p class="pm-card__meta"><span class="js-pm-time"></span><span class="js-pm-place"></span></p>');
   heroSection.insertBefore(card, summary);
   card.appendChild(summary);
+  // The offline note (incremental-portfolio.js) sits in the border with the time, so it adds no height.
+  var noteSlot = heroSection.querySelector(".panel-note-slot");
+  if (noteSlot) card.querySelector(".pm-card__meta").prepend(noteSlot);
 
   // Pointing at the value chart names the point on the card's bottom border. It lives
   // on <body>, outside the observed #main, so placing it doesn't re-run the observer.

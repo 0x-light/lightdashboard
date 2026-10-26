@@ -1262,11 +1262,13 @@ export class IncrementalPortfolioRenderer {
         baseCurrency,
         useColoredPnL: this.settings.useColoredPnL ?? true,
         allocation,
-        freshness,
         highlightsHtml: [],
         weather: window.cachedWeather || null
       });
       summaryEl.innerHTML = heroHtml;
+      const noteEl = summaryEl.closest('section')?.querySelector('.panel-note-slot');
+      const noteHtml = HeroUI.freshnessNote(freshness);
+      if (noteEl && noteEl.innerHTML !== noteHtml) noteEl.innerHTML = noteHtml;
     }
 
     // Tab title: "$119.4k ▲ 5.0% · Viewport", so a pinned tab shows the portfolio.

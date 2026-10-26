@@ -422,14 +422,16 @@ function hangLights() {
       string.style.top = `${line - string.getBoundingClientRect().top}px`;
     }
   }
-  // Hung again when a box changes width (the observer also reports each box once at the start)
-  const widths = new Map(spots.map(({ box }) => [box, box.clientWidth]));
+  // Hung again when a box or a label it avoids changes width, e.g. when the offline note
+  // appears beside the time (the observer also reports each element once at the start)
+  const watched = spots.flatMap(({ box, avoid }) => [box, ...avoid]);
+  const widths = new Map(watched.map(el => [el, el.clientWidth]));
   lightsObserver = new ResizeObserver(entries => {
     if (entries.every(e => widths.get(e.target) === e.target.clientWidth)) return;
     cancelAnimationFrame(lightsFrame);
     lightsFrame = requestAnimationFrame(hangLights);
   });
-  spots.forEach(({ box }) => lightsObserver.observe(box));
+  watched.forEach(el => lightsObserver.observe(el));
 }
 
 function takeDownLights(all = true) {

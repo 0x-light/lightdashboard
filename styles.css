@@ -581,8 +581,7 @@ h6 {
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
     'figure stats'
-    'alloc alloc'
-    'note note';
+    'alloc alloc';
   align-items: end;
   column-gap: 4ch;
   margin: 0;
@@ -1781,8 +1780,7 @@ body.mobile-menu-open {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       'figure'
-      'stats'
-      'note';
+      'stats';
   }
 
   /* The positions list already carries each holding's value; skip the allocation bar on phones */
@@ -3538,11 +3536,16 @@ html:root .hero-readout-item {
   white-space: nowrap;
 }
 html:root .hero-readout-label { color: var(--muted); }
-html:root .hero-freshness {
-  grid-area: note;
-  margin: 0;
+/* Offline sources, in the title line: one line, cut short on narrow screens. */
+html:root .panel-note-slot {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--muted);
 }
+html:root .panel-note-slot:empty { display: none; }
 @media (max-width: 520px) {
   html:root .hero-readout { column-gap: 2ch; }
 }

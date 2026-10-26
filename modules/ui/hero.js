@@ -1,6 +1,5 @@
 // UI helper for composing the hero: a row of label-over-figure columns (value, today, P&L, weather) and the allocation line.
 import { formatMoney, normalizeBaseCurrency } from '../utils/currency.js';
-import { ageText } from '../domain/incremental-portfolio.js';
 
 function formatCurrency(value, amountsVisible, currency, options = {}) {
   return formatMoney(value, {
@@ -95,19 +94,21 @@ function composeSentence({ valueText, amountsVisible, totalPnL, totalPnLPercent,
   return `<div class="hero-sentence hero-readout">${columns.join('')}</div>`;
 }
 
-// Said under the figures when any of them is not live: "Lighter offline · includes data from 12m ago".
+// Said in the panel's title line when a source is offline or a position has no price: "Lighter offline".
+// It sits in the title line so it never adds height. Old data alone says nothing here.
 // freshness: { offline: string[], oldestAt: number|null, stale: boolean } (summarizeFreshness).
-export function freshnessNote(freshness, now = Date.now()) {
+export function freshnessNote(freshness) {
   if (!freshness?.stale) return '';
   const parts = [];
   if (freshness.offline?.length) parts.push(`${freshness.offline.join(', ')} offline`);
   if (freshness.unpriced?.length) parts.push(`no price for ${freshness.unpriced.join(', ')}`);
-  if (freshness.oldestAt) parts.push(`includes data from ${ageText(freshness.oldestAt, now)}`);
-  if (parts.length === 0) parts.push('includes data that is not current');
+  if (parts.length === 0) return '';
+  // The line can be cut short on a phone; the tooltip says all of it.
+  const text = parts.join(' · ');
   const title = freshness.oldestAt
-    ? `Oldest figure: ${new Date(freshness.oldestAt).toLocaleString(undefined, { timeZone: globalThis.window?.larpTimeZone })}`
-    : '';
-  return `<p class="hero-freshness"${title ? ` title="${escapeHtml(title)}"` : ''}>${escapeHtml(parts.join(' · '))}</p>`;
+    ? `${text} · oldest figure: ${new Date(freshness.oldestAt).toLocaleString(undefined, { timeZone: globalThis.window?.larpTimeZone })}`
+    : text;
+  return `<span class="panel-note" title="${escapeHtml(title)}">${escapeHtml(text)}</span>`;
 }
 
 export function composeSummary({
@@ -121,7 +122,6 @@ export function composeSummary({
   baseCurrency,
   useColoredPnL,
   allocation, // [{ label, value, share, isOther? }]
-  freshness, // { offline, oldestAt, stale } | undefined
   highlightsHtml, // array of already-escaped HTML strings
   weather // { temp, city, icon, moonText } | null
 }) {
@@ -131,7 +131,6 @@ export function composeSummary({
 
   return `
     ${composeSentence({ valueText, amountsVisible, totalPnL, totalPnLPercent, totalDailyChange, totalDailyChangePercent, weather, currency, useColoredPnL })}
-    ${freshnessNote(freshness)}
     ${composeAllocation(allocation, { amountsVisible, currency })}
   `;
 }
