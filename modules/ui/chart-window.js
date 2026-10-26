@@ -76,6 +76,7 @@ let gridHtml = ''; // the cells and the period, so the cells are rebuilt only wh
 const tried = new Set(); // `${period}|${key}` the grid has asked for
 const queue = []; // the grid's points still to fetch
 let running = 0;
+let gridSeq = 0; // a new grid or a close moves it on, so answers that come after do nothing
 // Changes in the positions' grid last until it closes: what you hid, added and moved.
 let gridHidden = new Set();
 let gridAdded = []; // [{ list, key }] from the other lists
@@ -349,11 +350,14 @@ function requestPoints(list) {
 
 async function fetchQueued(job) {
   if (job.period !== period || !grid) return;
+  const seq = gridSeq;
   running++;
   await pointsFor(job.item, job.period);
   running--;
-  tried.add(job.id);
-  if (grid) draw();
+  if (seq === gridSeq) {
+    tried.add(job.id);
+    if (grid) draw();
+  }
   requestPoints([]);
 }
 
@@ -757,6 +761,11 @@ function drawGrid() {
     if (focused) focusCell(focused.dataset.key ?? 'add');
   }
   const label = PERIODS.find(x => x.id === period)?.label || '';
+  // A node is written only when its text changes, so an unchanged refresh lays out nothing.
+  const setText = (node, t) => { if (node.textContent !== t) node.textContent = t; };
+  // The text first, then every chart's size in one read, then the charts: a size read
+  // between writes would lay the page out once per cell.
+  const shown = [];
   box.querySelectorAll('.wlc__cell').forEach(cell => {
     const item = all.find(i => i.key === cell.dataset.key);
     if (!item) return;
@@ -767,11 +776,12 @@ function drawGrid() {
     // As the window's head: on 1D from the quote's day-ago price, else from the first point.
     const first = period === '1d' && Number.isFinite(item.change24h) && Number.isFinite(item.price)
       ? item.price / (1 + item.change24h / 100) : prices[0];
-    cell.querySelector('.wlc__cell-name').textContent = item.label || item.symbol || '';
-    cell.querySelector('.wlc__cell-price').textContent = Number.isFinite(live) ? price(live, item) : '—';
+    const priceText = Number.isFinite(live) ? price(live, item) : '—';
+    setText(cell.querySelector('.wlc__cell-name'), item.label || item.symbol || '');
+    setText(cell.querySelector('.wlc__cell-price'), priceText);
     // The period is in the period row, so the change is the figure alone.
     const changeText = first > 0 && Number.isFinite(live) ? pctOf(live / first - 1) : '';
-    cell.querySelector('.wlc__cell-change').textContent = changeText;
+    setText(cell.querySelector('.wlc__cell-change'), changeText);
     // Under the ticker: your profit at full strength, then your side and entry, muted; a
     // narrow cell cuts the entry, not the profit.
     const mine = positionFor(item);
@@ -783,18 +793,37 @@ function drawGrid() {
       side = `${mine.amount < 0 ? 'short' : 'long'} from ${price(mine.entry, item)}`;
       pnlText = `${pnl < 0 ? '−' : '+'}${price(abs, item)}`;
     }
-    cell.querySelector('.wlc__cell-pos').innerHTML = side ? `<span class="wlc__cell-pnl">${esc(pnlText)}</span>  ${esc(side)}` : '';
-    open.setAttribute('aria-label', [item.label || item.symbol, cell.querySelector('.wlc__cell-price').textContent,
-      changeText && `${changeText} ${label}`, pnlText, side].filter(Boolean).join(', '));
+    const posNode = cell.querySelector('.wlc__cell-pos');
+    const posHtml = side ? `<span class="wlc__cell-pnl">${esc(pnlText)}</span>  ${esc(side)}` : '';
+    if (posNode.shownHtml !== posHtml) posNode.innerHTML = posNode.shownHtml = posHtml;
+    const aria = [item.label || item.symbol, priceText, changeText && `${changeText} ${label}`, pnlText, side].filter(Boolean).join(', ');
+    if (open.getAttribute('aria-label') !== aria) open.setAttribute('aria-label', aria);
+    shown.push({ item, pts, prices, mine, first, priceText, chart: cell.querySelector('.wlc__cell-chart') });
+  });
 
-    const chart = cell.querySelector('.wlc__cell-chart');
+  // The cells share one font, so one computed style serves them all.
+  const drawn = shown.filter(c => c.pts.length >= 2);
+  const ch = drawn.length ? parseFloat(getComputedStyle(drawn[0].chart).fontSize) * 0.6 : 0;
+  for (const c of drawn) {
+    c.w = Math.max(40, Math.round(c.chart.clientWidth));
+    c.h = Math.max(20, Math.round(c.chart.clientHeight));
+  }
+  const log = logScale();
+  for (const { item, pts, prices, mine, first, priceText, chart, w, h } of shown) {
+    // A chart is drawn again only when what it shows has changed: its points, its price,
+    // its size, the scale or your entry.
+    const sig = pts.length < 2
+      ? `none|${tried.has(`${period}|${item.key}`)}`
+      : [w, h, ch, period, log, mine?.entry, priceText].join('|');
+    if (chart.sig === sig && chart.sigPoints === pts) continue;
+    chart.sig = sig;
+    chart.sigPoints = pts;
     if (pts.length < 2) {
+      chart.cellSeries = null;
       chart.innerHTML = `<span class="wlc__empty">${tried.has(`${period}|${item.key}`) ? 'No prices' : '<span class="loading-terminal">Loading</span>'}</span>`;
-      return;
+      continue;
     }
-    const w = Math.max(40, Math.round(chart.clientWidth));
-    const h = Math.max(20, Math.round(chart.clientHeight));
-    const f = logScale() ? Math.log : v => v;
+    const f = log ? Math.log : v => v;
     let lo = Math.min(...prices);
     let hi = Math.max(...prices);
     // Your entry joins the scale when it sits near the line.
@@ -808,7 +837,7 @@ function drawGrid() {
     const last = pts.length - 1;
     // The line stops 3 characters short of the right edge, where a dot marks the latest
     // price, so it does not run into the next cell's.
-    const end = w - 1 - Math.round(parseFloat(getComputedStyle(chart).fontSize) * 0.6 * 3);
+    const end = w - 1 - Math.round(ch * 3);
     const xOf = i => (i / last) * end;
     const line = pts.map((x, i) => `${xOf(i).toFixed(1)},${yOf(x.price).toFixed(1)}`).join(' ');
     const nowY = yOf(pts[last].price);
@@ -821,11 +850,11 @@ function drawGrid() {
       `<rect class="wlc__cell-now" width="5" height="5" x="${(end - 2.5).toFixed(1)}" y="${(nowY - 2.5).toFixed(1)}"/>` +
       `<line class="pm-value__cursor" x1="0" x2="0" y1="0" y2="${h}" visibility="hidden"/>` +
       '<rect class="pm-value__point" width="5" height="5" x="0" y="0" visibility="hidden"/></svg>' +
-      `<span class="wlc__cell-big" aria-hidden="true">${esc(cell.querySelector('.wlc__cell-price').textContent)}</span>` +
+      `<span class="wlc__cell-big" aria-hidden="true">${esc(priceText)}</span>` +
       '<p class="wlc__tip" aria-hidden="true" hidden></p>';
     chart.cellSeries = { item, mine, first, points: pts.map((x, i) => ({ t: x.timestamp, v: x.price, x: xOf(i), y: yOf(x.price) })) };
     if (cellHover?.key === item.key) cellPoint(chart, cellHover.x);
-  });
+  }
 }
 
 // Pointing at a cell's chart reads one point in a tag by the cursor, as the account value
@@ -1062,6 +1091,7 @@ function showGrid(id) {
   gridOrder = null;
   tried.clear();
   queue.length = 0;
+  gridSeq++;
   addMenu(false);
   hover = -1;
   measure = null;
@@ -1302,6 +1332,12 @@ function close() {
   document.body.classList.remove('modal-open');
   clearInterval(tick);
   sized?.disconnect();
+  // What is still to fetch is dropped, and what is on its way changes nothing.
+  queue.length = 0;
+  gridSeq++;
+  loads++;
+  grid = null;
+  cellHover = null;
   active()?.onClose?.(current() ? key : null);
 }
 

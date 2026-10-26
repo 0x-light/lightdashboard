@@ -974,7 +974,12 @@
   });
 
   // The app renders asynchronously and hides sections from settings; follow along.
-  new MutationObserver(function () { syncWeather(); syncSparks(); }).observe($("#main"), { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "hidden", "class"] });
+  // A render is a burst of mutations (and each flash toggles a class): one pass per frame.
+  var mainSync = 0;
+  new MutationObserver(function () {
+    if (mainSync) return;
+    mainSync = requestAnimationFrame(function () { mainSync = 0; syncWeather(); syncSparks(); });
+  }).observe($("#main"), { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "hidden", "class"] });
 
   // app.js sets the theme select's value after this runs.
   // ── 24h sparklines: the same dim dither as the allocation tracks, under the line ──
@@ -984,10 +989,10 @@
 
   var sparkSeq = 0;
 
-  function ditherSpark(svg) {
+  // rect is read by the caller, before any SVG is written, so a pass costs one layout.
+  function ditherSpark(svg, rect) {
     var line = $("polyline", svg);
     var box = svg.viewBox && svg.viewBox.baseVal;
-    var rect = svg.getBoundingClientRect();
     if (!line || !box || !box.width || !rect.width || !rect.height) return;
     var px = box.width / rect.width, py = box.height / rect.height;
     var id = "pmSparkDz" + (++sparkSeq);
@@ -1008,9 +1013,9 @@
   // Inside the observed subtree: only SVGs without an area get one, so the writes
   // this makes find nothing left to do on the next pass.
   function syncSparks() {
-    $$("#main svg.sparkline").forEach(function (svg) {
-      if (!$(".pm-spark-area", svg)) ditherSpark(svg);
-    });
+    var bare = $$("#main svg.sparkline").filter(function (svg) { return !$(".pm-spark-area", svg); });
+    var rects = bare.map(function (svg) { return svg.getBoundingClientRect(); });
+    bare.forEach(function (svg, i) { ditherSpark(svg, rects[i]); });
   }
 
   // Cell widths change at breakpoints; rebuild every area at the new size.
