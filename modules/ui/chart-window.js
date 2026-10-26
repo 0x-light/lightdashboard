@@ -431,7 +431,9 @@ function list() {
     const rows = l.items();
     if (!rows.length && !l.onAdd) return '';
     return `<p class="wlc__list-head"><span>${esc(l.title)}</span><span class="wlc__list-tools">` +
-      (gridItems(l.id).length >= 2 ? `<button type="button" class="btn-text panel-action js-wlc-grid" data-list="${esc(l.id)}" aria-pressed="${grid === l.id}">Grid</button>` : '') +
+      // A acts on the open grid, or else on the open item's list: that Grid shows the key.
+      (gridItems(l.id).length >= 2 ? `<button type="button" class="btn-text panel-action js-wlc-grid" data-list="${esc(l.id)}" aria-pressed="${grid === l.id}"` +
+        `${(grid || listId) === l.id ? ' data-key="a" aria-keyshortcuts="A"' : ''}>Grid</button>` : '') +
       (l.onAdd ? '<button type="button" class="btn-text panel-action js-wlc-add">+ Add</button>' : '') + '</span></p>' +
       rows.map(i => {
         const ch = Number.isFinite(i.change24h) ? `${i.change24h < 0 ? '−' : '+'}${Math.abs(i.change24h).toFixed(2)}%` : '';

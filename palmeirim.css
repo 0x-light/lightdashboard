@@ -699,7 +699,8 @@ html.pm:root .loading-terminal::before {
 /* A loader that is the only thing in its panel sits in the middle of it, as SRCL's block
    loader does. In a line of text (the footer's sources) it stays inline. */
 html.pm:root :is(#newSummary, #newComic, .data-table td.loading, .wlc__empty, .acct__muted, .ladder__note):has(> .loading-terminal:only-child) { text-align: center; }
-html.pm:root .wlc__chart:has(> .wlc__empty > .loading-terminal:only-child) { display: grid; place-items: center; }
+/* Not in the grid, which hides the one chart: shown there, it took a column of its own. */
+html.pm:root .wlc:not(.wlc--grid) > .wlc__chart:has(> .wlc__empty > .loading-terminal:only-child) { display: grid; place-items: center; }
 /* The sentence keeps a reading width; while it loads, the card's middle is the box's middle. */
 html.pm:root #newSummary:has(> .loading-terminal:only-child) { max-width: none; }
 
@@ -2540,6 +2541,7 @@ html.pm:root .wlc__actions [hidden] { display: none; }
 }
 html.pm:root .wlc__list-tools { display: flex; gap: 0 1ch; margin-left: auto; }
 html.pm:root .wlc__list-head .js-wlc-grid[aria-pressed="true"] { background: var(--pm-ink); color: var(--bg); }
+html.pm:root .wlc__list-head .js-wlc-grid[data-key]::before { content: attr(data-key); margin-right: 1ch; }
 html.pm:root .sticker-window-header .js-wlc-all::before { content: "a"; }
 html.pm:root .sticker-window-header .js-wlc-all[aria-pressed="true"] { background: var(--pm-ink); color: var(--bg); }
 html.pm:root .sticker-window-header .js-wlc-all[aria-pressed="true"]::before { color: var(--pm-ink); }
