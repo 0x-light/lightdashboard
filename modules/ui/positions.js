@@ -75,6 +75,22 @@ function cellClassFor(col) {
 
 const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
 
+// Stocks, funds and options trade in market hours; ambient.js dims them while their
+// exchange is closed. The quote currency names the exchange: euro listings trade in
+// Frankfurt or on Euronext, sterling in London, the rest in New York.
+const STOCK_CATEGORIES = new Set(['equity', 'stock', 'etf', 'fund', 'index', 'option']);
+function isStockMarket(pos) {
+  return STOCK_CATEGORIES.has(String(pos.category || '').toLowerCase()) ||
+    /^Manual \((Stock|ETF|Fund|Index)\)$/.test(pos.exchange || '');
+}
+function stockMarketOf(pos) {
+  if (!isStockMarket(pos)) return null;
+  const currency = String(pos.currency || pos.sourceCurrency || '').toUpperCase();
+  if (currency === 'EUR') return 'eu';
+  if (currency === 'GBP' || currency === 'GBX') return 'uk';
+  return 'us';
+}
+
 function isStablecoin(asset) {
   return STABLECOINS.has(asset?.toUpperCase());
 }
@@ -725,6 +741,7 @@ function createTableRow(doc, pos, opts, prevDataMap, { leg = false } = {}) {
   tr.classList.add('position-row');
   if (isOpen) tr.classList.add('is-open');
   tr.dataset.key = rowKey;
+  if (stockMarketOf(pos)) tr.dataset.market = stockMarketOf(pos);
   tr.tabIndex = 0;
   tr.setAttribute('aria-expanded', String(isOpen));
 
@@ -937,6 +954,7 @@ function createStrategyRow(doc, underlying, legs, opts) {
   tr.className = 'position-row position-strategy';
   if (isOpen) tr.classList.add('is-open');
   tr.dataset.key = rowKey;
+  if (legs.every(l => isStockMarket(l.pos))) tr.dataset.market = stockMarketOf(legs[0].pos);
   tr.tabIndex = 0;
   tr.setAttribute('aria-expanded', String(isOpen));
 
@@ -1085,6 +1103,7 @@ const expandedCards = new Set();
 function createMobileCard(doc, pos, opts) {
   const card = doc.createElement('div');
   card.className = 'mobile-position-card';
+  if (stockMarketOf(pos)) card.dataset.market = stockMarketOf(pos);
   const amountVisible = !!opts.amountsVisible;
   const value = computeValue(pos);
   const useColoredPnL = opts.settings?.useColoredPnL ?? true;

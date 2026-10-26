@@ -20,11 +20,19 @@ function weatherIconFromCode(code, isDay) {
   return '☁︎';
 }
 
-export async function fetchWeather(lat, lon, timeoutMs = 10000) {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`;
+// Today's forecast, one request for everyone who asks: the weather line, the rain and snow
+// (rain.js) and the ambient sky (ambient.js). The same URL shares one request in flight and
+// a 10-minute cache. Times are unix seconds (daily.sunrise / daily.sunset).
+export async function fetchForecast(lat, lon, timeoutMs = 10000) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${Number(lat)}&longitude=${Number(lon)}` +
+    '&current=temperature_2m,weather_code,is_day,precipitation,cloud_cover,wind_speed_10m,wind_direction_10m' +
+    '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,sunrise,sunset' +
+    '&forecast_days=1&timeformat=unixtime&timezone=auto';
   const data = await HttpClient.getJson(url, { timeoutMs, ttlMs: 10 * 60 * 1000 });
   return data || null;
 }
+
+export const fetchWeather = fetchForecast;
 
 // The city at a point, for a place saved with coordinates but no name. '' when unknown.
 export async function placeName(lat, lon) {
@@ -82,5 +90,5 @@ export async function renderWeather(container, settings = {}) {
 // Alias for compatibility with app.js
 export const getWeather = fetchWeather;
 
-export default { fetchWeather, placeName, renderWeather, getWeather };
+export default { fetchForecast, fetchWeather, placeName, renderWeather, getWeather };
 

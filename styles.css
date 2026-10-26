@@ -4201,3 +4201,146 @@ button.sticker-item {
     text-decoration: underline;
   }
 }
+
+/* ── Ambient effects (modules/features/ambient.js) ──
+   The canvas (stars, bats, fireworks) sits behind the page: the body's own background
+   colour steps aside while it is on, and the html element keeps painting --bg. Colours
+   come from the theme. */
+html:root.ambient-canvas-on body,
+html.pm:root.ambient-canvas-on body { background-color: transparent; }
+
+.ambient-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  width: 100vw;
+  height: 100vh;
+  display: none;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+
+.ambient-canvas.active { display: block; }
+
+/* Closed markets: stock rows rest while their exchange is closed (New York, Europe, London) */
+html.ambient-markets-closed:is(.ambient-closed-us) :is(tr.position-row, .mobile-position-card)[data-market="us"],
+html.ambient-markets-closed:is(.ambient-closed-eu) :is(tr.position-row, .mobile-position-card)[data-market="eu"],
+html.ambient-markets-closed:is(.ambient-closed-uk) :is(tr.position-row, .mobile-position-card)[data-market="uk"] {
+  opacity: 0.55;
+  transition: opacity 0.6s ease;
+}
+
+
+/* ── Seasonal themes ──
+   Pickable like any theme; Settings > Effects also puts them on for their week.
+   Christmas, "Evergreen": deep forest green, cream, berry red, gold. */
+html[data-theme="christmas"] {
+  --bg: #14382a;
+  --bg-elev: #1d4a37;
+  --text: #e9e2d2;
+  --text-bright: #fbf3e4;
+  --muted: #a9c4b4;
+  --accent: #f2c75c;
+  --border: #3d6b55;
+  --card-bg: #1a4231;
+  --green: #9ee08a;
+  --red: #ff7a6b;
+  --orange: #ff9a5c;
+  --yellow: #f2c75c;
+  --cyan: #bfe3d0;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+  --bulb-1: #e63b3b;
+  --bulb-2: #f2c75c;
+  --bulb-3: #7fd18b;
+  --bulb-4: #fbf3e4;
+}
+
+/* Halloween, "Witching hour": potion purple, slime green, pumpkin. */
+html[data-theme="halloween"] {
+  --bg: #26123d;
+  --bg-elev: #341a52;
+  --text: #e6d8f5;
+  --text-bright: #f5eaff;
+  --muted: #b9a2d6;
+  --accent: #a6f04d;
+  --border: #56397a;
+  --card-bg: #2e1749;
+  --green: #a6f04d;
+  --red: #ff8a3d;
+  --orange: #ff8a3d;
+  --yellow: #ffd25e;
+  --cyan: #c792ff;
+  --flash-start: color-mix(in srgb, var(--accent) 30%, transparent);
+  --flash-mid: color-mix(in srgb, var(--accent) 15%, transparent);
+  --bulb-1: #ff8a3d;
+  --bulb-2: #a6f04d;
+  --bulb-3: #c792ff;
+  --bulb-4: #ffd25e;
+}
+
+/* The total and the value line take the season's accent */
+html.pm:root:is([data-theme="christmas"], [data-theme="halloween"]) .hero-amount-toggle { color: var(--accent); }
+html.pm:root:is([data-theme="christmas"], [data-theme="halloween"]) .pm-value__line { stroke: var(--accent); }
+html.pm:root:is([data-theme="christmas"], [data-theme="halloween"]) .pm-value__end { fill: var(--accent); }
+
+/* Lights on the rules: bulbs strung along the portfolio box's top line and the positions
+   table's top line, in two sets that take turns (ambient.js hangs them) */
+.season-lights {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.season-lights--table { position: relative; z-index: 1; }
+
+/* A pixel bulb: a 2px cap on the wire, a 4x6 glass with one highlight pixel, and a hard
+   1px halo instead of a blur. Off, the glass goes dark and the halo goes. */
+.season-bulb {
+  position: absolute;
+  top: 1px;
+  width: 4px;
+  height: 6px;
+  margin-left: -2px;
+  background: var(--c);
+  box-shadow:
+    inset 1px 1px 0 color-mix(in srgb, var(--c) 45%, #fff),
+    0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--c) 14%, transparent);
+  animation: season-blink 1.6s steps(1) infinite;
+}
+
+.season-bulb::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: -2px;
+  width: 2px;
+  height: 2px;
+  background: var(--muted);
+}
+
+.season-bulb:nth-child(4n+1) { --c: var(--bulb-1, var(--red)); }
+.season-bulb:nth-child(4n+2) { --c: var(--bulb-2, var(--green)); }
+.season-bulb:nth-child(4n+3) { --c: var(--bulb-3, var(--yellow, var(--accent))); }
+.season-bulb:nth-child(4n+4) { --c: var(--bulb-4, var(--cyan, var(--accent))); }
+.season-bulb:nth-child(even) { animation-delay: 0.8s; }
+
+/* On the table's top line the bulbs stand up, clear of the column labels below it */
+.season-lights--table .season-bulb { top: -7px; }
+.season-lights--table .season-bulb::before { top: 6px; }
+
+@keyframes season-blink {
+  50% {
+    background: color-mix(in srgb, var(--c) 35%, var(--bg));
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .season-bulb { animation: none; }
+}
+
+.season-lights--card { top: -1px; }
