@@ -4029,6 +4029,14 @@ html:root .sticker-window-content .help,
   margin: 0;
   padding: calc(var(--lh) * 0.5) 1ch;
 }
+/* Watchlist suggestions: "Your positions", "Markets" */
+.search-group {
+  margin: 0;
+  padding: calc(var(--lh) * 0.2) 1ch;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--muted);
+}
+
 
 #newAddPositionPythResults:not(:empty) {
   max-height: 240px;

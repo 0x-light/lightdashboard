@@ -75,6 +75,15 @@ function small(abs) {
   return abs.toLocaleString('en-US', { maximumSignificantDigits: 4, maximumFractionDigits: 20 });
 }
 
+// Index levels, yields and FX rates are numbers, not prices: no currency symbol.
+export function formatLevel(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '—';
+  const abs = Math.abs(n);
+  const digits = abs < 10 ? 4 : 2;
+  return `${n < 0 ? '−' : ''}${abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: digits })}`;
+}
+
 export function formatPrice(value, {
   currency = 'USD',
   visible = true

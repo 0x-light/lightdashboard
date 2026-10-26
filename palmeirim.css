@@ -339,6 +339,17 @@ html.pm:root .pm-dd__search:focus-within .pm-dd__ic { background: var(--pm-ink);
 /* Search results and similar rows: an inverted row inverts everything in it. */
 @media (hover: hover) {
   html.pm:root .watchlist-search-result:hover * { color: inherit !important; }
+  /* Its button turns dark on the light row, so its text stays legible. */
+  html.pm:root .sticker-window-content .watchlist-search-result:hover .btn-text {
+    background: var(--bg);
+    color: var(--pm-ink) !important;
+  }
+  html.pm:root .sticker-window-content .watchlist-search-result:hover .btn-text:is(:disabled, [aria-disabled="true"]) {
+    color: var(--pm-muted) !important;
+  }
+  html.pm:root .sticker-window-content .watchlist-search-result:hover .btn-text:not(:disabled, [aria-disabled="true"]):hover {
+    background: var(--pm-tint-3);
+  }
 }
 
 /* ── Kinds of position ──
@@ -1608,6 +1619,17 @@ html.pm:root .watchlist-search-result {
 }
 
 html.pm:root .watchlist-search-result:first-child { border-top: 0; }
+
+/* A group title is a heading, not a row: a blank line above it and no rule. */
+html.pm:root .search-group {
+  margin-top: var(--pm-lh);
+  padding: 0 1ch;
+  border: 0;
+  line-height: var(--pm-lh);
+  color: var(--pm-muted);
+}
+
+html.pm:root .search-group:first-child { margin-top: 0; }
 
 
 @media (hover: hover) {

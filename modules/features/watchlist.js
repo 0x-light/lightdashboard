@@ -9,7 +9,7 @@
 // Each rendered item carries a composite `key` (`pyth:<id>` or `yahoo:<SYM>`) used for
 // edit-mode removal, flash detection, and caching.
 
-import { formatPrice } from '../utils/currency.js';
+import { formatPrice, formatLevel } from '../utils/currency.js';
 
 const STABLECOINS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'TUSD', 'USDP', 'GUSD', 'BUSD']);
 let lastGoodWatchlistData = null;
@@ -66,6 +66,7 @@ export function normalizeEntries(raw) {
       out.push({
         provider: 'yahoo',
         symbol: String(item.symbol),
+        label: item.label || null,
         name: item.name || null,
         category: item.category || null
       });
@@ -257,6 +258,7 @@ async function fetchYahooItems(yahooEntries, stocksProvider) {
           key: `yahoo:${entry.symbol.toUpperCase()}`,
           provider: 'yahoo',
           symbol: entry.symbol,
+          label: entry.label,
           name: entry.name || entry.symbol,
           category: entry.category || null,
           price: null,
@@ -270,6 +272,7 @@ async function fetchYahooItems(yahooEntries, stocksProvider) {
         key: `yahoo:${entry.symbol.toUpperCase()}`,
         provider: 'yahoo',
         symbol: entry.symbol,
+        label: entry.label,
         name: entry.name || q.name || entry.symbol,
         category: entry.category || null,
         price: q.price,
@@ -419,7 +422,7 @@ function renderRows(container, data, options) {
   }
 
   const html = data.map(item => {
-    const symbol = escapeHtml(item.symbol);
+    const symbol = escapeHtml(item.label || item.symbol);
     const price = item.price;
     const history = historyFor(item);
     const change = changeFor(item, history);
@@ -429,7 +432,9 @@ function renderRows(container, data, options) {
     // Quote currency (EUR for VWCE.DE, GBp for LSE…); Pyth feeds are USD-quoted.
     const priceFormatted = price == null
       ? '—'
-      : formatPrice(price, { currency: item.currency || 'USD' });
+      : item.category === 'index' || item.category === 'fx'
+        ? formatLevel(price)
+        : formatPrice(price, { currency: item.currency || 'USD' });
 
     let changeColor = '';
     let changeText = '—';
@@ -548,6 +553,7 @@ export async function render(container, {
         key,
         provider: entry.provider,
         symbol: entry.symbol || knownSymbol(id) || '…',
+        label: entry.label,
         price: null,
         change24h: null,
         unavailable: true

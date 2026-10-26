@@ -1578,6 +1578,7 @@ function setupControls() {
       : (entry.provider === 'yahoo'
           ? { provider: 'yahoo', symbol: entry.symbol, name: entry.name || null, category: entry.category || null }
           : { provider: 'pyth', id: entry.id });
+    if (toStore.provider === 'yahoo' && entry.label) toStore.label = entry.label;
 
     s.watchlist.push(toStore);
     try {
@@ -1612,6 +1613,7 @@ function setupControls() {
       const feeds = await loadAllPythFeeds();
 
       // Show modal
+      showWatchlistSuggestions();
       if (watchlistSearchWindow) watchlistSearchWindow.style.display = 'block';
       if (watchlistSearchBackdrop) watchlistSearchBackdrop.style.display = 'block';
 
@@ -1633,6 +1635,60 @@ function setupControls() {
     watchlistSearchBackdrop.addEventListener('click', closeWatchlistSearch);
   }
 
+  // Before anything is typed: what you hold, then the markets most people follow.
+  const WATCHLIST_MARKETS = [
+    { provider: 'yahoo', symbol: '^GSPC', label: 'SPX', name: 'S&P 500', category: 'index' },
+    { provider: 'yahoo', symbol: '^NDX', label: 'NDX', name: 'Nasdaq 100', category: 'index' },
+    { provider: 'yahoo', symbol: '^VIX', label: 'VIX', name: 'Cboe volatility', category: 'index' },
+    { provider: 'yahoo', symbol: 'DX-Y.NYB', label: 'DXY', name: 'ICE US dollar', category: 'index' },
+    { provider: 'yahoo', symbol: '^TNX', label: 'US10Y', name: '10-year Treasury yield', category: 'index' },
+    { provider: 'yahoo', symbol: 'GC=F', label: 'GOLD', name: 'Gold futures', category: 'commodity' },
+    { provider: 'yahoo', symbol: 'CL=F', label: 'OIL', name: 'WTI crude futures', category: 'commodity' },
+    { crypto: 'BTC' },
+    { crypto: 'ETH' },
+    { provider: 'yahoo', symbol: 'EURUSD=X', label: 'EUR/USD', name: 'Euro / US dollar', category: 'fx' }
+  ];
+  const CASH_OR_STABLE = /^(USD|EUR|GBP|CHF|JPY|CAD|AUD|USDC|USDT0?|DAI|USDE|USDH|USDS|FDUSD|PYUSD|USDHL)$/;
+
+  function feedForSymbol(symbol, preferCrypto = true) {
+    const matches = (allPythFeeds || []).filter(f => (f.symbol || '').toUpperCase() === symbol);
+    return matches.find(f => (f.category === 'crypto') === preferCrypto) || matches[0] || null;
+  }
+
+  // Your biggest holdings, one row per ticker. Options, cash and stablecoins are left out.
+  function positionSuggestions() {
+    const totals = new Map();
+    for (const p of window.cachedPositions || []) {
+      if (p.isHlAccountEquity || p.isLighterAccountEquity || p.underlyingPrice != null || p._strategy) continue;
+      // Hyperliquid's builder-deployed perps carry their dex: "xyz:AAPL" is AAPL.
+      const symbol = String(p.asset || '').replace(/^[a-z0-9]+:/i, '').trim().toUpperCase();
+      if (!symbol || CASH_OR_STABLE.test(symbol)) continue;
+      const t = totals.get(symbol) || { symbol, value: 0, stock: false, name: null };
+      t.value += Math.abs(Number(p.value) || 0);
+      if (/IBKR/i.test(p.exchange || '')) t.stock = true;
+      t.name = t.name || p.name || null;
+      totals.set(symbol, t);
+    }
+    const out = [];
+    for (const t of [...totals.values()].sort((a, b) => b.value - a.value)) {
+      const feed = feedForSymbol(t.symbol, !t.stock);
+      if (feed) out.push({ ...feed, provider: 'pyth' });
+      else if (t.stock) out.push({ provider: 'yahoo', symbol: t.symbol, name: t.name, category: 'equity' });
+      if (out.length === 8) break;
+    }
+    return out;
+  }
+
+  function marketSuggestions() {
+    return WATCHLIST_MARKETS.map(m => {
+      if (!m.crypto) return m;
+      const feed = feedForSymbol(m.crypto);
+      return feed ? { ...feed, provider: 'pyth' } : null;
+    }).filter(Boolean);
+  }
+
+  let showWatchlistSuggestions = () => {};
+
   if (watchlistSearchInput) {
     // Keys (composite) that were just added during this search session. The dedupe against
     // the persisted watchlist is separate — this set only stops double-clicks.
@@ -1640,11 +1696,12 @@ function setupControls() {
     let watchlistSearchDebounce = null;
     let watchlistSearchSeq = 0;
 
-    function renderWatchlistSearchRows(feeds) {
+    // `groups` is [{ title?, feeds }]; a search has one group without a title.
+    function renderWatchlistSearchRows(groups) {
       if (!watchlistSearchResults) return;
       const watchlistKeys = currentWatchlistKeys();
 
-      if (feeds.length === 0) {
+      if (groups.every(g => g.feeds.length === 0)) {
         watchlistSearchResults.innerHTML = '<p class="search-empty">No results.</p>';
         watchlistSearchResults.style.display = 'block';
         return;
@@ -1652,65 +1709,82 @@ function setupControls() {
 
       watchlistSearchResults.innerHTML = '';
       watchlistSearchResults.style.display = 'block';
-      feeds.forEach(feed => {
-        // Wrap the raw feed in an entry object matching our storage format so the key is
-        // computed identically to what's persisted / rendered downstream.
-        const entry = feed.provider === 'yahoo'
-          ? { provider: 'yahoo', symbol: feed.symbol, name: feed.name, category: feed.category }
-          : { provider: 'pyth', id: feed.id };
-        const key = watchlistEntryKey(entry);
-
-        const resultDiv = document.createElement('div');
-        resultDiv.className = 'watchlist-search-result';
-
-        const isInWatchlist = watchlistKeys.has(key);
-        const isAdded = addedKeys.has(key);
-        if (isInWatchlist || isAdded) resultDiv.classList.add('added');
-
-        const label = categoryLabel(feed.category);
-        const name = feed.name && feed.name !== feed.symbol ? ` <span class="result-meta">— ${escapeHtml(feed.name)}</span>` : '';
-        resultDiv.innerHTML = `
-          <span><strong>${escapeHtml(feed.symbol)}</strong>${name}${label ? ` <span class="result-meta">${label}</span>` : ''}</span>
-          <button type="button" class="btn-text ${isInWatchlist || isAdded ? 'added' : ''}" data-entry-key="${key}"
-            aria-label="${isInWatchlist ? 'In watchlist' : isAdded ? 'Added' : 'Add'}: ${escapeHtml(feed.symbol)}"${isInWatchlist || isAdded ? ' disabled' : ''}>
-            ${isInWatchlist ? 'In list' : isAdded ? 'Added' : 'Add'}
-          </button>
-        `;
-
-        const btn = resultDiv.querySelector('button');
-        if (!isInWatchlist) {
-          btn.addEventListener('click', () => {
-            if (!addedKeys.has(key)) {
-              addToWatchlist(entry);
-              addedKeys.add(key);
-              btn.textContent = 'Added';
-              btn.setAttribute('aria-label', `Added: ${feed.symbol}`);
-              btn.classList.add('added');
-              resultDiv.classList.add('added');
-              // Keep focus in the results rather than dropping it to the page when the button disables
-              btn.setAttribute('aria-disabled', 'true');
-            }
-          });
+      groups.filter(g => g.feeds.length > 0).forEach(group => {
+        if (group.title) {
+          const heading = document.createElement('p');
+          heading.className = 'search-group';
+          heading.textContent = group.title;
+          watchlistSearchResults.appendChild(heading);
         }
+        group.feeds.forEach(feed => {
+          // Wrap the raw feed in an entry object matching our storage format so the key is
+          // computed identically to what's persisted / rendered downstream.
+          const entry = feed.provider === 'yahoo'
+            ? { provider: 'yahoo', symbol: feed.symbol, label: feed.label, name: feed.name, category: feed.category }
+            : { provider: 'pyth', id: feed.id };
+          const key = watchlistEntryKey(entry);
 
-        watchlistSearchResults.appendChild(resultDiv);
+          const resultDiv = document.createElement('div');
+          resultDiv.className = 'watchlist-search-result';
+
+          const isInWatchlist = watchlistKeys.has(key);
+          const isAdded = addedKeys.has(key);
+          if (isInWatchlist || isAdded) resultDiv.classList.add('added');
+
+          const label = categoryLabel(feed.category);
+          const name = feed.name && feed.name !== feed.symbol ? ` <span class="result-meta">— ${escapeHtml(feed.name)}</span>` : '';
+          resultDiv.innerHTML = `
+            <span><strong>${escapeHtml(feed.label || feed.symbol)}</strong>${name}${label ? ` <span class="result-meta">${label}</span>` : ''}</span>
+            <button type="button" class="btn-text ${isInWatchlist || isAdded ? 'added' : ''}" data-entry-key="${key}"
+              aria-label="${isInWatchlist ? 'In watchlist' : isAdded ? 'Added' : 'Add'}: ${escapeHtml(feed.label || feed.symbol)}"${isInWatchlist || isAdded ? ' disabled' : ''}>
+              ${isInWatchlist ? 'In list' : isAdded ? 'Added' : 'Add'}
+            </button>
+          `;
+
+          const btn = resultDiv.querySelector('button');
+          if (!isInWatchlist) {
+            btn.addEventListener('click', () => {
+              if (!addedKeys.has(key)) {
+                addToWatchlist(entry);
+                addedKeys.add(key);
+                btn.textContent = 'Added';
+                btn.setAttribute('aria-label', `Added: ${feed.label || feed.symbol}`);
+                btn.classList.add('added');
+                resultDiv.classList.add('added');
+                // Keep focus in the results rather than dropping it to the page when the button disables
+                btn.setAttribute('aria-disabled', 'true');
+              }
+            });
+          }
+
+          watchlistSearchResults.appendChild(resultDiv);
+        });
       });
     }
+
+    showWatchlistSuggestions = () => {
+      ++watchlistSearchSeq; // drop a search still in flight
+      const held = positionSuggestions();
+      const heldKeys = new Set(held.map(f => watchlistEntryKey(f)));
+      renderWatchlistSearchRows([
+        { title: 'Your positions', feeds: held },
+        { title: 'Markets', feeds: marketSuggestions().filter(f => !heldKeys.has(watchlistEntryKey(f))) }
+      ]);
+    };
 
     function performSearch(query) {
       if (!watchlistSearchResults) return;
       clearTimeout(watchlistSearchDebounce);
 
       if (!query) {
-        watchlistSearchResults.innerHTML = '<p class="search-empty">Enter a token or a stock.</p>';
-        watchlistSearchResults.style.display = 'block';
+        showWatchlistSuggestions();
         return;
       }
 
       const feeds = allPythFeeds || [];
       const pythMatches = rankFeedMatches(query, feeds);
       // Instant feedback from local Pyth corpus; Yahoo results arrive shortly after.
-      renderWatchlistSearchRows(pythMatches);
+      renderWatchlistSearchRows([{ feeds: pythMatches }]);
 
       const seq = ++watchlistSearchSeq;
       watchlistSearchDebounce = setTimeout(async () => {
@@ -1719,7 +1793,7 @@ function setupControls() {
         try {
           const yahoo = await stocksProvider.searchSymbols(query, { limit: 25 });
           if (seq !== watchlistSearchSeq) return;
-          renderWatchlistSearchRows(mergeSearchResults(pythMatches, yahoo));
+          renderWatchlistSearchRows([{ feeds: mergeSearchResults(query, pythMatches, yahoo) }]);
         } catch (err) {
           console.warn('[Watchlist search] Yahoo search failed:', err?.message || err);
         }
@@ -1818,7 +1892,7 @@ function setupControls() {
       return;
     }
 
-    const label = entry?.symbol || shown?.symbol || shown?.name || 'item';
+    const label = entry?.label || entry?.symbol || shown?.symbol || shown?.name || 'item';
     showUndo(`Removed ${label}`, async () => {
       const t = getSettings();
       const list = Array.isArray(t.watchlist) ? [...t.watchlist] : [];

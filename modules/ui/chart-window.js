@@ -6,7 +6,7 @@
 // dashed line.
 import { getPeriodHistoryByFeedIds } from '../data/providers/pyth.js';
 import { get24hPriceHistory } from '../data/providers/stocks.js';
-import { formatPrice } from '../utils/currency.js';
+import { formatPrice, formatLevel } from '../utils/currency.js';
 
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
@@ -59,7 +59,9 @@ const spec = () => PERIODS.find(p => p.id === period);
 const logScale = () => logChoice ?? (period === '5y' || period === 'all');
 
 function price(v) {
-  return formatPrice(v, { currency: current()?.currency || 'USD' });
+  const item = current();
+  if (item?.category === 'index' || item?.category === 'fx') return formatLevel(v);
+  return formatPrice(v, { currency: item?.currency || 'USD' });
 }
 
 function change(from, to) {
@@ -115,11 +117,13 @@ function priceTicks(lo, hi, log, count) {
 
 // As many digits as the step between labels needs, so two labels never read the same.
 function axisPrice(v, unit) {
-  const currency = current()?.currency || 'USD';
+  const item = current();
+  const currency = item?.currency || 'USD';
+  const plain = item?.category === 'index' || item?.category === 'fx';
   const digits = Math.max(1, Math.min(6, Math.floor(Math.log10(v)) - Math.floor(Math.log10(unit)) + 1));
   try {
     return new Intl.NumberFormat('en-US', {
-      style: 'currency', currency, notation: v >= 1e4 ? 'compact' : 'standard',
+      ...(plain ? {} : { style: 'currency', currency }), notation: v >= 1e4 ? 'compact' : 'standard',
       minimumSignificantDigits: Math.min(digits, 2), maximumSignificantDigits: Math.max(digits, 2)
     }).format(v);
   } catch (_) {
@@ -223,7 +227,7 @@ function title(item) {
   const label = PERIODS.find(p => p.id === period)?.label || '';
   win.querySelector('.window-title').innerHTML =
     '<button type="button" class="wlc__crumb js-wlc-back">Watchlist</button><span class="wlc__sep" aria-hidden="true">❯</span>' +
-    `<span>${esc(item.symbol || '')}</span><span class="wlc__sep" aria-hidden="true">❯</span><span class="wlc__crumb-now">${esc(label)}</span>`;
+    `<span>${esc(item.label || item.symbol || '')}</span><span class="wlc__sep" aria-hidden="true">❯</span><span class="wlc__crumb-now">${esc(label)}</span>`;
 }
 
 function draw() {
@@ -318,7 +322,7 @@ function draw() {
     '<rect class="pm-value__point" width="5" height="5" x="0" y="0" visibility="hidden"/></svg>' +
     '<p class="wlc__tip" aria-live="polite" hidden><span class="wlc__tip-value"></span><span class="wlc__tip-when"></span></p>';
   box.setAttribute('role', 'img');
-  box.setAttribute('aria-label', `${item.symbol}, ${spec().label}: ${price(prices[0])} to ${price(prices[last])}`);
+  box.setAttribute('aria-label', `${item.label || item.symbol}, ${spec().label}: ${price(prices[0])} to ${price(prices[last])}`);
 
   // High and low with their times; the open is the period's first point.
   const iHi = prices.indexOf(Math.max(...prices));
