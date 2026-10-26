@@ -2336,6 +2336,21 @@ html.pm:root .wlc__chart {
   user-select: none;
   -webkit-touch-callout: none;
 }
+/* The tag beside the cursor: the point's time, price and change, or the measured range. */
+html.pm:root .wlc__chart { position: relative; }
+html.pm:root .wlc__tip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  padding: 0 1ch;
+  background: var(--pm-ink);
+  color: var(--bg);
+  white-space: pre;
+  pointer-events: none;
+}
+html.pm:root .wlc__tip[hidden] { display: none; }
+html.pm:root .wlc__tip-when { opacity: 0.65; }
 html.pm:root .wlc__chart:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: -1px; }
 html.pm:root .wlc:focus { outline: none; }
 html.pm:root .wlc__svg { display: block; }

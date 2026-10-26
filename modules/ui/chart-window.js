@@ -315,7 +315,8 @@ function draw() {
     entryHtml +
     `<line class="wlc__anchor" x1="0" x2="0" y1="0" y2="${h}" visibility="hidden"/>` +
     `<line class="pm-value__cursor" x1="0" x2="0" y1="0" y2="${h}" visibility="hidden"/>` +
-    '<rect class="pm-value__point" width="5" height="5" x="0" y="0" visibility="hidden"/></svg>';
+    '<rect class="pm-value__point" width="5" height="5" x="0" y="0" visibility="hidden"/></svg>' +
+    '<p class="wlc__tip" aria-live="polite" hidden><span class="wlc__tip-value"></span><span class="wlc__tip-when"></span></p>';
   box.setAttribute('role', 'img');
   box.setAttribute('aria-label', `${item.symbol}, ${spec().label}: ${price(prices[0])} to ${price(prices[last])}`);
 
@@ -333,14 +334,15 @@ function draw() {
   show();
 }
 
-// The head line and the marks: the range being measured, else the point being pointed
-// at, else the latest price and the change over the period.
+// The head line keeps the latest price and the change over the period. The point being
+// pointed at, or the range being measured, reads in a tag next to the cursor.
 function show() {
   if (!win) return;
   const item = current();
   const left = win.querySelector('.wlc__price');
   const right = win.querySelector('.wlc__change');
   const svg = win.querySelector('.wlc__svg');
+  const tip = win.querySelector('.wlc__tip');
   const mark = (sel, attrs) => {
     const n = svg?.querySelector(sel);
     if (!n) return;
@@ -352,23 +354,16 @@ function show() {
   const day = period === '1d' && Number.isFinite(item?.change24h) && Number.isFinite(item?.price);
   const first = day ? item.price / (1 + item.change24h / 100) : series[0]?.v;
   const m = measure && measure.a !== measure.b ? measure : null;
+  left.textContent = Number.isFinite(live) ? price(live) : '—';
+  right.textContent = series.length ? change(first, live) : '';
 
   if (m) {
     const [a, b] = [Math.min(m.a, m.b), Math.max(m.a, m.b)];
-    left.textContent = `${when(series[a].t)} → ${when(series[b].t)}`;
-    right.textContent = change(series[a].v, series[b].v);
     mark('.wlc__range', { x: series[a].x.toFixed(1), width: (series[b].x - series[a].x).toFixed(1), visibility: 'visible' });
     mark('.wlc__anchor', { x1: Math.round(series[m.a].x) + 0.5, x2: Math.round(series[m.a].x) + 0.5, visibility: 'visible' });
   } else {
     mark('.wlc__range', { visibility: 'hidden' });
     mark('.wlc__anchor', { visibility: 'hidden' });
-    if (hover >= 0 && series[hover]) {
-      left.textContent = `${when(series[hover].t)} · ${price(series[hover].v)}`;
-      right.textContent = change(first, series[hover].v);
-    } else {
-      left.textContent = Number.isFinite(live) ? price(live) : '—';
-      right.textContent = series.length ? change(first, live) : '';
-    }
   }
   const p = hover >= 0 ? series[hover] : null;
   if (p) {
@@ -379,6 +374,43 @@ function show() {
     mark('.pm-value__cursor', { visibility: 'hidden' });
     mark('.pm-value__point', { visibility: 'hidden' });
   }
+  if (tip) placeTip(tip, p, m, first);
+}
+
+// The change for the tag. From a price of 1,000 or more the money part is whole, so a
+// $46,679 point does not give a −$16,637.40 change.
+function tipChange(from, to, money) {
+  if (!(from > 0) || !Number.isFinite(to)) return '';
+  const diff = to - from;
+  const sign = diff < 0 ? '−' : '+';
+  const pct = `${sign}${Math.abs((diff / from) * 100).toFixed(2)}%`;
+  if (!money) return pct;
+  const abs = from >= 1000 ? Math.round(Math.abs(diff)) : Math.abs(diff);
+  return `${sign}${price(abs)}  ${pct}`;
+}
+
+// The tag sits beside the point, on the side with room, and stays inside the plot.
+function placeTip(tip, p, m, first) {
+  if (!p) { tip.hidden = true; return; }
+  // The value on top; the time below it. A point reads its price and the change since the
+  // period's start; a range reads its change in money and in percent.
+  if (m) {
+    const [a, b] = [Math.min(m.a, m.b), Math.max(m.a, m.b)];
+    tip.firstChild.textContent = tipChange(series[a].v, series[b].v, true);
+    tip.lastChild.textContent = `${when(series[a].t)} → ${when(series[b].t)}`;
+  } else {
+    tip.firstChild.textContent = `${price(p.v)}  ${tipChange(first, p.v, false)}`;
+    tip.lastChild.textContent = when(p.t);
+  }
+  tip.hidden = false;
+  const plotW = series[series.length - 1].x + 1;
+  const plotH = Number(win.querySelector('.pm-value__cursor')?.getAttribute('y2')) || 0;
+  const gap = 12;
+  const tw = tip.offsetWidth;
+  const th = tip.offsetHeight;
+  const x = p.x + gap + tw <= plotW ? p.x + gap : Math.max(0, p.x - gap - tw);
+  const y = Math.max(0, Math.min(plotH - th, p.y - th - gap));
+  tip.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
 }
 
 function nearest(e) {
