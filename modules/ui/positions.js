@@ -91,8 +91,9 @@ function stockMarketOf(pos) {
   return 'us';
 }
 
-function isStablecoin(asset) {
-  return STABLECOINS.has(asset?.toUpperCase());
+// A stock can share a stablecoin's ticker (StablecoinX trades as USDE on Nasdaq).
+function isStablecoin(pos) {
+  return STABLECOINS.has(pos?.asset?.toUpperCase()) && !isStockMarket(pos);
 }
 
 // Custom mouse-tracking tooltip for funding rates
@@ -902,9 +903,12 @@ function createTableRow(doc, pos, opts, prevDataMap, { leg = false } = {}) {
   // Create sparkline chart - stablecoins get static dash, others get pulsing loading indicator
   let chartCell;
   const option = optionOf(pos);
-  if (isStablecoin(pos.asset) || pos.quoteUnavailable || (option && !pos.priceHistory)) {
-    // Static dash for assets without a usable chart (an option without a live quote keeps
-    // its mark from the statement).
+  if (option && !pos.priceHistory) {
+    // An option without its own chart (it hasn't traded today) shows its underlying's, as a
+    // strategy row does.
+    chartCell = (pos.underlyingPriceHistory && createSparkline(pos.underlyingPriceHistory, 60, 24, pos.underlyingChange24h)) || '—';
+  } else if (isStablecoin(pos) || pos.quoteUnavailable) {
+    // Static dash for assets without a usable chart
     chartCell = '—';
   } else if (pos.priceHistory) {
     // Has chart data - render sparkline
@@ -917,7 +921,7 @@ function createTableRow(doc, pos, opts, prevDataMap, { leg = false } = {}) {
   // Determine loading states:
   // - 24H% is loading if null and not a stablecoin
   // - Funding is loading if null and position is leveraged (perps have funding)
-  const is24hLoading = pos.change24h == null && !isStablecoin(pos.asset) && !pos.quoteUnavailable && !option && !pos.marketLabel;
+  const is24hLoading = pos.change24h == null && !isStablecoin(pos) && !pos.quoteUnavailable && !option && !pos.marketLabel;
   const isFundingLoading = pos.funding == null && pos.isLeveraged;
   const priceCell = pos.quoteLoading
     ? '<span class="cell-loading">—</span>'

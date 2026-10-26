@@ -1681,10 +1681,11 @@ function setupControls() {
       if (p.isHlAccountEquity || p.isLighterAccountEquity || p.underlyingPrice != null || p._strategy) continue;
       // Hyperliquid's builder-deployed perps carry their dex: "xyz:AAPL" is AAPL.
       const symbol = String(p.asset || '').replace(/^[a-z0-9]+:/i, '').trim().toUpperCase();
-      if (!symbol || CASH_OR_STABLE.test(symbol)) continue;
+      const stock = /IBKR/i.test(p.exchange || '') && p.category !== 'cash';
+      if (!symbol || (!stock && CASH_OR_STABLE.test(symbol))) continue;
       const t = totals.get(symbol) || { symbol, value: 0, stock: false, name: null };
       t.value += Math.abs(Number(p.value) || 0);
-      if (/IBKR/i.test(p.exchange || '')) t.stock = true;
+      if (stock) t.stock = true;
       t.name = t.name || p.name || null;
       totals.set(symbol, t);
     }
@@ -2004,8 +2005,9 @@ function setupControls() {
     if (pos.isHlAccountEquity || pos.isLighterAccountEquity || pos.underlyingPrice != null) return null;
     // Hyperliquid's builder-deployed perps carry their dex: "xyz:AAPL" is AAPL.
     const symbol = String(pos.asset || '').replace(/^[a-z0-9]+:/i, '').trim().toUpperCase();
-    if (!symbol || CASH_OR_STABLE.test(symbol)) return null;
-    const stock = /IBKR/i.test(pos.exchange || '');
+    const stock = /IBKR/i.test(pos.exchange || '') && pos.category !== 'cash';
+    // A stock can share a stablecoin's ticker (StablecoinX trades as USDE).
+    if (!symbol || (!stock && CASH_OR_STABLE.test(symbol))) return null;
     const feed = feedForSymbol(symbol, !stock);
     const live = { key: row.dataset.key, price: Number(pos.price) || null, change24h: pos.change24h ?? null, currency: pos.currency || 'USD' };
     // Hyperliquid's own candles where the row has them: a spot token's pair ("@248") has
