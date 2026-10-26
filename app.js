@@ -1647,18 +1647,25 @@ function setupControls() {
 
   // Before anything is typed: what you hold, then the markets most people follow.
   const WATCHLIST_MARKETS = [
-    { provider: 'yahoo', symbol: '^GSPC', label: 'SPX', name: 'S&P 500', category: 'index' },
-    { provider: 'yahoo', symbol: '^NDX', label: 'NDX', name: 'Nasdaq 100', category: 'index' },
-    { provider: 'yahoo', symbol: '^VIX', label: 'VIX', name: 'Cboe volatility', category: 'index' },
-    { provider: 'yahoo', symbol: 'DX-Y.NYB', label: 'DXY', name: 'ICE US dollar', category: 'index' },
-    { provider: 'yahoo', symbol: '^TNX', label: 'US10Y', name: '10-year Treasury yield', category: 'index' },
-    { provider: 'yahoo', symbol: 'GC=F', label: 'GOLD', name: 'Gold futures', category: 'commodity' },
-    { provider: 'yahoo', symbol: 'SI=F', label: 'SILVER', name: 'Silver futures', category: 'commodity' },
+    { provider: 'yahoo', symbol: '^GSPC', label: 'SPX', name: 'S&P 500', category: 'index', words: ['s&p', 's&p 500', 's&p500', 'sp500', 'sp 500', 'spx'] },
+    { provider: 'yahoo', symbol: '^NDX', label: 'NDX', name: 'Nasdaq 100', category: 'index', words: ['nasdaq', 'nasdaq 100', 'ndx'] },
+    { provider: 'yahoo', symbol: '^VIX', label: 'VIX', name: 'Cboe volatility', category: 'index', words: ['vix', 'volatility'] },
+    { provider: 'yahoo', symbol: 'DX-Y.NYB', label: 'DXY', name: 'ICE US dollar', category: 'index', words: ['dxy', 'dollar', 'dollar index', 'us dollar'] },
+    { provider: 'yahoo', symbol: '^TNX', label: 'US10Y', name: '10-year Treasury yield', category: 'index', words: ['us10y', '10y', '10 year', 'treasury', 'yield', 'bond', 'tnx'] },
+    { provider: 'yahoo', symbol: 'GC=F', label: 'GOLD', name: 'Gold futures', category: 'commodity', words: ['gold', 'xau'] },
+    { provider: 'yahoo', symbol: 'SI=F', label: 'SILVER', name: 'Silver futures', category: 'commodity', words: ['silver', 'xag'] },
     // Brent, the world's oil benchmark: Pyth's 24/7 spot, priced from the contract nearest expiry.
-    { feed: 'BRENT', label: 'BRENT', name: 'Brent crude', fallback: { provider: 'yahoo', symbol: 'BZ=F', label: 'BRENT', name: 'Brent crude futures', category: 'commodity' } },
-    { crypto: 'BTC' },
-    { crypto: 'ETH' },
-    { provider: 'yahoo', symbol: 'EURUSD=X', label: 'EUR/USD', name: 'Euro / US dollar', category: 'fx' }
+    { feed: 'BRENT', label: 'BRENT', name: 'Brent crude', words: ['oil', 'crude', 'brent'], fallback: { provider: 'yahoo', symbol: 'BZ=F', label: 'BRENT', name: 'Brent crude futures', category: 'commodity' } },
+    { crypto: 'BTC', words: ['bitcoin'] },
+    { crypto: 'ETH', words: ['ether', 'ethereum'] },
+    { provider: 'yahoo', symbol: 'EURUSD=X', label: 'EUR/USD', name: 'Euro / US dollar', category: 'fx', words: ['euro', 'eur', 'eurusd', 'eur/usd'] }
+  ];
+  // Searched for by name, not suggested.
+  const SEARCH_MARKETS = [
+    { provider: 'yahoo', symbol: 'CL=F', label: 'WTI', name: 'WTI crude futures', category: 'commodity', words: ['wti', 'oil', 'crude'] },
+    { feed: 'NATGAS', label: 'NATGAS', name: 'Natural gas', words: ['gas', 'natural gas', 'natgas', 'henry hub'], fallback: { provider: 'yahoo', symbol: 'NG=F', label: 'NATGAS', name: 'Natural gas futures', category: 'commodity' } },
+    { provider: 'yahoo', symbol: '^DJI', label: 'DOW', name: 'Dow Jones industrial average', category: 'index', words: ['dow', 'dow jones', 'djia'] },
+    { provider: 'yahoo', symbol: '^RUT', label: 'RUT', name: 'Russell 2000', category: 'index', words: ['russell', 'russell 2000', 'rut'] }
   ];
   const CASH_OR_STABLE = /^(USD|EUR|GBP|CHF|JPY|CAD|AUD|USDC|USDT0?|DAI|USDE|USDH|USDS|FDUSD|PYUSD|USDHL)$/;
 
@@ -1691,16 +1698,33 @@ function setupControls() {
     return out;
   }
 
+  function marketFeed(m) {
+    if (m.feed) {
+      const feed = feedForSymbol(m.feed, false);
+      return feed ? { ...feed, provider: 'pyth', label: m.label, name: m.name } : m.fallback;
+    }
+    if (!m.crypto) return m;
+    const feed = feedForSymbol(m.crypto);
+    return feed ? { ...feed, provider: 'pyth' } : null;
+  }
+
   function marketSuggestions() {
-    return WATCHLIST_MARKETS.map(m => {
-      if (m.feed) {
-        const feed = feedForSymbol(m.feed, false);
-        return feed ? { ...feed, provider: 'pyth', label: m.label, name: m.name } : m.fallback;
-      }
-      if (!m.crypto) return m;
-      const feed = feedForSymbol(m.crypto);
-      return feed ? { ...feed, provider: 'pyth' } : null;
-    }).filter(Boolean);
+    return WATCHLIST_MARKETS.map(marketFeed).filter(Boolean);
+  }
+
+  // Everyday words lead to the market they mean: "oil" to Brent and WTI, "s&p" to the S&P 500,
+  // ahead of the tickers that only contain the word. A word matches from its third letter.
+  function withMarkets(query, feeds) {
+    const q = query.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!q) return feeds;
+    const named = [...WATCHLIST_MARKETS, ...SEARCH_MARKETS]
+      .filter(m => (m.words || []).some(w => w === q || (q.length >= 3 && w.startsWith(q))))
+      .map(marketFeed).filter(Boolean);
+    // The same market from another source (Pyth's EUR/USD and Yahoo's) shows once.
+    const keys = new Set(named.map(watchlistEntryKey));
+    const names = new Set(named.map(f => `${f.category}|${(f.label || f.symbol || '').toUpperCase()}`));
+    return [...named, ...feeds.filter(f => !keys.has(watchlistEntryKey(f.provider ? f : { provider: 'pyth', id: f.id })) &&
+      !names.has(`${f.category}|${(f.label || f.symbol || '').toUpperCase()}`))];
   }
 
   let showWatchlistSuggestions = () => {};
@@ -1849,7 +1873,7 @@ function setupControls() {
       const feeds = allPythFeeds || [];
       const pythMatches = rankFeedMatches(query, feeds);
       // Instant feedback from local Pyth corpus; Yahoo results arrive shortly after.
-      renderWatchlistSearchRows([{ feeds: pythMatches }]);
+      renderWatchlistSearchRows([{ feeds: withMarkets(query, pythMatches) }]);
 
       const seq = ++watchlistSearchSeq;
       watchlistSearchDebounce = setTimeout(async () => {
@@ -1858,7 +1882,7 @@ function setupControls() {
         try {
           const yahoo = await stocksProvider.searchSymbols(query, { limit: 25 });
           if (seq !== watchlistSearchSeq) return;
-          renderWatchlistSearchRows([{ feeds: mergeSearchResults(query, pythMatches, yahoo) }]);
+          renderWatchlistSearchRows([{ feeds: withMarkets(query, mergeSearchResults(query, pythMatches, yahoo)) }]);
         } catch (err) {
           console.warn('[Watchlist search] Yahoo search failed:', err?.message || err);
         }
@@ -1958,7 +1982,7 @@ function setupControls() {
         if (yahoo) feeds = mergeSearchResults(query, feeds, yahoo);
       } catch (_) { /* Pyth's matches only */ }
     }
-    return feeds.slice(0, 12).map(feed => {
+    return withMarkets(query, feeds).slice(0, 12).map(feed => {
       const kind = categoryLabel(feed.category);
       const name = feed.name && feed.name !== feed.symbol ? feed.name : null;
       if (feed.provider === 'yahoo') {
@@ -2364,14 +2388,20 @@ function setupControls() {
     const scored = [];
     for (const feed of feeds) {
       const sym = (feed.symbol || '').toLowerCase();
-      const name = (feed.name || '').toLowerCase();
+      // Pyth names end in "/ US DOLLAR"; matching it would find every feed for "dollar".
+      const name = (feed.name || '').toLowerCase().replace(/\s*\/\s*us dollar$/, '');
       let score = -1;
       if (sym === q) score = 100;
       else if (sym.startsWith(q)) score = 80;
       else if (sym.includes(q)) score = 60;
+      else if (name.startsWith(q)) score = 50;
+      else if (` ${name}`.includes(` ${q}`)) score = 45;
       else if (name.includes(q)) score = 40;
       else continue;
       if (feed.category === 'crypto') score += 2;
+      // Tokenized copies of a stock (AAPLX "Apple xStock", AAPLON) and Pyth's INDEX.AAPL go
+      // after the stock itself.
+      if (sym !== q && (/xstock|tokenized/.test(name) || sym.startsWith('index.'))) score -= 30;
       scored.push({ feed, score });
     }
     scored.sort((a, b) => b.score - a.score || a.feed.symbol.length - b.feed.symbol.length);
