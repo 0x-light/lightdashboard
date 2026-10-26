@@ -30,15 +30,29 @@
   Pragma: no-cache
   Expires: 0
 
-# App files - short cache with revalidation to ensure updates are received
+# App files - revalidated on every load (an unchanged file is a 304), so a page never runs
+# new modules with old ones. Every code file needs a rule: without one Pages sends
+# max-age=14400, and palmeirim.css/js stayed 4 hours old after a deploy.
 /app.js
-  Cache-Control: public, max-age=300, must-revalidate
-  
+  Cache-Control: no-cache
+
 /modules/*
-  Cache-Control: public, max-age=300, must-revalidate
+  Cache-Control: no-cache
 
 /styles.css
-  Cache-Control: public, max-age=300, must-revalidate
+  Cache-Control: no-cache
+
+/palmeirim.css
+  Cache-Control: no-cache
+
+/palmeirim.js
+  Cache-Control: no-cache
+
+/larp.css
+  Cache-Control: no-cache
+
+/larp-mode.js
+  Cache-Control: no-cache
 
 # Manifest - short cache for iOS PWA updates
 /manifest.json
