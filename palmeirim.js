@@ -113,16 +113,13 @@
 
   // Pointing at the value chart names the point on the card's bottom border. It lives
   // on <body>, outside the observed #main, so placing it doesn't re-run the observer.
-  var readout = el("p", { class: "pm-card__readout", "aria-hidden": "true", hidden: "" });
-  document.body.appendChild(readout);
-  window.addEventListener("scroll", function () { readout.hidden = true; }, { passive: true });
 
   // ── Portfolio value chart ──
   // Every account's own history added up (modules/data/portfolio-history.js), so the line is
   // the same on every device. Sits under the sentence: periods on the left (the chosen one
   // inverted), the change over the period on the right, a line over the dim dither. Pointing
-  // at it names the time and value on the card's bottom border. Settings → Sections can hide
-  // it (html[data-value-chart="off"]).
+  // at it names the value, its change and the time in a tag beside the point, as in the
+  // chart window. Settings → Sections can hide it (html[data-value-chart="off"]).
   var PERIODS = [["day", "1D"], ["week", "1W"], ["month", "1M"], ["allTime", "All"]];
   // Shown from the start, its line's height kept while the history loads, so the
   // positions below don't jump when it arrives.
@@ -137,6 +134,7 @@
   var valueData = null; // { values: [[t, v]], currency, symbol } for valuePeriod
   var valueSeries = [];
   var valueSymbol = "$";
+  var valueTag = el("p", { class: "pm-value__tag", "aria-hidden": "true", hidden: "" });
 
   // Written like the table's amounts: $561.5k, $126.4M.
   function money(v, signed) {
@@ -191,6 +189,8 @@
       // Hover marker: moved by attributes (not style), which the page observer ignores.
       '<line class="pm-value__cursor" x1="0" x2="0" y1="0" y2="' + h + '" visibility="hidden"/>' +
       '<rect class="pm-value__point" width="5" height="5" x="0" y="0" visibility="hidden"/></svg>';
+    valueTag.hidden = true;
+    chart.appendChild(valueTag);
     chart.setAttribute("role", "img");
     chart.setAttribute("aria-label", "Portfolio value, " + $(".pm-value__period[aria-checked=true]", valueBox).textContent + ": " + money(vs[0]) + " to " + money(vs[vs.length - 1]));
   }
@@ -226,9 +226,9 @@
     loadValue();
   });
 
-  // Pointing (mouse) or touching and dragging (finger) moves a cursor along the line.
-  // A mouse names the point on the card's bottom border, under the cursor; a finger
-  // would cover that, so touch names it on the head line, over the change.
+  // Pointing (mouse) or touching and dragging (finger) moves a cursor along the line, and
+  // the tag beside the point names it: the value and its change since the period's start,
+  // the time below. The tag sits on the side with room and stays inside the chart.
   var valueChart = $(".pm-value__chart", valueBox);
   function scrub(e) {
     if (!valueSeries.length) return;
@@ -248,26 +248,21 @@
     var label = valuePeriod === "day"
       ? when.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: window.larpTimeZone })
       : when.toLocaleDateString(undefined, { month: "short", day: "numeric", year: valuePeriod === "allTime" ? "numeric" : undefined });
-    readout.textContent = label + " · " + money(near.v);
-    readout.hidden = false;
-    var box = card.getBoundingClientRect();
-    if (e.pointerType === "touch") {
-      var change = $(".pm-value__change", valueBox).getBoundingClientRect();
-      var pad = parseFloat(getComputedStyle(readout).paddingRight) || 0;
-      readout.style.minWidth = (change.width + 2 * pad) + "px"; // covers the change it stands in for
-      readout.style.textAlign = "right";
-      readout.style.left = Math.max(box.left + 1, change.right + pad - readout.offsetWidth) + "px";
-      readout.style.top = (change.top + (change.height - readout.offsetHeight) / 2) + "px";
-    } else {
-      readout.style.minWidth = "";
-      readout.style.textAlign = "";
-      var left = valueChart.getBoundingClientRect().left + near.x - readout.offsetWidth / 2;
-      readout.style.left = Math.max(box.left + 1, Math.min(box.right - readout.offsetWidth - 8, left)) + "px";
-      readout.style.top = (box.bottom - readout.offsetHeight / 2) + "px";
-    }
+    var first = valueSeries[0].v;
+    var pct = first > 0 ? (near.v / first - 1) * 100 : null;
+    var value = el("span"), time = el("span", { class: "pm-value__tag-when" });
+    value.textContent = money(near.v) + (pct !== null ? "  " + (pct < 0 ? "−" : "+") + Math.abs(pct).toFixed(2) + "%" : "");
+    time.textContent = label;
+    valueTag.replaceChildren(value, time);
+    valueTag.hidden = false;
+    var w = valueChart.clientWidth, h = valueChart.clientHeight, gap = 12;
+    var tw = valueTag.offsetWidth, th = valueTag.offsetHeight;
+    var left = near.x + gap + tw <= w ? near.x + gap : Math.max(0, near.x - gap - tw);
+    var top = Math.max(0, Math.min(h - th, near.y - th - gap));
+    valueTag.style.transform = "translate(" + Math.round(left) + "px, " + Math.round(top) + "px)";
   }
   function endScrub() {
-    readout.hidden = true;
+    valueTag.hidden = true;
     $$(".pm-value__cursor, .pm-value__point", valueChart).forEach(function (n) { n.setAttribute("visibility", "hidden"); });
   }
   valueChart.addEventListener("pointerdown", function (e) {

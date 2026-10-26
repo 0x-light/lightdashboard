@@ -1,9 +1,10 @@
 // The chart window: one watchlist item's price, bigger and finer than its tile. A tile
 // opens it (click, or Enter when focused) on the watchlist's period; ← → step to the
-// previous or next item and ⌫ removes the item. Pointing at the line reads one point on
-// the head line; pressing and dragging reads the change between two points, and the range
-// stays until the next press or Esc. Your entry price, from the positions on screen, is a
-// dashed line.
+// previous or next item, ⌫ removes the item, 1 to 7 choose a period and L turns Log on or
+// off. Pointing at the line reads one point in a tag by the cursor; pressing and dragging
+// reads the change between two points, and the range stays until the next press or Esc.
+// Layers you turn on or off: your position (entry, liquidation, TP/SL, profit at the
+// cursor), the period's high and low, volume, and day lines with weekends.
 import { getPeriodHistoryByFeedIds } from '../data/providers/pyth.js';
 import { get24hPriceHistory } from '../data/providers/stocks.js';
 import { formatPrice, formatLevel } from '../utils/currency.js';
@@ -26,8 +27,21 @@ const PERIODS = [
 const FROM_TILES = { day: '1d', week: '1w', month: '1m', year: '1y' };
 const MAX_POINTS = 400;
 const CACHE_TTL_MS = 60 * 1000;
+// Layers on the chart, each on or off; Position and Volume show only when there is one.
+const LAYERS = [
+  { id: 'position', label: 'Position' },
+  { id: 'highlow', label: 'High/low' },
+  { id: 'volume', label: 'Volume' },
+  { id: 'days', label: 'Days' }
+];
+const LAYER_KEY = 'pmChartLayers';
+// Day lines and weekends read only where a period spans a few days.
+const DAY_PERIODS = new Set(['1d', '1w', '1m']);
 
 const cache = new Map(); // `${period}|${key}` -> { at, points }
+// When an item's history starts inside 1Y or 5Y: key -> its first point's time. Those
+// periods show no more than All, so they are hidden and All shows the whole history.
+const since = new Map();
 let win = null;
 let backdrop = null;
 let ctx = null; // { items(), onRemove(key), onClose(key) }
@@ -41,6 +55,19 @@ let logChoice = null; // the Log toggle's setting for this period; null is the d
 let dragging = false;
 let loads = 0;
 let tick = null;
+let layers = loadLayers();
+let pos = null; // your position in the current item, or null
+let scale = null; // { yOf, w, h, full, unit } of the drawn chart, for the live price tag
+
+function loadLayers() {
+  const on = Object.fromEntries(LAYERS.map(l => [l.id, true]));
+  try { Object.assign(on, JSON.parse(localStorage.getItem(LAYER_KEY) || '{}')); } catch (_) { /* all on */ }
+  return on;
+}
+
+function saveLayers() {
+  try { localStorage.setItem(LAYER_KEY, JSON.stringify(layers)); } catch (_) { /* this visit only */ }
+}
 
 function el(html) {
   const t = document.createElement('template');
@@ -54,7 +81,15 @@ function esc(v) {
 
 const items = () => ctx?.items() || [];
 const current = () => items().find(i => i.key === key) || null;
-const spec = () => PERIODS.find(p => p.id === period);
+// A period the item's history does not fill.
+const tooLong = (id, k = key) => (id === '1y' || id === '5y') && since.has(k) &&
+  PERIODS.find(p => p.id === id).ms * 0.9 > Date.now() - since.get(k);
+// All asks for the 1Y candles when the whole history is under a year, so a young item
+// keeps daily points, not weekly ones.
+const spec = () => {
+  const p = PERIODS.find(x => x.id === period);
+  return period === 'all' && tooLong('1y') ? { ...PERIODS.find(x => x.id === '1y'), id: 'all', label: p.label, ms: p.ms } : p;
+};
 // A log scale shows years of growth evenly: on by default for 5Y and All.
 const logScale = () => logChoice ?? (period === '5y' || period === 'all');
 
@@ -70,6 +105,29 @@ function change(from, to) {
   const pct = (diff / from) * 100;
   const sign = diff < 0 ? '−' : '+';
   return `${sign}${price(Math.abs(diff))} (${sign}${Math.abs(pct).toFixed(2)}%)`;
+}
+
+// A signed amount; from 1,000 up, whole.
+function signed(v) {
+  const abs = Math.abs(v) >= 1000 ? Math.round(Math.abs(v)) : Math.abs(v);
+  return `${v < 0 ? '−' : '+'}${price(abs)}`;
+}
+
+function pctOf(r) {
+  return `${r < 0 ? '−' : '+'}${Math.abs(r * 100).toFixed(2)}%`;
+}
+
+// How long a range lasts: 45m, 6h 15m, 3d 4h, 12d, 5mo, 2.4y.
+function lasting(ms) {
+  const m = Math.round(ms / MIN);
+  if (m < 60) return `${m}m`;
+  const hrs = Math.floor(m / 60);
+  if (hrs < 24) return m % 60 ? `${hrs}h ${m % 60}m` : `${hrs}h`;
+  const d = Math.floor(hrs / 24);
+  if (d < 7) return hrs % 24 ? `${d}d ${hrs % 24}h` : `${d}d`;
+  if (d < 60) return `${d}d`;
+  const mo = Math.round(d / 30.44);
+  return mo < 24 ? `${mo}mo` : `${(d / 365.25).toFixed(1)}y`;
 }
 
 function when(t) {
@@ -156,9 +214,10 @@ function timeTicks() {
   return out;
 }
 
-// Your average entry for this item, weighted by amount, from the positions on screen in
-// the item's own currency. Null when you hold none with an entry price.
-function entryFor(item) {
+// Your position in this item, from the positions on screen in the item's own currency:
+// the rows with an entry price, their net amount, the average entry weighted by amount,
+// and a perp's liquidation price and TP/SL orders. Null when you hold none with an entry.
+function positionFor(item) {
   const symbol = String(item?.symbol || '').toUpperCase();
   const currency = String(item?.currency || 'USD').toUpperCase();
   // Hyperliquid's builder-deployed perps carry their dex: "xyz:AAPL" is AAPL.
@@ -169,10 +228,23 @@ function entryFor(item) {
     String(p.currency || p.sourceCurrency || 'USD').toUpperCase() === currency);
   if (!rows.length) return null;
   const weight = rows.reduce((s, p) => s + Math.abs(Number(p.amount) || 0), 0);
-  return weight > 0
+  const entry = weight > 0
     ? rows.reduce((s, p) => s + Number(p.entryPrice) * Math.abs(Number(p.amount) || 0), 0) / weight
     : rows.reduce((s, p) => s + Number(p.entryPrice), 0) / rows.length;
+  const amount = rows.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const liq = rows.map(p => Number(p.liquidationPx)).find(v => v > 0) || null;
+  // Orders are there once the positions table has fetched them.
+  const orders = rows.flatMap(p => window.hlOrders?.[p.asset] || [])
+    .filter(o => (o.kind === 'tp' || o.kind === 'sl') && Number(o.px) > 0);
+  return { rows, amount, entry, liq, orders };
 }
+
+// What your position gains or loses between its entry and a price.
+function pnlAt(v) {
+  return pos.rows.reduce((s, p) => s + (Number(p.amount) || 0) * (v - Number(p.entryPrice)), 0);
+}
+
+const side = () => (pos.amount < 0 ? 'short' : 'long');
 
 async function fetchPoints(item, p) {
   if (item.provider === 'yahoo') {
@@ -187,6 +259,7 @@ async function fetchPoints(item, p) {
 async function load() {
   const item = current();
   if (!item) { close(); return; }
+  if (tooLong(period, item.key)) period = 'all';
   const p = spec();
   const id = `${period}|${item.key}`;
   const hit = cache.get(id);
@@ -206,7 +279,15 @@ async function load() {
   // A closed market's last point is its last close: the period runs back from there.
   const last = list.length ? list[list.length - 1].timestamp : 0;
   list = thin(list.filter(x => x.timestamp >= last - p.ms), MAX_POINTS);
-  cache.set(id, { at: Date.now(), points: list });
+  // A history that starts well inside 1Y or 5Y shows what All shows: the window moves to All.
+  if ((period === '1y' || period === '5y') && list.length >= 2 && list[0].timestamp > last - p.ms * 0.9) {
+    since.set(item.key, list[0].timestamp);
+    if (seq === loads) load();
+    return;
+  }
+  // A source that refuses for a while (Hyperliquid answers 429 when asked too often) gives
+  // nothing, as a missing history does: nothing is kept, so the next try asks again.
+  if (list.length) cache.set(id, { at: Date.now(), points: list });
   if (seq !== loads) return;
   points = list;
   draw();
@@ -215,19 +296,20 @@ async function load() {
 function chartHeight() {
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 14;
   const unit = rem * 18 / 14;
-  if (window.innerWidth <= 520) return Math.round(unit * 8);
+  // On a phone the chart takes about a third of the screen's height.
+  if (window.innerWidth <= 520) return Math.round(Math.max(unit * 10, Math.min(unit * 16, window.innerHeight * 0.36)));
   if (window.innerWidth <= 870) return Math.round(unit * 12);
   return Math.round(Math.max(unit * 12, Math.min(unit * 20, window.innerHeight * 0.45)));
 }
 
 // The line over the dim dither, drawn at the box's pixel size so the dither stays crisp.
 // Points are spaced evenly, so a closed market's nights and weekends take no room.
-// The title is a path, as SRCL's breadcrumbs: Watchlist ❯ BTC ❯ 1W. Watchlist goes back.
+// The title is a path, as SRCL's breadcrumbs: Watchlist ❯ BTC. Watchlist goes back; the
+// period shows in its own row.
 function title(item) {
-  const label = PERIODS.find(p => p.id === period)?.label || '';
   win.querySelector('.window-title').innerHTML =
     '<button type="button" class="wlc__crumb js-wlc-back">Watchlist</button><span class="wlc__sep" aria-hidden="true">❯</span>' +
-    `<span>${esc(item.label || item.symbol || '')}</span><span class="wlc__sep" aria-hidden="true">❯</span><span class="wlc__crumb-now">${esc(label)}</span>`;
+    `<span>${esc(item.label || item.symbol || '')}</span>`;
 }
 
 function draw() {
@@ -238,11 +320,13 @@ function draw() {
   win.querySelectorAll('.wlc__period').forEach(b => {
     b.setAttribute('aria-checked', String(b.dataset.period === period));
     b.tabIndex = b.dataset.period === period ? 0 : -1;
+    b.hidden = tooLong(b.dataset.period);
   });
   const log = win.querySelector('.wlc__log');
   log.setAttribute('aria-pressed', String(logScale()));
   const facts = [item.name, item.category].filter(Boolean).map(esc).join(' · ');
   win.querySelector('.wlc__facts').innerHTML = facts;
+  pos = positionFor(item);
 
   const box = win.querySelector('.wlc__chart');
   const h = chartHeight();
@@ -254,50 +338,157 @@ function draw() {
   const axisH = Math.round(parseFloat(cs.lineHeight) || ch * 2.2);
   box.style.height = `${h + axisH}px`;
   series = [];
+  scale = null;
   if (!points || points.length < 2) {
-    box.innerHTML = `<p class="wlc__empty">${points ? 'No history for this period.' : '<span class="loading-terminal">Loading</span>'}</p>`;
+    box.innerHTML = `<p class="wlc__empty">${points
+      ? 'No prices came back for this period. <button type="button" class="link-button js-wlc-retry">Try again</button>'
+      : '<span class="loading-terminal">Loading</span>'}</p>`;
     box.removeAttribute('role');
     win.querySelector('.wlc__rows').innerHTML = '';
+    win.querySelector('.wlc__pos').innerHTML = '';
+    layerButtons(false);
     show();
     return;
   }
 
   const full = Math.max(100, Math.round(box.clientWidth));
   const prices = points.map(x => x.price);
+  const pmin = Math.min(...prices);
+  const pmax = Math.max(...prices);
   const f = logScale() ? Math.log : v => v;
-  let lo = Math.min(...prices);
-  let hi = Math.max(...prices);
-  // The entry joins the scale when it sits near the line; far off, it is named at the edge.
-  const entry = entryFor(item);
+  let lo = pmin;
+  let hi = pmax;
+  // Your levels join the scale when they sit near the line; far off, they are named at the edge.
+  const showPos = layers.position && pos;
+  const levels = showPos ? [
+    { cls: 'wlc__entry', px: pos.entry, name: 'entry' },
+    pos.liq && { cls: 'wlc__liq', px: pos.liq, name: 'liq' },
+    ...pos.orders.map(o => ({ cls: 'wlc__order', px: Number(o.px), name: o.kind.toUpperCase() }))
+  ].filter(Boolean) : [];
   const span = f(hi) - f(lo) || Math.abs(f(hi)) * 0.01 || 1;
-  if (entry && f(entry) > f(lo) - span * 0.5 && f(entry) < f(hi) + span * 0.5) {
-    lo = Math.min(lo, entry);
-    hi = Math.max(hi, entry);
+  for (const l of levels) {
+    if (f(l.px) > f(pmin) - span * 0.5 && f(l.px) < f(pmax) + span * 0.5) {
+      lo = Math.min(lo, l.px);
+      hi = Math.max(hi, l.px);
+    }
   }
   let [flo, fhi] = [f(lo), f(hi)];
   if (fhi === flo) { flo -= 1; fhi += 1; }
-  const pad = Math.round(h * 0.08);
+  // Room above the high and below the low for their labels.
+  const pad = Math.round(Math.max(h * 0.08, layers.highlow ? axisH : 0));
   const yOf = v => pad + (1 - (f(v) - flo) / (fhi - flo)) * (h - 2 * pad);
-  // Prices sit in a gutter at the right, as wide as the longest label.
-  const tickValues = priceTicks(Math.min(...prices), Math.max(...prices), logScale(), Math.max(3, Math.round(h / (axisH * 2.5))));
+  // Prices sit inside the chart at the right edge, so the line has the full width.
+  const tickValues = priceTicks(pmin, pmax, logScale(), Math.max(3, Math.round(h / (axisH * 2.5))));
   const ticks = tickValues.map((v, i) => ({ v, label: axisPrice(v, Math.abs((tickValues[i + 1] ?? tickValues[i - 1] ?? v) - v) || v) }));
-  const w = Math.round(full - (Math.max(...ticks.map(t => t.label.length)) + 2) * ch);
+  const w = full;
+  // Your levels' labels and the high and low keep clear of the price labels.
+  const edge = Math.round(w - (Math.max(...ticks.map(t => t.label.length)) + 2) * ch);
   const last = points.length - 1;
   series = points.map((x, i) => ({ t: x.timestamp, v: x.price, x: (i / last) * (w - 1), y: yOf(x.price) }));
   const pts = series.map(s => `${s.x.toFixed(1)},${s.y.toFixed(1)}`).join(' ');
+  scale = { yOf, w, h, full, unit: Math.abs((tickValues[1] ?? tickValues[0] * 2) - tickValues[0]) || pmax };
 
-  let entryHtml = '';
-  if (entry) {
-    const inside = entry >= lo && entry <= hi;
-    const ey = inside ? Math.round(yOf(entry)) + 0.5 : entry > hi ? 0 : h;
-    const label = `${inside ? '' : entry > hi ? '↑ ' : '↓ '}entry ${price(entry)}`;
-    entryHtml = (inside ? `<line class="wlc__entry" x1="0" x2="${w}" y1="${ey}" y2="${ey}"/>` : '') +
-      `<text class="wlc__label" x="${w - 4}" y="${inside ? ey - 4 : entry > hi ? 14 : h - 4}" text-anchor="end">${esc(label)}</text>`;
+  // Your levels: a line where each sits on the scale, its label at the right; the side
+  // past the liquidation price is hatched.
+  let levelHtml = '';
+  const labels = [];
+  for (const l of levels) {
+    const inside = l.px >= lo && l.px <= hi;
+    const y = Math.round(yOf(l.px)) + 0.5;
+    const arrow = inside ? '' : l.px > hi ? '↑ ' : '↓ ';
+    labels.push({ y: inside ? y - 4 : l.px > hi ? 14 : h - 4, text: `${arrow}${l.name} ${price(l.px)}` });
+    if (!inside) continue;
+    levelHtml += `<line class="${l.cls}" x1="0" x2="${w}" y1="${y}" y2="${y}"/>`;
+    if (l.cls === 'wlc__liq') {
+      const [y1, y2] = pos.amount < 0 ? [0, y] : [y, h];
+      levelHtml += `<rect x="0" y="${y1}" width="${w}" height="${Math.max(0, y2 - y1)}" fill="url(#wlcHatch)"/>`;
+    }
+  }
+  // Labels never sit on one another: each is at least a line below the one above it.
+  const lineH = axisH * 0.85;
+  labels.sort((a, b) => a.y - b.y).forEach((l, i, list) => {
+    if (i && l.y - list[i - 1].y < lineH) l.y = list[i - 1].y + lineH;
+    l.y = Math.min(h - 4, l.y);
+  });
+  // Each label's box, from its baseline and its length in characters.
+  const boxOf = (x, y, len, anchor, hanging) => {
+    const width = len * ch;
+    const left = anchor === 'end' ? x - width : x;
+    const top = hanging ? y : y - lineH;
+    return { left, right: left + width, top, bottom: top + lineH };
+  };
+  const hits = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  labels.forEach(l => { l.box = boxOf(edge - 4, l.y, l.text.length, 'end', false); });
+
+  // The high and the low, named where they are on the line: on the side of the point with
+  // room and clear of your levels' labels; when both sides are taken, the level's label
+  // moves past the name.
+  const iHi = prices.indexOf(pmax);
+  const iLo = prices.indexOf(pmin);
+  let hlHtml = '';
+  if (layers.highlow) {
+    const named = (i, text, above) => {
+      const s = series[i];
+      const y = above ? s.y - 6 : s.y + 6;
+      const sides = (s.x > w / 2 ? ['end', 'start'] : ['start', 'end'])
+        .map(anchor => ({ anchor, x: s.x + (anchor === 'end' ? -4 : 4) }))
+        .map(o => ({ ...o, box: boxOf(o.x, y, text.length, o.anchor, !above) }))
+        .filter(o => o.box.left >= 0 && o.box.right <= edge);
+      const pick = sides.find(o => !labels.some(l => hits(l.box, o.box))) || sides[0] ||
+        { anchor: 'start', x: s.x + 4, box: boxOf(s.x + 4, y, text.length, 'start', !above) };
+      for (const l of labels) {
+        if (!hits(l.box, pick.box)) continue;
+        l.y = pick.box.top - 2 >= lineH ? pick.box.top - 2 : pick.box.bottom + lineH;
+        l.box = boxOf(edge - 4, l.y, l.text.length, 'end', false);
+      }
+      return `<text class="wlc__hl" x="${pick.x.toFixed(1)}" y="${y.toFixed(1)}"` +
+        ` text-anchor="${pick.anchor}" dominant-baseline="${above ? 'auto' : 'hanging'}">${esc(text)}</text>`;
+    };
+    hlHtml = named(iHi, `H ${price(pmax)}`, true) + named(iLo, `L ${price(pmin)}`, false);
+  }
+  const labelHtml = labels.map(l =>
+    `<text class="wlc__label" x="${edge - 4}" y="${l.y.toFixed(1)}" text-anchor="end">${esc(l.text)}</text>`).join('');
+
+  // Volume: a bar under each point, the period's largest a fifth of the chart's height.
+  const vols = points.map(x => Number(x.volume) || 0);
+  const vmax = Math.max(...vols);
+  let volHtml = '';
+  if (layers.volume && vmax > 0) {
+    const bw = Math.max(1, (w / series.length) * 0.6);
+    volHtml = '<g class="wlc__vol">' + series.map((s, i) => {
+      const bh = (vols[i] / vmax) * h * 0.2;
+      return bh >= 0.5 ? `<rect x="${(s.x - bw / 2).toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}"/>` : '';
+    }).join('') + '</g>';
   }
 
-  const yAxis = ticks.map(t => ({ ...t, y: Math.round(yOf(t.v)) + 0.5 })).filter(t => t.y > axisH / 2 && t.y < h - axisH / 2)
-    .map(t => `<line class="wlc__grid" x1="0" x2="${w}" y1="${t.y}" y2="${t.y}"/>` +
-      `<text class="wlc__tick" x="${w + ch}" y="${t.y}" dominant-baseline="middle">${esc(t.label)}</text>`).join('');
+  // Days: a line where each day starts and a shade over Saturdays and Sundays. A closed
+  // market has no points on its weekends, so only what trades then shows one.
+  let dayHtml = '';
+  if (layers.days && DAY_PERIODS.has(period)) {
+    const fmt = new Intl.DateTimeFormat('en-US', { weekday: 'short', year: 'numeric', month: 'numeric', day: 'numeric', timeZone: window.larpTimeZone });
+    const half = w / last / 2;
+    let prev = null;
+    let weekend = null;
+    const shade = (a, b) => `<rect class="wlc__weekend" x="${Math.max(0, a).toFixed(1)}" y="0" width="${(Math.min(w, b) - Math.max(0, a)).toFixed(1)}" height="${h}"/>`;
+    series.forEach((s, i) => {
+      const day = fmt.format(new Date(s.t));
+      const isWeekend = day.startsWith('Sat') || day.startsWith('Sun');
+      if (prev !== null && day !== prev) {
+        const x = Math.round(s.x - half) + 0.5;
+        dayHtml += `<line class="wlc__day" x1="${x}" x2="${x}" y1="0" y2="${h}"/>`;
+      }
+      if (isWeekend && weekend === null) weekend = i ? s.x - half : 0;
+      if (!isWeekend && weekend !== null) { dayHtml = shade(weekend, s.x - half) + dayHtml; weekend = null; }
+      prev = day;
+    });
+    if (weekend !== null) dayHtml = shade(weekend, w) + dayHtml;
+  }
+
+  // Grid lines under the line, their prices over it.
+  const yTicks = ticks.map(t => ({ ...t, y: Math.round(yOf(t.v)) + 0.5 })).filter(t => t.y > axisH / 2 && t.y < h - axisH / 2);
+  const yGrid = yTicks.map(t => `<line class="wlc__grid" x1="0" x2="${w}" y1="${t.y}" y2="${t.y}"/>`).join('');
+  const yLabels = yTicks.map(t =>
+      `<text class="wlc__ytick" x="${w - ch}" y="${t.y}" text-anchor="end" dominant-baseline="middle">${esc(t.label)}</text>`).join('');
   // Time labels where they fit: every k-th turnover, none cut off at either edge.
   const turns = timeTicks();
   const lw = (Math.max(0, ...turns.map(t => t.label.length)) + 3) * ch;
@@ -308,38 +499,69 @@ function draw() {
 
   box.innerHTML =
     `<svg class="wlc__svg" width="${full}" height="${h + axisH}" viewBox="0 0 ${full} ${h + axisH}" aria-hidden="true">` +
-    '<defs><pattern id="wlcDz" width="2" height="2" patternUnits="userSpaceOnUse"><rect class="pm-value__dot" width="1" height="1"/><rect class="pm-value__dot" x="1" y="1" width="1" height="1"/></pattern></defs>' +
-    yAxis +
+    '<defs><pattern id="wlcDz" width="2" height="2" patternUnits="userSpaceOnUse"><rect class="pm-value__dot" width="1" height="1"/><rect class="pm-value__dot" x="1" y="1" width="1" height="1"/></pattern>' +
+    '<pattern id="wlcHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="wlc__hatch" x1="0" y1="0" x2="0" y2="6"/></pattern></defs>' +
+    dayHtml +
+    yGrid +
     `<line class="wlc__axis" x1="0" x2="${w}" y1="${h - 0.5}" y2="${h - 0.5}"/>` +
-    `<line class="wlc__axis" x1="${w + 0.5}" x2="${w + 0.5}" y1="0" y2="${h}"/>` +
     xAxis +
     `<rect class="wlc__range" x="0" y="0" width="0" height="${h}" visibility="hidden"/>` +
     `<polygon points="0,${h} ${pts} ${w - 1},${h}" fill="url(#wlcDz)"/>` +
+    volHtml +
+    levelHtml +
+    `<line class="wlc__nowline" x1="0" x2="${w}" y1="0" y2="0" visibility="hidden"/>` +
     `<polyline points="${pts}" class="pm-value__line" fill="none"/>` +
-    entryHtml +
+    yLabels +
+    hlHtml +
+    labelHtml +
     `<line class="wlc__anchor" x1="0" x2="0" y1="0" y2="${h}" visibility="hidden"/>` +
     `<line class="pm-value__cursor" x1="0" x2="0" y1="0" y2="${h}" visibility="hidden"/>` +
     '<rect class="pm-value__point" width="5" height="5" x="0" y="0" visibility="hidden"/></svg>' +
-    '<p class="wlc__tip" aria-live="polite" hidden><span class="wlc__tip-value"></span><span class="wlc__tip-when"></span></p>';
+    '<span class="wlc__now" aria-hidden="true" hidden></span>' +
+    '<p class="wlc__tip" aria-live="polite" hidden></p>';
   box.setAttribute('role', 'img');
   box.setAttribute('aria-label', `${item.label || item.symbol}, ${spec().label}: ${price(prices[0])} to ${price(prices[last])}`);
 
-  // High and low with their times; the open is the period's first point.
-  const iHi = prices.indexOf(Math.max(...prices));
-  const iLo = prices.indexOf(Math.min(...prices));
-  const now = Number.isFinite(item.price) ? item.price : prices[last];
+  // The period: open and close, high and low.
   const rows = [
-    ['Open', `${price(prices[0])} · ${when(points[0].timestamp)}`],
-    ['High', `${price(prices[iHi])} · ${when(points[iHi].timestamp)}`],
-    ['Low', `${price(prices[iLo])} · ${when(points[iLo].timestamp)}`],
-    entry && ['Your entry', `${price(entry)} · ${now >= entry ? '+' : '−'}${Math.abs((now / entry - 1) * 100).toFixed(2)}% since`]
-  ].filter(Boolean);
-  win.querySelector('.wlc__rows').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
+    ['Open', price(prices[0])],
+    ['Close', price(prices[last])],
+    ['High', price(pmax)],
+    ['Low', price(pmin)]
+  ];
+  win.querySelector('.wlc__rows').innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('');
+  // Your position on one line: side and size, entry, liquidation and profit now.
+  const now = Number.isFinite(item.price) ? item.price : prices[last];
+  const held = showPos ? [
+    [side() === 'short' ? 'Short' : 'Long', Math.abs(pos.amount).toLocaleString('en-US', { maximumFractionDigits: 4 })],
+    ['Entry', price(pos.entry)],
+    pos.liq && ['Liq', price(pos.liq)],
+    ['P&L', `${signed(pnlAt(now))} ${pctOf(pnlAt(now) / (Math.abs(pos.amount) * pos.entry || 1))}`]
+  ].filter(Boolean) : [];
+  win.querySelector('.wlc__pos').innerHTML = held.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('');
+  layerButtons(true, vmax > 0);
   show();
 }
 
+// The layer buttons: each says whether its layer is on; one with nothing to show is hidden.
+function layerButtons(drawn, hasVolume = false) {
+  const shown = {
+    position: drawn && !!pos,
+    highlow: drawn,
+    volume: drawn && hasVolume,
+    days: drawn && DAY_PERIODS.has(period)
+  };
+  const row = win.querySelector('.wlc__layers');
+  row.querySelectorAll('.wlc__layer[data-layer]').forEach(b => {
+    b.hidden = !shown[b.dataset.layer];
+    b.setAttribute('aria-pressed', String(!!layers[b.dataset.layer]));
+  });
+  row.hidden = !Object.values(shown).some(Boolean);
+}
+
 // The head line keeps the latest price and the change over the period. The point being
-// pointed at, or the range being measured, reads in a tag next to the cursor.
+// pointed at, or the range being measured, reads in a tag next to the cursor; the latest
+// price is a tag on the price axis.
 function show() {
   if (!win) return;
   const item = current();
@@ -359,7 +581,9 @@ function show() {
   const first = day ? item.price / (1 + item.change24h / 100) : series[0]?.v;
   const m = measure && measure.a !== measure.b ? measure : null;
   left.textContent = Number.isFinite(live) ? price(live) : '—';
-  right.textContent = series.length ? change(first, live) : '';
+  const label = PERIODS.find(x => x.id === period)?.label;
+  right.innerHTML = series.length && first > 0
+    ? `${esc(change(first, live))} <span class="wlc__head-period">· ${esc(label || '')}</span>` : '';
 
   if (m) {
     const [a, b] = [Math.min(m.a, m.b), Math.max(m.a, m.b)];
@@ -369,7 +593,8 @@ function show() {
     mark('.wlc__range', { visibility: 'hidden' });
     mark('.wlc__anchor', { visibility: 'hidden' });
   }
-  const p = hover >= 0 ? series[hover] : null;
+  // A measured range keeps its tag at its far end once the pointer has gone.
+  const p = hover >= 0 ? series[hover] : m ? series[m.b] : null;
   if (p) {
     const cx = Math.round(p.x) + 0.5;
     mark('.pm-value__cursor', { x1: cx, x2: cx, visibility: 'visible' });
@@ -379,33 +604,75 @@ function show() {
     mark('.pm-value__point', { visibility: 'hidden' });
   }
   if (tip) placeTip(tip, p, m, first);
+
+  // The latest price: an inverted tag on the axis and a dotted line across, moving with
+  // the watchlist's refreshes.
+  const nowTag = win.querySelector('.wlc__now');
+  if (nowTag && scale && Number.isFinite(live)) {
+    const y = Math.max(0, Math.min(scale.h, scale.yOf(live)));
+    nowTag.textContent = axisPrice(live, scale.unit / 100);
+    nowTag.hidden = false;
+    // At the right edge, over the price labels.
+    const left = scale.full - nowTag.offsetWidth;
+    const top = Math.max(0, Math.min(scale.h - nowTag.offsetHeight / 2, y - nowTag.offsetHeight / 2));
+    nowTag.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+    const ly = Math.round(y) + 0.5;
+    mark('.wlc__nowline', { y1: ly, y2: ly, visibility: 'visible' });
+  }
 }
 
 // The change for the tag. From a price of 1,000 or more the money part is whole, so a
 // $46,679 point does not give a −$16,637.40 change.
 function tipChange(from, to, money) {
   if (!(from > 0) || !Number.isFinite(to)) return '';
-  const diff = to - from;
-  const sign = diff < 0 ? '−' : '+';
-  const pct = `${sign}${Math.abs((diff / from) * 100).toFixed(2)}%`;
+  const pct = pctOf(to / from - 1);
   if (!money) return pct;
-  const abs = from >= 1000 ? Math.round(Math.abs(diff)) : Math.abs(diff);
-  return `${sign}${price(abs)}  ${pct}`;
+  const diff = to - from;
+  return `${from >= 1000 ? signed(Math.round(diff)) : signed(diff)}  ${pct}`;
 }
 
-// The tag sits beside the point, on the side with room, and stays inside the plot.
+// The largest fall from a high and the largest rise from a low, within a range.
+function swings(a, b) {
+  let peak = series[a].v;
+  let trough = series[a].v;
+  let drop = 0;
+  let rise = 0;
+  for (let i = a; i <= b; i++) {
+    const v = series[i].v;
+    peak = Math.max(peak, v);
+    trough = Math.min(trough, v);
+    drop = Math.min(drop, v / peak - 1);
+    rise = Math.max(rise, v / trough - 1);
+  }
+  return { drop, rise };
+}
+
+// The tag sits beside the point, on the side with room, and stays inside the plot. The
+// value is on top and the time at the bottom. A point reads its price, the change since
+// the period's start and what your position makes there; a range reads its change, how
+// long it lasts, its largest fall and rise, and what your position made over it.
 function placeTip(tip, p, m, first) {
   if (!p) { tip.hidden = true; return; }
-  // The value on top; the time below it. A point reads its price and the change since the
-  // period's start; a range reads its change in money and in percent.
+  const mine = layers.position && pos;
+  let lines;
   if (m) {
     const [a, b] = [Math.min(m.a, m.b), Math.max(m.a, m.b)];
-    tip.firstChild.textContent = tipChange(series[a].v, series[b].v, true);
-    tip.lastChild.textContent = `${when(series[a].t)} → ${when(series[b].t)}`;
+    const { drop, rise } = swings(a, b);
+    lines = [
+      tipChange(series[a].v, series[b].v, true),
+      `${lasting(series[b].t - series[a].t)} · fall ${pctOf(drop)} · rise ${pctOf(rise)}`,
+      mine && `your ${side()} ${signed(pnlAt(series[b].v) - pnlAt(series[a].v))}`,
+      `${when(series[a].t)} → ${when(series[b].t)}`
+    ];
   } else {
-    tip.firstChild.textContent = `${price(p.v)}  ${tipChange(first, p.v, false)}`;
-    tip.lastChild.textContent = when(p.t);
+    lines = [
+      `${price(p.v)}  ${tipChange(first, p.v, false)}`,
+      mine && `your ${side()} ${signed(pnlAt(p.v))}`,
+      when(p.t)
+    ];
   }
+  lines = lines.filter(Boolean);
+  tip.innerHTML = lines.map((t, i) => `<span${i === lines.length - 1 ? ' class="wlc__tip-when"' : ''}>${esc(t)}</span>`).join('');
   tip.hidden = false;
   const plotW = series[series.length - 1].x + 1;
   const plotH = Number(win.querySelector('.pm-value__cursor')?.getAttribute('y2')) || 0;
@@ -444,6 +711,19 @@ function remove() {
   load();
 }
 
+function choosePeriod(id) {
+  if (id === period) return;
+  period = id;
+  logChoice = null;
+  if (current()) title(current());
+  load();
+}
+
+function toggleLog() {
+  logChoice = !logScale();
+  draw();
+}
+
 function close() {
   if (!win || win.style.display === 'none') return;
   win.style.display = 'none';
@@ -462,12 +742,14 @@ function build() {
     '<button type="button" class="btn-text js-wlc-close">Close</button></div>' +
     '<div class="sticker-window-content wlc" tabindex="-1">' +
     '<p class="wlc__head" aria-live="polite"><span class="wlc__price"></span><span class="wlc__change"></span></p>' +
-    '<div class="wlc__controls">' +
     `<div class="wlc__periods" role="radiogroup" aria-label="Period">${PERIODS.map(p =>
       `<button type="button" role="radio" class="wlc__period" data-period="${p.id}">${p.label}</button>`).join('')}</div>` +
-    '<button type="button" class="wlc__log" aria-pressed="false"><span class="settings-switch__state" aria-hidden="true"></span>Log</button></div>' +
     '<div class="wlc__chart" tabindex="0"></div>' +
+    `<div class="wlc__layers" role="group" aria-label="Show on the chart"><span class="wlc__layers-label" aria-hidden="true">Show</span>${LAYERS.map(l =>
+      `<button type="button" class="wlc__layer" data-layer="${l.id}" aria-pressed="true">${l.label}</button>`).join('')}` +
+    '<button type="button" class="wlc__layer wlc__log" aria-pressed="false">Log scale</button></div>' +
     '<dl class="wlc__rows"></dl>' +
+    '<dl class="wlc__rows wlc__pos"></dl>' +
     '<p class="wlc__facts"></p>' +
     '<p class="wlc__foot"><button type="button" class="link-button js-wlc-remove">Remove from watchlist</button></p>' +
     '</div></div>');
@@ -477,23 +759,26 @@ function build() {
   win.querySelector('.js-wlc-remove').addEventListener('click', remove);
   win.querySelector('.wlc__periods').addEventListener('click', (e) => {
     const b = e.target.closest('.wlc__period');
-    if (!b || b.dataset.period === period) return;
-    period = b.dataset.period;
-    logChoice = null;
-    if (current()) title(current());
-    load();
+    if (b) choosePeriod(b.dataset.period);
   });
-  win.querySelector('.wlc__log').addEventListener('click', () => {
-    logChoice = !logScale();
+  win.querySelector('.wlc__layers').addEventListener('click', (e) => {
+    const b = e.target.closest('.wlc__layer');
+    if (!b) return;
+    if (!b.dataset.layer) { toggleLog(); return; }
+    layers[b.dataset.layer] = !layers[b.dataset.layer];
+    saveLayers();
     draw();
   });
   win.querySelector('.window-title').addEventListener('click', (e) => {
     if (e.target.closest('.js-wlc-back')) close();
   });
 
-  // Mouse: pointing reads a point, pressing and dragging measures. Touch: a drag measures
-  // from where the finger landed; lifting it without a drag clears the point.
+  // Mouse: pointing reads a point, pressing and dragging measures. Touch: a tap reads the
+  // point and keeps it; a sideways drag measures from where the finger landed.
   const chart = win.querySelector('.wlc__chart');
+  chart.addEventListener('click', (e) => {
+    if (e.target.closest('.js-wlc-retry')) load();
+  });
   chart.addEventListener('pointerdown', (e) => {
     const i = nearest(e);
     if (i < 0 || e.button > 0) return;
@@ -514,7 +799,8 @@ function build() {
     if (!dragging) return;
     dragging = false;
     if (measure && measure.a === measure.b) measure = null;
-    if (e.pointerType !== 'mouse') hover = -1;
+    // After a touch drag the range's tag stays at its far end.
+    if (e.pointerType !== 'mouse' && measure) hover = -1;
     show();
   };
   chart.addEventListener('pointerup', release);
@@ -539,10 +825,23 @@ function build() {
   });
   chart.addEventListener('blur', () => { hover = -1; show(); });
 
-  // Anywhere else in the window: ← → the previous or next item, ⌫ removes it, Esc clears
-  // a measured range first and then closes.
+  // Anywhere else in the window: ← → the previous or next item, ⌫ removes it, 1 to 7
+  // choose a period, L turns Log on or off, Esc clears a measured range first and then closes.
   win.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const nth = PERIODS[Number(e.key) - 1];
+    if (/^[1-9]$/.test(e.key) && nth) {
+      e.preventDefault();
+      e.stopPropagation();
+      choosePeriod(nth.id);
+      return;
+    }
+    if (e.key === 'l' || e.key === 'L') {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleLog();
+      return;
+    }
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
@@ -573,9 +872,9 @@ export function openChartWindow({ key: openKey, tilePeriod, items: getItems, onR
   win.style.display = 'flex';
   document.body.classList.add('modal-open');
   window.addEventListener('resize', draw);
-  // The head's price follows the watchlist's refreshes.
+  // The head's price and the axis tag follow the watchlist's refreshes.
   clearInterval(tick);
-  tick = setInterval(() => { if (!dragging && hover < 0 && !measure) show(); }, 5000);
+  tick = setInterval(() => { if (!dragging) show(); }, 5000);
   load();
   // Focus starts on the window itself, so ← → step through the items straight away (on the
   // periods they choose a period, as in every period row).

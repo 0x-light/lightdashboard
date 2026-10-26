@@ -331,7 +331,7 @@ export async function getHistoricalPrice(symbol, dateStr, { timeoutMs = 5000 } =
 
 /**
  * Fetch an intraday / short-range history for sparkline rendering. Returns an array of
- * `{ timestamp, price }`, newest last. `range` is in Yahoo's format (1d, 5d, 1mo, etc.).
+ * `{ timestamp, price, volume }`, newest last. `range` is in Yahoo's format (1d, 5d, 1mo, etc.).
  */
 export async function get24hPriceHistory(symbol, { timeoutMs = 5000, range = '1d', interval = '15m' } = {}) {
   if (!symbol) return [];
@@ -341,13 +341,14 @@ export async function get24hPriceHistory(symbol, { timeoutMs = 5000, range = '1d
     const result = data?.chart?.result?.[0];
     const timestamps = result?.timestamp;
     const closes = result?.indicators?.quote?.[0]?.close;
+    const volumes = result?.indicators?.quote?.[0]?.volume || [];
     if (!Array.isArray(timestamps) || !Array.isArray(closes)) return [];
     const series = [];
     for (let i = 0; i < timestamps.length; i++) {
       const ts = Number(timestamps[i]);
       const price = Number(closes[i]);
       if (Number.isFinite(ts) && Number.isFinite(price)) {
-        series.push({ timestamp: ts * 1000, price });
+        series.push({ timestamp: ts * 1000, price, volume: Number(volumes[i]) || 0 });
       }
     }
     return series;

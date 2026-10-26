@@ -2318,38 +2318,21 @@ html.pm:root .pm-value__cursor { stroke: var(--pm-muted); stroke-width: 1; }
 html.pm:root .pm-value__point { fill: var(--pm-ink); stroke: var(--bg); stroke-width: 1; }
 
 /* ── Chart window: one watchlist item, bigger. The head line reads the latest price
-   and the change over the period, or the point or range being pointed at. ── */
+   and the change over the period; the point or range being pointed at reads in a tag. ── */
 html.pm:root .pm-chart-window { width: min(76ch, calc(100vw - 3ch)); }
 @media (min-width: 871px) {
   html.pm:root .pm-chart-window { width: min(112ch, calc(100vw - 6ch)); top: calc(var(--pm-lh) * 3); transform: translateX(-50%); }
 }
 html.pm:root .wlc p { margin: 0; }
-html.pm:root .wlc__head { display: flex; justify-content: space-between; gap: 2ch; flex-wrap: wrap; }
-html.pm:root .wlc__controls { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 2ch; margin-top: calc(var(--pm-lh) / 2); }
-html.pm:root .wlc__periods { display: flex; gap: 0 1ch; }
-/* Log: the settings switch at the end of the period row; its block fills while on. */
-html.pm:root .wlc__log {
-  display: flex;
-  align-items: center;
-  gap: 1ch;
-  flex: none;
-  height: auto;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: none;
-  color: var(--pm-ink);
-  font: inherit;
-  line-height: var(--pm-lh);
-  text-transform: uppercase;
-  cursor: pointer;
-}
-html.pm:root .wlc__log .settings-switch__state { line-height: var(--pm-lh); }
-html.pm:root .wlc__log:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 0; }
-@media (hover: hover) {
-  html.pm:root .wlc__log[aria-pressed="false"]:hover .settings-switch__state { background: var(--pm-muted); color: var(--bg); }
+html.pm:root .wlc__head { display: flex; justify-content: space-between; gap: 0 2ch; flex-wrap: wrap; }
+/* When the change does not fit beside the price, it goes below and stays at the right. */
+html.pm:root .wlc__change { margin-left: auto; text-align: right; }
+html.pm:root .wlc__head-period { color: var(--pm-muted); }
+html.pm:root .wlc__periods { display: flex; gap: 0 1ch; margin-top: calc(var(--pm-lh) / 2); }
+/* On a phone the periods fill the width. */
+@media (max-width: 520px) {
+  html.pm:root .wlc__periods { justify-content: space-between; gap: 0; }
+  html.pm:root .wlc__layers-label { display: none; }
 }
 html.pm:root .wlc__chart {
   /* Out to the window's side borders, like the value chart in the card. */
@@ -2361,8 +2344,8 @@ html.pm:root .wlc__chart {
   -webkit-touch-callout: none;
 }
 /* The tag beside the cursor: the point's time, price and change, or the measured range. */
-html.pm:root .wlc__chart { position: relative; }
-html.pm:root .wlc__tip {
+html.pm:root :is(.wlc__chart, .pm-value__chart) { position: relative; }
+html.pm:root :is(.wlc__tip, .pm-value__tag) {
   position: absolute;
   top: 0;
   left: 0;
@@ -2373,8 +2356,21 @@ html.pm:root .wlc__tip {
   white-space: pre;
   pointer-events: none;
 }
-html.pm:root .wlc__tip[hidden] { display: none; }
-html.pm:root .wlc__tip-when { opacity: 0.65; }
+html.pm:root :is(.wlc__tip, .pm-value__tag)[hidden] { display: none; }
+html.pm:root :is(.wlc__tip-when, .pm-value__tag-when) { opacity: 0.65; }
+html.pm:root .pm-value__tag { margin: 0; line-height: var(--pm-lh); }
+/* The latest price on the axis: inverted, like the tag, over the axis labels. */
+html.pm:root .wlc__now {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 0 0.5ch;
+  background: var(--pm-ink);
+  color: var(--bg);
+  white-space: nowrap;
+  pointer-events: none;
+}
+html.pm:root .wlc__now[hidden] { display: none; }
 html.pm:root .wlc__chart:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: -1px; }
 html.pm:root .wlc:focus { outline: none; }
 html.pm:root .wlc__svg { display: block; }
@@ -2383,15 +2379,52 @@ html.pm:root .wlc__svg text { fill: var(--pm-muted); font: inherit; paint-order:
 html.pm:root .wlc__range { fill: var(--pm-tint-2); }
 /* Axes: prices at the right, times below; faint rules across the plot at each price. */
 html.pm:root .wlc__svg .wlc__tick { stroke-width: 0; }
+/* The prices sit over the line; the stroke in the background colour keeps them clear of it. */
+html.pm:root .wlc__svg .wlc__ytick { fill: var(--pm-muted); }
 html.pm:root .wlc__grid { stroke: var(--pm-tint-2); stroke-width: 1; }
 html.pm:root .wlc__axis { stroke: var(--pm-muted); stroke-width: 1; }
 html.pm:root .wlc__anchor { stroke: var(--pm-muted); stroke-width: 1; }
 html.pm:root .wlc__entry { stroke: var(--pm-muted); stroke-width: 1; stroke-dasharray: 4 3; }
+/* Your levels and the chart's layers, told apart by line: liquidation solid with the
+   liquidated side hatched, TP/SL dotted, day starts faint, weekends shaded. */
+html.pm:root .wlc__liq { stroke: var(--pm-ink); stroke-width: 1; }
+html.pm:root .wlc__hatch { stroke: var(--pm-tint-2); stroke-width: 1; }
+html.pm:root .wlc__order { stroke: var(--pm-muted); stroke-width: 1; stroke-dasharray: 1 3; }
+html.pm:root .wlc__nowline { stroke: var(--pm-ink); stroke-width: 1; stroke-dasharray: 1 2; opacity: 0.6; }
+html.pm:root .wlc__svg .wlc__hl { fill: var(--pm-ink); }
+html.pm:root .wlc__vol rect { fill: var(--pm-muted); opacity: 0.45; }
+html.pm:root .wlc__day { stroke: var(--pm-tint-2); stroke-width: 1; stroke-dasharray: 2 3; }
+html.pm:root .wlc__weekend { fill: var(--pm-tint); }
+/* Layers: a row of buttons under the chart, each lit while its layer is on. */
+html.pm:root .wlc__layers { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1ch; margin-top: calc(var(--pm-lh) / 2); }
+html.pm:root .wlc__layers[hidden], html.pm:root .wlc__layer[hidden] { display: none; }
+html.pm:root .wlc__layers-label { color: var(--pm-muted); margin-right: 1ch; }
+html.pm:root .wlc__layer {
+  min-height: 0;
+  margin: 0;
+  padding: 0 1ch;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--pm-muted);
+  font: inherit;
+  line-height: var(--pm-lh);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+html.pm:root .wlc__layer[aria-pressed="true"] { background: var(--pm-tint-2); color: var(--pm-ink); }
+html.pm:root .wlc__layer:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 0; }
+@media (hover: hover) {
+  html.pm:root .wlc__layer:hover { color: var(--pm-ink); }
+}
 html.pm:root .wlc__empty { padding: 0 1ch; color: var(--pm-muted); }
-html.pm:root .wlc__rows { display: grid; grid-template-columns: 1fr max-content; gap: 0 2ch; margin: calc(var(--pm-lh) / 2) 0 0; }
+/* The period, and your position, each on one line of label and value pairs. */
+/* The figures in columns: two on a phone, four when there is room. Names line up. */
+html.pm:root .wlc__rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(20ch, 1fr)); gap: 0 3ch; margin: calc(var(--pm-lh) / 2) 0 0; }
 html.pm:root .wlc__rows:empty { display: none; }
+html.pm:root .wlc__rows > div { display: grid; grid-template-columns: 6ch auto; justify-content: start; }
 html.pm:root .wlc__rows dt { color: var(--pm-muted); }
-html.pm:root .wlc__rows dd { margin: 0; text-align: right; }
+html.pm:root .wlc__rows dd { margin: 0; }
 html.pm:root .wlc .wlc__facts { margin-top: var(--pm-lh); color: var(--pm-muted); }
 html.pm:root .wlc__facts:empty { display: none; }
 /* Remove is a quiet link at the bottom left, not a key chip where Close or OK would be. */
@@ -2513,20 +2546,6 @@ html.pm:root .acct__bars--down { height: calc(var(--pm-lh) * 3); background-posi
 html.pm:root .acct__bars--up .acct__bar::after { bottom: 0; height: var(--h, 0%); }
 html.pm:root .acct__bars--down .acct__bar::after { top: 0; height: var(--h, 0%); }
 html.pm:root .acct__readout { min-height: var(--pm-lh); margin-top: calc(var(--pm-lh) / 3) !important; color: var(--pm-muted); }
-
-/* ── Strip readout: the hovered segment, named on the card's bottom border at its start ── */
-html.pm:root .pm-card__readout {
-  position: fixed;
-  z-index: 999; /* over #mainContent (998), like the undo line */
-  pointer-events: none;
-  margin: 0;
-  padding: 0 1ch;
-  background: var(--bg);
-  line-height: var(--pm-lh);
-  text-transform: uppercase;
-}
-
-html.pm:root .pm-card__readout[hidden] { display: none; }
 
 /* ── City suggestions (Settings → General) ──
    A framed list under the field: the place in ink, its region muted; the active
