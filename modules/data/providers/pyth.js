@@ -631,6 +631,11 @@ async function getKeylessHistory(ids, points, endTime) {
  * `{ ms, hl, yahoo: [range, interval] }` names the window, the Hyperliquid candle interval and
  * the Yahoo chart range. Points are `{ timestamp (ms), price, volume }`, at most `points` of them.
  */
+// Where a feed's prices come from, once it has been quoted: 'hyperliquid' or 'yahoo'.
+export function historySource(feedId) {
+  return keylessQuoteCache.get(normalizeFeedId(feedId))?.quote?.source || null;
+}
+
 export async function getPeriodHistoryByFeedIds(feedIds, { ms, hl, yahoo }, points = 120) {
   const ids = Array.from(new Set((feedIds || []).map(normalizeFeedId).filter(Boolean)));
   if (ids.length === 0) return {};
