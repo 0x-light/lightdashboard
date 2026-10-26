@@ -52,7 +52,8 @@ export async function onRequest(context) {
         'Accept': 'application/json,text/plain,*/*',
         'Accept-Language': 'en-US,en;q=0.9'
       },
-      cf: { cacheTtl: 30, cacheEverything: true }
+      // Only answers are kept: a cached 429 would answer every retry for the next 30 seconds.
+      cf: { cacheTtlByStatus: { '200-299': 30, '300-599': 0 }, cacheEverything: true }
     });
 
     const body = await upstream.text();
@@ -61,7 +62,8 @@ export async function onRequest(context) {
       headers: cors({
         'Content-Type': upstream.headers.get('content-type') || 'application/json',
         // Short cache reduces rate-limit pressure when several users hit the same quote.
-        'Cache-Control': 'public, max-age=30'
+        // Refusals are not cached, so the browser's next try reaches Yahoo again.
+        'Cache-Control': upstream.ok ? 'public, max-age=30' : 'no-store'
       })
     });
   } catch (err) {

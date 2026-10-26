@@ -270,7 +270,7 @@ async function load() {
     draw();
     return;
   }
-  points = null;
+  points = hit ? hit.points : null;
   draw();
   const seq = ++loads;
   let list = [];
@@ -285,9 +285,11 @@ async function load() {
     if (seq === loads) load();
     return;
   }
-  // A source that refuses for a while (Hyperliquid answers 429 when asked too often) gives
-  // nothing, as a missing history does: nothing is kept, so the next try asks again.
+  // A source that refuses for a while (Hyperliquid and Yahoo answer 429 when asked too often)
+  // gives nothing, as a missing history does: nothing is kept, so the next try asks again,
+  // and the line this period last had stays on screen meanwhile.
   if (list.length) cache.set(id, { at: Date.now(), points: list });
+  else if (hit) list = hit.points;
   if (seq !== loads) return;
   points = list;
   draw();

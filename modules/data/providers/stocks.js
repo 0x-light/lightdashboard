@@ -20,6 +20,7 @@ import {
 const SEARCH_BASE = 'https://query2.finance.yahoo.com/v1/finance/search';
 const SPARK_BASE = 'https://query1.finance.yahoo.com/v8/finance/spark';
 const CHART_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart';
+const CHART_BASE_ALT = 'https://query2.finance.yahoo.com/v8/finance/chart';
 
 // Yahoo returns a `quoteType` per match — we map it to the same category vocabulary used by
 // the rest of the app so the UI can show consistent chips.
@@ -335,9 +336,13 @@ export async function getHistoricalPrice(symbol, dateStr, { timeoutMs = 5000 } =
  */
 export async function get24hPriceHistory(symbol, { timeoutMs = 5000, range = '1d', interval = '15m' } = {}) {
   if (!symbol) return [];
-  const url = `${CHART_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
+  const path = `/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
   try {
-    const data = await HttpClient.getJson(url, { timeoutMs, ttlMs: 60_000, retries: 1 });
+    // Yahoo answers 429 in bursts, and its two hosts limit apart: wait longer than for a
+    // network error, then ask the other host.
+    const opts = { timeoutMs, ttlMs: 60_000, retries: 2, backoffBaseMs: 400 };
+    const data = await HttpClient.getJson(CHART_BASE + path, opts)
+      .catch(() => HttpClient.getJson(CHART_BASE_ALT + path, opts));
     const result = data?.chart?.result?.[0];
     const timestamps = result?.timestamp;
     const closes = result?.indicators?.quote?.[0]?.close;
