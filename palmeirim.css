@@ -504,6 +504,7 @@ html.pm:root .hero-amount-toggle {
 html.pm:root .hero-sentence-weather { display: none; }
 
 /* Allocation: a framed bar on the line grid, legend as plain text. */
+html.pm:root .hero-readout-label { color: var(--pm-muted); text-transform: uppercase; }
 html.pm:root .alloc { margin-top: var(--pm-lh); }
 
 html.pm:root .alloc-bar {

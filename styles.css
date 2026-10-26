@@ -3458,7 +3458,7 @@ html:root .greeting-container {
   color: var(--text);
 }
 
-/* Hero: one sentence, numbers carry the weight */
+/* Hero: label-over-figure columns, numbers carry the weight */
 html:root .hero {
   margin-top: calc(var(--lh) * 1.75);
 }
@@ -3495,6 +3495,22 @@ html:root .hero-sentence-weather {
 }
 
 html:root .hero-sentence-weather strong {
+/* Readout: columns, muted label over figure; columns wrap whole on narrow screens. */
+html:root .hero-readout {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 6ch;
+}
+html:root .hero-readout-item {
+  display: flex;
+  flex-direction: column;
+  white-space: nowrap;
+}
+html:root .hero-readout-label { color: var(--muted); }
+@media (max-width: 520px) {
+  html:root .hero-readout { column-gap: 2ch; }
+}
+
   color: var(--text);
 }
 

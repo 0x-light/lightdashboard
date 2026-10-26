@@ -1,4 +1,4 @@
-// UI helper for composing the hero: one sentence (value, today, P&L, weather) and the allocation line.
+// UI helper for composing the hero: a row of label-over-figure columns (value, today, P&L, weather) and the allocation line.
 import { formatMoney, normalizeBaseCurrency } from '../utils/currency.js';
 
 function formatCurrency(value, amountsVisible, currency, options = {}) {
@@ -21,13 +21,13 @@ function escapeHtml(value) {
   }[ch]));
 }
 
-// Unsigned: the sentence says "up" or "down". Two decimals only where one would read 0.0%.
+// Unsigned magnitude. Two decimals only where one would read 0.0%.
 function formatPercent(pct) {
   const abs = Math.abs(pct);
   return `${abs.toFixed(abs > 0 && abs < 0.1 ? 2 : 1)}%`;
 }
 
-// Whole units read better in prose than cents.
+// Whole units read better than cents at this size.
 const roundForProse = (amount) => (Math.abs(amount) >= 100 ? Math.round(amount) : amount);
 
 // Allocation line. Slices are shades of the text colour, so it reads in every theme without
@@ -48,54 +48,56 @@ function composeAllocation(allocation, { amountsVisible, currency }) {
   return `<div class="alloc"><div class="alloc-bar" role="img" aria-label="Allocation">${bar}</div><ul class="alloc-legend">${legend}</ul></div>`;
 }
 
-function weatherSentence(weather) {
+// "Lisbon" over "21°C ☀" — the same label-over-figure shape as the money columns.
+function weatherItem(weather) {
   if (!weather) return '';
   const { temp, city, icon, moonText, precipitation } = weather;
   if (typeof temp !== 'number' || !city) return '';
-  const rain = precipitation && precipitation > 0 ? ' with rain forecasted' : '';
-  return `It's ${Math.round(temp)}°C ${icon} in <strong>${escapeHtml(city)}</strong>${rain}${moonText || ''}.`;
+  const rain = precipitation && precipitation > 0 ? ' rain' : '';
+  return readoutColumn(escapeHtml(city), `${Math.round(temp)}°C ${icon}${rain}${moonText || ''}`, 'hero-sentence-weather');
 }
 
-// "up $1,234 (1.0%) today" — percent only when amounts are hidden. `withDirection: false` lets
-// a second clause drop a repeated "up"/"down".
-function changeClause(amount, pct, suffix, { amountsVisible, currency, useColoredPnL, withDirection = true }) {
+// Signed, so the figure carries its own direction: "−2.6%".
+function formatSignedPercent(pct) {
+  const sign = pct < 0 ? '−' : (pct > 0 ? '+' : '');
+  return `${sign}${formatPercent(pct)}`;
+}
+
+const readoutColumn = (label, figureHtml, cls = '') =>
+  `<div class="hero-readout-item${cls ? ` ${cls}` : ''}"><span class="hero-readout-label">${label}</span>${figureHtml}</div>`;
+
+// "−$4,720 −2.6%" — percent only when amounts are hidden.
+function changeColumn(label, amount, pct, { amountsVisible, currency, useColoredPnL }) {
   const cls = classForChange(amount, useColoredPnL);
-  const direction = amount >= 0 ? 'up' : 'down';
-  const pctText = Number.isFinite(pct) ? formatPercent(pct) : '';
-  const figure = amountsVisible
-    ? `${formatCurrency(Math.abs(roundForProse(amount)), true, currency, { compact: false })}${pctText ? ` (${pctText})` : ''}`
-    : pctText;
-  return `${withDirection ? `${direction} ` : ''}<strong class="${cls}">${figure}</strong> ${suffix}`;
+  const pctText = Number.isFinite(pct) ? formatSignedPercent(pct) : '';
+  const money = amountsVisible
+    ? formatCurrency(roundForProse(amount), true, currency, { compact: false, showPlusSign: true })
+    : '';
+  const figure = [money, pctText].filter(Boolean).join(' ');
+  return readoutColumn(label, `<strong class="${cls}">${figure}</strong>`);
 }
 
 const isMeaningfulChange = (amount) => Number.isFinite(amount) && Math.abs(amount) >= 0.01;
 
-// The hero is one conversational sentence: value, today's move, then unrealized P&L
-// ("…, up $1,234 (1.0%) today and $939 (4.2%) on open positions.").
+// The hero is a row of columns, label over figure: value, today's move, unrealized P&L.
 function composeSentence({ valueText, amountsVisible, totalPnL, totalPnLPercent, totalDailyChange, totalDailyChangePercent, weather, ...options }) {
   const toggle = `<strong class="hero-amount-toggle" role="button" tabindex="0" title="${amountsVisible ? 'Hide amounts' : 'Show amounts'}">${valueText}</strong>`;
-  const hasToday = isMeaningfulChange(totalDailyChange);
-  const hasOverall = isMeaningfulChange(totalPnL);
-  const sameDirection = hasOverall && hasToday && (totalPnL >= 0) === (totalDailyChange >= 0);
-  let changes = '';
-  if (hasToday) changes += `, ${changeClause(totalDailyChange, totalDailyChangePercent, 'today', { amountsVisible, ...options })}`;
-  // Unrealized P&L: positions with a known entry price only, never realized gains.
-  if (hasOverall) {
-    const joiner = !hasToday ? ', ' : (sameDirection ? ' and ' : ', but ');
-    changes += `${joiner}${changeClause(totalPnL, totalPnLPercent, 'on open positions', {
-      amountsVisible,
-      ...options,
-      withDirection: !sameDirection
-    })}`;
+  const columns = [readoutColumn('Value', toggle)];
+  if (isMeaningfulChange(totalDailyChange)) {
+    columns.push(changeColumn('Today', totalDailyChange, totalDailyChangePercent, { amountsVisible, ...options }));
   }
-  const weatherText = weatherSentence(weather);
-  return `<p class="hero-sentence">Your portfolio is worth ${toggle}${changes}.${weatherText ? ` <span class="hero-sentence-weather">${weatherText}</span>` : ''}</p>`;
+  // Unrealized P&L: positions with a known entry price only, never realized gains.
+  if (isMeaningfulChange(totalPnL)) {
+    columns.push(changeColumn('Open P/L', totalPnL, totalPnLPercent, { amountsVisible, ...options }));
+  }
+  columns.push(weatherItem(weather));
+  return `<div class="hero-sentence hero-readout">${columns.join('')}</div>`;
 }
 
 export function composeSummary({
   portfolioValue,
   amountsVisible,
-  heroPnLMode, // kept for callers; the sentence always reads both overall and today
+  heroPnLMode, // kept for callers; the readout always shows both overall and today
   totalPnL,
   totalPnLPercent,
   totalDailyChange,
