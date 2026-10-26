@@ -662,6 +662,8 @@ html.pm:root .data-table .sparkline {
 }
 
 html.pm:root .sparkline polyline { stroke: currentColor !important; }
+/* A position's 24h chart opens the chart window. */
+html.pm:root #newPositionsBody td.chart-cell svg.sparkline { cursor: pointer; }
 
 /* Dim dither under the line, the same one the allocation bars use for empty track. */
 html.pm:root .pm-spark-dot { fill: var(--pm-rule); }
@@ -2324,7 +2326,9 @@ html.pm:root .pm-chart-window { width: min(76ch, calc(100vw - 3ch)); }
   html.pm:root .pm-chart-window { width: min(112ch, calc(100vw - 6ch)); top: calc(var(--pm-lh) * 3); transform: translateX(-50%); }
 }
 html.pm:root .wlc p { margin: 0; }
-html.pm:root .wlc__head { display: flex; justify-content: space-between; gap: 0 2ch; flex-wrap: wrap; }
+html.pm:root .wlc__head { display: flex; justify-content: space-between; align-items: baseline; gap: 0 2ch; flex-wrap: wrap; }
+/* The latest price is the one large figure: double size, two lines high, so the grid holds. */
+html.pm:root .wlc__price { font-size: 200%; line-height: calc(var(--pm-lh) * 2); }
 /* When the change does not fit beside the price, it goes below and stays at the right. */
 html.pm:root .wlc__change { margin-left: auto; text-align: right; }
 html.pm:root .wlc__head-period { color: var(--pm-muted); }
@@ -2420,7 +2424,10 @@ html.pm:root .wlc__layer:focus-visible { outline: 1px solid var(--pm-ink); outli
 html.pm:root .wlc__empty { padding: 0 1ch; color: var(--pm-muted); }
 /* The period, and your position, each on one line of label and value pairs. */
 /* The figures in columns: two on a phone, four when there is room. Names line up. */
-html.pm:root .wlc__rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(20ch, 1fr)); gap: 0 3ch; margin: calc(var(--pm-lh) / 2) 0 0; }
+html.pm:root .wlc__rows { display: grid; grid-template-columns: repeat(2, max-content); gap: 0 3ch; margin: calc(var(--pm-lh) / 2) 0 0; }
+@media (min-width: 871px) {
+  html.pm:root .wlc__rows { grid-template-columns: repeat(4, max-content); }
+}
 html.pm:root .wlc__rows:empty { display: none; }
 html.pm:root .wlc__rows > div { display: grid; grid-template-columns: 6ch auto; justify-content: start; }
 html.pm:root .wlc__rows dt { color: var(--pm-muted); }

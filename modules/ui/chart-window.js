@@ -304,11 +304,11 @@ function chartHeight() {
 
 // The line over the dim dither, drawn at the box's pixel size so the dither stays crisp.
 // Points are spaced evenly, so a closed market's nights and weekends take no room.
-// The title is a path, as SRCL's breadcrumbs: Watchlist ❯ BTC. Watchlist goes back; the
-// period shows in its own row.
+// The title is a path, as SRCL's breadcrumbs: Watchlist ❯ BTC. The first part, where the
+// window came from, goes back; the period shows in its own row.
 function title(item) {
   win.querySelector('.window-title').innerHTML =
-    '<button type="button" class="wlc__crumb js-wlc-back">Watchlist</button><span class="wlc__sep" aria-hidden="true">❯</span>' +
+    `<button type="button" class="wlc__crumb js-wlc-back">${esc(ctx.from)}</button><span class="wlc__sep" aria-hidden="true">❯</span>` +
     `<span>${esc(item.label || item.symbol || '')}</span>`;
 }
 
@@ -436,9 +436,12 @@ function draw() {
         .filter(o => o.box.left >= 0 && o.box.right <= edge);
       const pick = sides.find(o => !labels.some(l => hits(l.box, o.box))) || sides[0] ||
         { anchor: 'start', x: s.x + 4, box: boxOf(s.x + 4, y, text.length, 'start', !above) };
+      // Labels that move stack, one line apart.
+      let moved = 0;
       for (const l of labels) {
         if (!hits(l.box, pick.box)) continue;
-        l.y = pick.box.top - 2 >= lineH ? pick.box.top - 2 : pick.box.bottom + lineH;
+        l.y = pick.box.top - 2 - moved * lineH >= lineH ? pick.box.top - 2 - moved * lineH : pick.box.bottom + (moved + 1) * lineH;
+        moved++;
         l.box = boxOf(edge - 4, l.y, l.text.length, 'end', false);
       }
       return `<text class="wlc__hl" x="${pick.x.toFixed(1)}" y="${y.toFixed(1)}"` +
@@ -701,6 +704,7 @@ function step(by) {
 }
 
 function remove() {
+  if (!ctx.onRemove) return;
   const list = items();
   const i = list.findIndex(x => x.key === key);
   if (i < 0) return;
@@ -747,7 +751,7 @@ function build() {
     '<div class="wlc__chart" tabindex="0"></div>' +
     `<div class="wlc__layers" role="group" aria-label="Show on the chart"><span class="wlc__layers-label" aria-hidden="true">Show</span>${LAYERS.map(l =>
       `<button type="button" class="wlc__layer" data-layer="${l.id}" aria-pressed="true">${l.label}</button>`).join('')}` +
-    '<button type="button" class="wlc__layer wlc__log" aria-pressed="false">Log scale</button></div>' +
+    '<button type="button" class="wlc__layer wlc__log" aria-pressed="false">Log</button></div>' +
     '<dl class="wlc__rows"></dl>' +
     '<dl class="wlc__rows wlc__pos"></dl>' +
     '<p class="wlc__facts"></p>' +
@@ -862,9 +866,11 @@ function build() {
   });
 }
 
-export function openChartWindow({ key: openKey, tilePeriod, items: getItems, onRemove, onClose }) {
+// From the positions there is nothing to remove: the window leaves out Remove.
+export function openChartWindow({ key: openKey, from = 'Watchlist', tilePeriod, items: getItems, onRemove, onClose }) {
   if (!win) build();
-  ctx = { items: getItems, onRemove, onClose };
+  ctx = { from, items: getItems, onRemove, onClose };
+  win.querySelector('.wlc__foot').hidden = !onRemove;
   key = openKey;
   period = FROM_TILES[tilePeriod] || '1d';
   logChoice = null;

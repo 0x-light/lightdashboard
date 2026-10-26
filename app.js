@@ -974,6 +974,11 @@ function setupControls() {
     // Selecting text to copy a number shouldn't open or close the row
     if (window.getSelection()?.toString()) return;
     const row = e.target.closest('tr.position-row');
+    // The 24h chart opens the chart window; the rest of the row opens the row.
+    if (row && e.target.closest('td.chart-cell svg.sparkline')) {
+      openPositionChart(row.dataset.key);
+      return;
+    }
     if (row) toggleOpenPosition(row);
   });
 
@@ -1860,6 +1865,42 @@ function setupControls() {
       },
       onRemove: removeFromWatchlist,
       onClose: (shownKey) => { if (shownKey) focusWatchlistItem(shownKey); }
+    });
+  }
+
+  // A position's chart: the same window, from its price feed (a stock from IBKR without a
+  // feed, from Yahoo). ← → step through the positions that have a chart, in the table's order.
+  function positionChartItem(row) {
+    const pos = (window.cachedPositions || []).find(p => `${p.asset}_${p.exchange}` === row.dataset.key);
+    if (!pos || !row.querySelector('td.chart-cell svg.sparkline')) return null;
+    if (pos.isHlAccountEquity || pos.isLighterAccountEquity || pos.underlyingPrice != null) return null;
+    // Hyperliquid's builder-deployed perps carry their dex: "xyz:AAPL" is AAPL.
+    const symbol = String(pos.asset || '').replace(/^[a-z0-9]+:/i, '').trim().toUpperCase();
+    if (!symbol || CASH_OR_STABLE.test(symbol)) return null;
+    const stock = /IBKR/i.test(pos.exchange || '');
+    const feed = feedForSymbol(symbol, !stock);
+    const live = { key: row.dataset.key, price: Number(pos.price) || null, change24h: pos.change24h ?? null, currency: pos.currency || 'USD' };
+    if (feed) {
+      const id = String(feed.id).toLowerCase();
+      return { ...live, provider: 'pyth', feedId: id.startsWith('0x') ? id : `0x${id}`, symbol, name: feed.name, category: feed.category };
+    }
+    return stock ? { ...live, provider: 'yahoo', symbol, name: pos.name || null, category: 'equity' } : null;
+  }
+
+  async function openPositionChart(rowKey) {
+    const [watchlist, chartWindow] = await Promise.all([
+      import('./modules/features/watchlist.js'),
+      import('./modules/ui/chart-window.js'),
+      loadAllPythFeeds().catch(() => null)
+    ]);
+    const row = positionRows().find(r => r.dataset.key === rowKey);
+    if (!row || !positionChartItem(row)) return;
+    chartWindow.openChartWindow({
+      key: rowKey,
+      from: 'Positions',
+      tilePeriod: watchlist.getPeriod(),
+      items: () => positionRows().map(positionChartItem).filter(Boolean),
+      onClose: (shownKey) => { if (shownKey) focusPositionRow(shownKey); }
     });
   }
 
