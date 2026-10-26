@@ -1390,7 +1390,9 @@ html.pm:root .pm-stamp .provider-status:not([hidden]) {
   top: 100%;
   right: 0;
   z-index: 60;
-  width: 64ch;
+  /* As wide as the longest line, with a short leader. */
+  grid-template-columns: 1ch auto auto minmax(4ch, 1fr) auto;
+  width: max-content;
   max-width: calc(100vw - 16px);
   padding: calc(var(--pm-lh) / 2) 1ch;
   background: var(--pm-tint);

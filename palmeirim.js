@@ -42,26 +42,34 @@
   tools.appendChild(menuFoot);
   $(".pm-dd__esc", menuFoot).addEventListener("click", function () { menuBtn.focus(); });
 
-  // The update time sits at the right of the bar.
+  // The update time sits at the right of the bar. Click it to drop down the sources,
+  // as MENU drops down its list. Clicking outside or Esc closes it.
   var stamp = $("#lastUpdateTimestamp");
-  if (stamp) header.appendChild(stamp);
-
-  // Click the update time to show or hide the sources in the footer. A failed source shows anyway.
   var sources = $("#newProviderStatus");
+  var stampAnchor = el("span", { class: "pm-dd-anchor pm-stamp" });
+  if (stamp) {
+    stampAnchor.appendChild(stamp);
+    header.appendChild(stampAnchor);
+  }
+  function setSources(open) {
+    stampAnchor.classList.toggle("is-open", open);
+    if (stamp) stamp.setAttribute("aria-expanded", String(open));
+  }
   if (stamp && sources) {
+    stampAnchor.appendChild(sources);
     stamp.setAttribute("role", "button");
     stamp.setAttribute("tabindex", "0");
     stamp.setAttribute("aria-controls", "newProviderStatus");
     stamp.setAttribute("aria-expanded", "false");
-    var toggleSources = function () {
-      var open = sources.classList.toggle("is-open");
-      stamp.setAttribute("aria-expanded", String(open));
-      // The footer is at the bottom of the page: go there, or the click seems to do nothing.
-      if (open) sources.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "nearest" });
-    };
-    stamp.addEventListener("click", toggleSources);
+    stamp.addEventListener("click", function () { setSources(!stampAnchor.classList.contains("is-open")); });
     stamp.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSources(); }
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); stamp.click(); }
+    });
+    document.addEventListener("click", function (e) {
+      if (stampAnchor.classList.contains("is-open") && !stampAnchor.contains(e.target)) setSources(false);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && stampAnchor.classList.contains("is-open")) { setSources(false); stamp.focus(); }
     });
   }
 
