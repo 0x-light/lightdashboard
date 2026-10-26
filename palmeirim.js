@@ -46,6 +46,25 @@
   var stamp = $("#lastUpdateTimestamp");
   if (stamp) header.appendChild(stamp);
 
+  // Click the update time to show or hide the sources in the footer. A failed source shows anyway.
+  var sources = $("#newProviderStatus");
+  if (stamp && sources) {
+    stamp.setAttribute("role", "button");
+    stamp.setAttribute("tabindex", "0");
+    stamp.setAttribute("aria-controls", "newProviderStatus");
+    stamp.setAttribute("aria-expanded", "false");
+    var toggleSources = function () {
+      var open = sources.classList.toggle("is-open");
+      stamp.setAttribute("aria-expanded", String(open));
+      // The footer is at the bottom of the page: go there, or the click seems to do nothing.
+      if (open) sources.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "nearest" });
+    };
+    stamp.addEventListener("click", toggleSources);
+    stamp.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSources(); }
+    });
+  }
+
   function setMenu(open) {
     header.classList.toggle("pm-menu-open", open);
     menuBtn.setAttribute("aria-expanded", String(open));

@@ -1376,7 +1376,12 @@ html.pm:root .status-bar {
 html.pm:root .last-update-timestamp { color: var(--pm-muted); }
 
 /* In the top bar, the update time sits at the right. */
-html.pm:root .app-header .last-update-timestamp { margin-left: auto; line-height: var(--pm-lh); }
+html.pm:root .app-header .last-update-timestamp { margin-left: auto; line-height: var(--pm-lh); cursor: pointer; }
+html.pm:root .app-header .last-update-timestamp:hover,
+html.pm:root .app-header .last-update-timestamp[aria-expanded="true"] { color: var(--pm-ink); }
+
+/* The sources show only when the update time is clicked, or when one failed. */
+html.pm:root .provider-status:not(.is-open):not([data-state="failed"]) { display: none; }
 
 /* ── Pop-ups: the page's own vocabulary in a frame ──
    Everything sits on the line grid: one-line fields, uppercase muted labels,
