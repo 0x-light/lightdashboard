@@ -1,7 +1,7 @@
 // Service Worker for Light Dashboard
 // Provides offline support, intelligent caching, and automatic updates
-const CACHE_VERSION = 'v2.10.7';
-const BUILD_TIMESTAMP = '2026-10-25T16:00:00Z';
+const CACHE_VERSION = 'v2.11.0';
+const BUILD_TIMESTAMP = '2026-10-26T12:00:00Z';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
 
 // Force clear all caches on install - enabled to ensure users get new versions
