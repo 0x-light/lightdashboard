@@ -231,7 +231,9 @@ export class HyperliquidFetcher {
             return Number.isFinite(withdrawable) ? withdrawable : 0;
         };
 
-        const perpEquity = this.providers.hyperliquid.resolvePerpAccountValue
+        // A unified account keeps the perps' collateral and P&L in its spot USDC, so the
+        // perp account value is already counted in spot.
+        const perpEquity = data?.unified ? 0 : this.providers.hyperliquid.resolvePerpAccountValue
             ? (this.providers.hyperliquid.resolvePerpAccountValue(data?.perp) ?? 0)
             : resolvePerpEquity(data?.perp);
 

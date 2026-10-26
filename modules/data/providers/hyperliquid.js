@@ -157,6 +157,12 @@ export function combinePerpStates(states) {
   return { perp, activeDexes };
 }
 
+// address -> true when the account is unified (or portfolio margin): its spot balances then
+// hold the perps' collateral and P&L, so the perp account value is already inside spot.
+// The mode rarely changes; it's read once per page load, and kept when a later read fails.
+const unifiedByUser = new Map();
+const UNIFIED_MODES = ['unifiedAccount', 'portfolioMargin'];
+
 /**
  * Spot and the perp state of the address's dexes, all at once. Throws when spot, or a dex
  * that may hold money, doesn't answer: a lower equity would be recorded as a loss.
@@ -170,20 +176,24 @@ export async function fetchPositions(address, timeoutMs = 10000) {
   const { probeAll, dexes: planned } = planDexRead(known, now);
   const dexes = planned ?? await fetchPerpDexs(timeoutMs);
   const settle = (promise) => promise.then(value => ({ value }), error => ({ error }));
-  const [spot, ...states] = await Promise.all([
+  const [spot, mode, ...states] = await Promise.all([
     settle(post({ type: 'spotClearinghouseState', user: address }, timeoutMs)),
+    unifiedByUser.has(key) ? { value: null } : settle(post({ type: 'userAbstraction', user: address }, timeoutMs)),
     ...dexes.map(dex => settle(post(dex ? { type: 'clearinghouseState', user: address, dex } : { type: 'clearinghouseState', user: address }, timeoutMs)))
   ]);
 
+  if (typeof mode.value === 'string') unifiedByUser.set(key, UNIFIED_MODES.includes(mode.value));
   const missing = unansweredDexes(dexes, states.map(r => !r.error), known);
-  if (spot.error || missing.length) {
-    const what = [...(spot.error ? ['spot'] : []), ...missing.map(d => d || 'main')].join(', ');
+  // Without the mode, the equity would count unified collateral twice or not at all.
+  const noMode = !unifiedByUser.has(key);
+  if (spot.error || missing.length || noMode) {
+    const what = [...(spot.error ? ['spot'] : []), ...(noMode ? ['account mode'] : []), ...missing.map(d => d || 'main')].join(', ');
     throw new Error(`Hyperliquid: no answer from ${what}`);
   }
 
   const { perp, activeDexes } = combinePerpStates(dexes.map((dex, i) => ({ dex, state: states[i].value })));
   activeDexesByUser.set(key, { dexes: activeDexes, probedAt: probeAll ? now : known.probedAt });
-  return { perp, spot: spot.value, dexes: activeDexes };
+  return { perp, spot: spot.value, dexes: activeDexes, unified: unifiedByUser.get(key) };
 }
 
 export async function fetchAllMids(timeoutMs = 10000) {
@@ -275,11 +285,13 @@ export async function fetchCandles(coin, interval, startTime, endTime, timeoutMs
  * @returns {Object} Map from token name to price
  */
 export function buildSpotPriceMap(allMids, spotMeta) {
+  // USDC is the quote of every pair, so allMids has no price for it; without one, spot USDC
+  // is worth nothing and drops out of the account's equity.
   if (!allMids || !spotMeta || !spotMeta.universe) {
-    return allMids || {};
+    return { ...(allMids || {}), USDC: '1' };
   }
 
-  const priceMap = { ...allMids };
+  const priceMap = { ...allMids, USDC: '1' };
 
   // Build mapping from token name to spot index
   // spotMeta.universe is an array where each entry is { name, tokens, index, isCanonical }
