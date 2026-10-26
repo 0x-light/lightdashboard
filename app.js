@@ -1141,28 +1141,33 @@ function setupControls() {
 
 
 
+  // Shows new settings: the greeting, the watchlist and the positions, refetched.
+  const showSettings = async (newSettings) => {
+    updateGreeting();
+    if (newSettings.watchlist && newSettings.watchlist.length > 0) {
+      try {
+        await renderWatchlistPanel({
+          feedIdsOverride: newSettings.watchlist,
+          forceRefresh: false,
+          editMode: watchlistEditMode,
+          preserveCurrentData: true
+        });
+      } catch (_) {
+        // Keep the current rows if the re-render fails
+      }
+    }
+    await renderPortfolioIncremental();
+  };
+  // Demo edits show while the dialog is open.
+  setupLarpSettings({ invalidateSettingsCache, refresh: () => showSettings(getSettings()) });
   // Settings dialog (modules/ui/settings-dialog.js). Changes save as you go; closing refetches
   // positions only when wallets, keys or number formatting changed.
-  setupLarpSettings();
   setupSettingsDialog({
     getSettings,
     invalidateSettingsCache,
     onClose: async (newSettings, { dataChanged }) => {
-      updateGreeting();
-      if (!dataChanged) return;
-      if (newSettings.watchlist && newSettings.watchlist.length > 0) {
-        try {
-          await renderWatchlistPanel({
-            feedIdsOverride: newSettings.watchlist,
-            forceRefresh: false,
-            editMode: watchlistEditMode,
-            preserveCurrentData: true
-          });
-        } catch (_) {
-          // Keep the current rows if the re-render fails
-        }
-      }
-      await renderPortfolioIncremental();
+      if (dataChanged) await showSettings(newSettings);
+      else updateGreeting();
     }
   });
 
@@ -1700,6 +1705,50 @@ function setupControls() {
     const addedKeys = new Set();
     let watchlistSearchDebounce = null;
     let watchlistSearchSeq = 0;
+    // Last price per entry key, so a re-render (Yahoo results merging in) shows it at once.
+    const searchPrices = new Map();
+
+    function setSearchPrice(key, text) {
+      watchlistSearchResults?.querySelectorAll('.result-price').forEach(el => {
+        if (el.dataset.priceKey === key) el.textContent = text;
+      });
+    }
+
+    // The provider keys prices by lowercase id with the 0x prefix.
+    const pythPriceKey = id => {
+      const lower = String(id).toLowerCase();
+      return lower.startsWith('0x') ? lower : `0x${lower}`;
+    };
+
+    // Each row shows the current price, to tell apart look-alike tickers.
+    async function fillSearchPrices(rows) {
+      const providers = window.AppModules?.data?.providers;
+      const missing = rows.filter(r => !searchPrices.has(r.key));
+      missing.forEach(r => searchPrices.set(r.key, null));
+      const pyth = missing.filter(r => r.entry.provider === 'pyth' && r.entry.id);
+      const yahoo = missing.filter(r => r.entry.provider === 'yahoo' && r.entry.symbol);
+      const show = (row, price, currency) => {
+        if (!Number.isFinite(price) || price <= 0) {
+          searchPrices.delete(row.key);
+          setSearchPrice(row.key, '—');
+          return;
+        }
+        const text = formatPriceWithCurrency(price, currency);
+        searchPrices.set(row.key, text);
+        setSearchPrice(row.key, text);
+      };
+      await Promise.all([
+        pyth.length && providers?.pyth?.getLatestByFeedIds?.(pyth.map(r => r.entry.id))
+          .then(prices => pyth.forEach(r => show(r, prices?.[pythPriceKey(r.entry.id)], 'USD')))
+          .catch(() => pyth.forEach(r => show(r, null))),
+        yahoo.length && providers?.stocks?.getQuotes?.(yahoo.map(r => r.entry.symbol))
+          .then(quotes => yahoo.forEach(r => {
+            const q = quotes?.[r.entry.symbol];
+            show(r, q?.price, q?.currency || quoteCurrencyForFeed(r.feed));
+          }))
+          .catch(() => yahoo.forEach(r => show(r, null)))
+      ]);
+    }
 
     // `groups` is [{ title?, feeds }]; a search has one group without a title.
     function renderWatchlistSearchRows(groups) {
@@ -1714,6 +1763,7 @@ function setupControls() {
 
       watchlistSearchResults.innerHTML = '';
       watchlistSearchResults.style.display = 'block';
+      const priceRows = [];
       groups.filter(g => g.feeds.length > 0).forEach(group => {
         if (group.title) {
           const heading = document.createElement('p');
@@ -1740,6 +1790,7 @@ function setupControls() {
           const name = feed.name && feed.name !== feed.symbol ? ` <span class="result-meta">— ${escapeHtml(feed.name)}</span>` : '';
           resultDiv.innerHTML = `
             <span><strong>${escapeHtml(feed.label || feed.symbol)}</strong>${name}${label ? ` <span class="result-meta">${label}</span>` : ''}</span>
+            <span class="result-price" data-price-key="${escapeHtml(key)}">${escapeHtml(searchPrices.get(key) || '…')}</span>
             <button type="button" class="btn-text ${isInWatchlist || isAdded ? 'added' : ''}" data-entry-key="${key}"
               aria-label="${isInWatchlist ? 'In watchlist' : isAdded ? 'Added' : 'Add'}: ${escapeHtml(feed.label || feed.symbol)}"${isInWatchlist || isAdded ? ' disabled' : ''}>
               ${isInWatchlist ? 'In list' : isAdded ? 'Added' : 'Add'}
@@ -1763,8 +1814,10 @@ function setupControls() {
           }
 
           watchlistSearchResults.appendChild(resultDiv);
+          priceRows.push({ key, entry, feed });
         });
       });
+      fillSearchPrices(priceRows);
     }
 
     showWatchlistSuggestions = () => {
@@ -1850,23 +1903,43 @@ function setupControls() {
     });
   }
 
-  async function openWatchlistChart(key) {
+  // The chart window lists your positions and then the watchlist; it opens on one item of
+  // one of them. Pyth's feeds name the positions' charts: they join the list once loaded.
+  async function openChart(key, list) {
+    loadAllPythFeeds().catch(() => null);
     const [watchlist, chartWindow] = await Promise.all([
       import('./modules/features/watchlist.js'),
       import('./modules/ui/chart-window.js')
     ]);
     chartWindow.openChartWindow({
       key,
+      list,
       tilePeriod: watchlist.getPeriod(),
-      // The saved list decides, so a removed item drops out at once and an undo brings it back.
-      items: () => {
-        const saved = new Set((getSettings().watchlist || []).map(watchlistEntryKey));
-        return watchlist.chartItems().filter(i => saved.has(i.key));
-      },
-      onRemove: removeFromWatchlist,
-      onClose: (shownKey) => { if (shownKey) focusWatchlistItem(shownKey); }
+      lists: [
+        {
+          id: 'positions',
+          title: 'Positions',
+          items: () => positionRows().map(positionChartItem).filter(Boolean),
+          onClose: (shownKey) => { if (shownKey) focusPositionRow(shownKey); }
+        },
+        {
+          id: 'watchlist',
+          title: 'Watchlist',
+          // The saved list decides, so a removed item drops out at once and an undo brings it back.
+          items: () => {
+            const saved = new Set((getSettings().watchlist || []).map(watchlistEntryKey));
+            return watchlist.chartItems().filter(i => saved.has(i.key));
+          },
+          onRemove: removeFromWatchlist,
+          onReorder: saveWatchlistOrder,
+          onAdd: () => addToWatchlistBtn?.click(),
+          onClose: (shownKey) => { if (shownKey) focusWatchlistItem(shownKey); }
+        }
+      ]
     });
   }
+
+  const openWatchlistChart = key => openChart(key, 'watchlist');
 
   // A position's chart: the same window, from its price feed (a stock from IBKR without a
   // feed, from Yahoo). ← → step through the positions that have a chart, in the table's order.
@@ -1880,28 +1953,23 @@ function setupControls() {
     const stock = /IBKR/i.test(pos.exchange || '');
     const feed = feedForSymbol(symbol, !stock);
     const live = { key: row.dataset.key, price: Number(pos.price) || null, change24h: pos.change24h ?? null, currency: pos.currency || 'USD' };
+    // Hyperliquid's own candles where the row has them: a spot token's pair ("@248") has
+    // no other name there.
+    if (pos.chartCoin) {
+      return { ...live, provider: 'hyperliquid', coin: pos.chartCoin, symbol, name: feed?.name || pos.assetName || null, category: feed?.category || 'crypto' };
+    }
     if (feed) {
       const id = String(feed.id).toLowerCase();
       return { ...live, provider: 'pyth', feedId: id.startsWith('0x') ? id : `0x${id}`, symbol, name: feed.name, category: feed.category };
     }
-    return stock ? { ...live, provider: 'yahoo', symbol, name: pos.name || null, category: 'equity' } : null;
+    // A listing outside the US is under its exchange's ticker on Yahoo ("VWCE.DE").
+    return stock ? { ...live, provider: 'yahoo', symbol, yahooSymbol: pos.yahooSymbol, name: pos.name || null, category: 'equity' } : null;
   }
 
   async function openPositionChart(rowKey) {
-    const [watchlist, chartWindow] = await Promise.all([
-      import('./modules/features/watchlist.js'),
-      import('./modules/ui/chart-window.js'),
-      loadAllPythFeeds().catch(() => null)
-    ]);
+    await loadAllPythFeeds().catch(() => null);
     const row = positionRows().find(r => r.dataset.key === rowKey);
-    if (!row || !positionChartItem(row)) return;
-    chartWindow.openChartWindow({
-      key: rowKey,
-      from: 'Positions',
-      tilePeriod: watchlist.getPeriod(),
-      items: () => positionRows().map(positionChartItem).filter(Boolean),
-      onClose: (shownKey) => { if (shownKey) focusPositionRow(shownKey); }
-    });
+    if (row && positionChartItem(row)) openChart(rowKey, 'positions');
   }
 
   // Remove by composite key so mixed Pyth/Yahoo entries can all be deleted the same way.
@@ -2962,6 +3030,11 @@ const boot = async () => {
         }
       }
     }
+
+    // Ambient effects start after the weather has set rain or snow, which they build on
+    import('./modules/features/ambient.js')
+      .then(mod => mod.init())
+      .catch(e => console.warn('[Ambient] Failed to load:', e));
   }, 2000); // Wait 2 seconds after page load
 
   // Lazy-load comic on intersection or idle (if enabled in settings)

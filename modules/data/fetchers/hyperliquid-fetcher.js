@@ -436,6 +436,7 @@ export class HyperliquidFetcher {
                     const cached = this.historyCache.get(item.asset);
                     if (now - cached.timestamp < 15 * 60 * 1000) {
                         item.priceHistory = cached.priceHistory;
+                        item.chartCoin = cached.chartCoin;
                         if (cached.change24h !== null) item.change24h = cached.change24h;
                         return true;
                     }
@@ -495,6 +496,8 @@ export class HyperliquidFetcher {
                     // The sparkline component expects { price } objects
                     const priceHistory = candles.map(c => ({ price: c.c, timestamp: c.t }));
                     item.priceHistory = priceHistory;
+                    // The candles' coin ("@248" for a spot pair), for the chart window's longer periods.
+                    item.chartCoin = coin;
 
                     // Update 24h change if missing (e.g. for special assets like xyz:GOOGL that don't have prevDayPx)
                     let change24h = item.change24h;
@@ -511,6 +514,7 @@ export class HyperliquidFetcher {
                     this.historyCache.set(item.asset, {
                         priceHistory,
                         change24h,
+                        chartCoin: coin,
                         timestamp: Date.now()
                     });
 

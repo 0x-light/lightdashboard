@@ -1,12 +1,17 @@
-// The chart window: one watchlist item's price, bigger and finer than its tile. A tile
+// The chart window: one watchlist item's price over the whole screen, with the list at
+// its side, bigger and finer than its tile. A tile
 // opens it (click, or Enter when focused) on the watchlist's period; ← → step to the
 // previous or next item, ⌫ removes the item, 1 to 7 choose a period and L turns Log on or
 // off. Pointing at the line reads one point in a tag by the cursor; pressing and dragging
 // reads the change between two points, and the range stays until the next press or Esc.
 // Layers you turn on or off: your position (entry, liquidation, TP/SL, profit at the
 // cursor), the period's high and low, volume, and day lines with weekends.
-import { getPeriodHistoryByFeedIds } from '../data/providers/pyth.js';
+// Grid in a list's heading (or A) shows the whole list at once, each item a small chart on
+// the period; one opens on its own. In the grid you remove, drag into order and add: the
+// watchlist's grid changes the watchlist, the positions' grid only itself, until it closes.
+import { getPeriodHistoryByFeedIds, historySource } from '../data/providers/pyth.js';
 import { get24hPriceHistory } from '../data/providers/stocks.js';
+import { fetchCandles } from '../data/providers/hyperliquid.js';
 import { formatPrice, formatLevel } from '../utils/currency.js';
 
 const MIN = 60 * 1000;
@@ -44,10 +49,13 @@ const cache = new Map(); // `${period}|${key}` -> { at, points }
 const since = new Map();
 let win = null;
 let backdrop = null;
-let ctx = null; // { items(), onRemove(key), onClose(key) }
+let lists = []; // [{ id, title, items(), onRemove(key)?, onClose(key)?, onAdd()? }], in the side list's order
+let listId = null; // the list the open item is from: ← → and Remove work in it
+let listHtml = '';
 let key = null;
 let period = '1d';
 let points = null; // [{ timestamp, price }] for key and period; null while loading
+let pointsAt = 0; // when points were fetched
 let series = []; // points with their x, y on the chart
 let hover = -1;
 let measure = null; // { a, b } indexes; set while dragging and kept after
@@ -58,6 +66,19 @@ let tick = null;
 let layers = loadLayers();
 let pos = null; // your position in the current item, or null
 let scale = null; // { yOf, w, h, full, unit } of the drawn chart, for the live price tag
+// The chart takes the room the page leaves it and redraws when that changes.
+let sized = null;
+let grid = null; // the list shown as a grid of small charts, by id; null shows one item
+let gridHtml = ''; // the cells and the period, so the cells are rebuilt only when they change
+const tried = new Set(); // `${period}|${key}` the grid has asked for
+const queue = []; // the grid's points still to fetch
+let running = 0;
+// Changes in the positions' grid last until it closes: what you hid, added and moved.
+let gridHidden = new Set();
+let gridAdded = []; // [{ list, key }] from the other lists
+let gridOrder = null; // keys, once you have moved one
+let gridDragged = false; // the click that ends a drag opens nothing
+let cellHover = null; // { key, x } of the cell chart being pointed at
 
 function loadLayers() {
   const on = Object.fromEntries(LAYERS.map(l => [l.id, true]));
@@ -79,8 +100,38 @@ function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-const items = () => ctx?.items() || [];
+const active = () => lists.find(l => l.id === listId);
+const items = () => active()?.items() || [];
 const current = () => items().find(i => i.key === key) || null;
+const gridList = () => lists.find(l => l.id === grid);
+// One per asset: a position held in two places is one, summed.
+function oncePerAsset(list) {
+  const seen = new Set();
+  return list.filter(i => {
+    const id = `${String(i.symbol || i.label || '').toUpperCase()}|${i.currency || 'USD'}`;
+    return !seen.has(id) && seen.add(id);
+  });
+}
+// A list's items as its grid shows them: positions once per asset; in the open grid, without
+// those you hid, with those you added, in the order you moved them to. Each knows its list.
+function ownItems(id) {
+  const l = lists.find(x => x.id === id);
+  if (!l) return [];
+  return (id === 'positions' ? oncePerAsset(l.items()) : l.items()).map(i => ({ ...i, list: id }));
+}
+function gridItems(id = grid) {
+  const own = ownItems(id);
+  if (id !== grid) return own;
+  const added = gridAdded
+    .map(a => ({ ...lists.find(x => x.id === a.list)?.items().find(i => i.key === a.key), list: a.list }))
+    .filter(i => i.key && !own.some(o => o.key === i.key));
+  const out = [...own, ...added].filter(i => !gridHidden.has(i.key));
+  if (gridOrder) {
+    const rank = new Map(gridOrder.map((k, i) => [k, i]));
+    out.sort((a, b) => (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity));
+  }
+  return out;
+}
 // A period the item's history does not fill.
 const tooLong = (id, k = key) => (id === '1y' || id === '5y') && since.has(k) &&
   PERIODS.find(p => p.id === id).ms * 0.9 > Date.now() - since.get(k);
@@ -93,8 +144,7 @@ const spec = () => {
 // A log scale shows years of growth evenly: on by default for 5Y and All.
 const logScale = () => logChoice ?? (period === '5y' || period === 'all');
 
-function price(v) {
-  const item = current();
+function price(v, item = current()) {
   if (item?.category === 'index' || item?.category === 'fx') return formatLevel(v);
   return formatPrice(v, { currency: item?.currency || 'USD' });
 }
@@ -249,14 +299,58 @@ const side = () => (pos.amount < 0 ? 'short' : 'long');
 async function fetchPoints(item, p) {
   if (item.provider === 'yahoo') {
     const [range, interval] = p.yahoo;
-    return get24hPriceHistory(item.symbol, { range, interval, timeoutMs: 8000 });
+    return get24hPriceHistory(item.yahooSymbol || item.symbol, { range, interval, timeoutMs: 8000 });
+  }
+  if (item.provider === 'hyperliquid') {
+    const now = Date.now();
+    const candles = await fetchCandles(item.coin, p.hl, now - p.ms, now, 8000);
+    return (candles || []).map(c => ({ timestamp: c.t, price: Number(c.c), volume: Number(c.v) }));
   }
   if (!item.feedId) return [];
   const results = await getPeriodHistoryByFeedIds([item.feedId], p, MAX_POINTS);
   return results[item.feedId] || Object.values(results)[0] || [];
 }
 
+// One item's points for a period: the cache's while fresh, else fetched, cut to the
+// period and kept. A refusal gives what the cache last had.
+async function pointsFor(item, periodId) {
+  const p = PERIODS.find(x => x.id === periodId);
+  const id = `${periodId}|${item.key}`;
+  const hit = cache.get(id);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.points;
+  let list = [];
+  try { list = await fetchPoints(item, p); } catch (_) { list = []; }
+  list = (list || []).filter(x => Number.isFinite(x.price) && x.price > 0 && Number.isFinite(x.timestamp));
+  const last = list.length ? list[list.length - 1].timestamp : 0;
+  list = thin(list.filter(x => x.timestamp >= last - p.ms), MAX_POINTS);
+  if (list.length) cache.set(id, { at: Date.now(), points: list });
+  return list.length ? list : hit?.points || [];
+}
+
+// The grid's points it has none of for the period, three at a time, so the sources do not
+// refuse; each cell draws as its points come.
+function requestPoints(list) {
+  for (const item of list) {
+    const id = `${period}|${item.key}`;
+    const hit = cache.get(id);
+    if (tried.has(id) || queue.some(q => q.id === id) || (hit && Date.now() - hit.at < CACHE_TTL_MS)) continue;
+    queue.push({ id, item, period });
+  }
+  while (running < 3 && queue.length) fetchQueued(queue.shift());
+}
+
+async function fetchQueued(job) {
+  if (job.period !== period || !grid) return;
+  running++;
+  await pointsFor(job.item, job.period);
+  running--;
+  tried.add(job.id);
+  if (grid) draw();
+  requestPoints([]);
+}
+
 async function load() {
+  if (grid) { draw(); return; }
   const item = current();
   if (!item) { close(); return; }
   if (tooLong(period, item.key)) period = 'all';
@@ -267,6 +361,7 @@ async function load() {
   measure = null;
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
     points = hit.points;
+    pointsAt = hit.at;
     draw();
     return;
   }
@@ -288,20 +383,13 @@ async function load() {
   // A source that refuses for a while (Hyperliquid and Yahoo answer 429 when asked too often)
   // gives nothing, as a missing history does: nothing is kept, so the next try asks again,
   // and the line this period last had stays on screen meanwhile.
-  if (list.length) cache.set(id, { at: Date.now(), points: list });
+  const at = list.length ? Date.now() : hit?.at || 0;
+  if (list.length) cache.set(id, { at, points: list });
   else if (hit) list = hit.points;
   if (seq !== loads) return;
   points = list;
+  pointsAt = at;
   draw();
-}
-
-function chartHeight() {
-  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 14;
-  const unit = rem * 18 / 14;
-  // On a phone the chart takes about a third of the screen's height.
-  if (window.innerWidth <= 520) return Math.round(Math.max(unit * 10, Math.min(unit * 16, window.innerHeight * 0.36)));
-  if (window.innerWidth <= 870) return Math.round(unit * 12);
-  return Math.round(Math.max(unit * 12, Math.min(unit * 20, window.innerHeight * 0.45)));
 }
 
 // The line over the dim dither, drawn at the box's pixel size so the dither stays crisp.
@@ -320,35 +408,80 @@ function nameLine(item) {
 // window came from, goes back; the period shows in its own row.
 function title(item) {
   win.querySelector('.window-title').innerHTML =
-    `<button type="button" class="wlc__crumb js-wlc-back">${esc(ctx.from)}</button><span class="wlc__sep" aria-hidden="true">❯</span>` +
+    `<button type="button" class="wlc__crumb js-wlc-back">${esc(active().title)}</button><span class="wlc__sep" aria-hidden="true">❯</span>` +
     `<span>${esc(item.label || item.symbol || '')}</span>`;
+}
+
+// The side list: each list under its heading (one with no items is left out, unless you
+// can add to it), every item with its price and 24h change; the open one is lit. Grid in a
+// heading shows that list as a grid, lit while it does. It is
+// rebuilt only when it changes, so the refreshes keep focus and hover.
+function list() {
+  const nav = win.querySelector('.wlc__list');
+  const html = lists.map(l => {
+    const rows = l.items();
+    if (!rows.length && !l.onAdd) return '';
+    return `<p class="wlc__list-head"><span>${esc(l.title)}</span><span class="wlc__list-tools">` +
+      (gridItems(l.id).length >= 2 ? `<button type="button" class="btn-text panel-action js-wlc-grid" data-list="${esc(l.id)}" aria-pressed="${grid === l.id}">Grid</button>` : '') +
+      (l.onAdd ? '<button type="button" class="btn-text panel-action js-wlc-add">+ Add</button>' : '') + '</span></p>' +
+      rows.map(i => {
+        const ch = Number.isFinite(i.change24h) ? `${i.change24h < 0 ? '−' : '+'}${Math.abs(i.change24h).toFixed(2)}%` : '';
+        const level = i.category === 'index' || i.category === 'fx';
+        return `<button type="button" class="wlc__item" data-list="${esc(l.id)}" data-key="${esc(i.key)}" aria-current="${!grid && l.id === listId && i.key === key}">` +
+          `<span>${esc(i.label || i.symbol || '')}</span><span class="wlc__item-price">${!Number.isFinite(i.price) ? '—' : esc(level ? formatLevel(i.price) : formatPrice(i.price, { currency: i.currency || 'USD' }))}</span>` +
+          `<span class="wlc__item-change">${esc(ch)}</span></button>`;
+      }).join('');
+  }).join('');
+  if (html !== listHtml) nav.innerHTML = listHtml = html;
+}
+
+// Under the figures: the kind of asset, where its prices come from and when they came.
+function facts(item) {
+  const kind = item.category === 'fx' ? 'FX' : String(item.category || '').replace(/^\w/, c => c.toUpperCase());
+  const from = item.provider === 'yahoo' || item.provider === 'hyperliquid' ? item.provider : historySource(item.feedId);
+  const source = { yahoo: 'Yahoo Finance', hyperliquid: 'Hyperliquid' }[from] || '';
+  const updated = points?.length && pointsAt
+    ? `Updated ${new Date(pointsAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: window.larpTimeZone })}`
+    : '';
+  return [kind, source, updated].filter(Boolean).join(' · ');
 }
 
 function draw() {
   if (!win) return;
-  const item = current();
-  if (!item) return;
-  title(item);
+  // Narrow, with no side list, the title bar has Grid for the open item's list.
+  const all = win.querySelector('.js-wlc-all');
+  all.hidden = gridItems(grid || listId).length < 2;
+  all.setAttribute('aria-pressed', String(!!grid));
+  win.querySelector('.wlc').classList.toggle('wlc--grid', !!grid);
+  // Price in the grid: each cell's latest price large over its chart.
+  win.querySelector('.wlc').classList.toggle('wlc--big', !!layers.gridPrice);
+  win.querySelector('.js-wlc-grid-price').setAttribute('aria-pressed', String(!!layers.gridPrice));
   win.querySelectorAll('.wlc__period').forEach(b => {
     b.setAttribute('aria-checked', String(b.dataset.period === period));
     b.tabIndex = b.dataset.period === period ? 0 : -1;
-    b.hidden = tooLong(b.dataset.period);
+    b.hidden = !grid && tooLong(b.dataset.period);
   });
+  if (grid) { list(); drawGrid(); return; }
+  const item = current();
+  if (!item) return;
+  title(item);
   const log = win.querySelector('.wlc__log');
   log.setAttribute('aria-pressed', String(logScale()));
   win.querySelector('.wlc__name').innerHTML = nameLine(item);
-  win.querySelector('.wlc__facts').textContent = item.category || '';
+  win.querySelector('.wlc__facts').textContent = facts(item);
+  win.querySelector('.wlc__foot').hidden = !active().onRemove;
   pos = positionFor(item);
 
+  list();
+
   const box = win.querySelector('.wlc__chart');
-  const h = chartHeight();
   // One character and one line, for the axis labels' room.
   const cs = getComputedStyle(box);
   const measure2d = document.createElement('canvas').getContext('2d');
   measure2d.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
   const ch = measure2d.measureText('0').width || 8;
   const axisH = Math.round(parseFloat(cs.lineHeight) || ch * 2.2);
-  box.style.height = `${h + axisH}px`;
+  const h = Math.max(axisH * 4, box.clientHeight - axisH);
   series = [];
   scale = null;
   if (!points || points.length < 2) {
@@ -392,13 +525,14 @@ function draw() {
   // Prices sit inside the chart at the right edge, so the line has the full width.
   const tickValues = priceTicks(pmin, pmax, logScale(), Math.max(3, Math.round(h / (axisH * 2.5))));
   const ticks = tickValues.map((v, i) => ({ v, label: axisPrice(v, Math.abs((tickValues[i + 1] ?? tickValues[i - 1] ?? v) - v) || v) }));
+  const unit = Math.abs((tickValues[1] ?? tickValues[0] * 2) - tickValues[0]) || pmax;
   const w = full;
   // Your levels' labels and the high and low keep clear of the price labels.
   const edge = Math.round(w - (Math.max(...ticks.map(t => t.label.length)) + 2) * ch);
   const last = points.length - 1;
   series = points.map((x, i) => ({ t: x.timestamp, v: x.price, x: (i / last) * (w - 1), y: yOf(x.price) }));
   const pts = series.map(s => `${s.x.toFixed(1)},${s.y.toFixed(1)}`).join(' ');
-  scale = { yOf, w, h, full, unit: Math.abs((tickValues[1] ?? tickValues[0] * 2) - tickValues[0]) || pmax };
+  scale = { yOf, w, h, full, unit };
 
   // Your levels: a line where each sits on the scale, its label at the right; the side
   // past the liquidation price is hatched.
@@ -420,8 +554,11 @@ function draw() {
   const lineH = axisH * 0.85;
   labels.sort((a, b) => a.y - b.y).forEach((l, i, list) => {
     if (i && l.y - list[i - 1].y < lineH) l.y = list[i - 1].y + lineH;
-    l.y = Math.min(h - 4, l.y);
   });
+  // Those pushed past the bottom stack up from it.
+  for (let i = labels.length - 1; i >= 0; i--) {
+    labels[i].y = Math.min(i < labels.length - 1 ? labels[i + 1].y - lineH : h - 4, labels[i].y);
+  }
   // Each label's box, from its baseline and its length in characters.
   const boxOf = (x, y, len, anchor, hanging) => {
     const width = len * ch;
@@ -556,6 +693,165 @@ function draw() {
   win.querySelector('.wlc__pos').innerHTML = held.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('');
   layerButtons(true, vmax > 0);
   show();
+}
+
+// How many cells across: the count whose cells come nearest twice as wide as high, with the
+// rows filling the height and no cell under 30 characters wide. With too many to fit, as
+// many across as fit and the rows scroll at their least height.
+function columns(n, box) {
+  const cs = getComputedStyle(box);
+  const ch = parseFloat(cs.fontSize) * 0.6;
+  const minW = ch * 30;
+  const minH = (parseFloat(cs.lineHeight) || ch * 2) * 7;
+  let best = 0;
+  let bestScore = Infinity;
+  for (let c = 1; c <= n; c++) {
+    const w = box.clientWidth / c;
+    const h = box.clientHeight / Math.ceil(n / c);
+    if (c > 1 && w < minW) break;
+    if (h < minH) continue;
+    const score = Math.abs(Math.log(w / h / 2));
+    if (score < bestScore) { best = c; bestScore = score; }
+  }
+  return best || Math.max(1, Math.min(n, Math.floor(box.clientWidth / minW)));
+}
+
+// The grid: a cell for each item, with its ticker, price and change over the period, your
+// side and profit, and its line with your entry, to the cell's edges. The cells fill the
+// space in rows of equal height; a short last row's cells widen to fill it. They are built
+// once for a period and a layout and filled on each draw, so the refreshes keep focus and hover.
+function drawGrid() {
+  const l = gridList();
+  win.querySelector('.window-title').textContent = l.title;
+  const box = win.querySelector('.wlc__all');
+  const all = gridItems();
+  requestPoints(all);
+  // The watchlist's grid ends in a cell that adds to it; it takes a place as the others do.
+  const adds = !!l.onAdd;
+  const across = columns(all.length + (adds ? 1 : 0), box);
+  const cell = i =>
+    `<div class="wlc__cell" data-key="${esc(i.key)}" data-list="${esc(i.list)}">` +
+    '<button type="button" class="wlc__cell-open"><span class="wlc__cell-head"><span class="wlc__cell-name"></span><span class="wlc__cell-price"></span>' +
+    '<span class="wlc__cell-pos"></span><span class="wlc__cell-change"></span></span><span class="wlc__cell-chart"></span></button>' +
+    `<button type="button" class="wlc__cell-x" aria-label="${esc(`${l.onRemove && i.list === l.id ? 'Remove' : 'Hide'} ${i.label || i.symbol || ''}`)}">×</button></div>`;
+  const cells = all.map(cell);
+  if (adds) cells.push(`<div class="wlc__cell wlc__cell--add"><button type="button" class="wlc__cell-add">+ Add to ${esc(l.title.toLowerCase())}</button></div>`);
+  let html = '';
+  for (let r = 0; r < cells.length; r += across) html += `<div class="wlc__row">${cells.slice(r, r + across).join('')}</div>`;
+  win.querySelector('.js-wlc-grid-add').hidden = adds;
+  if (html + period !== gridHtml) {
+    box.innerHTML = html || '<p class="wlc__empty">Nothing to show. Add an item.</p>';
+    gridHtml = html + period;
+  }
+  const label = PERIODS.find(x => x.id === period)?.label || '';
+  box.querySelectorAll('.wlc__cell').forEach(cell => {
+    const item = all.find(i => i.key === cell.dataset.key);
+    if (!item) return;
+    const open = cell.querySelector('.wlc__cell-open');
+    const pts = cache.get(`${period}|${item.key}`)?.points || [];
+    const prices = pts.map(x => x.price);
+    const live = Number.isFinite(item.price) ? item.price : prices[prices.length - 1];
+    // As the window's head: on 1D from the quote's day-ago price, else from the first point.
+    const first = period === '1d' && Number.isFinite(item.change24h) && Number.isFinite(item.price)
+      ? item.price / (1 + item.change24h / 100) : prices[0];
+    cell.querySelector('.wlc__cell-name').textContent = item.label || item.symbol || '';
+    cell.querySelector('.wlc__cell-price').textContent = Number.isFinite(live) ? price(live, item) : '—';
+    // The period is in the period row, so the change is the figure alone.
+    const changeText = first > 0 && Number.isFinite(live) ? pctOf(live / first - 1) : '';
+    cell.querySelector('.wlc__cell-change').textContent = changeText;
+    // Under the ticker: your profit at full strength, then your side and entry, muted; a
+    // narrow cell cuts the entry, not the profit.
+    const mine = positionFor(item);
+    let side = '';
+    let pnlText = '';
+    if (mine && Number.isFinite(live)) {
+      const pnl = mine.rows.reduce((s, p) => s + (Number(p.amount) || 0) * (live - Number(p.entryPrice)), 0);
+      const abs = Math.abs(pnl) >= 1000 ? Math.round(Math.abs(pnl)) : Math.abs(pnl);
+      side = `${mine.amount < 0 ? 'short' : 'long'} from ${price(mine.entry, item)}`;
+      pnlText = `${pnl < 0 ? '−' : '+'}${price(abs, item)}`;
+    }
+    cell.querySelector('.wlc__cell-pos').innerHTML = side ? `<span class="wlc__cell-pnl">${esc(pnlText)}</span>  ${esc(side)}` : '';
+    open.setAttribute('aria-label', [item.label || item.symbol, cell.querySelector('.wlc__cell-price').textContent,
+      changeText && `${changeText} ${label}`, pnlText, side].filter(Boolean).join(', '));
+
+    const chart = cell.querySelector('.wlc__cell-chart');
+    if (pts.length < 2) {
+      chart.innerHTML = `<span class="wlc__empty">${tried.has(`${period}|${item.key}`) ? 'No prices' : '<span class="loading-terminal">Loading</span>'}</span>`;
+      return;
+    }
+    const w = Math.max(40, Math.round(chart.clientWidth));
+    const h = Math.max(20, Math.round(chart.clientHeight));
+    const f = logScale() ? Math.log : v => v;
+    let lo = Math.min(...prices);
+    let hi = Math.max(...prices);
+    // Your entry joins the scale when it sits near the line.
+    const span = hi - lo || hi * 0.01 || 1;
+    const entry = mine?.entry;
+    if (entry > lo - span * 0.5 && entry < hi + span * 0.5) { lo = Math.min(lo, entry); hi = Math.max(hi, entry); }
+    let [flo, fhi] = [f(lo), f(hi)];
+    if (fhi === flo) { flo -= 1; fhi += 1; }
+    const pad = 4;
+    const yOf = v => pad + (1 - (f(v) - flo) / (fhi - flo)) * (h - 2 * pad);
+    const last = pts.length - 1;
+    // The line stops 3 characters short of the right edge, where a dot marks the latest
+    // price, so it does not run into the next cell's.
+    const end = w - 1 - Math.round(parseFloat(getComputedStyle(chart).fontSize) * 0.6 * 3);
+    const xOf = i => (i / last) * end;
+    const line = pts.map((x, i) => `${xOf(i).toFixed(1)},${yOf(x.price).toFixed(1)}`).join(' ');
+    const nowY = yOf(pts[last].price);
+    const entryY = entry >= lo && entry <= hi ? Math.round(yOf(entry)) + 0.5 : null;
+    chart.innerHTML =
+      `<svg class="wlc__svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">` +
+      `<polygon points="0,${h} ${line} ${end},${h}" fill="url(#wlcCellDz)"/>` +
+      (entryY !== null ? `<line class="wlc__entry" x1="0" x2="${w}" y1="${entryY}" y2="${entryY}"/>` : '') +
+      `<polyline points="${line}" class="pm-value__line" fill="none"/>` +
+      `<rect class="wlc__cell-now" width="5" height="5" x="${(end - 2.5).toFixed(1)}" y="${(nowY - 2.5).toFixed(1)}"/>` +
+      `<line class="pm-value__cursor" x1="0" x2="0" y1="0" y2="${h}" visibility="hidden"/>` +
+      '<rect class="pm-value__point" width="5" height="5" x="0" y="0" visibility="hidden"/></svg>' +
+      `<span class="wlc__cell-big" aria-hidden="true">${esc(cell.querySelector('.wlc__cell-price').textContent)}</span>` +
+      '<p class="wlc__tip" aria-hidden="true" hidden></p>';
+    chart.cellSeries = { item, mine, first, points: pts.map((x, i) => ({ t: x.timestamp, v: x.price, x: xOf(i), y: yOf(x.price) })) };
+    if (cellHover?.key === item.key) cellPoint(chart, cellHover.x);
+  });
+}
+
+// Pointing at a cell's chart reads one point in a tag by the cursor, as the account value
+// chart: its price and change since the period's start, what your position makes there,
+// and when.
+function cellPoint(chart, x) {
+  const data = chart?.cellSeries;
+  const svg = chart?.querySelector('svg');
+  const tip = chart?.querySelector('.wlc__tip');
+  if (!data || !svg || !tip) return;
+  const { item, mine, first, points: pts } = data;
+  const p = pts.reduce((best, q) => (Math.abs(q.x - x) < Math.abs(best.x - x) ? q : best));
+  const cx = Math.round(p.x) + 0.5;
+  const set = (sel, attrs) => Object.entries(attrs).forEach(([k, v]) => svg.querySelector(sel).setAttribute(k, v));
+  set('.pm-value__cursor', { x1: cx, x2: cx, visibility: 'visible' });
+  set('.pm-value__point', { x: (p.x - 2.5).toFixed(1), y: (p.y - 2.5).toFixed(1), visibility: 'visible' });
+  const pnl = mine && mine.rows.reduce((s, r) => s + (Number(r.amount) || 0) * (p.v - Number(r.entryPrice)), 0);
+  const lines = [
+    `${price(p.v, item)}${first > 0 ? `  ${pctOf(p.v / first - 1)}` : ''}`,
+    mine && `your ${mine.amount < 0 ? 'short' : 'long'} ${pnl < 0 ? '−' : '+'}${price(Math.abs(pnl) >= 1000 ? Math.round(Math.abs(pnl)) : Math.abs(pnl), item)}`,
+    when(p.t)
+  ].filter(Boolean);
+  tip.innerHTML = lines.map((t, i) => `<span${i === lines.length - 1 ? ' class="wlc__tip-when"' : ''}>${esc(t)}</span>`).join('');
+  tip.hidden = false;
+  const gap = 12;
+  const w = chart.clientWidth;
+  const h = chart.clientHeight;
+  const left = p.x + gap + tip.offsetWidth <= w ? p.x + gap : Math.max(0, p.x - gap - tip.offsetWidth);
+  const top = Math.max(0, Math.min(h - tip.offsetHeight, p.y - tip.offsetHeight - gap));
+  tip.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+}
+
+function cellPointOff() {
+  if (!cellHover) return;
+  const chart = win.querySelector(`.wlc__cell[data-key="${CSS.escape(cellHover.key)}"] .wlc__cell-chart`);
+  chart?.querySelectorAll('.pm-value__cursor, .pm-value__point').forEach(n => n.setAttribute('visibility', 'hidden'));
+  const tip = chart?.querySelector('.wlc__tip');
+  if (tip) tip.hidden = true;
+  cellHover = null;
 }
 
 // The layer buttons: each says whether its layer is on; one with nothing to show is hidden.
@@ -716,12 +1012,12 @@ function step(by) {
 }
 
 function remove() {
-  if (!ctx.onRemove) return;
+  if (!active()?.onRemove) return;
   const list = items();
   const i = list.findIndex(x => x.key === key);
   if (i < 0) return;
   const next = list[i + 1] || list[i - 1];
-  ctx.onRemove(key);
+  active().onRemove(key);
   if (!next) { close(); return; }
   key = next.key;
   load();
@@ -740,14 +1036,133 @@ function toggleLog() {
   draw();
 }
 
+// A list as a grid, or (null) one item. Back from a grid, the window shows the item it
+// showed, or the list's first. Each time a grid opens, it is as its list is.
+function showGrid(id) {
+  if (id && gridItems(id).length < 2) return;
+  if (id === grid) return;
+  grid = id;
+  gridHtml = '';
+  cellHover = null;
+  gridHidden = new Set();
+  gridAdded = [];
+  gridOrder = null;
+  tried.clear();
+  queue.length = 0;
+  addMenu(false);
+  hover = -1;
+  measure = null;
+  if (!grid && !current()) {
+    listId = lists.find(l => l.items().length)?.id || listId;
+    key = items()[0]?.key;
+  }
+  load();
+  win.querySelector('.wlc').focus({ preventScroll: true });
+}
+
+// Remove or hide a cell: one from the watchlist's own grid leaves the watchlist; any other
+// goes from this grid only.
+function removeCell(k) {
+  const l = gridList();
+  const item = gridItems().find(i => i.key === k);
+  if (!item) return;
+  if (l.onRemove && item.list === l.id) l.onRemove(k);
+  else gridHidden.add(k);
+  draw();
+}
+
+// + Add: the watchlist's search for the watchlist's grid; for the positions', a menu of the
+// positions you hid and the watchlist's items.
+function addMenu(open) {
+  const menu = win.querySelector('.wlc__menu');
+  const button = win.querySelector('.js-wlc-grid-add');
+  const l = gridList();
+  if (!open || !l) { menu.hidden = true; button.setAttribute('aria-expanded', 'false'); return; }
+  if (l.onAdd) { l.onAdd(); return; }
+  const shown = new Set(gridItems().map(i => i.key));
+  const hidden = ownItems(l.id).filter(i => !shown.has(i.key));
+  const others = lists.filter(x => x.id !== l.id).flatMap(x => gridItems(x.id)).filter(i => !shown.has(i.key));
+  const rows = [...hidden, ...others];
+  menu.innerHTML = rows.length
+    ? rows.map(i => `<button type="button" class="wlc__menu-item" data-key="${esc(i.key)}" data-list="${esc(i.list)}">` +
+      `<span>${esc(i.label || i.symbol || '')}</span><span class="wlc__menu-from">${esc(lists.find(x => x.id === i.list)?.title || '')}</span></button>`).join('')
+    : '<p class="wlc__empty">Nothing more to add.</p>';
+  menu.hidden = false;
+  button.setAttribute('aria-expanded', 'true');
+  menu.querySelector('button')?.focus();
+}
+
+function addCell(listOf, k) {
+  if (listOf === grid) gridHidden.delete(k);
+  else gridAdded.push({ list: listOf, key: k });
+  gridOrder?.push(k);
+  addMenu(false);
+  draw();
+}
+
+// Drag a cell to move it: a mouse drags once it moves, a finger after holding still for a
+// moment, as the watchlist's tiles. The others make room; the watchlist's grid saves the
+// order to the watchlist.
+function dragCell(e) {
+  const cell = e.target.closest('.wlc__cell');
+  if (!cell?.dataset.key || e.target.closest('.wlc__cell-x') || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  const k = cell.dataset.key;
+  const touch = e.pointerType !== 'mouse';
+  const startX = e.clientX, startY = e.clientY;
+  let moving = false;
+  let holdTimer = null;
+  const mark = () => win.querySelector(`.wlc__cell[data-key="${CSS.escape(k)}"]`)?.classList.add('is-dragging');
+  const start = () => { moving = true; mark(); window.getSelection()?.removeAllRanges(); };
+  const blockTouch = (ev) => { if (moving) ev.preventDefault(); };
+  const onMove = (ev) => {
+    if (ev.pointerId !== e.pointerId) return;
+    const moved = Math.hypot(ev.clientX - startX, ev.clientY - startY);
+    if (!moving) {
+      if (touch) { if (moved > 8) finish(); return; }
+      if (moved < 4) return;
+      start();
+    }
+    ev.preventDefault();
+    const over = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.wlc__cell');
+    if (!over?.dataset.key || over.dataset.key === k) return;
+    const keys = gridItems().map(i => i.key);
+    const to = keys.indexOf(over.dataset.key);
+    keys.splice(keys.indexOf(k), 1);
+    keys.splice(to, 0, k);
+    gridOrder = keys;
+    drawGrid();
+    mark();
+  };
+  const finish = () => {
+    clearTimeout(holdTimer);
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    window.removeEventListener('touchmove', blockTouch);
+    window.removeEventListener('contextmenu', blockTouch);
+    if (!moving) return;
+    win.querySelector('.wlc__cell.is-dragging')?.classList.remove('is-dragging');
+    gridDragged = true;
+    setTimeout(() => { gridDragged = false; }, 0);
+    gridList()?.onReorder?.(gridOrder);
+  };
+  const onUp = (ev) => { if (ev.pointerId === e.pointerId) finish(); };
+  if (touch) holdTimer = setTimeout(start, 350);
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+  window.addEventListener('touchmove', blockTouch, { passive: false });
+  window.addEventListener('contextmenu', blockTouch);
+}
+
 function close() {
   if (!win || win.style.display === 'none') return;
   win.style.display = 'none';
   backdrop.style.display = 'none';
   document.body.classList.remove('modal-open');
   clearInterval(tick);
-  window.removeEventListener('resize', draw);
-  ctx?.onClose?.(current() ? key : null);
+  sized?.disconnect();
+  active()?.onClose?.(current() ? key : null);
 }
 
 function build() {
@@ -755,13 +1170,21 @@ function build() {
   win = el(
     '<div class="sticker-window pm-chart-window" role="dialog" aria-modal="true" aria-labelledby="pmChartTitle" style="display: none;">' +
     '<div class="sticker-window-header"><h2 id="pmChartTitle" class="window-title"></h2>' +
-    '<button type="button" class="btn-text js-wlc-close">Close</button></div>' +
+    '<div class="wlc__actions"><button type="button" class="btn-text js-wlc-all" aria-pressed="false" hidden>Grid</button>' +
+    '<button type="button" class="btn-text js-wlc-close">Close</button></div></div>' +
     '<div class="sticker-window-content wlc" tabindex="-1">' +
     '<p class="wlc__name"></p>' +
     '<p class="wlc__head" aria-live="polite"><span class="wlc__price"></span><span class="wlc__change"></span></p>' +
     `<div class="wlc__periods" role="radiogroup" aria-label="Period">${PERIODS.map(p =>
       `<button type="button" role="radio" class="wlc__period" data-period="${p.id}">${p.label}</button>`).join('')}</div>` +
     '<div class="wlc__chart" tabindex="0"></div>' +
+    '<div class="wlc__all" role="group" aria-label="Grid"></div>' +
+    '<div class="wlc__grid-tools"><button type="button" class="wlc__layer js-wlc-grid-price" aria-pressed="false">Price</button>' +
+    '<button type="button" class="wlc__layer js-wlc-grid-add" aria-expanded="false">+ Add</button>' +
+    '<div class="wlc__menu" hidden></div></div>' +
+    // The cells' dither, defined once where it is never hidden.
+    '<svg width="0" height="0" class="wlc__defs" aria-hidden="true"><defs><pattern id="wlcCellDz" width="2" height="2" patternUnits="userSpaceOnUse">' +
+    '<rect class="pm-value__dot" width="1" height="1"/><rect class="pm-value__dot" x="1" y="1" width="1" height="1"/></pattern></defs></svg>' +
     `<div class="wlc__layers" role="group" aria-label="Show on the chart"><span class="wlc__layers-label" aria-hidden="true">Show</span>${LAYERS.map(l =>
       `<button type="button" class="wlc__layer" data-layer="${l.id}" aria-pressed="true">${l.label}</button>`).join('')}` +
     '<button type="button" class="wlc__layer wlc__log" aria-pressed="false">Log</button></div>' +
@@ -769,11 +1192,46 @@ function build() {
     '<dl class="wlc__rows wlc__pos"></dl>' +
     '<p class="wlc__facts"></p>' +
     '<p class="wlc__foot"><button type="button" class="link-button js-wlc-remove">Remove from watchlist</button></p>' +
+    '<nav class="wlc__list" aria-label="Items"></nav>' +
     '</div></div>');
   document.body.append(backdrop, win);
   backdrop.addEventListener('click', close);
   win.querySelector('.js-wlc-close').addEventListener('click', close);
   win.querySelector('.js-wlc-remove').addEventListener('click', remove);
+  win.querySelector('.js-wlc-all').addEventListener('click', () => showGrid(grid ? null : listId));
+  const cells = win.querySelector('.wlc__all');
+  cells.addEventListener('pointerdown', (e) => { cellPointOff(); dragCell(e); });
+  // A mouse reads the cell chart under it; a finger opens the chart, which reads by touch.
+  cells.addEventListener('pointermove', (e) => {
+    const chart = e.target.closest('.wlc__cell-chart');
+    if (e.pointerType !== 'mouse' || e.buttons || !chart?.cellSeries) { cellPointOff(); return; }
+    const key = chart.closest('.wlc__cell').dataset.key;
+    if (cellHover && cellHover.key !== key) cellPointOff();
+    cellHover = { key, x: e.clientX - chart.getBoundingClientRect().left };
+    cellPoint(chart, cellHover.x);
+  });
+  cells.addEventListener('pointerleave', cellPointOff);
+  cells.addEventListener('click', (e) => {
+    if (e.target.closest('.wlc__cell-add')) { gridList()?.onAdd?.(); return; }
+    const cell = e.target.closest('.wlc__cell');
+    if (!cell?.dataset.key) return;
+    if (e.target.closest('.wlc__cell-x')) { removeCell(cell.dataset.key); return; }
+    if (gridDragged) return;
+    listId = cell.dataset.list;
+    key = cell.dataset.key;
+    showGrid(null);
+  });
+  win.querySelector('.wlc__grid-tools').addEventListener('click', (e) => {
+    if (e.target.closest('.js-wlc-grid-add')) { addMenu(win.querySelector('.wlc__menu').hidden); return; }
+    if (e.target.closest('.js-wlc-grid-price')) {
+      layers.gridPrice = !layers.gridPrice;
+      saveLayers();
+      draw();
+      return;
+    }
+    const b = e.target.closest('.wlc__menu-item');
+    if (b) addCell(b.dataset.list, b.dataset.key);
+  });
   win.querySelector('.wlc__periods').addEventListener('click', (e) => {
     const b = e.target.closest('.wlc__period');
     if (b) choosePeriod(b.dataset.period);
@@ -788,6 +1246,17 @@ function build() {
   });
   win.querySelector('.window-title').addEventListener('click', (e) => {
     if (e.target.closest('.js-wlc-back')) close();
+  });
+  win.querySelector('.wlc__list').addEventListener('click', (e) => {
+    if (e.target.closest('.js-wlc-add')) { lists.find(l => l.onAdd).onAdd(); return; }
+    const g = e.target.closest('.js-wlc-grid');
+    if (g) { showGrid(grid === g.dataset.list ? null : g.dataset.list); return; }
+    const b = e.target.closest('.wlc__item');
+    if (!b || (!grid && b.dataset.list === listId && b.dataset.key === key)) return;
+    listId = b.dataset.list;
+    key = b.dataset.key;
+    if (grid) showGrid(null);
+    else load();
   });
 
   // Mouse: pointing reads a point, pressing and dragging measures. Touch: a tap reads the
@@ -843,7 +1312,8 @@ function build() {
   chart.addEventListener('blur', () => { hover = -1; show(); });
 
   // Anywhere else in the window: ← → the previous or next item, ⌫ removes it, 1 to 7
-  // choose a period, L turns Log on or off, Esc clears a measured range first and then closes.
+  // choose a period, L turns Log on or off, A shows the list as a grid or one item, Esc
+  // clears a measured range, or closes the add menu or leaves the grid, first; then closes.
   win.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const nth = PERIODS[Number(e.key) - 1];
@@ -859,12 +1329,20 @@ function build() {
       toggleLog();
       return;
     }
+    if (e.key === 'a' || e.key === 'A') {
+      e.preventDefault();
+      e.stopPropagation();
+      showGrid(grid ? null : listId);
+      return;
+    }
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      if (measure) { measure = null; show(); } else close();
+      if (measure) { measure = null; show(); } else if (!win.querySelector('.wlc__menu').hidden) addMenu(false);
+      else if (grid) showGrid(null); else close();
       return;
     }
+    if (grid) return;
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault();
       e.stopPropagation();
@@ -879,21 +1357,24 @@ function build() {
   });
 }
 
-// From the positions there is nothing to remove: the window leaves out Remove.
-export function openChartWindow({ key: openKey, from = 'Watchlist', tilePeriod, items: getItems, onRemove, onClose }) {
+// Opens on one item of one list; a list without onRemove (the positions) leaves out Remove.
+export function openChartWindow({ key: openKey, list: openList, lists: allLists, tilePeriod }) {
   if (!win) build();
-  ctx = { from, items: getItems, onRemove, onClose };
-  win.querySelector('.wlc__foot').hidden = !onRemove;
+  lists = allLists;
+  listId = openList;
   key = openKey;
   period = FROM_TILES[tilePeriod] || '1d';
   logChoice = null;
+  grid = null;
   backdrop.style.display = 'block';
   win.style.display = 'flex';
   document.body.classList.add('modal-open');
-  window.addEventListener('resize', draw);
+  sized ??= new ResizeObserver(draw);
+  sized.observe(win.querySelector('.wlc__chart'));
+  sized.observe(win.querySelector('.wlc__all'));
   // The head's price and the axis tag follow the watchlist's refreshes.
   clearInterval(tick);
-  tick = setInterval(() => { if (!dragging) show(); }, 5000);
+  tick = setInterval(() => { if (!dragging) { list(); if (grid) drawGrid(); else show(); } }, 5000);
   load();
   // Focus starts on the window itself, so ← → step through the items straight away (on the
   // periods they choose a period, as in every period row).
