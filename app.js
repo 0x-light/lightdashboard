@@ -3298,56 +3298,20 @@ const boot = async () => {
       }
     });
 
-    // Tapping the strip opens it full screen, fitted to the screen. Pinch zooms around the
-    // fingers and one finger pans (Sunday strips are unreadable fitted to a phone's width);
-    // on a computer a trackpad pinch or ctrl + wheel zooms. A swipe up or down, Esc or Close
-    // goes back to the same place on the page.
+    // Tapping the strip opens it full screen: it grows from its place on the page to fit the
+    // screen. Touch works like Photos on an iPhone: pinch zooms around the fingers, a double
+    // tap zooms in on that spot and another fits the strip again, a pan glides on and stretches
+    // at the edges. At fitted size a swipe left or right goes to the next or previous strip, and
+    // a swipe up or down or a pinch in closes. On a computer: double-click, a trackpad pinch or
+    // ctrl + wheel zooms, the wheel pans, the arrow keys change strip, + - 0 zoom. Esc, Close
+    // or a click beside the strip closes it.
     const comicContainer = document.getElementById('newComic');
     let comicViewer = null;
     let comicViewerOpener = null;
     let comicPageScroll = 0;
+    let closeComicViewer = () => {};
 
-    // Zoom state: the strip's scale and its offset from its fitted place.
-    const comicZoom = { s: 1, x: 0, y: 0 };
-    const clampBetween = (v, a, b) => Math.min(Math.max(v, Math.min(a, b)), Math.max(a, b));
-    // The strip's fitted box (its box with the zoom taken off) and the most it can zoom.
-    const comicBase = () => {
-      const big = comicViewer.querySelector('.comic-viewer__img');
-      const r = big.getBoundingClientRect();
-      const w = r.width / comicZoom.s;
-      return {
-        left: r.left - comicZoom.x,
-        top: r.top - comicZoom.y,
-        w,
-        h: r.height / comicZoom.s,
-        max: Math.max(4, big.naturalWidth / w),
-      };
-    };
-    // Sets the zoom and keeps the strip on screen: larger than the screen, it can't leave a
-    // gap at an edge; at fitted size it goes back to its place.
-    const setComicZoom = (s, x, y, base = comicBase()) => {
-      const big = comicViewer.querySelector('.comic-viewer__img');
-      const box = comicViewer.querySelector('.comic-viewer__scroll').getBoundingClientRect();
-      s = clampBetween(s, 1, base.max);
-      comicZoom.s = s;
-      comicZoom.x = s === 1 ? 0 : clampBetween(x, box.left - base.left, box.right - base.w * s - base.left);
-      comicZoom.y = s === 1 ? 0 : clampBetween(y, box.top - base.top, box.bottom - base.h * s - base.top);
-      big.style.transform = s === 1 ? '' : `translate(${comicZoom.x}px, ${comicZoom.y}px) scale(${s})`;
-      comicViewer.classList.toggle('is-zoomed', s > 1);
-    };
-    // Zooms to scale s and keeps the point (cx, cy) of the strip where it is on screen.
-    const zoomComicAt = (s, cx, cy) => {
-      const base = comicBase();
-      const k = clampBetween(s, 1, base.max) / comicZoom.s;
-      setComicZoom(
-        s,
-        cx - base.left - (cx - base.left - comicZoom.x) * k,
-        cy - base.top - (cy - base.top - comicZoom.y) * k,
-        base,
-      );
-    };
-
-    const closeComicViewer = () => {
+    const hideComicViewer = () => {
       if (!comicViewer || comicViewer.hidden) return;
       comicViewer.hidden = true;
       document.body.classList.remove('modal-open');
@@ -3356,149 +3320,392 @@ const boot = async () => {
       comicViewerOpener?.focus?.({ preventScroll: true });
     };
 
-    const openComicViewer = (img) => {
-      if (!comicViewer) {
-        comicViewer = document.createElement('div');
-        comicViewer.className = 'comic-viewer';
-        comicViewer.setAttribute('role', 'dialog');
-        comicViewer.setAttribute('aria-modal', 'true');
-        comicViewer.setAttribute('aria-label', 'Comic, full screen');
-        // Close sits in a bar at the bottom, within thumb reach.
-        comicViewer.innerHTML =
-          '<div class="comic-viewer__scroll"><img class="comic-viewer__img" alt="" draggable="false"></div>' +
-          '<div class="comic-viewer__bar"><button type="button" class="btn-text comic-viewer__close">Close</button></div>';
-        document.body.appendChild(comicViewer);
-        comicViewer.querySelector('.comic-viewer__close').addEventListener('click', closeComicViewer);
-        comicViewer.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopPropagation();
-            closeComicViewer();
+    const clampBetween = (v, a, b) => Math.min(Math.max(v, Math.min(a, b)), Math.max(a, b));
+    // Rubber band: past an edge the strip moves less the further it goes, up to dim.
+    const band = (d, dim) => (1 - 1 / (d * 0.55 / dim + 1)) * dim;
+    const rubber = (v, lo, hi, dim) => (v < lo ? lo - band(lo - v, dim) : v > hi ? hi + band(v - hi, dim) : v);
+
+    let showComicViewer = null;
+    const buildComicViewer = () => {
+      comicViewer = document.createElement('div');
+      comicViewer.className = 'comic-viewer';
+      comicViewer.hidden = true;
+      comicViewer.setAttribute('role', 'dialog');
+      comicViewer.setAttribute('aria-modal', 'true');
+      comicViewer.setAttribute('aria-label', 'Comic, full screen');
+      // Close sits in a bar at the bottom, within thumb reach.
+      comicViewer.innerHTML =
+        '<div class="comic-viewer__scroll"><img class="comic-viewer__img" alt="" draggable="false">' +
+        '<span class="comic-viewer__loading loading-terminal" hidden>Loading</span></div>' +
+        '<div class="comic-viewer__bar"><button type="button" class="btn-text comic-viewer__close">Close</button></div>';
+      document.body.appendChild(comicViewer);
+      const scroller = comicViewer.querySelector('.comic-viewer__scroll');
+      const strip = comicViewer.querySelector('.comic-viewer__img');
+      const loading = comicViewer.querySelector('.comic-viewer__loading');
+
+      // The view: the strip's scale and its offset from its fitted place, and how much the
+      // backdrop and bar show (the page shows through as the strip is swiped away).
+      const view = { s: 1, x: 0, y: 0, fade: 1 };
+      const render = () => {
+        // Always a transform, so the strip keeps one layer and never flickers between two.
+        strip.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.s})`;
+        comicViewer.style.setProperty('--comic-backdrop', String(view.fade));
+        comicViewer.classList.toggle('is-zoomed', view.s > 1.01);
+      };
+      // The fitted strip's box, the screen's box and the most the strip can zoom.
+      const fitted = () => {
+        const r = scroller.getBoundingClientRect();
+        const w = strip.offsetWidth || 1;
+        return { left: r.left + strip.offsetLeft, top: r.top + strip.offsetTop, w, h: strip.offsetHeight || 1, r,
+          max: Math.max(4, strip.naturalWidth / w || 0) };
+      };
+      // The offsets that keep the strip on screen at scale s. Larger than the screen, it can't
+      // leave a gap at an edge; smaller, it stays centred where it was fitted.
+      const range = (s, f, axis) => {
+        const [start, size, lo, hi] = axis === 'x' ? [f.left, f.w, f.r.left, f.r.right] : [f.top, f.h, f.r.top, f.r.bottom];
+        const a = lo - start;
+        const b = hi - start - size * s;
+        if (b <= a) return [b, a];
+        const c = clampBetween(size * (1 - s) / 2, a, b);
+        return [c, c];
+      };
+
+      let anim = 0;
+      const stop = () => {
+        cancelAnimationFrame(anim);
+        anim = 0;
+      };
+      // Eases the view to `to`. Scale and offsets move together, so a point held in place by
+      // the target stays in place all the way.
+      const animateTo = (to, ms, done) => {
+        stop();
+        if (matchMedia('(prefers-reduced-motion: reduce)').matches) ms = 0;
+        const from = { ...view };
+        const t0 = performance.now();
+        const step = (now) => {
+          const p = ms ? Math.min((now - t0) / ms, 1) : 1;
+          const e = 1 - (1 - p) ** 3;
+          for (const k of Object.keys(to)) view[k] = from[k] + (to[k] - from[k]) * e;
+          render();
+          if (p < 1) anim = requestAnimationFrame(step);
+          else {
+            anim = 0;
+            done?.();
           }
+        };
+        if (ms) anim = requestAnimationFrame(step);
+        else step(t0);
+      };
+      // Zooms to scale s (between fitted and the most) with the point (cx, cy) held in place,
+      // glides on by (gx, gy) and keeps the strip in bounds.
+      const zoomTo = (s, cx, cy, ms = 300, gx = 0, gy = 0) => {
+        const f = fitted();
+        s = clampBetween(s, 1, f.max);
+        const k = s / view.s;
+        const [xa, xb] = range(s, f, 'x');
+        const [ya, yb] = range(s, f, 'y');
+        animateTo({
+          s,
+          x: clampBetween(cx - f.left - (cx - f.left - view.x) * k + gx, xa, xb),
+          y: clampBetween(cy - f.top - (cy - f.top - view.y) * k + gy, ya, yb),
+          fade: 1,
+        }, ms);
+      };
+      // A double tap at fitted size zooms in on the spot: to fill the screen's height or
+      // width, if that is a sensible zoom, else 2.5 times. Zoomed in, it fits the strip again.
+      const toggleZoom = (cx, cy) => {
+        if (view.s > 1.01) return animateTo({ s: 1, x: 0, y: 0, fade: 1 }, 300);
+        const f = fitted();
+        const fill = Math.max(f.r.width / f.w, f.r.height / f.h);
+        zoomTo(fill > 1.2 && fill <= 4 ? fill : 2.5, cx, cy);
+      };
+
+      // The strip's place on the page, as a view of the fitted strip: opening grows it from
+      // there and closing shrinks it back.
+      const pageView = () => {
+        const src = comicContainer?.querySelector('img');
+        const r = src?.getBoundingClientRect();
+        if (!r?.width || r.bottom < 0 || r.top > innerHeight || !strip.naturalWidth) return null;
+        const f = fitted();
+        return { s: r.width / f.w, x: r.left - f.left, y: r.top - f.top };
+      };
+
+      let busy = false; // changing strip or closing: touches wait
+      let closing = false;
+      closeComicViewer = () => {
+        if (!comicViewer || comicViewer.hidden || closing) return;
+        closing = busy = true;
+        loading.hidden = true;
+        animateTo({ ...(pageView() || view), fade: 0 }, 220, () => {
+          closing = busy = false;
+          hideComicViewer();
         });
+      };
 
-        // Two fingers zoom and pan, one finger pans. Each change of fingers starts a new
-        // gesture from where the strip is, so lifting one finger doesn't make it jump.
-        const scroller = comicViewer.querySelector('.comic-viewer__scroll');
-        const pointers = new Map();
-        let gesture = null;
-        const fingers = () => {
-          const [a, b] = [...pointers.values()];
-          if (!b) return { m: a, d: 0 };
-          return { m: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, d: Math.hypot(a.x - b.x, a.y - b.y) };
-        };
-        const startGesture = () => {
-          gesture = pointers.size ? { ...fingers(), base: comicBase(), ...comicZoom } : null;
-        };
-
-        // At fitted size one finger swipes the strip away: it follows the finger, the page
-        // shows through as it goes, and a long or fast swipe up or down closes the viewer.
-        // A short swipe springs back.
-        const strip = comicViewer.querySelector('.comic-viewer__img');
-        let swipe = null;
-        const setSwipe = (dx, dy) => {
-          strip.style.transform = dx || dy ? `translate(${dx}px, ${dy}px)` : '';
-          comicViewer.style.setProperty('--comic-backdrop', String(1 - Math.min(Math.abs(dy) / (innerHeight / 2), 1)));
-        };
-        const settleSwipe = (dx, dy, then) => {
-          const instant = matchMedia('(prefers-reduced-motion: reduce)').matches;
-          comicViewer.classList.add('is-settling');
-          setSwipe(dx, dy);
-          setTimeout(() => {
-            comicViewer.classList.remove('is-settling');
-            then?.();
-          }, instant ? 0 : 200);
-        };
-
-        scroller.addEventListener('pointerdown', (e) => {
-          if (comicViewer.classList.contains('is-settling')) return;
-          scroller.setPointerCapture(e.pointerId);
-          pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-          // A second finger turns a swipe into a pinch: put the strip back first.
-          if (swipe) {
-            swipe = null;
-            setSwipe(0, 0);
-          }
-          startGesture();
-          if (pointers.size === 1 && comicZoom.s === 1) {
-            swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, dy: 0, vy: 0, t: e.timeStamp };
-          }
+      // Prev and Next on the page change the strip; the viewer follows them.
+      const navButton = (dir) => document.getElementById(dir > 0 ? 'newComicNextBtn' : 'newComicPrevBtn');
+      const canStep = (dir) => {
+        const b = navButton(dir);
+        return !!b && !b.disabled && b.style.display !== 'none';
+      };
+      const changeStrip = async (dir) => {
+        busy = true;
+        const oldSrc = strip.src;
+        const arrived = new Promise((resolve) => {
+          let timer = 0;
+          const observer = new MutationObserver(() => {
+            const img = comicContainer.querySelector('img');
+            if (img && img.src !== oldSrc) finish(img);
+            else if (comicContainer.querySelector('.help')) finish(null);
+          });
+          const finish = (img) => {
+            observer.disconnect();
+            clearTimeout(timer);
+            resolve(img);
+          };
+          observer.observe(comicContainer, { childList: true });
+          timer = setTimeout(() => finish(null), 20000);
         });
-        scroller.addEventListener('pointermove', (e) => {
-          if (!pointers.has(e.pointerId) || !gesture) return;
-          pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-          if (swipe) {
-            const dy = e.clientY - swipe.y;
-            const dt = e.timeStamp - swipe.t;
-            if (dt > 0) swipe.vy = (dy - swipe.dy) / dt;
-            Object.assign(swipe, { dx: e.clientX - swipe.x, dy, t: e.timeStamp });
-            setSwipe(swipe.dx, swipe.dy);
-            return;
-          }
-          const { m, d } = fingers();
-          const g = gesture;
-          const s = d && g.d ? clampBetween(g.s * d / g.d, 1, g.base.max) : g.s;
-          // The point of the strip that was under the fingers stays under them.
-          const k = s / g.s;
-          setComicZoom(
+        navButton(dir).click();
+        // The strip leaves on the side the finger went.
+        const f = fitted();
+        animateTo({ s: 1, x: dir > 0 ? f.r.left - f.left - f.w : f.r.right - f.left, y: 0, fade: 1 }, 200, () => {
+          if (!closing) loading.hidden = false;
+        });
+        const img = await arrived;
+        loading.hidden = true;
+        if (closing || comicViewer.hidden) return;
+        if (!img) {
+          busy = false;
+          closeComicViewer();
+          return;
+        }
+        strip.src = img.src;
+        strip.alt = img.alt;
+        try { await strip.decode(); } catch (_) { /* show it as it is */ }
+        if (closing || comicViewer.hidden) return;
+        // The new strip comes in from the other side.
+        stop();
+        const g = fitted();
+        Object.assign(view, { s: 1, x: dir > 0 ? g.r.right - g.left : g.r.left - g.left - g.w, y: 0, fade: 1 });
+        render();
+        animateTo({ x: 0 }, 260, () => { busy = false; });
+      };
+
+      comicViewer.querySelector('.comic-viewer__close').addEventListener('click', () => closeComicViewer());
+      comicViewer.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          closeComicViewer();
+          return;
+        }
+        if (busy || e.metaKey || e.ctrlKey || e.altKey) return;
+        const cx = innerWidth / 2;
+        const cy = innerHeight / 2;
+        if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && view.s <= 1.01) {
+          const dir = e.key === 'ArrowRight' ? 1 : -1;
+          if (canStep(dir)) changeStrip(dir);
+        } else if (e.key === '+' || e.key === '=') zoomTo(view.s * 1.5, cx, cy);
+        else if (e.key === '-') zoomTo(view.s / 1.5, cx, cy);
+        else if (e.key === '0') zoomTo(1, cx, cy);
+        else return;
+        e.preventDefault();
+      });
+
+      // Touch. Each change of fingers starts a new gesture from where the strip is, so
+      // adding or lifting a finger never makes it jump. One finger at fitted size waits
+      // until it moves: up or down swipes the strip away, left or right changes strip.
+      // Zoomed in, one finger pans and two pinch.
+      const pointers = new Map();
+      let g = null;           // the gesture: fingers and view at its start, and its mode
+      let last = null;        // the zoom gesture's view before the rubber band
+      let session = null;     // from the first finger down to the last finger up
+      let samples = [];       // recent finger positions, for the speed on release
+      let lastTap = null;
+      let tapTimer = 0;
+      const fingers = () => {
+        const [a, b] = [...pointers.values()];
+        if (!b) return { m: { ...a }, d: 0 };
+        return { m: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, d: Math.hypot(a.x - b.x, a.y - b.y) };
+      };
+      const begin = (mode) => {
+        const from = mode === 'zoom' && last ? last : { s: view.s, x: view.x, y: view.y };
+        g = { ...fingers(), view: { ...view }, raw: from, f: fitted(), mode };
+        samples = [];
+      };
+      const speed = (now) => {
+        const recent = samples.filter((p) => now - p.t < 100);
+        if (recent.length < 2 || now - recent[recent.length - 1].t > 80) return { x: 0, y: 0 };
+        const a = recent[0];
+        const b = recent[recent.length - 1];
+        const dt = Math.max(b.t - a.t, 1);
+        return { x: (b.x - a.x) / dt, y: (b.y - a.y) / dt };
+      };
+
+      scroller.addEventListener('pointerdown', (e) => {
+        if (busy || (e.pointerType === 'mouse' && e.button !== 0)) return;
+        try { scroller.setPointerCapture(e.pointerId); } catch (_) { /* the pointer is already gone */ }
+        stop();
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size === 1) {
+          session = { t: e.timeStamp, x: e.clientX, y: e.clientY, moved: false, multi: false };
+          last = null;
+        } else session.multi = true;
+        begin(pointers.size > 1 || view.s > 1.01 ? 'zoom' : 'pending');
+      });
+
+      scroller.addEventListener('pointermove', (e) => {
+        if (!pointers.has(e.pointerId) || !g) return;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (Math.hypot(e.clientX - session.x, e.clientY - session.y) > 10) session.moved = true;
+        const { m, d } = fingers();
+        samples.push({ x: m.x, y: m.y, t: e.timeStamp });
+        if (samples.length > 20) samples.shift();
+        const { f, view: v, raw } = g;
+        let dx = m.x - g.m.x;
+        let dy = m.y - g.m.y;
+        if (g.mode === 'pending') {
+          if (Math.hypot(dx, dy) < 10) return;
+          g.mode = Math.abs(dy) > Math.abs(dx) ? 'dismiss' : 'page';
+          g.m = m;
+          dx = dy = 0;
+        }
+        if (g.mode === 'dismiss') {
+          view.x = v.x + dx;
+          view.y = v.y + dy;
+          view.fade = 1 - Math.min(Math.abs(view.y) / (f.r.height / 2), 1);
+        } else if (g.mode === 'page') {
+          const x = v.x + dx;
+          view.x = canStep(x < 0 ? 1 : -1) ? x : rubber(x, 0, 0, f.r.width);
+        } else {
+          // The point of the strip that was under the fingers stays under them. Past the
+          // most zoom, or below fitted, the scale stretches like the edges do.
+          const sRaw = d && g.d ? raw.s * d / g.d : raw.s;
+          const s = sRaw > f.max ? f.max * Math.exp(band(Math.log(sRaw / f.max), 0.5))
+            : sRaw < 1 ? Math.exp(-band(-Math.log(sRaw), 1.5)) : sRaw;
+          const k = s / v.s;
+          const x = m.x - f.left - (g.m.x - f.left - raw.x) * k;
+          const y = m.y - f.top - (g.m.y - f.top - raw.y) * k;
+          const [xa, xb] = range(s, f, 'x');
+          const [ya, yb] = range(s, f, 'y');
+          last = { s: sRaw, x, y };
+          Object.assign(view, {
             s,
-            m.x - g.base.left - (g.m.x - g.base.left - g.x) * k,
-            m.y - g.base.top - (g.m.y - g.base.top - g.y) * k,
-            g.base,
-          );
-        });
-        const endPointer = (e) => {
-          pointers.delete(e.pointerId);
-          if (swipe?.id === e.pointerId) {
-            const { dx, dy } = swipe;
-            // A finger held still before lifting has no speed left.
-            const vy = e.timeStamp - swipe.t > 100 ? 0 : swipe.vy;
-            swipe = null;
-            const flung = Math.abs(dy) > 20 && Math.abs(vy) > 0.5 && Math.sign(vy) === Math.sign(dy);
-            if (e.type === 'pointerup' && (Math.abs(dy) > 100 || flung)) {
-              settleSwipe(dx, Math.sign(dy) * innerHeight, closeComicViewer);
-            } else {
-              settleSwipe(0, 0);
-            }
-          }
-          startGesture();
-        };
-        scroller.addEventListener('pointerup', endPointer);
-        scroller.addEventListener('pointercancel', endPointer);
+            x: rubber(x, xa, xb, f.r.width),
+            y: rubber(y, ya, yb, f.r.height),
+            fade: s < 1 ? clampBetween((s - 0.5) / 0.5, 0, 1) : 1,
+          });
+          g.last = m;
+        }
+        render();
+      });
 
-        // Trackpad pinch (Chrome and Firefox send it as ctrl + wheel) or ctrl + wheel zooms;
-        // the wheel alone pans.
-        scroller.addEventListener('wheel', (e) => {
-          e.preventDefault();
-          if (e.ctrlKey) zoomComicAt(comicZoom.s * Math.exp(-e.deltaY / 300), e.clientX, e.clientY);
-          else setComicZoom(comicZoom.s, comicZoom.x - e.deltaX, comicZoom.y - e.deltaY);
-        }, { passive: false });
-        // Safari sends pinches as gesture events: stop its own page zoom. With no fingers down
-        // it is a Mac trackpad, so the pinch zooms the strip.
-        let gestureScale = 1;
-        comicViewer.addEventListener('gesturestart', (e) => {
-          e.preventDefault();
-          gestureScale = comicZoom.s;
-        });
-        comicViewer.addEventListener('gesturechange', (e) => {
-          e.preventDefault();
-          if (!pointers.size) zoomComicAt(gestureScale * e.scale, e.clientX, e.clientY);
-        });
-      }
-      const big = comicViewer.querySelector('.comic-viewer__img');
-      big.src = img.src;
-      big.alt = img.alt;
-      Object.assign(comicZoom, { s: 1, x: 0, y: 0 });
-      big.style.transform = '';
-      comicViewer.style.removeProperty('--comic-backdrop');
-      comicViewer.classList.remove('is-zoomed');
+      const endPointer = (e) => {
+        if (!pointers.has(e.pointerId)) return;
+        pointers.delete(e.pointerId);
+        if (pointers.size) return begin('zoom');
+        const { mode, f } = g;
+        const at = g.last || g.m;
+        g = null;
+        const cancelled = e.type === 'pointercancel';
+        const v = speed(e.timeStamp);
+        if (!cancelled && !session.moved && !session.multi && e.timeStamp - session.t < 300) {
+          const double = lastTap && e.timeStamp - lastTap.t < 300 &&
+            Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 40;
+          clearTimeout(tapTimer);
+          if (double) {
+            lastTap = null;
+            return toggleZoom(e.clientX, e.clientY);
+          }
+          lastTap = { t: e.timeStamp, x: e.clientX, y: e.clientY };
+          // A click beside the strip closes, once it is clear it isn't a double-click.
+          const r = strip.getBoundingClientRect();
+          const beside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+          if (e.pointerType === 'mouse' && beside) tapTimer = setTimeout(closeComicViewer, 300);
+        }
+        if (!cancelled && mode === 'dismiss') {
+          const flung = Math.abs(view.y) > 20 && Math.abs(v.y) > 0.5 && Math.sign(v.y) === Math.sign(view.y);
+          if (Math.abs(view.y) > 100 || flung) {
+            closing = busy = true;
+            const sign = Math.sign(view.y) || 1;
+            return animateTo({ x: view.x + v.x * 100, y: sign * f.r.height, fade: 0 }, 220, () => {
+              closing = busy = false;
+              hideComicViewer();
+            });
+          }
+        }
+        if (!cancelled && mode === 'page') {
+          const dir = view.x < 0 ? 1 : -1;
+          const flung = Math.abs(v.x) > 0.4 && Math.sign(v.x) === -dir;
+          if (canStep(dir) && (Math.abs(view.x) > f.w / 4 || flung)) return changeStrip(dir);
+        }
+        // Pinched well below fitted: close, back into the page.
+        if (!cancelled && mode === 'zoom' && session.multi && view.s < 0.8) return closeComicViewer();
+        const glide = mode === 'zoom' && Math.hypot(v.x, v.y) > 0.3;
+        zoomTo(view.s, at.x, at.y, glide ? 600 : 300, glide ? v.x * 200 : 0, glide ? v.y * 200 : 0);
+      };
+      scroller.addEventListener('pointerup', endPointer);
+      scroller.addEventListener('pointercancel', endPointer);
+
+      // Trackpad pinch (Chrome and Firefox send it as ctrl + wheel) or ctrl + wheel zooms;
+      // the wheel alone pans.
+      scroller.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (busy) return;
+        if (e.ctrlKey) zoomTo(view.s * Math.exp(-e.deltaY / 300), e.clientX, e.clientY, 0);
+        else zoomTo(view.s, 0, 0, 0, -e.deltaX, -e.deltaY);
+      }, { passive: false });
+      // Safari sends pinches as gesture events: stop its own page zoom. With no fingers down
+      // it is a Mac trackpad, so the pinch zooms the strip.
+      let gestureScale = 1;
+      comicViewer.addEventListener('gesturestart', (e) => {
+        e.preventDefault();
+        gestureScale = view.s;
+      });
+      comicViewer.addEventListener('gesturechange', (e) => {
+        e.preventDefault();
+        if (!pointers.size && !busy) zoomTo(gestureScale * e.scale, e.clientX, e.clientY, 0);
+      });
+      // A new screen size (a phone turned) fits the strip again.
+      let screenWidth = innerWidth;
+      window.addEventListener('resize', () => {
+        if (comicViewer.hidden || innerWidth === screenWidth) return;
+        screenWidth = innerWidth;
+        if (!busy) animateTo({ s: 1, x: 0, y: 0, fade: 1 }, 0);
+      });
+
+      showComicViewer = (img) => {
+        stop();
+        clearTimeout(tapTimer);
+        pointers.clear();
+        g = null;
+        busy = closing = false;
+        loading.hidden = true;
+        strip.src = img.src;
+        strip.alt = img.alt;
+        screenWidth = innerWidth;
+        Object.assign(view, { s: 1, x: 0, y: 0, fade: 1 });
+        render();
+        comicViewer.hidden = false;
+        const from = strip.complete ? pageView() : null;
+        if (from) {
+          Object.assign(view, from, { fade: 0 });
+          render();
+          animateTo({ s: 1, x: 0, y: 0, fade: 1 }, 260);
+        }
+      };
+    };
+
+    const openComicViewer = (img) => {
+      if (!comicViewer) buildComicViewer();
       comicViewerOpener = document.activeElement;
       // On phones modal-open fixes the body in place; the negative top keeps the page where
       // it was, and close scrolls back to it.
       comicPageScroll = window.scrollY;
-      comicViewer.hidden = false;
       document.body.classList.add('modal-open');
       if (getComputedStyle(document.body).position === 'fixed') document.body.style.top = `-${comicPageScroll}px`;
+      showComicViewer(img);
       comicViewer.querySelector('.comic-viewer__close').focus({ preventScroll: true });
     };
 

@@ -1256,7 +1256,7 @@ html.pm:root #newComic.fading::after {
 }
 
 /* ── Comic, full screen ──
-   Fitted to the screen on open; pinch to zoom, drag to pan (app.js sets the transform).
+   Fitted to the screen on open; app.js handles every touch and sets the transform.
    The close chip sits bottom right, styled like the windows' ESC CLOSE. */
 html.pm:root #newComic { cursor: zoom-in; }
 html.pm:root #newComic:focus-visible { outline: 1px solid var(--pm-ink); outline-offset: 2px; }
@@ -1267,6 +1267,9 @@ html.pm:root .comic-viewer {
   z-index: 10001;
   display: flex;
   flex-direction: column;
+  /* The script handles every touch, the bar's too: no page scroll, no page zoom. */
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 
 /* The backdrop and the bar fade as the strip is swiped away (app.js sets --comic-backdrop),
@@ -1282,23 +1285,12 @@ html.pm:root .comic-viewer::before {
 
 html.pm:root .comic-viewer[hidden] { display: none; }
 
-html.pm:root .comic-viewer.is-settling :is(.comic-viewer__img, .comic-viewer__bar),
-html.pm:root .comic-viewer.is-settling::before {
-  transition: transform 200ms cubic-bezier(0.2, 0, 0, 1), opacity 200ms cubic-bezier(0.2, 0, 0, 1);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html.pm:root .comic-viewer.is-settling :is(.comic-viewer__img, .comic-viewer__bar),
-  html.pm:root .comic-viewer.is-settling::before { transition: none; }
-}
-
 html.pm:root .comic-viewer__scroll {
   flex: 1;
   min-height: 0;
+  position: relative;
   display: flex;
   overflow: hidden;
-  /* The script handles every touch: no page scroll, no page zoom. */
-  touch-action: none;
   padding: calc(var(--pm-lh) + env(safe-area-inset-top, 0px)) 1ch var(--pm-lh);
 }
 
@@ -1319,6 +1311,16 @@ html.pm:root .comic-viewer__img {
   user-select: none;
   -webkit-touch-callout: none;
 }
+
+html.pm:root .comic-viewer__loading {
+  position: absolute;
+  inset: 50% 0 auto;
+  transform: translateY(-50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+html.pm:root .comic-viewer__loading[hidden] { display: none; }
 
 html.pm:root .comic-viewer.is-zoomed .comic-viewer__scroll { cursor: grab; }
 html.pm:root .comic-viewer.is-zoomed .comic-viewer__scroll:active { cursor: grabbing; }
