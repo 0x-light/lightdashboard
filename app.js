@@ -1534,7 +1534,7 @@ function setupControls() {
   // Expose watchlist renderer for lifecycle code outside setupControls().
   window.renderWatchlistPanel = renderWatchlistPanel;
 
-  // 1D / 1W / 1M / 1Y: every tile's chart and change over that period.
+  // 1D / 1W / 1M / 1Y / All: every tile's chart and change over that period.
   document.querySelector('#watchlistSection .wl-periods')?.addEventListener('click', async (e) => {
     const btn = e.target.closest('.wl-period');
     if (!btn) return;

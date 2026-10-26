@@ -32,7 +32,7 @@ const PERIODS = [
   { id: 'all', label: 'All', ms: 50 * 365 * DAY, hl: '1w', yahoo: ['max', '1wk'] }
 ];
 // The watchlist's tile periods, as this window's.
-const FROM_TILES = { day: '1d', week: '1w', month: '1m', year: '1y' };
+const FROM_TILES = { day: '1d', week: '1w', month: '1m', year: '1y', all: 'all' };
 const MAX_POINTS = 400;
 const CACHE_TTL_MS = 60 * 1000;
 // Layers on the chart, each on or off; Position and Volume show only when there is one.

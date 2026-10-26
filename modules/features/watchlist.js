@@ -21,7 +21,9 @@ export const PERIODS = {
   day: null,
   week: { ms: 7 * DAY_MS, hl: '1h', yahoo: ['5d', '1h'] },
   month: { ms: 30 * DAY_MS, hl: '4h', yahoo: ['1mo', '1h'] },
-  year: { ms: 365 * DAY_MS, hl: '1d', yahoo: ['1y', '1d'] }
+  year: { ms: 365 * DAY_MS, hl: '1d', yahoo: ['1y', '1d'] },
+  // Everything the source keeps. Hyperliquid's 5000 daily candles reach back past its launch.
+  all: { ms: 50 * 365 * DAY_MS, hl: '1d', yahoo: ['max', '1wk'] }
 };
 const PERIOD_KEY = 'pmWatchlistPeriod';
 const PERIOD_TTL_MS = 5 * 60 * 1000;
