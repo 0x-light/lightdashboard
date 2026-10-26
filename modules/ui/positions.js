@@ -139,13 +139,13 @@ function rowActionsHtml(pos, assetKey) {
   if (isManualPosition(pos)) {
     const manualType = pos.manualType || (pos.exchange ? manualTypeFromExchange(pos.exchange) : '');
     const attrs = `data-asset="${name}"${manualType ? ` data-manual-type="${manualType}"` : ''}`;
-    return action('position-manual-edit-btn', attrs, 'e', 'E', 'Edit') +
-      action('position-delete-btn', attrs, 'delete', '⌫', 'Delete');
+    return action('position-manual-edit-btn', attrs, 'e', 'E', 'Edit position') +
+      action('position-delete-btn', attrs, 'delete', '⌫', 'Delete position');
   }
   const keyAttr = `data-asset-key="${escapeAttr(assetKey)}"`;
   return pos.isManuallyHidden
-    ? action('position-restore-btn', keyAttr, 'h', 'H', 'Show')
-    : action('position-edit-btn', keyAttr, 'h', 'H', 'Hide');
+    ? action('position-restore-btn', keyAttr, 'h', 'H', 'Show position')
+    : action('position-edit-btn', keyAttr, 'h', 'H', 'Hide position');
 }
 
 // ── Price ladders (open rows) ──
