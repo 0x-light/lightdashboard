@@ -256,7 +256,6 @@ export function applyAppearance(settings) {
   const body = document.body;
   body.classList.toggle('hide-snow-btn', settings.hideSnowBtn ?? true);
   body.classList.toggle('hide-rain-btn', settings.hideRainBtn ?? true);
-  body.classList.toggle('hide-donate-btn', settings.hideDonateBtn ?? true);
   body.classList.toggle('hide-stickers-btn', settings.hideStickersBtn ?? true);
   body.classList.toggle('hide-watchlist', settings.hideWatchlist ?? false);
   body.classList.toggle('hide-comic', settings.hideComic ?? false);

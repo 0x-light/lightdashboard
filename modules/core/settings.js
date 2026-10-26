@@ -17,7 +17,7 @@ function simpleDecrypt(encoded) {
 
 // Keys that get reset to new defaults during v1→v2 migration
 const V2_RESET_KEYS = [
-  'fontSize', 'hideSnowBtn', 'hideRainBtn', 'hideStickersBtn', 'hideDonateBtn'
+  'fontSize', 'hideSnowBtn', 'hideRainBtn', 'hideStickersBtn'
 ];
 
 // Settings that no longer do anything; dropped on load so they stop riding along in exports
@@ -25,7 +25,7 @@ const REMOVED_KEYS = [
   'refreshMinutes', 'usePythPrices', 'enableRealTimeUpdates', 'realTimeUpdateInterval',
   'showCompactBtn', 'showSettingsBtn', 'compactList', 'buttonBackgrounds', 'hideThemeBtn',
   'hideAmountsBtn', 'hideFontSize', 'onchainProvider', 'comicCollapsed', 'watchlistCollapsed',
-  'enableKeyboardShortcuts', 'openSeaApiKey'
+  'enableKeyboardShortcuts', 'openSeaApiKey', 'hideDonateBtn'
 ];
 
 export function loadSettings() {
@@ -126,7 +126,6 @@ export function getDefaultSettings() {
     hideSnowBtn: true,
     hideRainBtn: true,
     hideStickersBtn: true,
-    hideDonateBtn: true,
     hiddenAssets: [], // Array of hidden asset keys: "ASSET_EXCHANGE"
     rainEnabled: false,
     snowEnabled: false,
