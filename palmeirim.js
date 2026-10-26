@@ -373,9 +373,11 @@
 
   var themeSelect = $("#newThemeSelect");
   var themeSelectMobile = $("#newThemeSelectMobile");
-  var themeChip = el("button", { type: "button", id: "pmThemeChip", class: "chip", "aria-haspopup": "dialog", "aria-expanded": "false", "aria-controls": "pmThemeDd", "aria-keyshortcuts": "T" },
-    '<kbd aria-hidden="true">T</kbd><span class="chip__label">Theme</span>');
-  bar.insertBefore(themeChip, menuAnchor);
+  // An item in MENU, with the current theme on its right. The list hangs from MENU,
+  // since the item itself hides as the menu closes.
+  var themeItem = el("button", { type: "button", id: "pmThemeBtn", class: "btn-text", "aria-haspopup": "dialog", "aria-controls": "pmThemeDd", "aria-keyshortcuts": "T" },
+    'Theme <span class="pm-theme-current js-pm-theme-label"></span>');
+  tools.appendChild(themeItem);
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; });
@@ -386,7 +388,6 @@
     // Settings writes it as its own list does: Dark, Game Boy
     var label = opt ? opt.textContent.trim() : "";
     $$(".js-pm-theme-label").forEach(function (n) { if (n.textContent !== label) n.textContent = label; });
-    themeChip.setAttribute("aria-label", "Theme: " + label.toLowerCase() + ". Choose a theme");
   }
 
   function previewTheme(value) {
@@ -535,7 +536,8 @@
     closeThemeDd(true);
   }
 
-  themeChip.addEventListener("click", function () { openThemeDd(themeChip); });
+  // After the menu has closed (its own click handler waits a tick too)
+  themeItem.addEventListener("click", function () { setTimeout(function () { openThemeDd(menuBtn); }, 0); });
   var settingsTheme = $("#settingsThemeBtn");
   if (settingsTheme) {
     settingsTheme.setAttribute("aria-controls", "pmThemeDd");
@@ -661,7 +663,7 @@
   function openMaker(id) {
     makerEditing = customThemes.find(function (t) { return t.id === id; }) || null;
     makerBefore = themeSelect.value;
-    makerOpener = themeOpener || themeChip;
+    makerOpener = themeOpener || menuBtn;
     makerOverModal = document.body.classList.contains("modal-open");
     $("#pmMakerTitle").textContent = makerEditing ? "Edit theme" : "New theme";
     $(".js-pm-maker-delete", maker).hidden = !makerEditing;
@@ -966,7 +968,7 @@
       if (header.classList.contains("pm-menu-open")) { setMenu(false); menuBtn.focus(); } else openMenuAt(0);
       return;
     }
-    if (e.key === "t" || e.key === "T") { e.preventDefault(); openThemeDd(themeChip); return; }
+    if (e.key === "t" || e.key === "T") { e.preventDefault(); setMenu(false); openThemeDd(menuBtn); return; }
     if (e.key === "h" || e.key === "H") {
       var btn = $("#newToggleAmountsBtn");
       if (btn) { e.preventDefault(); btn.click(); }
