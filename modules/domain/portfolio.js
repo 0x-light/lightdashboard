@@ -198,8 +198,8 @@ export function calculatePortfolioTotals(positions) {
 
   let totalValue = 0;
   let totalPnL = 0;
-  // Cost basis only counts positions with a known P&L. Holdings without an entry price (cash,
-  // custom assets, untracked tokens) would otherwise inflate the basis and shrink the P&L %.
+  // Cost basis only counts positions with a known P&L. Holdings without one (cash, stablecoins,
+  // custom assets, untracked or unpriced tokens) would otherwise inflate the basis and shrink the P&L %.
   let costBasis = 0;
   const hasHlEquity = positions.some(p => p?.isHlAccountEquity);
   const hasLighterEquity = positions.some(p => p?.isLighterAccountEquity);
@@ -218,15 +218,18 @@ export function calculatePortfolioTotals(positions) {
 
     const value = Number(p.value);
     // An IBKR statement is the whole account: a cash debit (margin loan) or a short holding is
-    // owed, so it counts against the total, as in IBKR's own net asset value.
-    const hasValue = Number.isFinite(value) && (value > 0 || p.exchange === 'IBKR');
+    // owed, so it counts against the total, as in IBKR's own net asset value. Negative rows are
+    // never merged, so the exchange label is reliable.
+    const isIbkr = p.exchange === 'IBKR';
+    const hasValue = Number.isFinite(value) && (value > 0 || isIbkr);
     // Covered positions are already inside the venue's equity, so they add no value of their own.
     if (hasValue && !isCoveredByVenueEquity(p, hasHlEquity, hasLighterEquity)) {
       totalValue += value;
     }
 
+    // A spot row with no value has no price, so a P&L on it is not real.
     const pnl = p.pnl == null ? NaN : Number(p.pnl);
-    if (Number.isFinite(pnl)) {
+    if (Number.isFinite(pnl) && (hasValue || p.isLeveraged)) {
       totalPnL += pnl;
       costBasis += positionCostBasis(p, pnl);
     }
@@ -237,18 +240,20 @@ export function calculatePortfolioTotals(positions) {
   return { totalValue, totalPnL, totalPnLPercent, costBasis };
 }
 
-// What the position cost to open, in base currency. Perps: entry notional (value is current
-// notional, so a long's entry is value − pnl and a short's is value + pnl). Spot: value − pnl.
+// What the position cost to open, in base currency. Perps: entry notional. Otherwise from the
+// size now: a long's entry is |value| − pnl and a short's (an IBKR short) is |value| + pnl.
 function positionCostBasis(p, pnl) {
-  const value = Math.abs(finiteOrZero(Number(p.value)));
+  // A merged row whose parts don't all have a P&L sets pnlValue to the value of those that do.
+  const value = Math.abs(finiteOrZero(Number(p.pnlValue ?? p.value)));
   if (p.isLeveraged) {
     const fx = Number(p.fxRate) > 0 ? Number(p.fxRate) : 1;
     const entryNotional = Math.abs(Number(p.amount) * Number(p.entryPrice) * fx);
     if (Number.isFinite(entryNotional) && entryNotional > 0) return entryNotional;
-    const direction = Number(p.amount) < 0 ? -1 : 1;
-    return Math.max(value - direction * pnl, 0);
+  } else if (!(value > 0)) {
+    return 0;
   }
-  return value > 0 ? Math.max(value - pnl, 0) : 0;
+  const direction = Number(p.amount) < 0 ? -1 : 1;
+  return Math.max(value - direction * pnl, 0);
 }
 
 // Allocation is by what a position is exposed to: an option counts under its underlying.

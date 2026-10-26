@@ -1,4 +1,5 @@
 import { getChainDisplayName } from '../../utils/chain-mapping.js';
+import { unambiguousFeedSymbol } from '../providers/pyth.js';
 
 export class CieloFetcher {
     constructor(providers, renderer, settings) {
@@ -9,16 +10,19 @@ export class CieloFetcher {
     }
 
     async fetch(wallets) {
+        // Late chart enrichment from an older round must not replace a newer round's rows.
+        const generation = this.generation = (this.generation || 0) + 1;
         try {
             await Promise.all(wallets.map(async (wallet) => {
+                const source = `Cielo_${wallet}`;
                 const walletRows = [];
                 try {
-                    // Fetch portfolio and PNL in parallel
+                    // P&L only decorates rows: without it, P&L stays unknown.
                     const [portfolioData, pnlData] = await Promise.all([
                         this.providers.cielo.getWalletPortfolio(wallet, this.settings.cieloApiKey, { timeoutMs: 10000 }),
                         this.providers.cielo.getTokenPnl(wallet, this.settings.cieloApiKey, { timeoutMs: 10000, activePositionsOnly: true })
+                            .catch(() => null)
                     ]);
-
 
                     // Build PNL lookup map by token address
                     const pnlByToken = new Map();
@@ -35,64 +39,40 @@ export class CieloFetcher {
                         }
                     }
 
-                    // Process portfolio data - check multiple possible response structures
-                    const portfolio = portfolioData?.data?.portfolio || portfolioData?.portfolio || portfolioData?.data || [];
+                    // An answer without a token list is not "this wallet holds nothing".
+                    const portfolio = portfolioData?.data?.portfolio ?? portfolioData?.portfolio ?? portfolioData?.data;
+                    if (!Array.isArray(portfolio)) throw new Error('Cielo: no token list in the answer');
 
-                    if (Array.isArray(portfolio) && portfolio.length > 0) {
-                        for (const item of portfolio) {
-                            // Skip zero-value positions
-                            const value = item.total_usd_value || item.usd_value || item.value || 0;
-                            if (value <= 0) continue;
+                    for (const item of portfolio) {
+                        // Skip zero-value positions
+                        const value = item.total_usd_value || item.usd_value || item.value || 0;
+                        if (value <= 0) continue;
 
-                            const chain = getChainDisplayName(item.chain || item.network || 'unknown');
-                            const tokenAddr = (item.token_address || item.address)?.toLowerCase();
-                            const pnlInfo = tokenAddr ? pnlByToken.get(tokenAddr) : null;
+                        const chain = getChainDisplayName(item.chain || item.network || 'unknown');
+                        const tokenAddr = (item.token_address || item.address)?.toLowerCase();
+                        const pnlInfo = tokenAddr ? pnlByToken.get(tokenAddr) : null;
 
-                            const row = {
-                                asset: item.token_symbol || item.symbol || 'Unknown',
-                                exchange: chain,
-                                amount: item.balance || item.amount || 0,
-                                price: item.token_price_usd || item.price_usd || item.price || 0,
-                                value: value,
-                                change24h: null, // Cielo doesn't provide 24h change in portfolio
-                                pnl: pnlInfo?.totalPnl ?? null,
-                                _changeDetectionKey: `${item.token_symbol || item.symbol || 'Unknown'}_${chain}_${wallet}`
-                            };
-
-                            walletRows.push(row);
-                        }
-                    } else if (portfolioData?.status === 'ok' && portfolioData?.data?.portfolio) {
-                        // Original format handling
-                        for (const item of portfolioData.data.portfolio) {
-                            if (!item.total_usd_value || item.total_usd_value <= 0) continue;
-
-                            const chain = getChainDisplayName(item.chain || 'unknown');
-                            const tokenAddr = item.token_address?.toLowerCase();
-                            const pnlInfo = tokenAddr ? pnlByToken.get(tokenAddr) : null;
-
-                            const row = {
-                                asset: item.token_symbol || 'Unknown',
-                                exchange: chain,
-                                amount: item.balance || 0,
-                                price: item.token_price_usd || 0,
-                                value: item.total_usd_value || 0,
-                                change24h: null,
-                                pnl: pnlInfo?.totalPnl ?? null,
-                                _changeDetectionKey: `${item.token_symbol || 'Unknown'}_${chain}_${wallet}`
-                            };
-
-                            walletRows.push(row);
-                        }
+                        walletRows.push({
+                            asset: item.token_symbol || item.symbol || 'Unknown',
+                            exchange: chain,
+                            amount: item.balance || item.amount || 0,
+                            price: item.token_price_usd || item.price_usd || item.price || 0,
+                            value: value,
+                            change24h: null, // Cielo doesn't provide 24h change in portfolio
+                            pnl: pnlInfo?.totalPnl ?? null,
+                            _changeDetectionKey: `${item.token_symbol || item.symbol || 'Unknown'}_${chain}_${wallet}`
+                        });
                     }
-
                 } catch (err) {
-                    console.warn(`[Cielo] Failed for wallet ${wallet}:`, err);
+                    // Marked failed, so the wallet's last rows stay.
+                    this.renderer.markProviderFailed(source, err);
+                    return;
                 }
 
-                this.renderer.appendPositions(walletRows, `Cielo_${wallet}`);
+                this.renderer.appendPositions(walletRows, source);
 
                 // Enrich with Pyth History for Charts
-                this.enrichWithPythHistory(walletRows, wallet);
+                this.enrichWithPythHistory(walletRows, wallet, generation);
             }));
 
             // Mark the main 'Cielo' provider as completed
@@ -102,7 +82,7 @@ export class CieloFetcher {
         }
     }
 
-    async enrichWithPythHistory(rows, wallet) {
+    async enrichWithPythHistory(rows, wallet, generation = this.generation) {
         if (!rows || rows.length === 0) return;
         if (this.settings.showPriceChart === false) return;
 
@@ -126,31 +106,30 @@ export class CieloFetcher {
                         continue;
                     }
 
+                    // A chart by ticker only when the ticker can't mean another coin.
+                    const symbol = unambiguousFeedSymbol(row.asset);
+                    if (!symbol) continue;
+
                     // Check cache first
-                    if (this.historyCache.has(row.asset)) {
-                        const cached = this.historyCache.get(row.asset);
+                    if (this.historyCache.has(symbol)) {
+                        const cached = this.historyCache.get(symbol);
                         if (Date.now() - cached.timestamp < 15 * 60 * 1000) {
                             row.priceHistory = cached.priceHistory;
-                            if (cached.change24h !== null) row.change24h = cached.change24h;
+                            if (row.change24h == null && cached.change24h != null) row.change24h = cached.change24h;
                             continue;
                         }
                     }
 
-                    let feedId = symbolToId[row.asset.toUpperCase()];
-
                     // Fallback for known assets if missing from dynamic map
-                    if (!feedId) {
-                        const FALLBACK_IDS = {
-                            'ETH': 'ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
-                            'WETH': 'ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
-                            'SOL': 'ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d',
-                            'USDC': 'eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a'
-                        };
-                        feedId = FALLBACK_IDS[row.asset.toUpperCase()];
-                    }
+                    const FALLBACK_IDS = {
+                        'ETH': 'ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
+                        'SOL': 'ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d',
+                        'USDC': 'eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a'
+                    };
+                    const feedId = symbolToId[symbol] || FALLBACK_IDS[symbol];
 
                     if (feedId) {
-                        itemsToFetch.push({ row, feedId });
+                        itemsToFetch.push({ row, feedId, symbol });
                     }
                 }
             }
@@ -176,14 +155,14 @@ export class CieloFetcher {
                     }
                 }
 
-                if (hasFastData) {
+                if (hasFastData && generation === this.generation) {
                     this.renderer.appendPositions(rows, `Cielo_${wallet}`);
                 }
 
                 // Pass 2: High resolution (96 points / 15m) for FINAL quality
                 const fullResults = await this.providers.pyth.getBatch24hPriceHistory(feedIds, 96, now);
 
-                for (const { row, feedId } of itemsToFetch) {
+                for (const { row, feedId, symbol } of itemsToFetch) {
                     const normalizedId = feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`;
                     const history = fullResults[normalizedId];
 
@@ -201,7 +180,7 @@ export class CieloFetcher {
                         }
 
                         // Update cache
-                        this.historyCache.set(row.asset, {
+                        this.historyCache.set(symbol, {
                             priceHistory: history,
                             change24h,
                             timestamp: Date.now()
@@ -212,8 +191,8 @@ export class CieloFetcher {
                 console.warn(`[Cielo] Error fetching batch history:`, e);
             }
 
-            // 4. Update UI
-            this.renderer.appendPositions(rows, `Cielo_${wallet}`);
+            // 4. Update UI, unless a newer round has reported since
+            if (generation === this.generation) this.renderer.appendPositions(rows, `Cielo_${wallet}`);
 
         } catch (e) {
             console.warn(`[Cielo] Failed to enrich history for ${wallet}:`, e);

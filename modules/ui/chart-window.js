@@ -215,15 +215,16 @@ function timeTicks() {
 }
 
 // Your position in this item, from the positions on screen in the item's own currency:
-// the rows with an entry price, their net amount, the average entry weighted by amount,
-// and a perp's liquidation price and TP/SL orders. Null when you hold none with an entry.
+// the rows with a real entry price, their net amount, the average entry weighted by amount,
+// the gross cost, and a perp's liquidation price and TP/SL orders. Null when you hold none
+// with an entry. Wallet rows are left out: their entry is the tracker's estimate.
 function positionFor(item) {
   const symbol = String(item?.symbol || '').toUpperCase();
   const currency = String(item?.currency || 'USD').toUpperCase();
   // Hyperliquid's builder-deployed perps carry their dex: "xyz:AAPL" is AAPL.
   const rows = (window.venuePositions || window.cachedPositions || []).filter(p =>
     String(p.asset || '').replace(/^[a-z0-9]+:/i, '').toUpperCase() === symbol &&
-    Number(p.entryPrice) > 0 &&
+    Number(p.entryPrice) > 0 && !p.entryIsEstimate &&
     !p.isHlAccountEquity && !p.isLighterAccountEquity &&
     String(p.currency || p.sourceCurrency || 'USD').toUpperCase() === currency);
   if (!rows.length) return null;
@@ -232,16 +233,28 @@ function positionFor(item) {
     ? rows.reduce((s, p) => s + Number(p.entryPrice) * Math.abs(Number(p.amount) || 0), 0) / weight
     : rows.reduce((s, p) => s + Number(p.entryPrice), 0) / rows.length;
   const amount = rows.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  // Gross, so a hedge near net zero does not divide by almost nothing.
+  const cost = rows.reduce((s, p) => s + Math.abs(Number(p.amount) || 0) * Number(p.entryPrice), 0);
   const liq = rows.map(p => Number(p.liquidationPx)).find(v => v > 0) || null;
   // Orders are there once the positions table has fetched them.
   const orders = rows.flatMap(p => window.hlOrders?.[p.asset] || [])
     .filter(o => (o.kind === 'tp' || o.kind === 'sl') && Number(o.px) > 0);
-  return { rows, amount, entry, liq, orders };
+  return { rows, amount, entry, cost, liq, orders };
 }
 
 // What your position gains or loses between its entry and a price.
 function pnlAt(v) {
   return pos.rows.reduce((s, p) => s + (Number(p.amount) || 0) * (v - Number(p.entryPrice)), 0);
+}
+
+// P&L now: each row's own, as its venue reports it (in the item's currency), else from its entry.
+function pnlNow(v) {
+  return pos.rows.reduce((s, p) => {
+    const own = p.sourcePnl ?? p.pnl;
+    return s + (own != null && Number.isFinite(Number(own))
+      ? Number(own)
+      : (Number(p.amount) || 0) * (v - Number(p.entryPrice)));
+  }, 0);
 }
 
 const side = () => (pos.amount < 0 ? 'short' : 'long');
@@ -551,7 +564,7 @@ function draw() {
     [side() === 'short' ? 'Short' : 'Long', Math.abs(pos.amount).toLocaleString('en-US', { maximumFractionDigits: 4 })],
     ['Entry', price(pos.entry)],
     pos.liq && ['Liq', price(pos.liq)],
-    ['P&L', `${signed(pnlAt(now))} ${pctOf(pnlAt(now) / (Math.abs(pos.amount) * pos.entry || 1))}`]
+    ['P&L', `${signed(pnlNow(now))} ${pctOf(pnlNow(now) / (pos.cost || 1))}`]
   ].filter(Boolean) : [];
   win.querySelector('.wlc__pos').innerHTML = held.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('');
   layerButtons(true, vmax > 0);

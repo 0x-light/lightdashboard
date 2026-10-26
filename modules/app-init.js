@@ -22,7 +22,6 @@ import * as Themes from './core/themes.js';
 import * as Rain from './features/rain.js';
 import * as Weather from './features/weather.js';
 import * as EntryPriceTracker from './utils/entry-price-tracker.js';
-import * as CoinGeckoBatcher from './utils/coingecko-batcher.js';
 import * as AssetMapping from './utils/asset-mapping.js';
 
 if (!window.AppModules) {
@@ -51,7 +50,6 @@ window.AppModules.ui.hero = HeroUI;
 window.AppModules.ui.positions = PositionsUI;
 window.AppModules.utils = window.AppModules.utils || {};
 window.AppModules.utils.entryPriceTracker = EntryPriceTracker;
-window.AppModules.utils.coinGeckoBatcher = CoinGeckoBatcher;
 window.AppModules.utils.assetMapping = AssetMapping;
 
 // README documents walletPnLUtils on window as the entry-price console helper. Expose it here

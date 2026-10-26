@@ -157,10 +157,28 @@ function markPrePostSparkBroken() {
   }
 }
 
+// Where the market stands, from the regular session's bounds that spark carries (`start`
+// and `end`, in seconds) and the time of the quote's last print: 'REGULAR' during the
+// session; 'PRE' or 'POST' when the quote is an extended-hours print of today's session;
+// 'CLOSED' otherwise (weekends, holidays, overnight). Null when the bounds are missing.
+export function marketStateOf(payload, quoteTime, now = Date.now()) {
+  const start = Number(payload?.start) * 1000;
+  const end = Number(payload?.end) * 1000;
+  if (!(start > 0 && end > start)) return null;
+  if (now >= start && now < end) return 'REGULAR';
+  const HOUR = 60 * 60 * 1000;
+  if (now >= end && quoteTime >= end && now - end < 4 * HOUR) return 'POST';
+  if (now < start && quoteTime < start && start - quoteTime < 6 * HOUR) return 'PRE';
+  return 'CLOSED';
+}
+
 /**
  * Batch quote lookup via Yahoo's `/v8/finance/spark` endpoint. Returns a map keyed by symbol
  * with current price, 24h change %, previous close, and sparkline data points. Missing or
- * invalid symbols are absent from the map.
+ * invalid symbols are absent from the map. Each quote also carries quoteTime (ms, its last
+ * print), marketState (see marketStateOf) and extendedHours: false when the request had to
+ * leave out pre- and post-market prints. During PRE or POST, change24h is the
+ * extended-hours price against the last regular close.
  *
  * We use `spark` instead of `/v7/finance/quote` because the latter was locked behind a crumb
  * cookie in ~2023 and silently returns empty for unauthenticated callers; spark has stayed
@@ -182,17 +200,19 @@ export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
     const base = `${SPARK_BASE}?symbols=${encodeURIComponent(chunk.join(','))}&range=1d&interval=5m`;
     if (!isPrePostSparkBroken()) {
       try {
-        // Spark responds as { "<SYMBOL>": { close, timestamp, previousClose, ... } }
-        return await HttpClient.getJson(`${base}&includePrePost=true`, { timeoutMs, ttlMs: 0, retries: 0, bypassCache: true });
+        // Spark responds as { "<SYMBOL>": { close, timestamp, previousClose, start, end, ... } }
+        const data = await HttpClient.getJson(`${base}&includePrePost=true`, { timeoutMs, ttlMs: 0, retries: 0, bypassCache: true });
+        return { data, extendedHours: true };
       } catch (e) {
         // Yahoo 400s/500s extended-hours spark requests (ClassCastException on "end") for long
         // stretches. Remember that, so later quotes skip the doomed attempt and its round trip.
         markPrePostSparkBroken();
       }
     }
-    // Regular-session candles are still better than no quote at all.
+    // Regular-session candles are still better than no quote at all; the quotes say so.
     try {
-      return await HttpClient.getJson(`${base}&includePrePost=false`, { timeoutMs, ttlMs: 0, retries: 1, bypassCache: true });
+      const data = await HttpClient.getJson(`${base}&includePrePost=false`, { timeoutMs, ttlMs: 0, retries: 1, bypassCache: true });
+      return { data, extendedHours: false };
     } catch (fallbackError) {
       console.warn('[Stocks] Spark chunk failed:', fallbackError?.message || fallbackError);
       return {};
@@ -200,7 +220,7 @@ export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
   }));
   await currenciesReady;
 
-  for (const data of results) {
+  for (const { data, extendedHours } of results) {
     if (!data || typeof data !== 'object') continue;
     for (const [sym, payload] of Object.entries(data)) {
       if (!payload || typeof payload !== 'object') continue;
@@ -224,6 +244,7 @@ export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
       const change24h = Number.isFinite(prevClose) && prevClose > 0
         ? ((price - prevClose) / prevClose) * 100
         : null;
+      const quoteTime = priceHistory.length ? priceHistory[priceHistory.length - 1].timestamp : null;
 
       merged[sym] = {
         symbol: sym,
@@ -232,7 +253,9 @@ export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
         change24h,
         previousClose: Number.isFinite(prevClose) ? prevClose : null,
         currency: payload.currency || payload.meta?.currency || listingCurrencies.get(sym) || null,
-        marketState: null, // spark doesn't expose this — caller can infer from time-of-day
+        marketState: marketStateOf(payload, quoteTime),
+        quoteTime,
+        extendedHours,
         exchange: null,
         priceHistory
       };
@@ -337,30 +360,26 @@ export async function getHistoricalPrice(symbol, dateStr, { timeoutMs = 5000 } =
 export async function get24hPriceHistory(symbol, { timeoutMs = 5000, range = '1d', interval = '15m' } = {}) {
   if (!symbol) return [];
   const path = `/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
-  try {
-    // Yahoo answers 429 in bursts, and its two hosts limit apart: wait longer than for a
-    // network error, then ask the other host.
-    const opts = { timeoutMs, ttlMs: 60_000, retries: 2, backoffBaseMs: 400 };
-    const data = await HttpClient.getJson(CHART_BASE + path, opts)
-      .catch(() => HttpClient.getJson(CHART_BASE_ALT + path, opts));
-    const result = data?.chart?.result?.[0];
-    const timestamps = result?.timestamp;
-    const closes = result?.indicators?.quote?.[0]?.close;
-    const volumes = result?.indicators?.quote?.[0]?.volume || [];
-    if (!Array.isArray(timestamps) || !Array.isArray(closes)) return [];
-    const series = [];
-    for (let i = 0; i < timestamps.length; i++) {
-      const ts = Number(timestamps[i]);
-      const price = Number(closes[i]);
-      if (Number.isFinite(ts) && Number.isFinite(price)) {
-        series.push({ timestamp: ts * 1000, price, volume: Number(volumes[i]) || 0 });
-      }
+  // Yahoo answers 429 in bursts, and its two hosts limit apart: wait longer than for a
+  // network error, then ask the other host. When neither answers, this throws, so callers
+  // don't keep an empty chart.
+  const opts = { timeoutMs, ttlMs: 60_000, retries: 2, backoffBaseMs: 400 };
+  const data = await HttpClient.getJson(CHART_BASE + path, opts)
+    .catch(() => HttpClient.getJson(CHART_BASE_ALT + path, opts));
+  const result = data?.chart?.result?.[0];
+  const timestamps = result?.timestamp;
+  const closes = result?.indicators?.quote?.[0]?.close;
+  const volumes = result?.indicators?.quote?.[0]?.volume || [];
+  if (!Array.isArray(timestamps) || !Array.isArray(closes)) return [];
+  const series = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    const ts = Number(timestamps[i]);
+    const price = Number(closes[i]);
+    if (Number.isFinite(ts) && Number.isFinite(price)) {
+      series.push({ timestamp: ts * 1000, price, volume: Number(volumes[i]) || 0 });
     }
-    return series;
-  } catch (e) {
-    console.warn('[Stocks] Chart history failed:', e?.message || e);
-    return [];
   }
+  return series;
 }
 
 export default { searchSymbols, getQuotes, getFxRates, getHistoricalPrice, get24hPriceHistory };

@@ -43,6 +43,7 @@ async function dexesOf(address) {
  *   { ETH: [{ kind: 'tp' | 'sl' | 'buy' | 'sell', px, sz, label, reduceOnly, wholePosition }] }
  * Trigger orders (TP/SL) use their trigger price; limits use their limit price.
  */
+// A dex that doesn't answer fails the whole read (not cached): its orders would vanish.
 export function getOpenOrders(addresses) {
   if (override?.getOpenOrders) return override.getOpenOrders(addresses);
   const key = `orders:${addresses.join(',')}`;
@@ -50,8 +51,7 @@ export function getOpenOrders(addresses) {
     const lists = await Promise.all(addresses.map(async user => {
       const dexes = await dexesOf(user);
       return Promise.all(dexes.map(dex =>
-        fetchInfo(dex ? { type: 'frontendOpenOrders', user, dex } : { type: 'frontendOpenOrders', user }, 8000)
-          .catch(() => [])));
+        fetchInfo(dex ? { type: 'frontendOpenOrders', user, dex } : { type: 'frontendOpenOrders', user }, 8000)));
     }));
     const byCoin = {};
     for (const order of lists.flat(2)) {
@@ -76,28 +76,26 @@ export function getOpenOrders(addresses) {
   });
 }
 
-/** Margin across every dex the address trades on. */
+/**
+ * Margin across every dex the address trades on. A dex that doesn't answer fails the read
+ * (shown as "Cannot load", not cached): a sum without it would understate the margin.
+ */
 export function getMargin(address) {
   if (override?.getMargin) return override.getMargin(address);
   return cached(`margin:${address}`, 30 * 1000, async () => {
     const dexes = await dexesOf(address);
     const states = await Promise.all(dexes.map(dex =>
-      fetchInfo(dex ? { type: 'clearinghouseState', user: address, dex } : { type: 'clearinghouseState', user: address }, 8000)
-        .catch(() => null)));
-    // Every request failing is an error (shown as "Cannot load", not cached), not "no account".
-    if (states.every(st => st === null)) throw new Error('Cannot load margin');
+      fetchInfo(dex ? { type: 'clearinghouseState', user: address, dex } : { type: 'clearinghouseState', user: address }, 8000)));
     let accountValue = 0, maintenance = 0, marginUsed = 0, notional = 0, withdrawable = 0;
-    let any = false;
     for (const s of states) {
       if (!s) continue;
-      any = true;
       accountValue += num(s.marginSummary?.accountValue) || 0;
       maintenance += num(s.crossMaintenanceMarginUsed) || 0;
       marginUsed += num(s.marginSummary?.totalMarginUsed) || 0;
       notional += num(s.marginSummary?.totalNtlPos) || 0;
       withdrawable += num(s.withdrawable) || 0;
     }
-    if (!any || accountValue <= 0) return null;
+    if (accountValue <= 0) return null;
     return {
       accountValue,
       maintenance,
@@ -205,13 +203,17 @@ export function getFees(address) {
   });
 }
 
-/** Staked HYPE and rewards earned (all time and last 30 days). */
+/**
+ * Staked HYPE and rewards earned (all time and last 30 days). Kept as long as the positions
+ * fetcher keeps its stake (hyperliquid-fetcher.js). A failure of either request is an error,
+ * not "nothing staked" or "no rewards".
+ */
 export function getStaking(address) {
   if (override?.getStaking) return override.getStaking(address);
-  return cached(`staking:${address}`, 60 * 60 * 1000, async () => {
+  return cached(`staking:${address}`, 10 * 60 * 1000, async () => {
     const [summary, rewards] = await Promise.all([
-      fetchInfo({ type: 'delegatorSummary', user: address }, 10000), // a failure here is an error, not "nothing staked"
-      fetchInfo({ type: 'delegatorRewards', user: address }, 10000).catch(() => [])
+      fetchInfo({ type: 'delegatorSummary', user: address }, 10000),
+      fetchInfo({ type: 'delegatorRewards', user: address }, 10000)
     ]);
     const staked = num(summary?.delegated) || 0;
     const unstaked = num(summary?.undelegated) || 0;

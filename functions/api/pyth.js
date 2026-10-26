@@ -54,7 +54,8 @@ export async function onRequest(context) {
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'GET, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type',
-                'Cache-Control': 'public, max-age=30' // Cache for 30 seconds (price data needs to be fresh)
+                // Only answers are cached (30 s, price data needs to be fresh); errors are not.
+                'Cache-Control': response.ok ? 'public, max-age=30' : 'no-store'
             }
         });
     } catch (error) {

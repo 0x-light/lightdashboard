@@ -26,26 +26,16 @@ function buildUrl(path, params = {}) {
 }
 
 /**
- * Get wallet portfolio (token balances + USD values)
+ * Get wallet portfolio (token balances + USD values). Throws when Cielo doesn't answer.
  * Supports Solana and EVM chains (Ethereum, Base, HyperEVM)
  * Cost: 20 credits per request
  */
 export async function getWalletPortfolio(wallet, apiKey, { timeoutMs = 15000 } = {}) {
-    if (!apiKey || !wallet) {
-        console.warn('[Cielo] Missing API key or wallet address');
-        return null;
-    }
+    if (!apiKey || !wallet) throw new Error('Cielo: missing API key or wallet address');
 
     const url = buildUrl(`${wallet}/portfolio`, {});
     const headers = USE_PROXY ? { 'x-proxy-api-key': apiKey } : authHeaders(apiKey);
-
-    try {
-        const result = await HttpClient.getJson(url, { headers, timeoutMs });
-        return result;
-    } catch (err) {
-        console.warn('[Cielo] getWalletPortfolio failed:', err.message);
-        return null;
-    }
+    return await HttpClient.getJson(url, { headers, timeoutMs });
 }
 
 /**
@@ -58,10 +48,7 @@ export async function getWalletPortfolio(wallet, apiKey, { timeoutMs = 15000 } =
  * @param {boolean} options.activePositionsOnly - Filter to active positions only
  */
 export async function getTokenPnl(wallet, apiKey, { timeoutMs = 15000, timeframe = 'max', activePositionsOnly = false } = {}) {
-    if (!apiKey || !wallet) {
-        console.warn('[Cielo] Missing API key or wallet address');
-        return null;
-    }
+    if (!apiKey || !wallet) throw new Error('Cielo: missing API key or wallet address');
 
     const params = { timeframe };
     if (activePositionsOnly) {
@@ -70,14 +57,7 @@ export async function getTokenPnl(wallet, apiKey, { timeoutMs = 15000, timeframe
 
     const url = buildUrl(`${wallet}/pnl/tokens`, params);
     const headers = USE_PROXY ? { 'x-proxy-api-key': apiKey } : authHeaders(apiKey);
-
-    try {
-        const result = await HttpClient.getJson(url, { headers, timeoutMs });
-        return result;
-    } catch (err) {
-        console.warn('[Cielo] getTokenPnl failed:', err.message);
-        return null;
-    }
+    return await HttpClient.getJson(url, { headers, timeoutMs });
 }
 
 export default { getWalletPortfolio, getTokenPnl };

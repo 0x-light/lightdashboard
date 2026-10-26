@@ -24,27 +24,165 @@ const SNAPSHOT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const SNAPSHOT_HISTORY_POINTS = 24;
 const SNAPSHOT_SAVE_DELAY_MS = 1500;
 
-// Last good FX rates per base currency. A failed lookup then values EUR or GBP holdings at the
-// last known rate instead of dropping them from the total.
+// Last good FX rates per base currency, each with the time it was fetched. A failed lookup then
+// values EUR or GBP holdings at the last known rate instead of dropping them from the total.
 const FX_CACHE_KEY = 'viewport.fxRates.v1';
 const FX_REFRESH_MS = 10 * 60 * 1000;
 const FX_RETRY_MS = 30 * 1000;
+// A rate older than this is shown as stale. Normal refreshes keep it under FX_REFRESH_MS.
+const FX_STALE_MS = 60 * 60 * 1000;
 
+// [currency, rate, fetchedAt]. Entries saved before fetchedAt existed read as 0: age unknown.
 function loadFxCache(base) {
   try {
     const rates = JSON.parse(localStorage.getItem(FX_CACHE_KEY) || '{}')?.[base];
-    return Object.entries(rates || {}).filter(([, rate]) => Number(rate) > 0);
+    return Object.entries(rates || {})
+      .map(([currency, entry]) => (typeof entry === 'object' && entry
+        ? [currency, Number(entry.rate), Number(entry.at) || 0]
+        : [currency, Number(entry), 0]))
+      .filter(([, rate]) => rate > 0);
   } catch (_) {
     return [];
   }
 }
 
-function saveFxCache(base, rates) {
+function saveFxCache(base, rates, fetchedAt) {
   try {
     const all = JSON.parse(localStorage.getItem(FX_CACHE_KEY) || '{}') || {};
-    all[base] = Object.fromEntries(Array.from(rates.entries()).filter(([, rate]) => Number(rate) > 0));
+    all[base] = Object.fromEntries(Array.from(rates.entries())
+      .filter(([currency, rate]) => Number(rate) > 0 && currency !== base)
+      .map(([currency, rate]) => [currency, { rate, at: fetchedAt.get(currency) || 0 }]));
     localStorage.setItem(FX_CACHE_KEY, JSON.stringify(all));
   } catch (_) { /* storage unavailable: rates are fetched again next load */ }
+}
+
+// A row older than about two refresh cycles is shown as stale.
+export const STALE_AFTER_MS = 90 * 1000;
+
+const sourceMatches = (src, name) => src === name || String(src || '').startsWith(`${name}_`);
+
+// "40s ago", "12m ago", "3h ago"; past a day the weekday and time, past a week the date.
+export function ageText(at, now = Date.now()) {
+  if (!(Number(at) > 0)) return 'age unknown';
+  const seconds = Math.max(0, Math.round((now - at) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  const date = new Date(at);
+  const timeZone = globalThis.window?.larpTimeZone;
+  if (seconds < 7 * 86400) {
+    return date.toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone });
+  }
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone });
+}
+
+/**
+ * Freshness of one table row. Stale when it comes from the saved snapshot, from a source that
+ * failed, when its data or its FX rate is too old. `at` is the oldest time its figures were good.
+ * @param {Object} row - converted or aggregated row (dataAt, fxRateAt, _source/_sources, _fromSnapshot)
+ * @param {{ now?: number, failing?: string[] }} context
+ * @returns {{ stale: boolean, at: number|null, failedSource: string|null, fxStale: boolean }}
+ */
+export function rowFreshness(row, { now = Date.now(), failing = [] } = {}) {
+  const sources = row?._sources || [row?._source];
+  const failedSource = failing.find(name => sources.some(src => sourceMatches(src, name))) || null;
+  const dataAt = Number(row?.dataAt) > 0 ? Number(row.dataAt) : null;
+  // fxRateAt is null when the row needs no FX, 0 when the rate's age is unknown.
+  const fxStale = row?.fxRateAt != null && !(now - Number(row.fxRateAt) <= FX_STALE_MS);
+  const dataStale = dataAt !== null && now - dataAt > STALE_AFTER_MS;
+  const stale = !!row?._fromSnapshot || !!failedSource || fxStale || dataStale;
+  const times = [dataAt, fxStale ? Number(row.fxRateAt) : null].filter(t => t !== null);
+  return { stale, at: times.length ? Math.min(...times) : null, failedSource, fxStale, fromSnapshot: !!row?._fromSnapshot };
+}
+
+// Tooltip for a stale row: the exact time and why.
+function staleTitleFor({ at, failedSource, fxStale, fromSnapshot }) {
+  const when = at ? `Last updated ${new Date(at).toLocaleString(undefined, { timeZone: globalThis.window?.larpTimeZone })}` : 'Age unknown';
+  const why = failedSource ? `${sourceLabel(failedSource)} offline`
+    : fromSnapshot ? 'saved copy, reloading'
+      : fxStale ? 'old FX rate' : '';
+  return why ? `${when} · ${why}` : when;
+}
+
+// Short name for a source key: "Hyperliquid_0xfc66…" reads "Hyperliquid".
+// The combined Bitcoin/Zcash source fails only together with one of its chains, which names it.
+const CHAIN_SOURCES = { 'Bitcoin/Zcash_BTC': 'Bitcoin', 'Bitcoin/Zcash_ZEC': 'Zcash', 'Bitcoin/Zcash': '' };
+
+export function sourceLabel(source) {
+  return CHAIN_SOURCES[source] ?? String(source || '').replace(/_.*$/, '');
+}
+
+/**
+ * What the hero says about the figures it sums: failed sources by name, and the oldest stale row.
+ * @returns {{ offline: string[], oldestAt: number|null, stale: boolean }}
+ */
+export function summarizeFreshness(rows, { now = Date.now(), failing = [] } = {}) {
+  const offline = [...new Set(failing.map(sourceLabel).filter(Boolean))];
+  let stale = offline.length > 0;
+  let oldestAt = null;
+  const unpriced = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    // A position the user declared that has no price is missing from the total.
+    if (row?.quoteUnavailable && isDeclaredPosition(row)) {
+      unpriced.push(row.asset);
+      stale = true;
+    }
+    if (!row || !(Math.abs(Number(row.value)) > 0)) continue;
+    const f = rowFreshness(row, { now, failing });
+    if (!f.stale) continue;
+    stale = true;
+    if (f.at !== null && (oldestAt === null || f.at < oldestAt)) oldestAt = f.at;
+  }
+  return { offline, oldestAt, stale, unpriced };
+}
+
+// Manual and IBKR rows are positions the user holds on purpose; an unpriced wallet token is
+// usually an airdropped spam token.
+export function isDeclaredPosition(row) {
+  return /^(Manual|IBKR)/.test(String(row?.exchange || ''));
+}
+
+// Yahoo's market states, reduced to the label the 24h figure gets. null during regular hours.
+export function marketLabel(row) {
+  const state = String(row?.marketState || '').toLowerCase();
+  if (!state || state === 'regular') return null;
+  if (state.startsWith('pre')) return 'pre';
+  if (state.startsWith('post')) return 'post';
+  return 'closed';
+}
+
+// When a quote was made, in ms. Fetchers may give seconds.
+function quoteTimeMs(row) {
+  const t = Number(row?.quoteTime);
+  if (!(t > 0)) return null;
+  return t < 1e12 ? t * 1000 : t;
+}
+
+// True when the row's 24h figure is a market move from outside the last 24 hours (a closed
+// market's last session). Without a quote time, a closed market counts as that.
+export function sessionMoveIsOld(row, now = Date.now()) {
+  const label = marketLabel(row);
+  if (!label) return false;
+  const at = quoteTimeMs(row);
+  if (at !== null) return now - at > 24 * 60 * 60 * 1000;
+  return label === 'closed';
+}
+
+// Native coins by chain, as fetchers name the chain. Only these wallet rows are the
+// Hyperliquid asset of the same ticker.
+const NATIVE_COINS = {
+  Ethereum: 'ETH', Arbitrum: 'ETH', Optimism: 'ETH', Base: 'ETH', zkSync: 'ETH', Blast: 'ETH',
+  Polygon: 'POL', Avalanche: 'AVAX', BSC: 'BNB', Solana: 'SOL', HyperEVM: 'HYPE',
+  Bitcoin: 'BTC', Zcash: 'ZEC'
+};
+const HL_PRICED_VENUES = new Set(['HL Perps', 'HL Spot', 'HL Staking', 'Lighter', 'Lighter Spot']);
+
+// True when the row's ticker is the coin Hyperliquid quotes under that ticker.
+export function isHyperliquidPricedRow(row) {
+  if (!row) return false;
+  if (HL_PRICED_VENUES.has(row.exchange)) return true;
+  if (row.manualType === 'pyth' && (row.category || 'crypto') === 'crypto') return true;
+  return NATIVE_COINS[row.exchange] === String(row.asset || '').toUpperCase();
 }
 
 // Hash of everything that decides which positions exist. A snapshot taken under different wallets
@@ -78,11 +216,78 @@ function loadPortfolioSnapshot(settings) {
     if (!snapshot || !Array.isArray(snapshot.positions) || snapshot.positions.length === 0) return null;
     if (!(Date.now() - Number(snapshot.savedAt) < SNAPSHOT_MAX_AGE_MS)) return null;
     if (snapshot.fingerprint !== snapshotFingerprint(settings)) return null;
-    snapshot.positions.forEach(row => { row._stale = true; });
+    const savedAt = Number(snapshot.savedAt);
+    snapshot.positions.forEach(row => {
+      row._stale = true;
+      row._fromSnapshot = true;
+      // A row that was already old when saved keeps its own time.
+      row._goodAt = Number(row._goodAt) > 0 ? Math.min(Number(row._goodAt), savedAt) : savedAt;
+    });
     return snapshot;
   } catch (_) {
     return null;
   }
+}
+
+/**
+ * One row for several holdings of one ticker (several wallets or venues, or different tokens
+ * that share a ticker). Every item has a value of 0 or more. Totals match the rows unmerged:
+ * - change24h is the move that gives the same 24h amount as the items, item by item;
+ * - pnl sums the items that have one, and pnlValue (only when some lack it) is their value,
+ *   the base for the P&L %.
+ */
+export function mergeRows(asset, items) {
+  const totalAmount = items.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const totalValue = items.reduce((sum, p) => sum + (p.value || 0), 0);
+  const knownPnL = items.filter(p => p.pnl != null && Number.isFinite(Number(p.pnl)));
+  const totalPnL = knownPnL.length > 0 ? knownPnL.reduce((sum, p) => sum + Number(p.pnl), 0) : null;
+  const weightedPrice = totalAmount !== 0 ? totalValue / Math.abs(totalAmount) : 0;
+  const exchanges = [...new Set(items.map(p => p.exchange))];
+
+  // calculatePortfolioBreakdown takes value × pct / (100 + pct) as an item's 24h amount.
+  let change = 0;
+  let hasChange = false;
+  for (const p of items) {
+    const pct = Number(p.change24h);
+    if (p.change24h == null || !Number.isFinite(pct) || pct <= -100) continue;
+    change += (Number(p.value) || 0) * (pct / (100 + pct));
+    hasChange = true;
+  }
+  const change24h = hasChange && totalValue - change > 0 ? (100 * change) / (totalValue - change) : null;
+
+  const priceHistory = items.find(p => p.priceHistory)?.priceHistory || null;
+  const sources = [...new Set(items.map(p => p._source).filter(Boolean))];
+  const currencies = new Set(items.map(p => p.sourceCurrency || p.currency));
+  const knownSourcePnL = items.filter(p => p.sourcePnl != null && Number.isFinite(Number(p.sourcePnl)));
+  const dataTimes = items.map(p => Number(p.dataAt)).filter(t => t > 0);
+  const fxTimes = items.map(p => p.fxRateAt).filter(t => t != null).map(Number);
+  // If multiple exchanges, use the asset name itself as the exchange for stable keying
+  const exchangeKey = exchanges.length > 1 ? asset : exchanges[0];
+
+  return {
+    asset,
+    exchange: exchanges.length > 1 ? 'Multiple' : exchanges[0],
+    _changeDetectionKey: `${asset}_${exchangeKey}`, // Stable key for change detection
+    amount: totalAmount,
+    value: totalValue,
+    price: weightedPrice,
+    change24h,
+    pnl: totalPnL,
+    pnlValue: totalPnL !== null && knownPnL.length < items.length
+      ? knownPnL.reduce((sum, p) => sum + (Number(p.value) || 0), 0)
+      : undefined,
+    priceHistory,
+    _source: sources.length === 1 ? sources[0] : undefined,
+    _sources: sources,
+    sourcePnl: currencies.size === 1 && knownSourcePnL.length === knownPnL.length && knownPnL.length > 0
+      ? knownSourcePnL.reduce((sum, p) => sum + Number(p.sourcePnl), 0)
+      : undefined,
+    entryIsEstimate: items.some(p => p.entryIsEstimate) || undefined,
+    _fromSnapshot: items.some(p => p._fromSnapshot) || undefined,
+    dataAt: dataTimes.length ? Math.min(...dataTimes) : null,
+    fxRateAt: fxTimes.length ? Math.min(...fxTimes) : null,
+    isAggregated: true
+  };
 }
 
 export class IncrementalPortfolioRenderer {
@@ -98,6 +303,9 @@ export class IncrementalPortfolioRenderer {
     this.providerStatus = new Map(); // track which providers finished
     this.providerErrors = new Map();
     this.providerDoneAt = new Map(); // when each source last loaded; kept across refreshes
+    // Sources whose last report failed; kept across refreshes until they report again.
+    this.providerFailing = new Set();
+    this._roundDoneAt = null;
     this.renderDebounce = null;
     // If we have initial positions, we're not really "loading" - just refreshing in background
     this.isLoading = this.allPositions.length === 0;
@@ -120,6 +328,7 @@ export class IncrementalPortfolioRenderer {
     this._fxRatesToken = 0;
     this._fxRatesBase = null;
     this._fxRates = new Map();
+    this._fxFetchedAt = new Map(); // currency -> when its rate was fetched (0: unknown)
     this._fxRatesLoading = new Set();
     // currency -> time of the last attempt, so stale rates refresh and failed ones retry.
     this._fxCheckedAt = new Map();
@@ -133,14 +342,20 @@ export class IncrementalPortfolioRenderer {
         const base = this.getBaseCurrency();
         if (snapshot.baseCurrency === base && Array.isArray(snapshot.fxRates)) {
           this._fxRatesBase = base;
-          this._fxRates = new Map([...loadFxCache(base), ...snapshot.fxRates.filter(([, rate]) => Number(rate) > 0)]);
-          this._fxRates.set(base, 1);
+          this.setFxRatesFromCache(base);
+          // The FX cache is saved on every lookup, so the snapshot's rates only fill gaps.
+          for (const [currency, rate] of snapshot.fxRates) {
+            if (Number(rate) > 0 && !this._fxRates.has(currency)) {
+              this._fxRates.set(currency, Number(rate));
+              this._fxFetchedAt.set(currency, Number(snapshot.savedAt) || 0);
+            }
+          }
         }
         this.isLoading = false;
       }
     }
     this._snapshotSaveTimer = null;
-    this._staleCarry = new Map(); // row key -> { priceHistory, change24h } from the snapshot
+    this._staleCarry = new Map(); // row key -> { priceHistory } from the snapshot
 
     // Store reference to renderer IMMEDIATELY for external re-renders
     window._portfolioRenderer = this;
@@ -282,15 +497,19 @@ export class IncrementalPortfolioRenderer {
       if (!stale) continue;
       // Kept on the side, not copied onto the row: fetchers skip enrichment for rows that already
       // have a sparkline, so copying would freeze a days-old chart in place.
-      this._staleCarry.set(keyOf(row), { priceHistory: stale.priceHistory, change24h: stale.change24h });
+      // The sparkline only: a carried 24h move could be days old and would count in Today.
+      this._staleCarry.set(keyOf(row), { priceHistory: stale.priceHistory });
       if (row.quoteLoading && Number(stale.value) > 0) {
+        // The old figures stand in while the quote loads, marked as old as they are.
         Object.assign(row, {
           price: stale.price,
           value: stale.value,
           pnl: stale.pnl,
-          change24h: stale.change24h,
+          change24h: null,
           currency: row.currency || stale.currency,
-          quoteLoading: false
+          quoteLoading: false,
+          _goodAt: stale._goodAt,
+          _fromSnapshot: stale._fromSnapshot
         });
       }
     }
@@ -328,7 +547,7 @@ export class IncrementalPortfolioRenderer {
         // Sparklines only for rows big enough to be listed; dust rows still count toward totals.
         const minThreshold = this.settings?.minBalanceThreshold || 100;
         const positions = this.allPositions.map(row => {
-          const { _stale, isHiddenPosition, isManuallyHidden, ...rest } = row;
+          const { _stale, _fromSnapshot, isHiddenPosition, isManuallyHidden, ...rest } = row;
           if (rest.priceHistory) {
             rest.priceHistory = Math.abs(Number(rest.value) || 0) >= minThreshold
               ? downsampleHistory(rest.priceHistory, SNAPSHOT_HISTORY_POINTS)
@@ -349,8 +568,14 @@ export class IncrementalPortfolioRenderer {
 
   appendPositions(newRows, source, options = {}) {
     const markCompleted = options.markCompleted !== false;
+    const now = Date.now();
     if (Array.isArray(newRows)) {
-      for (const row of newRows) row._source = source;
+      for (const row of newRows) {
+        row._source = source;
+        // When the row's figures were last good: the fetcher's asOf when it has older data.
+        row._goodAt = Number(row.asOf) > 0 ? Math.min(Number(row.asOf), now) : now;
+        delete row._fromSnapshot;
+      }
     }
     const droppedStale = this.dropStaleRows(source, Array.isArray(newRows) ? newRows : [], { partial: !markCompleted });
     if (!Array.isArray(newRows) || newRows.length === 0) {
@@ -362,7 +587,8 @@ export class IncrementalPortfolioRenderer {
       if (markCompleted) {
         this.providerStatus.set(source, 'completed');
         this.providerErrors.delete(source);
-        this.providerDoneAt.set(source, Date.now());
+        this.providerDoneAt.set(source, now);
+        this.providerFailing.delete(source);
         this.checkIfAllProvidersFinished();
       }
       this.renderProviderStatus();
@@ -408,7 +634,8 @@ export class IncrementalPortfolioRenderer {
     this.providerErrors.delete(source);
     if (markCompleted) {
       this.providerStatus.set(source, 'completed');
-      this.providerDoneAt.set(source, Date.now());
+      this.providerDoneAt.set(source, now);
+      this.providerFailing.delete(source);
 
       // Check if all providers finished
       this.checkIfAllProvidersFinished();
@@ -438,8 +665,11 @@ export class IncrementalPortfolioRenderer {
     console.warn(`[${source}] Failed:`, error?.message || error);
     this.providerStatus.set(source, 'failed');
     this.providerErrors.set(source, error?.message || String(error || 'Unknown error'));
+    this.providerFailing.add(source);
     this.checkIfAllProvidersFinished();
+    if (!this.isLoading) this.updateLastUpdatedLabel();
     this.renderProviderStatus();
+    this.forceRender();
   }
 
   updateLastUpdatedLabel(state = 'updated') {
@@ -450,7 +680,7 @@ export class IncrementalPortfolioRenderer {
       el.textContent = 'Refreshing…';
       return;
     }
-    const updatedAt = new Date();
+    const updatedAt = new Date(this._roundDoneAt || Date.now());
     // 24-hour, like the clock on the portfolio card
     const time = updatedAt.toLocaleTimeString('en-GB', {
       hourCycle: 'h23',
@@ -458,12 +688,23 @@ export class IncrementalPortfolioRenderer {
       minute: '2-digit',
       timeZone: window.larpTimeZone
     });
-    el.textContent = `Updated ${time}`;
-    el.title = updatedAt.toLocaleString(undefined, { timeZone: window.larpTimeZone });
+    // The green mark only when no source is failing. Same set as the hero, which also holds FX
+    // between its retries.
+    const failed = [...new Set(Array.from(this.providerFailing, sourceLabel).filter(Boolean))];
+    el.dataset.state = failed.length ? 'failed' : state;
+    el.textContent = failed.length ? `Updated ${time} · ${failed.length} failed` : `Updated ${time}`;
+    const when = updatedAt.toLocaleString(undefined, { timeZone: window.larpTimeZone });
+    el.title = failed.length ? `${when}\nFailed: ${failed.join(', ')}` : when;
   }
 
   beginRefresh(expectedProviders = this.expectedProviders) {
     this.expectedProviders = Array.from(new Set(expectedProviders || []));
+    // A source no longer configured (wallet removed, Zerion swapped for Cielo) can't report
+    // again, so it must not stay "offline".
+    const expected = new Set(this.expectedProviders.map(name => name.replace(/_.*$/, '')));
+    for (const source of this.providerFailing) {
+      if (source !== 'FX' && !expected.has(source.replace(/_.*$/, ''))) this.providerFailing.delete(source);
+    }
     this.providerStatus.clear();
     this.providerErrors.clear();
     this.isLoading = true;
@@ -480,10 +721,16 @@ export class IncrementalPortfolioRenderer {
     const base = this.getBaseCurrency();
     if (this._fxRatesBase === base) return;
     this._fxRatesBase = base;
-    this._fxRates = new Map([...loadFxCache(base), [base, 1]]);
+    this.setFxRatesFromCache(base);
     this._fxRatesLoading.clear();
     this._fxCheckedAt.clear();
     this._fxRatesToken++;
+  }
+
+  setFxRatesFromCache(base) {
+    const cached = loadFxCache(base);
+    this._fxRates = new Map([...cached.map(([currency, rate]) => [currency, rate]), [base, 1]]);
+    this._fxFetchedAt = new Map(cached.map(([currency, , at]) => [currency, at]));
   }
 
   localConversionRate(currency) {
@@ -518,6 +765,15 @@ export class IncrementalPortfolioRenderer {
     return Array.from(missing);
   }
 
+  fxCurrenciesInUse() {
+    const used = new Set();
+    for (const position of this.allPositions) {
+      const currency = normalizeCurrencyCode(position?.currency || position?.sourceCurrency || 'USD', 'USD');
+      if (this.localConversionRate(currency) === null) used.add(currency);
+    }
+    return Array.from(used);
+  }
+
   loadFxRatesForPositions(positions) {
     const missing = this.currenciesNeedingFx(positions);
     if (missing.length === 0) return null;
@@ -531,27 +787,40 @@ export class IncrementalPortfolioRenderer {
       let error = null;
       try {
         const rates = await this.providers?.stocks?.getFxRates?.(missing, base, { timeoutMs: 5000 });
+        const fetchedAt = Date.now();
         let updated = false;
         for (const currency of missing) {
           const rate = Number(rates?.[currency]);
           if (Number.isFinite(rate) && rate > 0) {
             this._fxRates.set(currency, rate);
+            this._fxFetchedAt.set(currency, fetchedAt);
             updated = true;
           }
         }
-        if (updated) saveFxCache(base, this._fxRates);
+        if (updated) saveFxCache(base, this._fxRates, this._fxFetchedAt);
       } catch (e) {
         error = e;
       } finally {
-        // A failed lookup keeps the last good rate; a currency with none retries after FX_RETRY_MS.
-        const unresolved = missing.filter(currency => !(Number(this._fxRates.get(currency)) > 0));
-        if (unresolved.length > 0) {
+        // A failed lookup keeps the last good rate, shown as stale once it is FX_STALE_MS old;
+        // a currency with no rate at all retries after FX_RETRY_MS.
+        // Judge every currency the positions use: a later lookup for GBP must not clear a missing EUR.
+        const now = Date.now();
+        const inUse = this.fxCurrenciesInUse();
+        const unresolved = inUse.filter(currency => !(Number(this._fxRates.get(currency)) > 0));
+        const old = inUse.filter(currency => !unresolved.includes(currency) &&
+          !(now - (this._fxFetchedAt.get(currency) || 0) <= FX_STALE_MS));
+        if (unresolved.length > 0 || old.length > 0) {
           this.providerStatus.set('FX', 'failed');
-          this.providerErrors.set('FX', error?.message || `missing ${unresolved.join(', ')} rate`);
+          this.providerFailing.add('FX');
+          this.providerErrors.set('FX', unresolved.length > 0
+            ? (error?.message || `missing ${unresolved.join(', ')} rate`)
+            : `${old.join(', ')} rate ${ageText(Math.min(...old.map(c => this._fxFetchedAt.get(c) || 0)), now)}`);
         } else {
           this.providerStatus.set('FX', 'completed');
+          this.providerFailing.delete('FX');
           this.providerErrors.delete('FX');
         }
+        if (!this.isLoading) this.updateLastUpdatedLabel();
         missing.forEach(currency => this._fxRatesLoading.delete(currency));
         this._fxRatesToken++;
         this.renderProviderStatus();
@@ -573,11 +842,18 @@ export class IncrementalPortfolioRenderer {
     const carry = this._staleCarry.size > 0
       ? this._staleCarry.get(position?._changeDetectionKey || `${position?.asset}_${position?.exchange}`)
       : null;
+    const needsFx = this.localConversionRate(sourceCurrency) === null;
+    // A closed market's last session is not today's move: shown as such, left out of Today.
+    const oldSession = sessionMoveIsOld(position);
 
     return {
       ...position,
       priceHistory: position?.priceHistory || carry?.priceHistory,
-      change24h: position?.change24h ?? carry?.change24h ?? null,
+      change24h: oldSession ? null : (position?.change24h ?? null),
+      sessionChange24h: oldSession ? (position?.change24h ?? null) : undefined,
+      marketLabel: marketLabel(position),
+      dataAt: Number(position?._goodAt) > 0 ? Number(position._goodAt) : null,
+      fxRateAt: needsFx && hasRate ? (this._fxFetchedAt.get(sourceCurrency) || 0) : null,
       price: sourcePrice,
       sourcePrice,
       sourceValue,
@@ -655,6 +931,7 @@ export class IncrementalPortfolioRenderer {
     // If no expected providers specified, hide after first data
     if (this.expectedProviders.length === 0) {
       if (this.allPositions.length > 0) {
+        this._roundDoneAt = Date.now();
         this.hideGreetingLoader();
         this.updateLastUpdatedLabel();
       }
@@ -676,6 +953,7 @@ export class IncrementalPortfolioRenderer {
     const allFinished = pending.length === 0;
 
     if (allFinished) {
+      this._roundDoneAt = Date.now();
       this.purgeStaleRows();
       this.hideGreetingLoader();
       this.updateLastUpdatedLabel();
@@ -689,11 +967,11 @@ export class IncrementalPortfolioRenderer {
    * Enrich positions missing 24h change using Pyth historical prices
    */
   async enrichMissing24hWithPyth() {
-    // Find positions missing 24h change
-    // Custom manual entries have a fixed, user-entered value: a market's 24h move doesn't apply.
-    // IBKR tickers are brokerage symbols; a crypto symbol with the same name is another asset.
+    // Find positions missing 24h change. Lookups go by bare ticker, so only rows whose ticker is
+    // that coin qualify: Hyperliquid and Lighter rows, native coins, manual crypto. A wallet token
+    // or a stock with the same ticker is another asset.
     const needsEnrichment = this.allPositions.filter(p =>
-      (p.change24h === null || p.change24h === undefined) && p.manualType !== 'custom' && p.exchange !== 'IBKR'
+      (p.change24h === null || p.change24h === undefined) && isHyperliquidPricedRow(p)
     );
 
     if (needsEnrichment.length === 0) return;
@@ -827,6 +1105,18 @@ export class IncrementalPortfolioRenderer {
     }
     const { totalValue, totalPnL, totalPnLPercent, allocation, change24h, change24hPercent } = totals;
 
+    // Freshness changes with time and source status, so it is worked out on every render.
+    const now = Date.now();
+    const failing = Array.from(this.providerFailing);
+    for (const p of sorted) {
+      const f = rowFreshness(p, { now, failing });
+      p.isStale = f.stale;
+      p.staleAt = f.stale ? f.at : null;
+      p.staleNote = f.stale ? ageText(f.at, now) : '';
+      p.staleTitle = f.stale ? staleTitleFor(f, now) : '';
+    }
+    const freshness = summarizeFreshness(sorted, { now, failing });
+
     // Filter for display (hide special positions + apply filters)
     // Edit mode: shows manually hidden positions (for editing), but NOT <$100 positions
     // Normal mode: hides both unless showHiddenPositions is true
@@ -843,8 +1133,10 @@ export class IncrementalPortfolioRenderer {
 
       const assetKey = `${p.asset}_${p.exchange}`;
       const isManuallyHidden = hiddenAssets.has(assetKey);
-      // Rows without a price are kept visible: hiding them would make the holding silently vanish.
-      const isSmall = !p.fxConversionMissing && !p.quoteLoading && !p.quoteUnavailable && hideSmallPositions && Math.abs(p.value || 0) < minThreshold;
+      // Declared positions without a price stay visible: hiding them would make the holding
+      // silently vanish. Unpriced wallet tokens are hidden like dust.
+      const keepUnpriced = p.quoteUnavailable && isDeclaredPosition(p);
+      const isSmall = !p.fxConversionMissing && !p.quoteLoading && !keepUnpriced && hideSmallPositions && Math.abs(p.value || 0) < minThreshold;
 
       // Clear flags first
       p.isHiddenPosition = false;
@@ -926,6 +1218,7 @@ export class IncrementalPortfolioRenderer {
         baseCurrency,
         useColoredPnL: this.settings.useColoredPnL ?? true,
         allocation,
+        freshness,
         highlightsHtml: [],
         weather: window.cachedWeather || null
       });
@@ -1010,6 +1303,13 @@ export class IncrementalPortfolioRenderer {
         continue;
       }
 
+      // Debts and shorts stay on their own row. The total counts an IBKR one and skips any other,
+      // which a merged sum could not do.
+      if (Number(row.value) < 0) {
+        aggregated.push(row);
+        continue;
+      }
+
       // Group by asset
       const key = row.asset;
       if (!assetGroups.has(key)) {
@@ -1023,35 +1323,7 @@ export class IncrementalPortfolioRenderer {
       if (items.length === 1) {
         aggregated.push(items[0]);
       } else {
-        const totalAmount = items.reduce((sum, p) => sum + (p.amount || 0), 0);
-        const totalValue = items.reduce((sum, p) => sum + (p.value || 0), 0);
-        const knownPnL = items.filter(p => p.pnl != null && Number.isFinite(Number(p.pnl)));
-        const totalPnL = knownPnL.length > 0 ? knownPnL.reduce((sum, p) => sum + Number(p.pnl), 0) : null;
-        const weightedPrice = totalAmount !== 0 ? totalValue / Math.abs(totalAmount) : 0;
-        const exchanges = [...new Set(items.map(p => p.exchange))];
-
-        // Use the first non-null change24h value from any of the items
-        const change24h = items.find(p => p.change24h !== null && p.change24h !== undefined)?.change24h ?? null;
-
-        // Get priceHistory from first item that has it
-        const priceHistory = items.find(p => p.priceHistory)?.priceHistory || null;
-
-        // Use consistent exchange name for aggregated positions (for change detection)
-        // If multiple exchanges, use the asset name itself as the exchange for stable keying
-        const exchangeKey = exchanges.length > 1 ? asset : exchanges[0];
-
-        aggregated.push({
-          asset,
-          exchange: exchanges.length > 1 ? 'Multiple' : exchanges[0],
-          _changeDetectionKey: `${asset}_${exchangeKey}`, // Stable key for change detection
-          amount: totalAmount,
-          value: totalValue,
-          price: weightedPrice,
-          change24h,
-          pnl: totalPnL,
-          priceHistory,
-          isAggregated: true
-        });
+        aggregated.push(mergeRows(asset, items));
       }
     }
 

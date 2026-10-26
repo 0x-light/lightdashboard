@@ -38,7 +38,8 @@ export async function getWalletPositions(wallet, apiKey, { timeoutMs = 15000, in
   const url = buildUrl(`wallets/${wallet}/positions/`, params);
   const headers = USE_PROXY ? { 'x-proxy-api-key': apiKey } : authHeaders(apiKey);
   
-  return await HttpClient.getJson(url, { headers, timeoutMs }).catch(() => null);
+  // Throws when Zerion doesn't answer (a wrong key, a timeout): not "no tokens".
+  return await HttpClient.getJson(url, { headers, timeoutMs });
 }
 
 export async function getWalletNfts(wallet, apiKey, { timeoutMs = 15000 } = {}) {

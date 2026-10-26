@@ -1,4 +1,5 @@
 import { getChainDisplayName } from '../../utils/chain-mapping.js';
+import { unambiguousFeedSymbol } from '../providers/pyth.js';
 
 export class ZerionFetcher {
     constructor(providers, renderer, settings) {
@@ -9,62 +10,62 @@ export class ZerionFetcher {
     }
 
     async fetch(wallets) {
+        // Late chart enrichment from an older round must not replace a newer round's rows.
+        const generation = this.generation = (this.generation || 0) + 1;
         try {
             let failed = 0;
             await Promise.all(wallets.map(async (wallet) => {
+                const source = `Zerion_${wallet}`;
                 const walletRows = [];
+                // Row -> the feed symbol its chart may be read under, for verified tokens only.
+                const chartSymbols = new Map();
                 try {
                     const positionsData = await this.providers.zerion.getWalletPositions(wallet, this.settings.zerionApiKey, { timeoutMs: 5000 });
-                    // The provider answers null when the request fails (a wrong key, a timeout).
-                    if (!positionsData) throw new Error('No answer from Zerion');
+                    if (!Array.isArray(positionsData?.data)) throw new Error('No position list from Zerion');
 
-                    if (positionsData?.data) {
-                        for (const item of positionsData.data) {
-                            const attr = item?.attributes || {};
-                            const fungible = attr.fungible_info;
-                            if (fungible && !attr.flags?.is_trash) {
-                                const chainId = item?.relationships?.chain?.data?.id || 'unknown';
-                                const chain = getChainDisplayName(chainId);
-                                const row = {
-                                    asset: fungible.symbol || 'Unknown',
-                                    exchange: chain,
-                                    amount: attr.quantity?.float || 0,
-                                    price: attr.price || 0,
-                                    value: attr.value || 0,
-                                    change24h: attr.changes?.percent_24h ?? null,
-                                    pnl: null,
-                                    _changeDetectionKey: `${fungible.symbol || 'Unknown'}_${chain}_${wallet}`
-                                };
+                    for (const item of positionsData.data) {
+                        const attr = item?.attributes || {};
+                        const fungible = attr.fungible_info;
+                        if (fungible && !attr.flags?.is_trash) {
+                            const chainId = item?.relationships?.chain?.data?.id || 'unknown';
+                            const chain = getChainDisplayName(chainId);
+                            // Zerion has no price for some tokens: unpriced, not worth $0.
+                            const priced = Number.isFinite(attr.price) && attr.price > 0;
+                            const row = {
+                                asset: fungible.symbol || 'Unknown',
+                                exchange: chain,
+                                amount: attr.quantity?.float || 0,
+                                price: priced ? attr.price : null,
+                                value: priced ? (attr.value || 0) : 0,
+                                change24h: attr.changes?.percent_24h ?? null,
+                                pnl: null,
+                                ...(priced ? {} : { quoteUnavailable: true }),
+                                _changeDetectionKey: `${fungible.symbol || 'Unknown'}_${chain}_${wallet}`
+                            };
+                            const symbol = fungible.flags?.verified ? unambiguousFeedSymbol(row.asset) : null;
+                            if (symbol) chartSymbols.set(row, symbol);
 
-                                // Apply cached history
-                                if (this.historyCache.has(row.asset)) {
-                                    const cached = this.historyCache.get(row.asset);
-                                    if (Date.now() - cached.timestamp < 15 * 60 * 1000) {
-                                        row.priceHistory = cached.priceHistory;
-                                        if (cached.change24h !== null) row.change24h = cached.change24h;
-                                    }
-                                }
-
-                                walletRows.push(row);
+                            // Apply cached history. Zerion's own 24h change wins over the cached one.
+                            const cached = symbol && this.historyCache.get(symbol);
+                            if (cached && Date.now() - cached.timestamp < 15 * 60 * 1000) {
+                                row.priceHistory = cached.priceHistory;
+                                if (row.change24h == null && cached.change24h != null) row.change24h = cached.change24h;
                             }
+
+                            walletRows.push(row);
                         }
                     }
                 } catch (err) {
-                    console.warn(`[Zerion] Failed for wallet ${wallet}:`, err);
+                    // Marked failed, so the wallet's last rows stay.
+                    this.renderer.markProviderFailed(source, err);
                     failed++;
                     return;
                 }
 
-                // Enrich with CoinGecko (Basic implementation, can be improved)
-                const missingChange24h = walletRows.filter(r => r.change24h === null);
-                if (missingChange24h.length > 0) {
-                    // ... existing enrichment logic ...
-                }
-
-                this.renderer.appendPositions(walletRows, `Zerion_${wallet}`);
+                this.renderer.appendPositions(walletRows, source);
 
                 // Enrich with Pyth History for Charts
-                this.enrichWithPythHistory(walletRows, wallet);
+                this.enrichWithPythHistory(walletRows, wallet, generation, row => chartSymbols.get(row));
             }));
 
             // Every wallet failed: most likely the key. Settings shows this as "Cannot read".
@@ -76,7 +77,7 @@ export class ZerionFetcher {
         }
     }
 
-    async enrichWithPythHistory(rows, wallet) {
+    async enrichWithPythHistory(rows, wallet, generation = this.generation, chartSymbolOf = () => null) {
         if (!rows || rows.length === 0) return;
         if (this.settings.showPriceChart === false) return;
 
@@ -104,34 +105,20 @@ export class ZerionFetcher {
                         continue;
                     }
 
-                    // Check cache first
-                    if (this.historyCache.has(row.asset)) {
-                        const cached = this.historyCache.get(row.asset);
-                        if (Date.now() - cached.timestamp < 15 * 60 * 1000) {
-                            row.priceHistory = cached.priceHistory;
-                            if (cached.change24h !== null) row.change24h = cached.change24h;
-                            continue;
-                        }
-                    }
-
-                    let feedId = symbolToId[row.asset.toUpperCase()];
+                    // A chart by ticker only for a verified token whose ticker can't mean another coin.
+                    const symbol = chartSymbolOf(row);
+                    if (!symbol) continue;
 
                     // Fallback for known assets if missing from dynamic map
-                    if (!feedId) {
-                        const FALLBACK_IDS = {
-                            'ETH': 'ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
-                            'WETH': 'ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace', // Map WETH to ETH
-                            'MON': '31491744e2dbf6df7fcf4ac0820d18a609b49076d45066d3568424e62f686cd1',
-                            'USDC': 'eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a'
-                        };
-                        feedId = FALLBACK_IDS[row.asset.toUpperCase()];
-                    }
+                    const FALLBACK_IDS = {
+                        'ETH': 'ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
+                        'MON': '31491744e2dbf6df7fcf4ac0820d18a609b49076d45066d3568424e62f686cd1',
+                        'USDC': 'eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a'
+                    };
+                    const feedId = symbolToId[symbol] || FALLBACK_IDS[symbol];
 
                     if (feedId) {
-                        itemsToFetch.push({ row, feedId });
-                    } else {
-                        // Try mapping WETH -> ETH, etc. if needed
-                        // console.log(`[Zerion] No Pyth feed found for ${row.asset}`);
+                        itemsToFetch.push({ row, feedId, symbol });
                     }
                 }
             }
@@ -162,14 +149,14 @@ export class ZerionFetcher {
                 }
 
                 // Trigger intermediate render if we found data
-                if (hasFastData) {
+                if (hasFastData && generation === this.generation) {
                     this.renderer.appendPositions(rows, `Zerion_${wallet}`);
                 }
 
                 // Pass 2: High resolution (96 points / 15m) for FINAL quality
                 const fullResults = await this.providers.pyth.getBatch24hPriceHistory(feedIds, 96, now);
 
-                for (const { row, feedId } of itemsToFetch) {
+                for (const { row, feedId, symbol } of itemsToFetch) {
                     const normalizedId = feedId.toLowerCase().startsWith('0x') ? feedId.toLowerCase() : `0x${feedId.toLowerCase()}`;
                     const history = fullResults[normalizedId];
 
@@ -189,7 +176,7 @@ export class ZerionFetcher {
                         }
 
                         // Update cache
-                        this.historyCache.set(row.asset, {
+                        this.historyCache.set(symbol, {
                             priceHistory: history,
                             change24h,
                             timestamp: Date.now()
@@ -200,8 +187,8 @@ export class ZerionFetcher {
                 console.warn(`[Zerion] Error fetching batch history:`, e);
             }
 
-            // 4. Update UI
-            this.renderer.appendPositions(rows, `Zerion_${wallet}`);
+            // 4. Update UI, unless a newer round has reported since
+            if (generation === this.generation) this.renderer.appendPositions(rows, `Zerion_${wallet}`);
 
         } catch (e) {
             console.warn(`[Zerion] Failed to enrich history for ${wallet}:`, e);

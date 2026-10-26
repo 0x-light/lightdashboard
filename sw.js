@@ -1,5 +1,5 @@
 // Service Worker for Light Dashboard
-// Provides offline support, intelligent caching, and automatic updates
+// Provides offline support for the app shell and automatic updates
 const CACHE_VERSION = 'v2.11.0';
 const BUILD_TIMESTAMP = '2026-10-26T12:00:00Z';
 const CACHE_NAME = `lightdash-${CACHE_VERSION}`;
@@ -20,16 +20,6 @@ const STATIC_ASSETS = [
   '/icon-512.png',
   '/favicon.png'
 ];
-
-// API cache duration by endpoint pattern
-const API_CACHE_CONFIG = {
-  'api.coingecko.com': 60 * 1000, // 60 seconds (CoinGecko has strict rate limits)
-  'hermes.pyth.network': 10 * 1000, // 10 seconds (Real-time prices)
-  'api.hyperliquid.xyz': 10 * 1000, // 10 seconds (Fast updates)
-  'blockchain.info': 60 * 1000, // 60 seconds (Bitcoin blocks are slow)
-  'api.zcha.in': 60 * 1000 // 60 seconds (Zcash blocks are slow)
-  // Note: api.zerion.io is not cached, always fetches fresh
-};
 
 // Domains that may have CORS issues - don't intercept these in SW
 // Let the browser handle them directly
@@ -75,32 +65,6 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Helper: Check if response is still fresh
-function isFresh(response, maxAge) {
-  if (!response) return false;
-
-  const cachedTime = response.headers.get('sw-cached-time');
-  if (!cachedTime) return false;
-
-  const age = Date.now() - parseInt(cachedTime, 10);
-  return age < maxAge;
-}
-
-// Helper: Clone response with custom headers
-async function cloneWithCacheTime(response) {
-  // Clone the response before reading the body
-  const clone = response.clone();
-  const headers = new Headers(clone.headers);
-  headers.set('sw-cached-time', Date.now().toString());
-
-  const body = await clone.blob();
-  return new Response(body, {
-    status: clone.status,
-    statusText: clone.statusText,
-    headers: headers
-  });
-}
-
 // Helper: answer from cache when possible and refresh the entry in the background
 function staleWhileRevalidate(event, request, cacheKey) {
   const cachePromise = caches.open(CACHE_NAME);
@@ -141,17 +105,7 @@ function networkFirst(request, cacheKey) {
     })));
 }
 
-// Helper: Get cache duration for URL
-function getCacheDuration(url) {
-  for (const [pattern, duration] of Object.entries(API_CACHE_CONFIG)) {
-    if (url.includes(pattern)) {
-      return duration;
-    }
-  }
-  return 0; // Don't cache by default
-}
-
-// Fetch event - stale-while-revalidate for the app shell, short-lived caching for some APIs
+// Fetch event - the app shell only; API requests always go to the network
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -192,50 +146,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle API requests - network first with intelligent caching
-  const cacheDuration = getCacheDuration(url.href);
-
-  if (cacheDuration > 0) {
-    event.respondWith(
-      caches.open(CACHE_NAME).then((cache) => {
-        return cache.match(request).then((cached) => {
-          // Check if cached response is still fresh
-          if (cached && isFresh(cached, cacheDuration)) {
-            // Return cached but update in background
-            fetch(request).then(async (response) => {
-              if (response.ok) {
-                const clonedResponse = await cloneWithCacheTime(response);
-                cache.put(request, clonedResponse);
-              }
-            }).catch(() => {
-              // Ignore background fetch errors
-            });
-            return cached.clone(); // Clone before returning
-          }
-
-          // Fetch from network
-          return fetch(request).then(async (response) => {
-            if (response.ok) {
-              const clonedResponse = await cloneWithCacheTime(response);
-              cache.put(request, clonedResponse);
-            }
-            return response;
-          }).catch((error) => {
-            // Return stale cache if available
-            if (cached) {
-              return cached.clone(); // Clone before returning
-            }
-            throw error;
-          });
-        });
-      })
-    );
-  } else {
-    // Default behavior - network only (no caching)
-    // Don't call respondWith - let browser handle it directly
-    // This avoids the invalid status 0 Response bug
-    return;
-  }
+  // Third-party APIs: network only. A cached answer would show old prices as if they were live.
 });
 
 // Message handler for cache control
@@ -245,27 +156,6 @@ self.addEventListener('message', (event) => {
     event.waitUntil(
       caches.keys().then((names) => {
         return Promise.all(names.map(name => caches.delete(name)));
-      })
-    );
-  }
-
-  if (event.data && event.data.type === 'CLEAR_API_CACHE') {
-    // Clear only API responses, keep static assets
-    event.waitUntil(
-      caches.open(CACHE_NAME).then((cache) => {
-        return cache.keys().then((requests) => {
-          const apiRequests = requests.filter((request) => {
-            const url = request.url;
-            return url.includes('api.coingecko.com') ||
-              url.includes('hermes.pyth.network') ||
-              url.includes('api.hyperliquid.xyz') ||
-              url.includes('blockchain.info') ||
-              url.includes('api.zcha.in') ||
-              url.includes('api.zerion.io') ||
-              url.includes('api/');
-          });
-          return Promise.all(apiRequests.map((request) => cache.delete(request)));
-        });
       })
     );
   }

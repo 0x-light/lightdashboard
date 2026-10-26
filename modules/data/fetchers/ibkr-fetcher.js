@@ -115,6 +115,7 @@ function buildPositionRow(pos, quote, underlyingQuote) {
   return {
     asset,
     exchange: 'IBKR',
+    livePrice: live !== null,
     amount: pos.position,
     price,
     value,
@@ -176,11 +177,10 @@ export class IbkrFetcher {
 
     async fetch() {
         try {
-            const { statement, stale } = await this.providers.ibkr.getStatement(
+            const { statement, savedAt, stale, error } = await this.providers.ibkr.getStatement(
                 this.settings.ibkrFlexToken,
                 this.settings.ibkrFlexQueryId
             );
-            if (stale) console.warn('[IBKR] Refresh failed; showing the last statement');
 
             const positions = statement.accounts.flatMap(a => a.positions);
             const cash = statement.accounts.flatMap(a => a.cash);
@@ -209,11 +209,23 @@ export class IbkrFetcher {
             // The first candidate with a price in the holding's own currency.
             const quoteFor = pos => (symbols.get(pos) || []).map(sym => quotes[sym]).find(q => livePriceFor(pos, q) !== null);
             const rows = positions.map(pos => buildPositionRow(pos, quoteFor(pos), quotes[underlyings.get(pos)]));
-            // When IBKR made the statement, so the Account window can say how old the holdings are.
-            const asOf = flexTime(statement.generatedAt);
+            // When IBKR made the statement (end of day). Every row carries it as holdingsAsOf.
+            // Rows priced from the statement (no live quote) carry it as asOf, the age of
+            // their numbers. Cash changes only with trades, so the latest statement's cash is
+            // current; it is old only when the statement is a saved one after a failed refresh.
+            const generatedAt = flexTime(statement.generatedAt) ?? savedAt;
             const all = [...rows, ...cashRows];
-            if (asOf) all.forEach(row => { row.asOf = asOf; });
+            for (const row of all) {
+                if (generatedAt) {
+                    row.holdingsAsOf = generatedAt;
+                    const isCash = row.category === 'cash';
+                    if ((!row.livePrice && !isCash) || (isCash && stale)) row.asOf = generatedAt;
+                }
+                delete row.livePrice;
+            }
             this.renderer.appendPositions(all, 'IBKR');
+            // The rows above come from a saved statement: say the refresh failed.
+            if (stale) this.renderer.markProviderFailed('IBKR', error || new Error('IBKR refresh failed'));
         } catch (e) {
             this.renderer.markProviderFailed('IBKR', e);
         }

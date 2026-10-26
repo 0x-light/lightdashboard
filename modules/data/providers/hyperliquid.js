@@ -196,8 +196,11 @@ export async function fetchPositions(address, timeoutMs = 10000) {
   return { perp, spot: spot.value, dexes: activeDexes, unified: unifiedByUser.get(key) };
 }
 
+// Throws when there is no answer: without mids every spot token would be priced at 0.
 export async function fetchAllMids(timeoutMs = 10000) {
-  return await post({ type: 'allMids' }, timeoutMs).catch(() => null);
+  const mids = await post({ type: 'allMids' }, timeoutMs);
+  if (!mids || typeof mids !== 'object') throw new Error('Hyperliquid: no mid prices');
+  return mids;
 }
 
 export async function fetchMetaAndAssetCtxs(timeoutMs = 10000) {
@@ -240,39 +243,25 @@ export async function fetchHistoricalPrice(asset, timestamp, timeoutMs = 10000) 
   }
 }
 
+// Candles, oldest first. A coin Hyperliquid doesn't list answers HTTP 500 with a null body:
+// that is "no history". Any other failure throws, so callers don't keep an empty chart.
 export async function fetchCandles(coin, interval, startTime, endTime, timeoutMs = 10000) {
+  let data;
   try {
-    const data = await post({
-      type: 'candleSnapshot',
-      req: {
-        coin,
-        interval,
-        startTime,
-        endTime
-      }
-    }, timeoutMs);
-
-    if (Array.isArray(data)) {
-      return data.map(c => ({
-        t: c.t,
-        o: parseFloat(c.o),
-        h: parseFloat(c.h),
-        l: parseFloat(c.l),
-        c: parseFloat(c.c),
-        v: parseFloat(c.v)
-      }));
-    }
-    return [];
+    data = await post({ type: 'candleSnapshot', req: { coin, interval, startTime, endTime } }, timeoutMs);
   } catch (e) {
-    // 500 errors are common for assets without history or invalid requests
-    // We shouldn't spam the console for expected failures on obscure assets
-    if (e.message && e.message.includes('500')) {
-      // console.debug(`[Hyperliquid] No candles found for ${coin} (500)`);
-    } else {
-      console.warn(`[Hyperliquid] Failed to fetch candles for ${coin}:`, e);
-    }
-    return [];
+    if (/HTTP 500: null\b/.test(String(e?.message))) return [];
+    throw e;
   }
+  if (!Array.isArray(data)) return [];
+  return data.map(c => ({
+    t: c.t,
+    o: parseFloat(c.o),
+    h: parseFloat(c.h),
+    l: parseFloat(c.l),
+    c: parseFloat(c.c),
+    v: parseFloat(c.v)
+  }));
 }
 
 /**

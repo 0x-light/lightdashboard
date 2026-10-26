@@ -1051,6 +1051,28 @@ body.hide-comic #newComicSection {
   opacity: 0.5;
 }
 
+/* Stale rows (old data, a failed source, the saved copy): figures dim, the age beside the ticker */
+.position-row-stale,
+.position-row-stale td:not(.asset-cell),
+.position-row-stale td:not(.asset-cell) *,
+.mobile-position-card.is-stale :is(.card-total, .card-meta, .card-pnl) {
+  color: var(--muted) !important;
+}
+
+.position-row-stale .sparkline {
+  opacity: 0.5;
+}
+
+.stale-note,
+.cell-note {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.stale-note {
+  margin-left: 2ch;
+}
+
 /* Funding tooltip (follows the mouse) */
 .funding-cell {
   cursor: help;
@@ -1297,6 +1319,10 @@ body.hide-comic #newComicSection {
   content: '●';
   content: '●' / '';
   color: var(--green);
+}
+
+.last-update-timestamp[data-state="failed"]::before {
+  color: var(--red);
 }
 
 .last-update-timestamp[data-state="refreshing"]::before {
@@ -3507,6 +3533,11 @@ html:root .hero-readout-item {
   white-space: nowrap;
 }
 html:root .hero-readout-label { color: var(--muted); }
+html:root .hero-freshness {
+  grid-area: note;
+  margin: 0;
+  color: var(--muted);
+}
 @media (max-width: 520px) {
   html:root .hero-readout { column-gap: 2ch; }
 }

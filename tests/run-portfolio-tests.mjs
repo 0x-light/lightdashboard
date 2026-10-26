@@ -27,6 +27,9 @@ import { _internal as pythInternal } from '../modules/data/providers/pyth.js';
 import { normalizeEntries } from '../modules/features/watchlist.js';
 import { anchored, clip, getPortfolioHistory, netOfTransfers, plan, priceKeyOf, scaled, sumSeries } from '../modules/data/portfolio-history.js';
 import { pnlSeries } from '../modules/data/providers/lighter.js';
+import * as LighterProvider from '../modules/data/providers/lighter.js';
+import { BitcoinZcashFetcher } from '../modules/data/fetchers/bitcoin-fetcher.js';
+import * as AlchemyProvider from '../modules/data/providers/alchemy.js';
 import { chartPoints } from '../modules/data/providers/zerion.js';
 import {
   formatMoney,
@@ -42,6 +45,19 @@ import {
   renderedManualPositionMatches
 } from '../modules/features/manual-positions.js';
 import { decodeBackup, encodeBackup } from '../modules/ui/settings-dialog.js';
+import { calculatePositionsPnL, loadEntryPrices } from '../modules/utils/entry-price-tracker.js';
+import {
+  IncrementalPortfolioRenderer,
+  STALE_AFTER_MS,
+  ageText,
+  isHyperliquidPricedRow,
+  mergeRows,
+  rowFreshness,
+  sessionMoveIsOld,
+  summarizeFreshness
+} from '../modules/domain/incremental-portfolio.js';
+import { PortfolioManager } from '../modules/domain/portfolio-manager.js';
+import { freshnessNote } from '../modules/ui/hero.js';
 
 function testInstrumentsReadOptionsAndKinds() {
   // OCC codes, as IBKR's Flex symbol field carries them (root padded to six characters).
@@ -1307,10 +1323,12 @@ async function testHyperliquidStakingReadKeepsLastAnswerOrFails() {
   const fetcher = new HyperliquidFetcher(providers, {}, {});
   assert.deepEqual(await fetcher.getStaking('0xabc'), { staked: 4, unstaked: 1, withdrawing: 0 });
 
-  // The exchange stops answering: the last answer stands in, once the cache has aged out.
+  // The exchange stops answering: the last answer stands in, once the cache has aged out,
+  // with its time as asOf.
   fail = true;
-  fetcher.stakingCache.get('0xabc').at = 0;
-  assert.deepEqual(await fetcher.getStaking('0xabc'), { staked: 4, unstaked: 1, withdrawing: 0 });
+  const at = Date.now() - 60 * 60 * 1000;
+  fetcher.stakingCache.get('0xabc').at = at;
+  assert.deepEqual(await fetcher.getStaking('0xabc'), { staked: 4, unstaked: 1, withdrawing: 0, asOf: at });
 
   // With no last answer, the failure reaches the caller instead of reading as "nothing staked".
   await assert.rejects(() => fetcher.getStaking('0xdef'), /timeout/);
@@ -1361,6 +1379,425 @@ function testHyperliquidEquityRowIsTheAccountValue() {
   );
 }
 
+// An in-memory localStorage for the entry tracker; each test starts empty.
+function freshEntryStore(initial = {}) {
+  const data = new Map(Object.entries(initial).map(([k, v]) => [k, JSON.stringify(v)]));
+  globalThis.localStorage = {
+    getItem: (k) => (data.has(k) ? data.get(k) : null),
+    setItem: (k, v) => { data.set(k, String(v)); },
+    removeItem: (k) => { data.delete(k); }
+  };
+}
+
+const walletRow = (fields) => ({ asset: 'ETH', exchange: 'Ethereum', pnl: null, ...fields });
+
+function testTrackerZeroPriceIsUnknownPnl() {
+  freshEntryStore({ walletAssetEntryPrices: { 'ETH_Ethereum_0xa': { price: 2000, date: 'd', amount: 1 } } });
+  const [row] = calculatePositionsPnL([walletRow({ amount: 1, price: 0, value: 0, _changeDetectionKey: 'ETH_Ethereum_0xa' })]).positions;
+  assert.equal(row.pnl, null, 'no price is an unknown P&L, not a full loss');
+  const totals = calculatePortfolioTotals([row, { exchange: 'Base', value: 110, pnl: 10 }]);
+  assert.equal(totals.totalPnL, 10);
+  assert.equal(totals.costBasis, 100);
+  assert.equal(calculatePortfolioTotals([{ exchange: 'Base', value: 0, price: 0, pnl: -2000 }]).totalPnL, 0,
+    'a row with no value adds no P&L');
+}
+
+function testTrackerKeysPerWallet() {
+  freshEntryStore();
+  calculatePositionsPnL([
+    walletRow({ amount: 1, price: 2000, _changeDetectionKey: 'ETH_Ethereum_0xa' }),
+    walletRow({ amount: 2, price: 2000, _changeDetectionKey: 'ETH_Ethereum_0xb' })
+  ]);
+  const [a, b] = calculatePositionsPnL([
+    walletRow({ amount: 1, price: 2100, _changeDetectionKey: 'ETH_Ethereum_0xa' }),
+    walletRow({ amount: 2, price: 2100, _changeDetectionKey: 'ETH_Ethereum_0xb' })
+  ]).positions;
+  assert.equal(a.pnl, 100);
+  assert.equal(b.pnl, 200);
+  assert.deepEqual(Object.keys(loadEntryPrices()).sort(), ['ETH_Ethereum_0xa', 'ETH_Ethereum_0xb']);
+
+  // An entry from the old asset_exchange key seeds each wallet once, then goes.
+  freshEntryStore({ walletAssetEntryPrices: { ETH_Ethereum: { price: 1500, date: 'd', amount: 9 } } });
+  const [c, d] = calculatePositionsPnL([
+    walletRow({ amount: 1, price: 2000, _changeDetectionKey: 'ETH_Ethereum_0xa' }),
+    walletRow({ amount: 2, price: 2000, _changeDetectionKey: 'ETH_Ethereum_0xb' })
+  ]).positions;
+  assert.equal(c.pnl, 500);
+  assert.equal(d.pnl, 1000);
+  const stored = loadEntryPrices();
+  assert.equal(stored.ETH_Ethereum, undefined);
+  assert.equal(stored['ETH_Ethereum_0xb'].amount, 2);
+}
+
+function testTrackerWeightsEntryOnIncrease() {
+  freshEntryStore();
+  const key = 'ETH_Ethereum_0xa';
+  calculatePositionsPnL([walletRow({ amount: 1, price: 1000, _changeDetectionKey: key })]);
+  const [up] = calculatePositionsPnL([walletRow({ amount: 3, price: 2000, _changeDetectionKey: key })]).positions;
+  assert.equal(up.entryPrice, 5000 / 3, '1 at 1000 and 2 more at 2000');
+  assert.equal(Math.round(up.pnl), 1000, 'only the first unit has gained');
+  const [down] = calculatePositionsPnL([walletRow({ amount: 2, price: 2000, _changeDetectionKey: key })]).positions;
+  assert.equal(down.entryPrice, 5000 / 3, 'selling part keeps the entry');
+  assert.equal(loadEntryPrices()[key].amount, 2);
+}
+
+function testTrackerStartsFreshAfterZero() {
+  freshEntryStore();
+  const key = 'ETH_Ethereum_0xa';
+  calculatePositionsPnL([walletRow({ amount: 1, price: 1000, _changeDetectionKey: key })]);
+  calculatePositionsPnL([walletRow({ amount: 0, price: 1500, _changeDetectionKey: key })]);
+  assert.equal(loadEntryPrices()[key], undefined);
+  const [back] = calculatePositionsPnL([walletRow({ amount: 1, price: 3000, _changeDetectionKey: key })]).positions;
+  assert.equal(back.entryPrice, 3000);
+  assert.equal(back.pnl, 0);
+}
+
+function testStablecoinsOutOfPnlBasis() {
+  freshEntryStore();
+  const [usdc] = calculatePositionsPnL([walletRow({ asset: 'USDC', amount: 10000, price: 1, value: 10000, _changeDetectionKey: 'USDC_Ethereum_0xa' })]).positions;
+  assert.equal(usdc.pnl, null);
+  const totals = calculatePortfolioTotals([usdc, { exchange: 'Ethereum', value: 1200, pnl: 200 }]);
+  assert.equal(totals.totalValue, 11200);
+  assert.equal(totals.costBasis, 1000);
+  assert.equal(totals.totalPnLPercent, 20);
+}
+
+function testIbkrShortCostBasis() {
+  // Shorted at 1000, now owes 800: +200 on a 1000 basis.
+  const totals = calculatePortfolioTotals([{ exchange: 'IBKR', amount: -10, value: -800, pnl: 200 }]);
+  assert.equal(totals.costBasis, 1000);
+  assert.equal(totals.totalPnLPercent, 20);
+}
+
+function testRowFreshnessMarksOldFailedSnapshotAndFx() {
+  const now = 1_800_000_000_000;
+  const fresh = { _source: 'Lighter', dataAt: now - 20_000, fxRateAt: null };
+  assert.equal(rowFreshness(fresh, { now }).stale, false);
+  assert.equal(rowFreshness({ ...fresh, dataAt: now - STALE_AFTER_MS - 1 }, { now }).stale, true, 'older than two cycles');
+  const failed = rowFreshness({ ...fresh, _source: 'Zerion_0xabc' }, { now, failing: ['Zerion'] });
+  assert.equal(failed.stale, true, 'a wallet row of a failed source');
+  assert.equal(failed.failedSource, 'Zerion');
+  assert.equal(rowFreshness({ ...fresh, _source: 'ZerionX' }, { now, failing: ['Zerion'] }).stale, false, 'prefix needs the separator');
+  assert.equal(rowFreshness({ ...fresh, _fromSnapshot: true }, { now }).stale, true, 'snapshot rows until replaced');
+  // FX: an hour-old rate is stale and sets the age; a rate of unknown age (0) is stale too.
+  const fx = rowFreshness({ ...fresh, fxRateAt: now - 2 * 3600_000 }, { now });
+  assert.equal(fx.stale, true);
+  assert.equal(fx.at, now - 2 * 3600_000);
+  assert.equal(rowFreshness({ ...fresh, fxRateAt: 0 }, { now }).stale, true);
+  assert.equal(rowFreshness({ ...fresh, fxRateAt: now - 60_000 }, { now }).stale, false);
+  // A merged row is stale when any of its sources failed.
+  assert.equal(rowFreshness({ _sources: ['IBKR', 'Lighter'], dataAt: now }, { now, failing: ['Lighter'] }).stale, true);
+
+  assert.equal(ageText(now - 40_000, now), '40s ago');
+  assert.equal(ageText(now - 12 * 60_000, now), '12m ago');
+  assert.equal(ageText(now - 3 * 3600_000, now), '3h ago');
+  assert.match(ageText(now - 3 * 86400_000, now), /^[A-Z][a-z]{2} \d\d:\d\d$/, 'weekday and time');
+  assert.equal(ageText(0, now), 'age unknown');
+}
+
+function testHeroFreshnessNamesOfflineSourcesAndOldestFigure() {
+  const now = 1_800_000_000_000;
+  const rows = [
+    { value: 100, _source: 'Hyperliquid_0x1', dataAt: now - 10_000 },
+    { value: 50, _source: 'IBKR', dataAt: now - 12 * 60_000 },
+    { value: 0, _source: 'Manual', dataAt: now - 86400_000 } // no value: not in the total
+  ];
+  const summary = summarizeFreshness(rows, { now, failing: ['Lighter_0xabc'] });
+  assert.deepEqual(summary, { offline: ['Lighter'], oldestAt: now - 12 * 60_000, stale: true, unpriced: [] });
+  const html = freshnessNote(summary, now);
+  assert.match(html, /Lighter offline · includes data from 12m ago/);
+  assert.equal(freshnessNote(summarizeFreshness(rows.slice(0, 1), { now }), now), '', 'all live: no note');
+  // A declared position without a price is missing from the total; a spam wallet token is not news.
+  const unpriced = summarizeFreshness([
+    { asset: 'VWCE', exchange: 'Manual (Stock)', value: 0, quoteUnavailable: true },
+    { asset: 'SCAM', exchange: 'Ethereum', value: 0, quoteUnavailable: true }
+  ], { now });
+  assert.deepEqual(unpriced.unpriced, ['VWCE']);
+  assert.match(freshnessNote(unpriced, now), /no price for VWCE/);
+}
+
+function testClosedMarketMoveAndHyperliquidEnrichmentScope() {
+  const now = Date.UTC(2026, 9, 25, 12); // a Sunday
+  assert.equal(sessionMoveIsOld({ marketState: 'CLOSED', quoteTime: Date.UTC(2026, 9, 23, 20) }, now), true);
+  assert.equal(sessionMoveIsOld({ marketState: 'POST', quoteTime: now - 3600_000 }, now), false);
+  assert.equal(sessionMoveIsOld({ marketState: 'CLOSED' }, now), true, 'closed without a quote time');
+  assert.equal(sessionMoveIsOld({ marketState: 'REGULAR' }, now), false);
+
+  assert.equal(isHyperliquidPricedRow({ asset: 'ETH', exchange: 'HL Perps' }), true);
+  assert.equal(isHyperliquidPricedRow({ asset: 'ETH', exchange: 'Arbitrum' }), true, 'native coin');
+  assert.equal(isHyperliquidPricedRow({ asset: 'PEPE', exchange: 'Base' }), false, 'a token with a colliding ticker');
+  assert.equal(isHyperliquidPricedRow({ asset: 'COIN', exchange: 'IBKR' }), false);
+  assert.equal(isHyperliquidPricedRow({ asset: 'AAPL', exchange: 'Manual (Stock)', manualType: 'stock' }), false);
+  assert.equal(isHyperliquidPricedRow({ asset: 'SOL', exchange: 'Manual (Pyth)', manualType: 'pyth' }), true);
+}
+
+function testMergedRowsKeepTotalsAndDailyMove() {
+  const rows = [
+    { asset: 'USDC', exchange: 'Ethereum', value: 1000, amount: 1000, change24h: 0, pnl: null },
+    { asset: 'USDC', exchange: 'Base', value: 3000, amount: 3000, change24h: 10, pnl: 300 },
+    { asset: 'USDC', exchange: 'IBKR', value: -9000, amount: -9000, change24h: null, pnl: null },
+    { asset: 'USDC', exchange: 'Solana', value: -50, amount: -50, change24h: null, pnl: null }
+  ];
+  const merged = IncrementalPortfolioRenderer.prototype.aggregatePositions.call({}, rows);
+  const totals = (list) => ({ ...calculatePortfolioTotals(list), ...calculatePortfolioBreakdown(list) });
+  const before = totals(rows);
+  const after = totals(merged);
+  assert.equal(after.totalValue, before.totalValue, 'the IBKR debit still counts, the other negative still does not');
+  assert.equal(after.totalValue, 1000 + 3000 - 9000);
+  assert.ok(Math.abs(after.change24h - before.change24h) < 1e-9, 'same 24h amount');
+  assert.ok(Math.abs(after.change24hPercent - before.change24hPercent) < 1e-9);
+  assert.equal(after.totalPnL, before.totalPnL);
+
+  const positive = merged.find(r => r.isAggregated);
+  assert.equal(positive.value, 4000);
+  // 3000 × 10/110 gained on 4000 now: the move on 4000 − that.
+  assert.ok(Math.abs(positive.change24h - (100 * (3000 / 11)) / (4000 - 3000 / 11)) < 1e-9);
+  assert.equal(positive.pnlValue, 3000, 'P&L base is the value of the rows with a P&L');
+  assert.equal(merged.filter(r => r.value < 0).length, 2, 'negative rows stay unmerged');
+
+  const plain = mergeRows('ETH', [{ value: 10, pnl: 1, _source: 'A' }, { value: 20, pnl: 2, _source: 'A' }]);
+  assert.equal(plain.pnlValue, undefined);
+  assert.equal(plain._source, 'A');
+  assert.equal(plain.change24h, null);
+}
+
+async function testPortfolioManagerSkipsOnlyTheBusyFetcher() {
+  const calls = { Hyperliquid: 0, IBKR: 0 };
+  let releaseIbkr;
+  const ibkrDone = new Promise(resolve => { releaseIbkr = resolve; });
+  const manager = new PortfolioManager({}, {}, { ibkrFlexToken: 't', ibkrFlexQueryId: 'q' });
+  manager.registerFetcher('Hyperliquid', { fetch: async () => { calls.Hyperliquid++; } });
+  manager.registerFetcher('IBKR', { fetch: async () => { calls.IBKR++; await ibkrDone; } });
+
+  const first = manager.fetchAll(['0xabc'], [], [], []);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(manager.isFetching, true, 'IBKR still running');
+  const second = manager.fetchAll(['0xabc'], [], [], []);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(calls.Hyperliquid, 2, 'the fast source refreshed again');
+  assert.equal(calls.IBKR, 1, 'the slow source skipped its own round');
+  releaseIbkr();
+  await Promise.all([first, second]);
+  assert.equal(manager.isFetching, false);
+  await manager.fetchAll(['0xabc'], [], [], []);
+  assert.equal(calls.IBKR, 2, 'and runs again once done');
+
+  // A fetcher that throws does not stay marked in flight.
+  manager.registerFetcher('Hyperliquid', { fetch: async () => { throw new Error('down'); } });
+  const error = console.error;
+  console.error = () => {};
+  await manager.fetchAll(['0xabc'], [], [], []);
+  console.error = error;
+  assert.equal(manager.inFlight.has('Hyperliquid'), false);
+}
+
+function failureRecorder() {
+  const appended = [];
+  const failed = [];
+  return {
+    appended,
+    failed,
+    renderer: {
+      appendPositions: (rows, source, options) => appended.push({ rows, source, options }),
+      markProviderFailed: (source, err) => failed.push({ source, err })
+    }
+  };
+}
+
+async function testHyperliquidMidsFailureFailsWalletsNotZero() {
+  const { appended, failed, renderer } = failureRecorder();
+  const providers = {
+    hyperliquid: {
+      ...HyperliquidProvider,
+      fetchPositions: async () => ({
+        perp: { marginSummary: { accountValue: '0' }, assetPositions: [] },
+        spot: { balances: [{ coin: 'HYPE', total: '10', hold: '0' }] },
+        dexes: [],
+        unified: false
+      }),
+      fetchAllMids: async () => { throw new Error('HTTP 502'); },
+      fetchMetaAndAssetCtxs: async () => null,
+      fetchSpotMeta: async () => ({ tokens: [{ name: 'USDC', index: 0 }, { name: 'HYPE', index: 150 }], universe: [{ name: '@107', tokens: [150, 0], index: 107 }] }),
+      fetchDelegatorSummary: async () => ({ delegated: '0', undelegated: '0', totalPendingWithdrawal: '0' })
+    }
+  };
+  await new HyperliquidFetcher(providers, renderer, {}).fetch(['0xabc']);
+  assert.ok(failed.some(f => f.source === 'Hyperliquid_0xabc'), 'the wallet is marked failed');
+  assert.ok(!appended.some(c => c.source === 'Hyperliquid_0xabc'), 'no $0 spot rows are reported');
+}
+
+async function testBitcoinPriceFailureMarksSourceFailed() {
+  globalThis.window = globalThis.window || {};
+  const { appended, failed, renderer } = failureRecorder();
+  const providers = {
+    bitcoin: { getTokenBalances: async () => [{ address: 'bc1qxyz', balance: 0.5 }] },
+    zcash: { getTokenBalances: async () => [] },
+    coingecko: { getSimplePrice: async () => { throw new Error('HTTP 429'); } }
+  };
+  await new BitcoinZcashFetcher(providers, renderer).fetch(['bc1qxyz'], []);
+  assert.ok(failed.some(f => f.source === 'Bitcoin/Zcash_BTC'), 'BTC fails without a price');
+  assert.ok(!appended.some(c => c.source === 'Bitcoin/Zcash_BTC'), 'no $0 BTC row');
+  assert.ok(failed.some(f => f.source === 'Bitcoin/Zcash'), 'the round still ends, keeping old-name rows');
+  assert.ok(!appended.some(c => c.source === 'Bitcoin/Zcash_ZEC') && !failed.some(f => f.source === 'Bitcoin/Zcash_ZEC'),
+    'no Zcash addresses: no Zcash report');
+}
+
+async function testManualKeepsLastGoodQuoteWithAsOf() {
+  const { appended, renderer } = failureRecorder();
+  let answer = { SIVEF: { symbol: 'SIVEF', price: 5, change24h: 1, currency: 'USD', quoteTime: 1700000000000 } };
+  const providers = { stocks: { getQuotes: async () => { if (answer instanceof Error) throw answer; return answer; }, get24hPriceHistory: async () => [] } };
+  const fetcher = new ManualFetcher(providers, renderer, { showPriceChart: false, hiddenAssets: [], minBalanceThreshold: 0 });
+  const positions = [{ type: 'stock', symbol: 'SIVEF', amount: 10, entryPrice: 3, category: 'equity', currency: 'USD' }];
+  await fetcher.fetch(positions);
+  assert.equal(appended.at(-1).rows[0].asOf, undefined, 'a fresh quote has no asOf');
+
+  answer = new Error('HTTP 503');
+  await fetcher.fetch(positions);
+  const row = appended.at(-1).rows[0];
+  assert.equal(row.value, 50, 'the last good quote, not $0');
+  assert.equal(row.quoteUnavailable, false);
+  assert.equal(row.asOf, 1700000000000, 'asOf is the reused quote\'s time');
+
+  const other = new ManualFetcher(providers, renderer, { showPriceChart: false, hiddenAssets: [], minBalanceThreshold: 0 });
+  await other.fetch(positions);
+  assert.equal(appended.at(-1).rows[0].quoteUnavailable, true, 'never quoted: unpriced');
+}
+
+async function testLighterTransientLookupIsNotCachedAsNoAccount() {
+  const originalFetch = globalThis.fetch;
+  let fail = true;
+  globalThis.fetch = async () => {
+    if (fail) throw new TypeError('network down');
+    return new Response(JSON.stringify({ code: 200, accounts: [{ index: 7, available_balance: '10', total_asset_value: '10', positions: [], assets: [] }] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  };
+  const wallet = '0x00000000000000000000000000000000000fresh1';
+  try {
+    await assert.rejects(() => LighterProvider.fetchAccountByAddress(wallet, { timeoutMs: 500 }), /network down/);
+    fail = false;
+    const result = await LighterProvider.fetchAccountByAddress(wallet, { timeoutMs: 500 });
+    assert.equal(result?.accounts?.[0]?.index, 7, 'the next lookup asks again');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // A fetcher whose lookup fails marks the wallet failed instead of reporting it empty.
+  const { appended, failed, renderer } = failureRecorder();
+  const fetcher = new LighterFetcher({ lighter: { fetchAccountByAddress: async () => { throw new Error('HTTP 429'); } } }, renderer);
+  await fetcher.fetch(['0xabc']);
+  assert.ok(failed.some(f => f.source === 'Lighter_0xabc'));
+  assert.ok(!appended.some(c => c.source === 'Lighter_0xabc'));
+}
+
+function testLighterChange24hByTimestamp() {
+  const H = 60 * 60 * 1000;
+  const t = 1_800_000_000_000;
+  // An hour missing: the array index 24 back would be 25 hours old.
+  const candles = [{ timestamp: t - 25 * H, close: 50 }, { timestamp: t - 24 * H, close: 100 }, { timestamp: t - 2 * H, close: 105 }, { timestamp: t, close: 110 }];
+  assert.equal(LighterProvider.change24hOf(candles), 10);
+  assert.equal(LighterProvider.change24hOf(candles.slice(2)), null, 'less than a day of candles has no 24h change');
+}
+
+async function testLighterUsdcAndUnpricedSpotKeepTheWallet() {
+  const { appended, failed, renderer } = failureRecorder();
+  const account = {
+    index: 5, total_asset_value: '1000', available_balance: '50',
+    positions: [{ market_id: 0, symbol: 'ETH', position: '1', sign: 1, avg_entry_price: '2000', position_value: '2300', unrealized_pnl: '300' }],
+    assets: [
+      { symbol: 'USDC', asset_id: 3, balance: '5.000000', locked_balance: '0' },
+      { symbol: 'LIT', asset_id: 2, balance: '10', locked_balance: '0' }
+    ]
+  };
+  const providers = {
+    lighter: {
+      fetchAccountByAddress: async () => ({ accounts: [account] }),
+      fetchCandlesticks: async (symbol, opts) => (opts?.market === 'spot' ? null : { priceHistory: [], change24h: 1, currentPrice: 2300 }),
+      fetchFundingRates: async () => ({})
+    },
+    coingecko: { getSimplePrice: async () => ({}) }
+  };
+  await new LighterFetcher(providers, renderer).fetch(['0xusdc']);
+  assert.equal(failed.length, 0, 'a USDC balance never fails the wallet');
+  const rows = appended.find(c => c.source === 'Lighter_0xusdc').rows;
+  const usdc = rows.find(r => r.asset === 'USDC');
+  assert.equal(usdc.value, 5);
+  const lit = rows.find(r => r.asset === 'LIT');
+  assert.equal(lit.quoteUnavailable, true, 'no price yet: unpriced, not $0 and not a failed wallet');
+  assert.equal(lit.price, null);
+  assert.ok(rows.some(r => r.isLighterAccountEquity && r.value === 1000), 'equity still updates');
+}
+
+async function testSoldOutHoldingResetsItsEntry() {
+  freshEntryStore();
+  window.AppModules = { utils: { entryPriceTracker: { calculatePositionsPnL } } };
+  const { renderer } = failureRecorder();
+  let balances = [{ address: 'bc1qa', balance: 1 }];
+  let price = 100;
+  const providers = {
+    bitcoin: { getTokenBalances: async () => balances },
+    zcash: { getTokenBalances: async () => [] },
+    coingecko: { getSimplePrice: async () => ({ bitcoin: { usd: price } }) }
+  };
+  const fetcher = new BitcoinZcashFetcher(providers, renderer);
+  try {
+    await fetcher.fetch(['bc1qa'], []);
+    assert.equal(loadEntryPrices().BTC_Bitcoin_bc1qa.price, 100);
+
+    // A failed read keeps the entry.
+    providers.bitcoin.getTokenBalances = async () => { throw new Error('HTTP 503'); };
+    await fetcher.fetch(['bc1qa'], []);
+    assert.ok(loadEntryPrices().BTC_Bitcoin_bc1qa, 'a failure never resets');
+
+    // Sold out (the provider drops empty addresses): the entry goes.
+    providers.bitcoin.getTokenBalances = async () => balances;
+    balances = [];
+    await fetcher.fetch(['bc1qa'], []);
+    assert.equal(loadEntryPrices().BTC_Bitcoin_bc1qa, undefined);
+
+    // A later re-buy starts at its own price, with no fake P&L.
+    balances = [{ address: 'bc1qa', balance: 0.5 }];
+    price = 300;
+    await fetcher.fetch(['bc1qa'], []);
+    assert.equal(loadEntryPrices().BTC_Bitcoin_bc1qa.price, 300);
+  } finally {
+    window.AppModules = null;
+  }
+}
+
+async function testAlchemySkipsANetworkTheKeyHasNotEnabled() {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+    if (u.includes('hyperliquid-mainnet')) return json({ error: { message: 'not enabled' } }, 403);
+    if (u.includes('/prices/')) return json({ data: [{ symbol: 'ETH', prices: [{ currency: 'usd', value: '2000' }] }] });
+    const { method } = JSON.parse(init.body);
+    if (method === 'eth_getBalance') return json({ result: u.includes('eth-mainnet') ? '0xde0b6b3a7640000' : '0x0' });
+    return json({ result: { tokenBalances: [] } });
+  };
+  try {
+    const tokens = await AlchemyProvider.getTokenBalances(['0x' + 'a'.repeat(40)], 'key', { timeoutMs: 500 });
+    assert.equal(tokens.length, 1);
+    assert.equal(tokens[0].tokenPrice, 2000);
+    assert.ok(!tokens.read.some(r => r.chain === 'HyperEVM'), 'a skipped network is not read in full');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function testFreshnessFetcherFailures() {
+  await testHyperliquidMidsFailureFailsWalletsNotZero();
+  await testBitcoinPriceFailureMarksSourceFailed();
+  await testManualKeepsLastGoodQuoteWithAsOf();
+  await testLighterTransientLookupIsNotCachedAsNoAccount();
+  testLighterChange24hByTimestamp();
+  await testLighterUsdcAndUnpricedSpotKeepTheWallet();
+  await testSoldOutHoldingResetsItsEntry();
+  await testAlchemySkipsANetworkTheKeyHasNotEnabled();
+}
+
 async function run() {
   testBackupRoundTripKeepsAccountsAndText();
   testPortfolioHistorySeriesMath();
@@ -1406,6 +1843,18 @@ async function run() {
   await testLighterAlternateSchemaRows();
   await testLighterObjectMapSchemaRows();
   await testLighterCoinGeckoFallbackForSpotPrice();
+  testTrackerZeroPriceIsUnknownPnl();
+  testTrackerKeysPerWallet();
+  testTrackerWeightsEntryOnIncrease();
+  testTrackerStartsFreshAfterZero();
+  testStablecoinsOutOfPnlBasis();
+  testIbkrShortCostBasis();
+  testRowFreshnessMarksOldFailedSnapshotAndFx();
+  testHeroFreshnessNamesOfflineSourcesAndOldestFigure();
+  testClosedMarketMoveAndHyperliquidEnrichmentScope();
+  testMergedRowsKeepTotalsAndDailyMove();
+  await testPortfolioManagerSkipsOnlyTheBusyFetcher();
+  await testFreshnessFetcherFailures();
   console.log('All portfolio tests passed');
 }
 

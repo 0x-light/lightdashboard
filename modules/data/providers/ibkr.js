@@ -10,6 +10,9 @@ const CACHE_KEY = 'ibkrStatement.v1';
 const STATEMENT_TTL_MS = 60 * 60 * 1000;
 // After a failed request, wait this long before asking IBKR again (refreshes run every 30s).
 const RETRY_AFTER_FAILURE_MS = 5 * 60 * 1000;
+// A failed refresh falls back to the saved statement only while it is this young (a long
+// weekend and a day of outage); after that the failure shows instead.
+const MAX_STALE_MS = 4 * 24 * 60 * 60 * 1000;
 
 let memory = null; // { fingerprint, savedAt, statement }
 let inFlight = null; // { fingerprint, promise }
@@ -141,9 +144,10 @@ async function requestStatement(token, queryId, timeoutMs) {
 }
 
 /**
- * Returns { statement, savedAt, stale }. A cached statement younger than the TTL is returned
- * without a request. When a refresh fails, an older cached statement is returned with
- * stale: true instead of the error, so a flaky IBKR keeps the last known positions on screen.
+ * Returns { statement, savedAt, stale, error }. A cached statement younger than the TTL is
+ * returned without a request. When a refresh fails, a cached statement younger than
+ * MAX_STALE_MS is returned with stale: true and the error, so a flaky IBKR keeps the last
+ * known positions on screen and the caller can still report the failure.
  */
 export async function getStatement(token, queryId, { timeoutMs = 30000, force = false } = {}) {
   token = String(token || '').trim();
@@ -158,8 +162,9 @@ export async function getStatement(token, queryId, { timeoutMs = 30000, force = 
 
   const recentFailure = !force && lastFailure?.fingerprint === fingerprint
     && Date.now() - lastFailure.at < RETRY_AFTER_FAILURE_MS;
+  const usable = cached && Date.now() - cached.savedAt < MAX_STALE_MS;
   if (recentFailure) {
-    if (cached) return { statement: cached.statement, savedAt: cached.savedAt, stale: true };
+    if (usable) return { statement: cached.statement, savedAt: cached.savedAt, stale: true, error: lastFailure.error };
     throw lastFailure.error;
   }
 
@@ -182,7 +187,7 @@ export async function getStatement(token, queryId, { timeoutMs = 30000, force = 
     const entry = await inFlight.promise;
     return { statement: entry.statement, savedAt: entry.savedAt, stale: false };
   } catch (e) {
-    if (cached) return { statement: cached.statement, savedAt: cached.savedAt, stale: true };
+    if (usable) return { statement: cached.statement, savedAt: cached.savedAt, stale: true, error: e };
     throw e;
   }
 }

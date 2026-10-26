@@ -1,5 +1,7 @@
 const SPOT_META_CACHE_KEY = 'hl_spot_meta_compact_v1';
 const SPOT_META_TTL_MS = 24 * 60 * 60 * 1000;
+// Same as the Account window's staking (hl-account.js).
+const STAKING_TTL_MS = 10 * 60 * 1000;
 
 export class HyperliquidFetcher {
     constructor(providers, renderer, settings) {
@@ -11,12 +13,15 @@ export class HyperliquidFetcher {
 
     async fetch(wallets) {
         const hl = this.providers.hyperliquid;
+        // Late enrichment from an older round must not replace a newer round's rows.
+        const generation = this.generation = (this.generation || 0) + 1;
         try {
             // Everything starts at once: account state doesn't depend on market data, so waiting
             // for metadata before asking for positions only added round trips.
             const positionResults = wallets.map(wallet => hl.fetchPositions(wallet, 4000)
                 .then(data => ({ wallet, data }), error => ({ wallet, error })));
             const midsPromise = hl.fetchAllMids(3000);
+            midsPromise.catch(() => {}); // awaited below
             // Perp contexts (prevDayPx, funding) are 70KB uncompressed, and each HIP-3 dex has its
             // own. Skip them when the last fetch showed no positions there; they're fetched late if
             // positions appear.
@@ -28,6 +33,7 @@ export class HyperliquidFetcher {
             };
             for (const dex of this.dexesWithPerps || []) startDexCtx(dex);
             const spotMetaPromise = this.getSpotMeta();
+            spotMetaPromise.catch(() => {}); // awaited below
 
             // Staked HYPE isn't in the clearinghouse states; ask alongside them (kept 10 min).
             // It's part of the equity, so a wallet whose stake can't be read fails like one
@@ -74,9 +80,10 @@ export class HyperliquidFetcher {
                         const rows = this.buildWalletRows(wallet, data, market);
                         this.renderer.appendPositions(rows, `Hyperliquid_${wallet}`, { markCompleted: enrich });
                         // Charts and missing 24h changes load after the rows are on screen.
-                        if (enrich) this.enrichWithHistory(rows, wallet);
+                        if (enrich) this.enrichWithHistory(rows, wallet, generation);
                     } catch (e) {
-                        if (enrich) console.warn(`[Hyperliquid] Failed for wallet ${wallet}:`, e);
+                        // Marked failed, so its last rows stay.
+                        if (enrich) this.renderer.markProviderFailed(`Hyperliquid_${wallet}`, e);
                     }
                 }
             };
@@ -93,6 +100,9 @@ export class HyperliquidFetcher {
             // Mark the main 'Hyperliquid' provider as completed
             this.renderer.appendPositions([], 'Hyperliquid');
         } catch (e) {
+            // No mids or spot metadata: every wallet's spot would be priced at 0. Each wallet
+            // fails, so its last rows stay.
+            for (const wallet of wallets) this.renderer.markProviderFailed(`Hyperliquid_${wallet}`, e);
             this.renderer.markProviderFailed('Hyperliquid', e);
         }
     }
@@ -131,21 +141,23 @@ export class HyperliquidFetcher {
                 }));
             } catch (_) { /* quota: keep in memory only */ }
         }
+        if (!this.spotMeta) throw new Error('Hyperliquid: no spot metadata');
         return this.spotMeta;
     }
 
     // Staked, unstaked-but-in-staking and withdrawing HYPE for one wallet, or null when the
     // provider has no staking call. When the exchange doesn't answer, the last answer is
-    // kept (it's a stake, it moves slowly); with none, the error goes to the caller.
+    // kept (it's a stake, it moves slowly) with asOf, its time; with none, the error goes
+    // to the caller.
     async getStaking(wallet) {
         this.stakingCache ||= new Map();
         const hit = this.stakingCache.get(wallet);
-        if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.value;
+        if (hit && Date.now() - hit.at < STAKING_TTL_MS) return hit.value;
         let summary;
         try {
             summary = await this.providers.hyperliquid.fetchDelegatorSummary?.(wallet, 4000);
         } catch (error) {
-            if (hit) return hit.value;
+            if (hit) return hit.value && hit.at > 0 ? { ...hit.value, asOf: hit.at } : hit.value;
             throw error;
         }
         const value = summary ? {
@@ -329,6 +341,8 @@ export class HyperliquidFetcher {
                 if (available > 0) {
                     const price = parseFloat(spotPriceMap[bal.coin] || 0);
                     const value = available * price;
+                    // A token with no USDC pair has no mid: unpriced, not worth $0.
+                    const quoteUnavailable = !(price > 0) && bal.coin !== 'USDC';
                     // entryNtl is the cost of the whole balance; scale it to the
                     // available part we value, or held tokens read as a loss.
                     const entryNtl = parseFloat(bal.entryNtl || 0) * (total > 0 ? available / total : 0);
@@ -342,11 +356,12 @@ export class HyperliquidFetcher {
                         asset: bal.coin,
                         exchange: 'HL Spot',
                         amount: available,
-                        price,
+                        price: quoteUnavailable ? null : price,
                         value,
                         change24h: null,
                         pnl,
-                        entryNtl
+                        entryNtl,
+                        ...(quoteUnavailable ? { quoteUnavailable } : {})
                     });
                 }
             }
@@ -395,14 +410,15 @@ export class HyperliquidFetcher {
                 price: hypePrice,
                 value: stakingValue,
                 change24h: prev > 0 ? ((hypePrice - prev) / prev) * 100 : null,
-                staking
+                staking,
+                ...(staking.asOf ? { asOf: staking.asOf } : {})
             });
         }
 
         return rows;
     }
 
-    async enrichWithHistory(rows, wallet) {
+    async enrichWithHistory(rows, wallet, generation = this.generation) {
         if (!rows || rows.length === 0) return;
         const chartsOn = !(this.settings && this.settings.showPriceChart === false);
 
@@ -526,11 +542,9 @@ export class HyperliquidFetcher {
 
         await Promise.all(historyPromises);
 
-        // Re-render with history
-        // We need to trigger an update. Since we modified the rows in place (which are references),
-        // we can just call appendPositions again or a specific update method.
-        // However, the renderer might dedupe based on keys.
-        // Let's force update by calling appendPositions again.
+        // The rows were changed in place; report them again so the charts show. A newer round
+        // has already reported fresher rows: its own enrichment follows.
+        if (generation !== this.generation) return;
         this.renderer.appendPositions(rows, `Hyperliquid_${wallet}`);
     }
 }

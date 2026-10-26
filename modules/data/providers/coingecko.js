@@ -6,10 +6,13 @@ function proxy(url) {
   return buildCoinGeckoUrl(url);
 }
 
+// Throws when CoinGecko doesn't answer. An id it doesn't know is absent from the answer.
 export async function getSimplePrice(idsCsv, { timeoutMs = 15000, ttlMs = 60000 } = {}) {
   if (!idsCsv) return {};
   const url = proxy(`https://api.coingecko.com/api/v3/simple/price?ids=${idsCsv}&vs_currencies=usd&include_24hr_change=true`);
-  return await HttpClient.getJson(url, { timeoutMs, ttlMs }).catch(() => ({}));
+  const data = await HttpClient.getJson(url, { timeoutMs, ttlMs });
+  if (!data || typeof data !== 'object') throw new Error('CoinGecko: unreadable answer');
+  return data;
 }
 
 export async function getHistoricalUsd(coinId, dateStr, { timeoutMs = 15000, ttlMs = 60000 } = {}) {

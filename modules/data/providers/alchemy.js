@@ -15,126 +15,153 @@ function isEVMAddress(address) {
   return /^0x[a-fA-F0-9]{40}$/.test(address);
 }
 
-async function fetchNativeBalance(wallet, network, apiKey, timeoutMs = 15000) {
-  const url = `https://${network.id}.g.alchemy.com/v2/${apiKey}`;
+// Networks the key hasn't enabled (HTTP 403), logged once each.
+const disabledNetworks = new Set();
+// Token metadata by "network:contract": it doesn't change, so it is asked for once.
+const metadataCache = new Map();
+const METADATA_BATCH = 10;
 
-  try {
-    const response = await HttpClient.fetchWithTimeout(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_getBalance',
-        params: [wallet, 'latest'],
-        id: 1
-      })
-    }, timeoutMs);
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    if (data.result) {
-      const balance = parseInt(data.result, 16) / 1e18; // Convert from Wei
-
-      if (balance > 0.00001) {
-        return {
-          address: wallet,
-          blockchain: network.name,
-          tokenSymbol: network.nativeToken,
-          tokenName: network.nativeToken,
-          balance: balance,
-          balanceUsd: 0, // Will be calculated from prices
-          tokenPrice: 0,
-          change24h: null,
-          contractAddress: null // Native token has no contract
-        };
-      }
-    }
-  } catch (err) {
-    console.warn(`[Alchemy] Native balance failed for ${network.name}:`, err.message);
+// One JSON-RPC call. Throws on any failure: a network that doesn't answer must not read as
+// one that holds nothing. A 403 (network not enabled for the key) is marked notEnabled.
+async function rpc(network, apiKey, method, params, timeoutMs) {
+  const response = await HttpClient.fetchWithTimeout(`https://${network.id}.g.alchemy.com/v2/${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 })
+  }, timeoutMs);
+  if (!response.ok) {
+    const error = new Error(`Alchemy ${network.name}: HTTP ${response.status}`);
+    error.notEnabled = response.status === 403;
+    throw error;
   }
+  const data = await response.json();
+  if (data?.error) throw new Error(`Alchemy ${network.name}: ${data.error.message || 'error'}`);
+  return data?.result;
+}
 
-  return null;
+async function fetchNativeBalance(wallet, network, apiKey, timeoutMs = 15000) {
+  const result = await rpc(network, apiKey, 'eth_getBalance', [wallet, 'latest'], timeoutMs);
+  const balance = parseInt(result, 16) / 1e18; // Convert from Wei
+  if (!(balance > 0.00001)) return null;
+  return {
+    address: wallet,
+    blockchain: network.name,
+    network: network.id,
+    tokenSymbol: network.nativeToken,
+    tokenName: network.nativeToken,
+    balance: balance,
+    balanceUsd: null, // set by priceTokens
+    tokenPrice: null,
+    change24h: null,
+    contractAddress: null // Native token has no contract
+  };
+}
+
+async function tokenMetadata(network, apiKey, contract, timeoutMs) {
+  const key = `${network.id}:${contract.toLowerCase()}`;
+  if (!metadataCache.has(key)) {
+    metadataCache.set(key, await rpc(network, apiKey, 'alchemy_getTokenMetadata', [contract], timeoutMs));
+  }
+  return metadataCache.get(key);
 }
 
 async function fetchERC20Balances(wallet, network, apiKey, timeoutMs = 20000) {
-  const url = `https://${network.id}.g.alchemy.com/v2/${apiKey}`;
+  const result = await rpc(network, apiKey, 'alchemy_getTokenBalances', [wallet, 'erc20'], timeoutMs);
+  const held = (result?.tokenBalances || []).filter(token => parseInt(token.tokenBalance, 16) > 0);
+  // Metadata in small batches: hundreds of spam tokens at once draw HTTP 429s.
   const tokens = [];
+  for (let i = 0; i < held.length; i += METADATA_BATCH) {
+    tokens.push(...await Promise.all(held.slice(i, i + METADATA_BATCH).map(token => erc20Token(wallet, network, apiKey, token, timeoutMs))));
+  }
+  return tokens.filter(t => t !== null);
+}
 
+async function erc20Token(wallet, network, apiKey, token, timeoutMs) {
+  const balance = parseInt(token.tokenBalance, 16);
+  let meta;
   try {
-    // Get token balances
-    const response = await HttpClient.fetchWithTimeout(url, {
+    meta = await tokenMetadata(network, apiKey, token.contractAddress, timeoutMs);
+  } catch (_) {
+    // Without decimals the amount is unknown: the token is listed, unpriced.
+    return {
+      address: wallet,
+      blockchain: network.name,
+      network: network.id,
+      tokenSymbol: `${token.contractAddress.slice(0, 6)}…`,
+      tokenName: token.contractAddress,
+      metadataMissing: true,
+      balance: null,
+      balanceUsd: null,
+      tokenPrice: null,
+      change24h: null,
+      contractAddress: token.contractAddress
+    };
+  }
+  const decimals = meta?.decimals || 18;
+  const balanceFormatted = balance / Math.pow(10, decimals);
+  if (balanceFormatted < 0.000001) return null;
+  return {
+    address: wallet,
+    blockchain: network.name,
+    network: network.id,
+    tokenSymbol: meta?.symbol || 'Unknown',
+    tokenName: meta?.name || meta?.symbol || 'Unknown',
+    balance: balanceFormatted,
+    balanceUsd: null, // set by priceTokens
+    tokenPrice: null,
+    change24h: null,
+    contractAddress: token.contractAddress
+  };
+}
+
+// USD price from one entry of Alchemy's Prices API, or null when it has none for the token.
+function usdOf(entry) {
+  const price = Number(entry?.prices?.find(p => p.currency === 'usd')?.value);
+  return price > 0 ? price : null;
+}
+
+/**
+ * Prices tokens in place with Alchemy's Prices API: native coins by symbol, ERC20s by
+ * contract address. A token Alchemy has no price for, or whose price request failed, keeps
+ * tokenPrice null (unpriced).
+ */
+async function priceTokens(tokens, apiKey, timeoutMs) {
+  const base = `https://api.g.alchemy.com/prices/v1/${apiKey}/tokens`;
+  const natives = [...new Set(tokens.filter(t => !t.contractAddress).map(t => t.tokenSymbol))];
+  const contracts = tokens.filter(t => t.contractAddress);
+  const bySymbol = new Map();
+  const byAddress = new Map();
+  const requests = [];
+  if (natives.length > 0) {
+    const query = natives.map(s => `symbols=${encodeURIComponent(s)}`).join('&');
+    requests.push(HttpClient.getJson(`${base}/by-symbol?${query}`, { timeoutMs }).then(data => {
+      for (const entry of data?.data || []) bySymbol.set(entry.symbol, usdOf(entry));
+    }, e => console.warn('[Alchemy] Prices by symbol failed:', e?.message || e)));
+  }
+  // The API takes at most 25 addresses per request.
+  for (let i = 0; i < contracts.length; i += 25) {
+    const addresses = contracts.slice(i, i + 25).map(t => ({ network: t.network, address: t.contractAddress }));
+    requests.push(HttpClient.requestJson(`${base}/by-address`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'alchemy_getTokenBalances',
-        params: [wallet, 'erc20'],
-        id: 1
-      })
-    }, timeoutMs);
-
-    if (!response.ok) return tokens;
-
-    const data = await response.json();
-
-    if (data.result && data.result.tokenBalances) {
-      // Fetch metadata for each token with balance
-      const metadataPromises = data.result.tokenBalances
-        .filter(token => {
-          const balance = parseInt(token.tokenBalance, 16);
-          return balance > 0;
-        })
-        .map(async (token) => {
-          try {
-            const balance = parseInt(token.tokenBalance, 16);
-
-            // Get token metadata
-            const metaResp = await HttpClient.fetchWithTimeout(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                jsonrpc: '2.0',
-                method: 'alchemy_getTokenMetadata',
-                params: [token.contractAddress],
-                id: 1
-              })
-            }, timeoutMs);
-
-            if (!metaResp.ok) return null;
-
-            const meta = await metaResp.json();
-            if (meta.result) {
-              const decimals = meta.result.decimals || 18;
-              const balanceFormatted = balance / Math.pow(10, decimals);
-
-              if (balanceFormatted < 0.000001) return null;
-
-              return {
-                address: wallet,
-                blockchain: network.name,
-                tokenSymbol: meta.result.symbol || 'Unknown',
-                tokenName: meta.result.name || meta.result.symbol || 'Unknown',
-                balance: balanceFormatted,
-                balanceUsd: 0, // Will be calculated from prices
-                tokenPrice: 0,
-                change24h: null,
-                contractAddress: token.contractAddress
-              };
-            }
-          } catch (err) {
-            return null;
-          }
-        });
-
-      const results = await Promise.all(metadataPromises);
-      tokens.push(...results.filter(t => t !== null));
-    }
-  } catch (err) {
-    console.warn(`[Alchemy] ERC20 balances failed for ${network.name}:`, err.message);
+      body: JSON.stringify({ addresses }),
+      timeoutMs
+    }).then(data => {
+      for (const entry of data?.data || []) {
+        byAddress.set(`${entry.network}:${String(entry.address).toLowerCase()}`, usdOf(entry));
+      }
+    }, e => console.warn('[Alchemy] Prices by address failed:', e?.message || e)));
   }
-
-  return tokens;
+  await Promise.all(requests);
+  for (const token of tokens) {
+    const price = token.contractAddress
+      ? byAddress.get(`${token.network}:${token.contractAddress.toLowerCase()}`)
+      : bySymbol.get(token.tokenSymbol);
+    if (price > 0 && token.balance != null) {
+      token.tokenPrice = price;
+      token.balanceUsd = token.balance * price;
+    }
+  }
 }
 
 export async function getTokenBalances(wallets, apiKey, { timeoutMs = 30000 } = {}) {
@@ -152,22 +179,36 @@ export async function getTokenBalances(wallets, apiKey, { timeoutMs = 30000 } = 
   }
 
   // Parallelize all wallet×network combinations
+  // `read` lists the wallet and chain pairs read in full, for resetting sold-out entries.
+  const read = [];
   const fetchTasks = [];
   for (const wallet of evmWallets) {
     for (const network of NETWORKS) {
+      if (disabledNetworks.has(network.id)) continue;
       fetchTasks.push((async () => {
-        const [native, erc20] = await Promise.all([
-          fetchNativeBalance(wallet, network, apiKey, timeoutMs),
-          fetchERC20Balances(wallet, network, apiKey, timeoutMs)
-        ]);
-        return [native, ...erc20].filter(t => t !== null);
+        try {
+          const [native, erc20] = await Promise.all([
+            fetchNativeBalance(wallet, network, apiKey, timeoutMs),
+            fetchERC20Balances(wallet, network, apiKey, timeoutMs)
+          ]);
+          const tokens = [native, ...erc20].filter(t => t !== null);
+          if (!tokens.some(t => t.metadataMissing)) read.push({ wallet, chain: network.name });
+          return tokens;
+        } catch (e) {
+          // A network the key hasn't enabled holds nothing we can read; skip it from now on.
+          if (!e.notEnabled) throw e;
+          disabledNetworks.add(network.id);
+          console.warn(`[Alchemy] ${network.name} is not enabled for this key; skipped`);
+          return [];
+        }
       })());
     }
   }
 
   const results = await Promise.all(fetchTasks);
   const allTokens = results.flat();
-
+  if (allTokens.length > 0) await priceTokens(allTokens, apiKey, timeoutMs);
+  allTokens.read = read;
   return allTokens;
 }
 

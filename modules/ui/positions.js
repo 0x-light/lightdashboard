@@ -493,7 +493,9 @@ function createSparkline(priceData, width = 60, height = 24, currentChange24h = 
 
 function formatAmount(num, visible, showExact = false) {
   if (!visible) return '••••';
-  const n = Number(num || 0);
+  // null is an amount the source couldn't read, not zero.
+  if (num == null) return '—';
+  const n = Number(num);
   if (!Number.isFinite(n)) return '—';
 
   if (showExact) {
@@ -542,6 +544,33 @@ function formatPct(num, isLoading = false) {
   if (!Number.isFinite(n)) return '—';
   const sign = n > 0 ? '+' : (n < 0 ? '−' : '');
   return `${sign}${Math.abs(n).toFixed(2)}%`;
+}
+
+// The 24h figure of a market that is not in its regular session: "+1.20% post", or "closed"
+// alone when the move is from an earlier session (sessionChange24h, in the title).
+function formatChangeCell(pos, isLoading) {
+  if (!pos.marketLabel) return formatPct(pos.change24h, isLoading);
+  const label = `<span class="cell-note">${escapeHtml(pos.marketLabel)}</span>`;
+  if (pos.change24h == null) return label;
+  return `${formatPct(pos.change24h)} ${label}`;
+}
+
+function changeCellTitle(pos) {
+  if (!pos.marketLabel) return '';
+  const last = pos.sessionChange24h ?? pos.change24h;
+  const state = pos.marketLabel === 'closed' ? 'Market closed' : `${pos.marketLabel === 'pre' ? 'Pre' : 'After'}-market`;
+  return last != null ? `${state}. Last session ${formatPct(last)}` : state;
+}
+
+// The age beside a stale row's ticker ("12m ago"); the title has the exact time and why.
+function staleNoteHtml(pos) {
+  if (!pos?.isStale) return '';
+  return `<span class="stale-note" title="${escapeAttr(pos.staleTitle || '')}">${escapeHtml(pos.staleNote || 'stale')}</span>`;
+}
+
+// The oldest stale row of several (a strategy's legs).
+function oldestStale(rows) {
+  return rows.filter(p => p?.isStale).sort((a, b) => (a.staleAt || 0) - (b.staleAt || 0))[0] || null;
 }
 
 function formatFunding(num, visible, currency, isLoading = false) {
@@ -717,6 +746,7 @@ function createTableRow(doc, pos, opts, prevDataMap, { leg = false } = {}) {
   if (pos.isHiddenPosition) {
     tr.className = 'position-row-hidden';
   }
+  if (pos.isStale) tr.classList.add('position-row-stale');
 
   // Each row opens in place (click, or Enter when focused) to show its detail line and
   // actions; app.js handles that from these attributes.
@@ -766,7 +796,7 @@ function createTableRow(doc, pos, opts, prevDataMap, { leg = false } = {}) {
   // Determine loading states:
   // - 24H% is loading if null and not a stablecoin
   // - Funding is loading if null and position is leveraged (perps have funding)
-  const is24hLoading = pos.change24h == null && !isStablecoin(pos.asset) && !pos.quoteUnavailable && !option;
+  const is24hLoading = pos.change24h == null && !isStablecoin(pos.asset) && !pos.quoteUnavailable && !option && !pos.marketLabel;
   const isFundingLoading = pos.funding == null && pos.isLeveraged;
   const priceCell = pos.quoteLoading
     ? '<span class="cell-loading">—</span>'
@@ -781,7 +811,7 @@ function createTableRow(doc, pos, opts, prevDataMap, { leg = false } = {}) {
 
   const underlyingNow = Number(pos.underlyingPrice) > 0 ? Number(pos.underlyingPrice) : null;
   const cells = {
-    asset: formatAssetCellHtml(pos, { leg }),
+    asset: formatAssetCellHtml(pos, { leg }) + staleNoteHtml(pos),
     expiry: option ? formatExpiry(option.expiry) : '—',
     underlying: underlyingNow ? formatPrice(underlyingNow, true, quoteCurrency) : '—',
     price: priceCell,
@@ -789,7 +819,7 @@ function createTableRow(doc, pos, opts, prevDataMap, { leg = false } = {}) {
     value: valueCell,
     pnl: pnlCell,
     funding: fundingCell,
-    change: formatPct(pos.change24h, is24hLoading),
+    change: formatChangeCell(pos, is24hLoading),
     amount: formatAmount(pos.amount, amountVisible, showExactAmounts),
     exchange: escapeHtml(formatSource(pos))
   };
@@ -845,6 +875,7 @@ function createTableRow(doc, pos, opts, prevDataMap, { leg = false } = {}) {
       }
     }
     if (col.key === 'exchange') td.title = pos.exchange || '';
+    if (col.key === 'change' && pos.marketLabel) td.title = changeCellTitle(pos);
     tr.appendChild(td);
   }
   return tr;
@@ -936,6 +967,8 @@ function createStrategyRow(doc, underlying, legs, opts) {
   const isOpen = opts.openKey === rowKey;
   tr.className = 'position-row position-strategy';
   if (isOpen) tr.classList.add('is-open');
+  const stale = oldestStale(legs.map(l => l.pos));
+  if (stale) tr.classList.add('position-row-stale');
   tr.dataset.key = rowKey;
   tr.tabIndex = 0;
   tr.setAttribute('aria-expanded', String(isOpen));
@@ -953,7 +986,7 @@ function createStrategyRow(doc, underlying, legs, opts) {
   const signClass = v => (useColoredPnL && v != null ? (v >= 0 ? 'positive-pnl' : 'negative-pnl') : '');
 
   const cells = {
-    asset: `${escapeHtml(underlying)}<span class="asset-terms">${escapeHtml(strategyTag(legs))}</span>`,
+    asset: `${escapeHtml(underlying)}<span class="asset-terms">${escapeHtml(strategyTag(legs))}</span>${staleNoteHtml(stale)}`,
     expiry: escapeHtml(expiriesText(legs)),
     underlying: now ? formatPrice(now, true, quoteCurrency) : '—',
     price: now ? formatPrice(now, true, quoteCurrency) : '—',
@@ -963,7 +996,7 @@ function createStrategyRow(doc, underlying, legs, opts) {
     funding: '',
     change: formatPct(change),
     amount: `${legs.length} legs`,
-    exchange: first.exchange || '—'
+    exchange: escapeHtml(first.exchange || '—')
   };
   const tone = { pnl: signClass(totals.pnl), change: signClass(change) };
   for (const col of columnsFor(opts)) {
@@ -1085,6 +1118,7 @@ const expandedCards = new Set();
 function createMobileCard(doc, pos, opts) {
   const card = doc.createElement('div');
   card.className = 'mobile-position-card';
+  if (pos.isStale) card.classList.add('is-stale');
   const amountVisible = !!opts.amountsVisible;
   const value = computeValue(pos);
   const useColoredPnL = opts.settings?.useColoredPnL ?? true;
@@ -1122,13 +1156,14 @@ function createMobileCard(doc, pos, opts) {
   if (pnlText) {
     const fx = Number(pos.fxRate) > 0 ? Number(pos.fxRate) : 1;
     const entryBasis = Math.abs(Number(pos.amount) * Number(pos.entryPrice) * fx);
-    const basis = entryBasis > 0 ? entryBasis : (pos.isLeveraged ? 0 : value - pos.pnl);
+    // pnlValue: a merged row's value from the holdings that have a P&L.
+    const basis = entryBasis > 0 ? entryBasis : (pos.isLeveraged ? 0 : (pos.pnlValue ?? value) - pos.pnl);
     if (Number.isFinite(basis) && basis > 0) pnlPctText = formatPct((pos.pnl / basis) * 100);
   }
 
   // 24h change rides next to the price; left out when there's no 24h figure.
-  const changeText = pos.change24h != null
-    ? ` <span class="card-change ${changeClass}"${flash(change24hChanged)}>(${formatPct(pos.change24h)})</span>`
+  const changeText = pos.change24h != null || pos.marketLabel
+    ? ` <span class="card-change ${changeClass}"${flash(change24hChanged)}${pos.marketLabel ? ` title="${escapeAttr(changeCellTitle(pos))}"` : ''}>(${formatChangeCell(pos)})</span>`
     : '';
 
   // Funding only matters for perps; skip it entirely for spot holdings.
@@ -1147,11 +1182,11 @@ function createMobileCard(doc, pos, opts) {
       <span class="card-value card-total"${flash(valueChanged)}>${formatQuoteBackedMoney(pos, value, amountVisible, baseCurrency)}</span>
     </div>
     <div class="card-line card-sub">
-      <span class="card-meta"><span${flash(priceChanged)}>${priceText}</span>${changeText}</span>
+      <span class="card-meta"><span${flash(priceChanged)}>${priceText}</span>${changeText}${staleNoteHtml(pos)}</span>
       ${pnlText ? `<span class="card-pnl ${pnlClass}"${flash(pnlChanged)}><span class="card-label">P&amp;L</span> ${pnlText}${pnlPctText ? ` <span class="card-pnl-pct">${pnlPctText}</span>` : ''}</span>` : ''}
     </div>
     <div class="card-line card-sub card-details">
-      <span class="card-exchange">${pos.exchange || '—'}</span>
+      <span class="card-exchange">${escapeHtml(pos.exchange || '—')}</span>
       ${fundingText}
     </div>
     ${opts.editMode ? `<div class="card-actions">${rowActionsHtml(pos, `${pos.asset}_${pos.exchange}`)}</div>` : ''}

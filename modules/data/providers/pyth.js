@@ -313,6 +313,23 @@ async function fetchAndCacheFeeds(timeoutMs) {
   return metadata;
 }
 
+// Tickers that name one asset on every chain, and the feed symbol each one means: native
+// coins, their wrapped forms and the major stablecoins. Any other wallet token's ticker can
+// belong to an unrelated coin (or an equity feed), so it gets no chart by symbol.
+const UNAMBIGUOUS_SYMBOLS = {
+  BTC: 'BTC', WBTC: 'BTC', CBBTC: 'BTC',
+  ETH: 'ETH', WETH: 'ETH',
+  SOL: 'SOL', WSOL: 'SOL',
+  HYPE: 'HYPE', WHYPE: 'HYPE',
+  MON: 'MON',
+  USDC: 'USDC', USDT: 'USDT'
+};
+
+/** The feed symbol a wallet token's ticker safely means, or null. */
+export function unambiguousFeedSymbol(ticker) {
+  return UNAMBIGUOUS_SYMBOLS[String(ticker || '').trim().toUpperCase()] || null;
+}
+
 /**
  * Flat `{ symbol: feedId }` map across all supported asset classes (crypto, equity, FX, metal,
  * commodity). Existing callers that only care about crypto symbols still work because crypto

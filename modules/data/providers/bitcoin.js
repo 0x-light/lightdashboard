@@ -39,46 +39,39 @@ export async function getTokenBalances(addresses, { timeoutMs = 15000 } = {}) {
     batches.push(btcAddresses.slice(i, i + BATCH_SIZE));
   }
   
-  // Fetch all batches in parallel for maximum speed
+  // Fetch all batches in parallel for maximum speed. A failed batch throws: its addresses
+  // would otherwise read as empty.
   const batchResults = await Promise.all(
     batches.map(async (batch) => {
-      try {
-        const addressList = batch.join('|');
-        const url = `https://blockchain.info/balance?active=${addressList}`;
-        
-        // 60s cache for balance data
-        const data = await HttpClient.getJson(url, { 
-          timeoutMs, 
-          ttlMs: 60000 
-        });
-        
-        if (!data || typeof data !== 'object') {
-          console.warn('[Bitcoin] Invalid response from blockchain.info');
-          return [];
-        }
-        
-        const results = [];
-        for (const [address, info] of Object.entries(data)) {
-          if (info && typeof info.final_balance === 'number') {
-            const balance = info.final_balance / 1e8; // Convert satoshis to BTC
-            if (balance > 0) {
-              results.push({
-                address,
-                balance,
-                tokenSymbol: 'BTC',
-                blockchain: 'Bitcoin',
-                tokenPrice: null, // Will be enriched with price later
-                balanceUsd: null,
-                change24h: null
-              });
-            }
+      const addressList = batch.join('|');
+      const url = `https://blockchain.info/balance?active=${addressList}`;
+      
+      // 60s cache for balance data
+      const data = await HttpClient.getJson(url, { 
+        timeoutMs, 
+        ttlMs: 60000 
+      });
+      
+      if (!data || typeof data !== 'object') throw new Error('Bitcoin: unreadable answer from blockchain.info');
+      
+      const results = [];
+      for (const [address, info] of Object.entries(data)) {
+        if (info && typeof info.final_balance === 'number') {
+          const balance = info.final_balance / 1e8; // Convert satoshis to BTC
+          if (balance > 0) {
+            results.push({
+              address,
+              balance,
+              tokenSymbol: 'BTC',
+              blockchain: 'Bitcoin',
+              tokenPrice: null, // Will be enriched with price later
+              balanceUsd: null,
+              change24h: null
+            });
           }
         }
-        return results;
-      } catch (err) {
-        console.error('[Bitcoin] Error fetching batch:', err.message);
-        return [];
       }
+      return results;
     })
   );
   

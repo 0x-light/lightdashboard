@@ -17,12 +17,6 @@ function zcashDebugWarn(...args) {
   }
 }
 
-function zcashDebugError(...args) {
-  if (ZCASH_DEBUG) {
-    console.error(...args);
-  }
-}
-
 /**
  * Validate Zcash transparent address format (basic check)
  */
@@ -50,34 +44,29 @@ export async function getTokenBalances(addresses, { timeoutMs = 15000 } = {}) {
     return [];
   }
   
-  // Fetch all addresses in parallel for maximum speed
+  // Fetch all addresses in parallel for maximum speed. A failed lookup throws: the address
+  // would otherwise read as empty. (api.zcha.in has answered HTTP 520 since at least 2026-10.)
   const results = await Promise.all(
     zecAddresses.map(async (address) => {
-      try {
-        const url = `https://api.zcha.in/v2/mainnet/accounts/${address}`;
-        
-        // 60s cache for balance data
-        const data = await HttpClient.getJson(url, { 
-          timeoutMs, 
-          ttlMs: 60000 
-        });
-        
-        if (data && typeof data.balance === 'number' && data.balance > 0) {
-          return {
-            address,
-            balance: data.balance,
-            tokenSymbol: 'ZEC',
-            blockchain: 'Zcash',
-            tokenPrice: null, // Will be enriched with price later
-            balanceUsd: null,
-            change24h: null
-          };
-        }
-        return null;
-      } catch (err) {
-        zcashDebugError(`[Zcash] Error fetching ${address}:`, err.message);
-        return null;
-      }
+      const url = `https://api.zcha.in/v2/mainnet/accounts/${address}`;
+
+      // 60s cache for balance data
+      const data = await HttpClient.getJson(url, {
+        timeoutMs,
+        ttlMs: 60000
+      });
+
+      if (!data || typeof data.balance !== 'number') throw new Error(`Zcash: unreadable answer for ${address}`);
+      if (data.balance <= 0) return null;
+      return {
+        address,
+        balance: data.balance,
+        tokenSymbol: 'ZEC',
+        blockchain: 'Zcash',
+        tokenPrice: null, // Will be enriched with price later
+        balanceUsd: null,
+        change24h: null
+      };
     })
   );
   

@@ -46,10 +46,12 @@ function addresses() {
   }
 }
 
-// Next hourly funding payment, from the open HL perps on screen: received is +.
+// Next hourly funding payment, from one wallet's open HL perps on screen: received is +.
 // Hyperliquid pays every hour on the hour; longs pay a positive rate.
-function nextFunding() {
-  const rows = (window.cachedPositions || []).filter(p => p.exchange === 'HL Perps' && Number.isFinite(p.fundingRate));
+function nextFunding(address) {
+  const source = `hyperliquid_${address}`.toLowerCase();
+  const rows = (window.cachedPositions || []).filter(p => p.exchange === 'HL Perps' && Number.isFinite(p.fundingRate) &&
+    String(p._source || '').toLowerCase() === source);
   if (!rows.length) return null;
   const usd = rows.reduce((sum, p) => sum - Number(p.amount) * Number(p.price) * Number(p.fundingRate), 0);
   const now = new Date();
@@ -79,11 +81,11 @@ function marginSection(m) {
     rows([['Withdrawable', money(m.withdrawable)], ['Leverage', `${m.leverage.toFixed(2)}×`]]));
 }
 
-function fundingSection(f) {
+function fundingSection(f, address) {
   const days = f.days;
   const known = days.filter(d => d.known);
   const total = known.reduce((s, d) => s + d.usdc, 0);
-  const next = nextFunding();
+  const next = nextFunding(address);
   if (!known.some(d => d.usdc !== 0) && !next) return '';
   const max = Math.max(1e-9, ...known.map(d => Math.abs(d.usdc)));
   // Bars around a middle line: received above, paid below; days not loaded are blank.
@@ -138,7 +140,7 @@ const twice = (load) => load().catch(() => new Promise(r => setTimeout(r, 1500))
 function loadWallet(address, put) {
   return Promise.all([
     twice(() => getMargin(address)).then(marginSection, () => failed('Margin')).then(h => put(0, h)),
-    twice(() => getFundingByDay(address, 30)).then(fundingSection, () => failed('Funding')).then(h => put(1, h)),
+    twice(() => getFundingByDay(address, 30)).then(f => fundingSection(f, address), () => failed('Funding')).then(h => put(1, h)),
     twice(() => getFees(address)).then(feesSection, () => failed('Fees')).then(h => put(2, h)),
     twice(() => getStaking(address)).then(stakingSection, () => failed('Staking')).then(h => put(3, h))
   ]);
@@ -229,7 +231,7 @@ function lookItems(list) {
     .sort((a, b) => a.d - b.d)
     .slice(0, 3);
   for (const { p, d } of near) items.push([`${esc(p.asset)} to liquidation`, pct(d, 1)]);
-  const asOf = Math.min(...rowsOf('ibkr').map(p => num(p.asOf) || Infinity));
+  const asOf = Math.min(...rowsOf('ibkr').map(p => num(p.holdingsAsOf) || Infinity));
   if (Number.isFinite(asOf) && Date.now() - asOf > 36 * 3600 * 1000) items.push(['IBKR holdings as of', dateOf(asOf)]);
   return items;
 }
@@ -266,7 +268,7 @@ function lighterHtml(a) {
 function ibkrHtml(a) {
   const cash = a.rows.filter(p => p.category === 'cash');
   const held = a.rows.filter(p => p.category !== 'cash');
-  const asOf = Math.min(...a.rows.map(p => num(p.asOf) || Infinity));
+  const asOf = Math.min(...a.rows.map(p => num(p.holdingsAsOf) || Infinity));
   const largest = held.filter(p => num(p.value) > 0).sort((x, y) => num(y.value) - num(x.value)).slice(0, 6);
   return section('Holdings', value(a.value), rows([
     ['Positions', value(held.reduce((s, p) => s + num(p.value), 0))],

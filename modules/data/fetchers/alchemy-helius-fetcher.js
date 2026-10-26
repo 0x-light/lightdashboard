@@ -16,40 +16,30 @@ export class AlchemyHeliusFetcher {
                     : Promise.resolve([])
             ]);
 
-            let rows = [];
-            for (const token of alchemyTokens) {
+            // A token the provider has no price for is unpriced, not worth $0.
+            let rows = [...alchemyTokens, ...heliusTokens].map(token => {
                 const walletId = token.address || token.walletAddress || 'unknown';
-                rows.push({
+                const priced = Number(token.tokenPrice) > 0;
+                return {
                     asset: token.tokenSymbol || 'Unknown',
                     exchange: token.blockchain,
                     amount: token.balance,
-                    price: token.tokenPrice || 0,
-                    value: token.balanceUsd || 0,
+                    price: priced ? token.tokenPrice : null,
+                    value: priced ? (token.balanceUsd ?? token.balance * token.tokenPrice) : 0,
                     change24h: null,
                     pnl: null,
+                    ...(priced ? {} : { quoteUnavailable: true }),
                     _source: 'Alchemy/Helius',
                     _changeDetectionKey: `${token.tokenSymbol || 'Unknown'}_${token.blockchain}_${walletId}`
-                });
-            }
-            for (const token of heliusTokens) {
-                const walletId = token.address || token.walletAddress || 'unknown';
-                rows.push({
-                    asset: token.tokenSymbol || 'Unknown',
-                    exchange: token.blockchain,
-                    amount: token.balance,
-                    price: token.tokenPrice || 0,
-                    value: token.balanceUsd || 0,
-                    change24h: null,
-                    pnl: null,
-                    _source: 'Alchemy/Helius',
-                    _changeDetectionKey: `${token.tokenSymbol || 'Unknown'}_${token.blockchain}_${walletId}`
-                });
-            }
+                };
+            });
 
-            // Calculate PnL if utility is available
+            // Calculate PnL if utility is available. Entries of holdings gone from a wallet
+            // and chain read in full are reset, so a later re-buy starts fresh.
             if (window.AppModules?.utils?.entryPriceTracker) {
-                const result = window.AppModules.utils.entryPriceTracker.calculatePositionsPnL(rows);
-                rows = result.positions;
+                const read = [...(alchemyTokens.read || []), ...(heliusTokens.read || [])];
+                const scope = key => read.some(({ wallet, chain }) => key.endsWith(`_${chain}_${wallet}`));
+                rows = window.AppModules.utils.entryPriceTracker.calculatePositionsPnL(rows, { scope }).positions;
             }
 
             this.renderer.appendPositions(rows, 'Alchemy/Helius', {

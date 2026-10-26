@@ -452,10 +452,9 @@ async function _doRenderPortfolioIncremental() {
     });
   }
 
-  // Trigger Fetch
-  if (!window._portfolioManager.isFetching) {
-    window._portfolioRenderer?.beginRefresh?.(expectedProviders);
-  }
+  // Not awaited: each source reports to the renderer as it lands, and a source still fetching
+  // from the last round skips only itself (PortfolioManager.run).
+  window._portfolioRenderer?.beginRefresh?.(expectedProviders);
   window._portfolioManager.fetchAll(wallets, solanaAddrs, bitcoinAddrs, zcashAddrs);
 
 
@@ -2644,15 +2643,6 @@ function setupControls() {
 // Module scripts run after the document is parsed, so boot now rather than at DOMContentLoaded:
 // index.html makes this script render-blocking, and the saved snapshot then lands in the first frame.
 const boot = async () => {
-  // Check if app has been closed for a while (detect stale sessions)
-  const lastLoadTime = localStorage.getItem('lastLoadTime');
-  const now = Date.now();
-  const timeSinceLastLoad = lastLoadTime ? now - parseInt(lastLoadTime, 10) : Infinity;
-  const shouldForceFresh = !lastLoadTime || timeSinceLastLoad > 60000; // 1 minute
-
-  // Store current load time
-  localStorage.setItem('lastLoadTime', now.toString());
-
   // Clear HTTP cache to ensure fresh data on page load
   const HttpClient = window.AppModules?.http?.HttpClient;
   if (HttpClient?._internal?.memoryCacheByKey) {
@@ -2664,12 +2654,6 @@ const boot = async () => {
     HttpClient._internal.inFlightByKey.clear();
   }
 
-  // Clear the SW's API cache if this is a fresh session or stale. The worker itself is checked for
-  // updates by the registration script in index.html; awaiting that here would hold the first
-  // render behind a network round trip for sw.js.
-  if (shouldForceFresh && navigator.serviceWorker?.controller) {
-    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_API_CACHE' });
-  }
 
 
 
@@ -3595,38 +3579,31 @@ const boot = async () => {
     }
   }
 
-  // Start periodic refresh after 30 seconds, then every 30 seconds
-  setTimeout(() => {
-    refreshPortfolio();
+  // The one place the refresh timer starts: never twice, never while the tab is hidden.
+  function startRefreshTimer() {
+    if (updateInterval || document.hidden) return;
     updateInterval = setInterval(refreshPortfolio, 30000);
-  }, 30000);
+  }
+
+  function stopRefreshTimer() {
+    clearInterval(updateInterval);
+    updateInterval = null;
+  }
+
+  // Every 30 seconds; the first load is already under way.
+  startRefreshTimer();
 
   // Cleanup on page unload (prevent memory leaks)
-  window.addEventListener('beforeunload', () => {
-    if (updateInterval) {
-      clearInterval(updateInterval);
-      updateInterval = null;
-    }
-  });
-
-  // Track when tab was last hidden
-  let tabHiddenAt = null;
+  window.addEventListener('beforeunload', stopRefreshTimer);
 
   // Resume updates when tab becomes visible again
   document.addEventListener('visibilitychange', async () => {
     if (document.hidden) {
-      // Tab hidden - pause updates to save resources and track time
-      tabHiddenAt = Date.now();
-      if (updateInterval) {
-        clearInterval(updateInterval);
-        updateInterval = null;
-      }
+      // Tab hidden - pause updates to save resources
+      stopRefreshTimer();
     } else {
       // Tab visible again - force full refresh to get fresh data
       if (!updateInterval) {
-        // Check if tab was hidden for a long time (more than 1 minute)
-        const wasHiddenLong = tabHiddenAt && (Date.now() - tabHiddenAt) > 60000;
-
         // Clear HTTP cache to ensure fresh data
         const HttpClient = window.AppModules?.http?.HttpClient;
         if (HttpClient?._internal?.memoryCacheByKey) {
@@ -3638,15 +3615,11 @@ const boot = async () => {
           HttpClient._internal.inFlightByKey.clear();
         }
 
-        // Check for a new service worker in the background (never block the refresh on it) and
-        // clear stale API cache if the tab was hidden for a while
+        // Check for a new service worker in the background (never block the refresh on it)
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.getRegistrations()
             .then(registrations => registrations.forEach(registration => registration.update().catch(() => { })))
             .catch(() => { });
-          if (wasHiddenLong && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_API_CACHE' });
-          }
         }
 
         // Full portfolio re-fetch
@@ -3656,11 +3629,8 @@ const boot = async () => {
           console.warn('[Visibility] Portfolio refresh failed:', e);
         }
 
-        // Resume periodic refresh
-        updateInterval = setInterval(refreshPortfolio, 30000);
-
-        // Reset hidden time
-        tabHiddenAt = null;
+        // Resume periodic refresh (unless the tab was hidden again meanwhile)
+        startRefreshTimer();
       }
     }
   });

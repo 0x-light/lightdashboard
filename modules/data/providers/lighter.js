@@ -5,11 +5,11 @@ import { fetchWithCorsProxy } from '../../http/cors-proxy.js';
 const MAINNET = 'https://mainnet.zklighter.elliot.ai/api/v1';
 const EXPLORER_BASE = 'https://explorer.elliot.ai/api';
 
-// Market ID mapping (symbol -> market_id)
+// Perp market ID mapping (symbol -> market_id), as /orderBooks lists them.
 const MARKET_ID_MAP = {
+  'ETH': 0,
   'BTC': 1,
-  'ETH': 2,
-  'SOL': 3,
+  'SOL': 2,
   'HYPE': 24,
   'YZY': 70,
   'ZEC': 90,
@@ -19,7 +19,13 @@ const MARKET_ID_MAP = {
 
 // Spot asset ID mapping (for spot balances)
 const SPOT_ASSET_MAP = {
-  2: 'LIT'  // asset_id 2 = LIT token
+  1: 'ETH',
+  2: 'LIT'
+};
+// Spot markets (symbol -> market_id): a spot balance is priced from its spot pair, not the perp.
+const SPOT_MARKET_ID_MAP = {
+  'ETH': 2048,
+  'LIT': 2049
 };
 const MARKET_SYMBOL_BY_ID = Object.fromEntries(
   Object.entries(MARKET_ID_MAP).map(([symbol, id]) => [String(id), symbol])
@@ -30,12 +36,14 @@ let cachedFundingRates = null;
 let fundingRatesCacheTime = 0;
 const FUNDING_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Account lookup cache to avoid repeating expensive endpoint probing on every refresh.
+// Account lookup cache to avoid repeating expensive endpoint probing on every refresh. Only
+// Lighter's own "no such account" answer is cached as no account; a failed lookup throws.
 const ACCOUNT_SUCCESS_CACHE_TTL_MS = 45 * 1000;
 const ACCOUNT_FAILURE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const accountLookupCache = new Map();
 const accountLookupInFlight = new Map();
-const ACCOUNT_NEGATIVE_STORAGE_PREFIX = 'lighter_no_account_v1:';
+// v1 entries were also written after timeouts and rate limits; they are not read.
+const ACCOUNT_NEGATIVE_STORAGE_PREFIX = 'lighter_no_account_v2:';
 
 function hasLocalStorage() {
   try {
@@ -456,6 +464,7 @@ async function fetchAccountByIndex(baseUrl, accountIndex, timeoutMs) {
     `${baseUrl}/account?by=account_index&value=${encodedIndex}`
   ];
 
+  let lastError = null;
   for (const url of endpoints) {
     try {
       const data = await getJsonWithDevCorsFallback(url, timeoutMs);
@@ -467,8 +476,11 @@ async function fetchAccountByIndex(baseUrl, accountIndex, timeoutMs) {
       if (isDefinitiveLookupFailure(err)) {
         return null;
       }
+      lastError = err;
     }
   }
+  // A sub-account that didn't answer would drop out of the wallet's value.
+  if (lastError) throw lastError;
   return null;
 }
 
@@ -541,10 +553,8 @@ async function fetchAccountsFromCluster(baseUrl, address, timeoutMs) {
     if (isAccountNotFoundError(err)) {
       return { notFound: true };
     }
-    if (!isInvalidParamError(err)) {
-      // Non-canonical/temporary failure: let caller decide whether to use explorer fallback.
-      return null;
-    }
+    // A timeout, rate limit or server error: the caller tries the explorer, then throws.
+    if (!isInvalidParamError(err)) throw err;
   }
 
   // Fallback for clusters exposing sub-accounts first.
@@ -572,13 +582,15 @@ async function fetchAccountsFromCluster(baseUrl, address, timeoutMs) {
     if (isDefinitiveLookupFailure(err)) {
       return { notFound: true };
     }
+    throw err;
   }
 
   return null;
 }
 
 /**
- * Fetch account data by L1 address
+ * Fetch account data by L1 address: { accounts, source }, or null when Lighter answers that
+ * the address has no account. Throws when the lookup fails.
  */
 export async function fetchAccountByAddress(address, { timeoutMs = 10000 } = {}) {
   if (!address) return null;
@@ -613,10 +625,17 @@ export async function fetchAccountByAddress(address, { timeoutMs = 10000 } = {})
     // Testnet can still be queried via explicit provider entry if needed.
     const baseUrls = [MAINNET];
     let sawDefinitiveNotFound = false;
+    let lookupError = null;
 
     for (const baseUrl of baseUrls) {
       for (const addr of addressCandidates) {
-        const result = await fetchAccountsFromCluster(baseUrl, addr, timeoutMs);
+        let result;
+        try {
+          result = await fetchAccountsFromCluster(baseUrl, addr, timeoutMs);
+        } catch (err) {
+          lookupError = err;
+          continue;
+        }
         if (result?.accounts?.length) {
           return result;
         }
@@ -638,6 +657,7 @@ export async function fetchAccountByAddress(address, { timeoutMs = 10000 } = {})
       }
     }
 
+    if (lookupError) throw lookupError;
     return null;
   })();
 
@@ -662,11 +682,11 @@ export async function fetchAccountByAddress(address, { timeoutMs = 10000 } = {})
 }
 
 /**
- * Fetch candlestick data for sparkline charts
+ * Fetch candlestick data for sparkline charts. `market: 'spot'` reads the symbol's spot pair.
  */
-export async function fetchCandlesticks(symbol, { timeoutMs = 5000, days = 7 } = {}) {
-  const marketId = MARKET_ID_MAP[symbol];
-  if (!marketId) return null;
+export async function fetchCandlesticks(symbol, { timeoutMs = 5000, days = 7, market = 'perp' } = {}) {
+  const marketId = (market === 'spot' ? SPOT_MARKET_ID_MAP : MARKET_ID_MAP)[symbol];
+  if (marketId === undefined) return null;
 
   try {
     const now = Math.floor(Date.now() / 1000);
@@ -688,24 +708,22 @@ export async function fetchCandlesticks(symbol, { timeoutMs = 5000, days = 7 } =
 
     if (candles?.length) {
       const priceHistory = candles.map(c => ({ price: c.close, timestamp: c.timestamp }));
-      const closePrices = candles.map(c => c.close);
-      const len = closePrices.length;
-
-      // Calculate 24H change
-      let change24h = null;
-      if (len >= 24) {
-        const old = closePrices[len - 24], cur = closePrices[len - 1];
-        if (old > 0) change24h = ((cur - old) / old) * 100;
-      } else if (len >= 2) {
-        const old = closePrices[0], cur = closePrices[len - 1];
-        if (old > 0) change24h = ((cur - old) / old) * 100;
-      }
-
-      return { priceHistory, change24h, currentPrice: closePrices[len - 1] || null };
+      return { priceHistory, change24h: change24hOf(candles), currentPrice: candles[candles.length - 1].close || null };
     }
   } catch (_) { }
 
   return null;
+}
+
+// The change since the last close at least 24 hours before the latest one, or null when the
+// candles don't reach that far back (missing hours would make an array index lie).
+export function change24hOf(candles) {
+  const sorted = candles.filter(c => c.timestamp > 0).sort((a, b) => a.timestamp - b.timestamp);
+  const last = sorted[sorted.length - 1];
+  if (!last) return null;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const old = sorted.filter(c => c.timestamp <= last.timestamp - DAY_MS).pop();
+  return old?.close > 0 ? ((last.close - old.close) / old.close) * 100 : null;
 }
 
 /**
@@ -769,8 +787,8 @@ export async function fetchFundingRates({ timeoutMs = 5000 } = {}) {
  * Fetch current price for a spot asset via candlesticks (last close price)
  */
 export async function fetchSpotPrice(symbol, { timeoutMs = 5000 } = {}) {
-  const marketId = MARKET_ID_MAP[symbol];
-  if (!marketId) return null;
+  const marketId = SPOT_MARKET_ID_MAP[symbol];
+  if (marketId === undefined) return null;
 
   try {
     const now = Math.floor(Date.now() / 1000);
@@ -804,7 +822,7 @@ export function getSpotAssetMap() {
  * Get market ID for a symbol
  */
 export function getMarketId(symbol) {
-  return MARKET_ID_MAP[symbol] || null;
+  return MARKET_ID_MAP[symbol] ?? null;
 }
 
 export function getSymbolByMarketId(marketId) {

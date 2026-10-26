@@ -19,7 +19,8 @@ function entryOf(pos, price) {
   return globalThis.larp?.entryOf?.(pos, price) ?? parseFloat(pos.entryPrice || 0);
 }
 
-function buildStockRow(pos, quote = null, { quoteLoading = false, quoteUnavailable = false } = {}) {
+// `asOf` marks a quote reused from an earlier refresh: its time, for the row's age.
+function buildStockRow(pos, quote = null, { quoteLoading = false, quoteUnavailable = false, asOf = null } = {}) {
   const amount = parseFloat(pos.amount || 0);
   const currentPrice = Number.isFinite(quote?.price) ? quote.price : 0;
   const entryPrice = entryOf(pos, currentPrice);
@@ -40,6 +41,8 @@ function buildStockRow(pos, quote = null, { quoteLoading = false, quoteUnavailab
     assetName: pos.name || quote?.name || pos.symbol,
     currency: pos.currency || quote?.currency || undefined,
     marketState: quote?.marketState || null,
+    quoteTime: quote?.quoteTime || undefined,
+    ...(asOf ? { asOf } : {}),
     // Spark quote already includes sparkline data — use it so the row renders with a chart
     // on first paint after the quote response, no follow-up fetch needed.
     priceHistory: Array.isArray(quote?.priceHistory) && quote.priceHistory.length > 1
@@ -114,12 +117,21 @@ export class ManualFetcher {
         this.providers = providers;
         this.renderer = renderer;
         this.settings = settings;
-        // Last good quote per symbol, so a refresh shows stale-but-real numbers while the new
-        // quote loads instead of blanking every row (and dropping them out of the total).
+        // Last good quote per symbol (and Pyth price per feed, { price, at }), so a refresh
+        // that loads or fails shows the last real numbers, with asOf, instead of $0.
         this._lastQuotes = new Map();
+        this._lastPythPrices = new Map();
+    }
+
+    // The last good quote for a symbol and its time, or nulls.
+    _lastQuote(symbol) {
+        const quote = this._lastQuotes.get(symbol) || null;
+        return { quote, asOf: quote ? (quote.quoteTime || quote.receivedAt) : null };
     }
 
     async fetch(cryptoPositions) {
+        // Late history enrichment from an older round must not replace a newer round's rows.
+        const generation = this.generation = (this.generation || 0) + 1;
         try {
             const rows = [];
             const pythPositions = cryptoPositions.filter(p => p.type === 'pyth');
@@ -129,8 +141,8 @@ export class ManualFetcher {
 
             if (stockPositions.length > 0) {
                 rows.push(...stockPositions.map(pos => {
-                    const lastQuote = this._lastQuotes.get(pos.symbol);
-                    return buildStockRow(pos, lastQuote || null, { quoteLoading: !lastQuote });
+                    const { quote, asOf } = this._lastQuote(pos.symbol);
+                    return buildStockRow(pos, quote, { quoteLoading: !quote, asOf });
                 }));
                 rows.push(...customRows);
                 // Partial update: leave the Pyth-backed rows (still on screen from the last
@@ -156,31 +168,26 @@ export class ManualFetcher {
                 : Promise.resolve({});
 
             // Stock/ETF/FX/Index positions via Yahoo Finance. Single batched quote request
-            // covers everything in one round-trip.
-            if (stockPositions.length > 0 && this.providers.stocks?.getQuotes) {
+            // covers everything in one round-trip. A symbol without a quote now keeps its last
+            // one, with asOf; with none ever, the row is unpriced.
+            if (stockPositions.length > 0) {
+                let quotes = {};
                 try {
                     const symbols = stockPositions.map(p => p.symbol).filter(Boolean);
-                    const quotes = await this.providers.stocks.getQuotes(symbols, { timeoutMs: 3500 });
-                    const stockRows = stockPositions.map(pos => {
-                        const quote = quotes[pos.symbol];
-                        if (quote) this._lastQuotes.set(pos.symbol, quote);
-                        return buildStockRow(pos, quote, { quoteUnavailable: !quote });
-                    });
-                    rows.splice(0, stockPositions.length, ...stockRows);
+                    quotes = await this.providers.stocks?.getQuotes?.(symbols, { timeoutMs: 3500 }) || {};
                 } catch (e) {
                     console.warn('[Manual] Failed to fetch stock quotes:', e);
-                    rows.splice(
-                        0,
-                        stockPositions.length,
-                        ...stockPositions.map(pos => buildStockRow(pos, null, { quoteUnavailable: true }))
-                    );
                 }
-            } else if (stockPositions.length > 0) {
-                rows.splice(
-                    0,
-                    stockPositions.length,
-                    ...stockPositions.map(pos => buildStockRow(pos, null, { quoteUnavailable: true }))
-                );
+                const stockRows = stockPositions.map(pos => {
+                    const fresh = quotes[pos.symbol];
+                    if (fresh) {
+                        this._lastQuotes.set(pos.symbol, { ...fresh, receivedAt: Date.now() });
+                        return buildStockRow(pos, fresh);
+                    }
+                    const { quote, asOf } = this._lastQuote(pos.symbol);
+                    return buildStockRow(pos, quote, { quoteUnavailable: !quote, asOf });
+                });
+                rows.splice(0, stockPositions.length, ...stockRows);
             }
 
             // Fetch prices for Pyth positions
@@ -204,9 +211,16 @@ export class ManualFetcher {
                 for (const pos of pythPositions) {
                     const pythPrice = Number(pythPrices[pos.feedId]);
                     const fallback = fallbackQuotes[yahooSymbolForPythPosition(pos)];
-                    const currentPrice = pythPrice > 0
+                    let currentPrice = pythPrice > 0
                         ? pythPrice
                         : (Number(fallback?.price) > 0 ? Number(fallback.price) : 0);
+                    // Neither source answered: the last good price, with its time as asOf.
+                    let asOf = null;
+                    if (currentPrice > 0) {
+                        this._lastPythPrices.set(pos.feedId, { price: currentPrice, at: Date.now() });
+                    } else if (this._lastPythPrices.has(pos.feedId)) {
+                        ({ price: currentPrice, at: asOf } = this._lastPythPrices.get(pos.feedId));
+                    }
                     const amount = parseFloat(pos.amount || 0);
                     const entryPrice = entryOf(pos, currentPrice);
                     const value = amount * currentPrice;
@@ -218,7 +232,7 @@ export class ManualFetcher {
                     // lack `category` — treat them as crypto.
                     const category = pos.category || 'crypto';
                     const exchange = labelForCategory(category);
-                    const usedFallback = !(pythPrice > 0) && currentPrice > 0;
+                    const usedFallback = !(pythPrice > 0) && !asOf && currentPrice > 0;
 
                     rows.push({
                         asset: pos.symbol,
@@ -237,6 +251,7 @@ export class ManualFetcher {
                             ? fallback.priceHistory
                             : undefined,
                         quoteUnavailable: !(currentPrice > 0),
+                        ...(asOf ? { asOf } : {}),
                         category,
                         isManual: true,
                         manualType: 'pyth',
@@ -253,15 +268,15 @@ export class ManualFetcher {
 
             // Enrich asynchronously from the appropriate provider. Each enrichment re-pushes
             // the rows so the renderer picks up the updated price history for sparklines.
-            this.enrichWithPythHistory(rows);
-            this.enrichWithStockHistory(rows);
+            this.enrichWithPythHistory(rows, generation);
+            this.enrichWithStockHistory(rows, generation);
 
         } catch (e) {
             this.renderer.markProviderFailed('Manual', e);
         }
     }
 
-    async enrichWithStockHistory(rows) {
+    async enrichWithStockHistory(rows, generation = this.generation) {
         if (!rows || rows.length === 0) return;
         if (this.settings && this.settings.showPriceChart === false) return;
         const provider = this.providers?.stocks;
@@ -288,12 +303,13 @@ export class ManualFetcher {
 
         await Promise.all(fetches);
 
+        if (generation !== this.generation) return;
         this.renderer.appendPositions(rows, 'Manual', {
             removeFilter: (p) => p.exchange && p.exchange.startsWith('Manual')
         });
     }
 
-    async enrichWithPythHistory(rows) {
+    async enrichWithPythHistory(rows, generation = this.generation) {
         if (!rows || rows.length === 0) return;
         if (this.settings && this.settings.showPriceChart === false) return;
 
@@ -359,7 +375,7 @@ export class ManualFetcher {
                 }
             }
 
-            if (hasFastData) {
+            if (hasFastData && generation === this.generation) {
                 this.renderer.appendPositions(rows, 'Manual', {
                     removeFilter: (p) => p.exchange && p.exchange.startsWith('Manual')
                 });
@@ -389,6 +405,7 @@ export class ManualFetcher {
             console.error(`[Manual] Error batch fetching history:`, e);
         }
 
+        if (generation !== this.generation) return;
         this.renderer.appendPositions(rows, 'Manual', {
             removeFilter: (p) => p.exchange && p.exchange.startsWith('Manual')
         });
