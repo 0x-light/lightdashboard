@@ -1554,6 +1554,13 @@ h3 {
   border-bottom: 0;
 }
 
+.watchlist-search-result .result-price {
+  margin-left: auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-bright);
+}
+
 .watchlist-search-result strong {
   color: var(--text-bright);
   font-weight: 400;
