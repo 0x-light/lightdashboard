@@ -1831,7 +1831,85 @@ function setupControls() {
     });
   }
 
+  // Save the order the tiles now show.
+  function saveWatchlistOrder(keys) {
+    const s = getSettings();
+    const list = Array.isArray(s.watchlist) ? s.watchlist : [];
+    const rank = new Map(keys.map((k, i) => [k, i]));
+    s.watchlist = [...list].sort((a, b) => (rank.get(watchlistEntryKey(a)) ?? Infinity) - (rank.get(watchlistEntryKey(b)) ?? Infinity));
+    try {
+      localStorage.setItem('myDashboardSettings.v2', JSON.stringify(s));
+      invalidateSettingsCache();
+    } catch (e) {
+      console.error('Failed to save watchlist order:', e);
+    }
+    renderWatchlistPanel({ entriesOverride: s.watchlist, forceRefresh: false, preserveCurrentData: true });
+  }
+
+  // Drag a tile to move it: a mouse drags once it moves, a finger after holding still for a
+  // moment (so a swipe still scrolls). The others make room; drop saves the order.
+  let watchlistDragged = false;
+  watchlistTable?.addEventListener('pointerdown', (e) => {
+    const tile = e.target.closest('tr.watchlist-row');
+    const body = tile?.parentElement;
+    if (!tile || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const touch = e.pointerType !== 'mouse';
+    const startX = e.clientX, startY = e.clientY;
+    let dragging = false;
+    let holdTimer = null;
+
+    const start = () => {
+      dragging = true;
+      body.dataset.dragging = '';
+      tile.classList.add('is-dragging');
+      window.getSelection()?.removeAllRanges();
+    };
+    // A finger that holds still owns the page until it lifts: no scrolling, no callout.
+    const blockTouch = (ev) => { if (dragging) ev.preventDefault(); };
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      const moved = Math.hypot(ev.clientX - startX, ev.clientY - startY);
+      if (!dragging) {
+        if (touch) { if (moved > 8) finish(); return; } // a swipe: let it scroll
+        if (moved < 4) return;
+        start();
+      }
+      ev.preventDefault();
+      const over = Array.from(body.children).find(other => {
+        if (other === tile || !other.classList.contains('watchlist-row')) return false;
+        const r = other.getBoundingClientRect();
+        return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+      });
+      if (!over) return;
+      const after = over.compareDocumentPosition(tile) & Node.DOCUMENT_POSITION_PRECEDING;
+      over.insertAdjacentElement(after ? 'afterend' : 'beforebegin', tile);
+    };
+    const finish = () => {
+      clearTimeout(holdTimer);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('touchmove', blockTouch);
+      window.removeEventListener('contextmenu', blockTouch);
+      if (!dragging) return;
+      tile.classList.remove('is-dragging');
+      delete body.dataset.dragging;
+      // The click that ends a drag doesn't open the chart.
+      watchlistDragged = true;
+      setTimeout(() => { watchlistDragged = false; }, 0);
+      saveWatchlistOrder(Array.from(body.querySelectorAll('tr.watchlist-row')).map(r => r.dataset.entryKey));
+    };
+    const onUp = (ev) => { if (ev.pointerId === e.pointerId) finish(); };
+    if (touch) holdTimer = setTimeout(start, 350);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('touchmove', blockTouch, { passive: false });
+    window.addEventListener('contextmenu', blockTouch);
+  });
+
   watchlistTable?.addEventListener('click', (e) => {
+    if (watchlistDragged) return;
     if (window.getSelection()?.toString()) return;
     const item = e.target.closest('tr.watchlist-row');
     if (item) openWatchlistChart(item.dataset.entryKey);

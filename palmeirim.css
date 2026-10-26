@@ -927,6 +927,12 @@ html.pm:root #newWatchlistBody .wl-chart .sparkline {
 
 html.pm:root #newWatchlistBody > tr.watchlist-row:focus-visible { border-color: var(--pm-ink); outline: none; }
 
+/* Drag to reorder (app.js): no text selection or callout on a held tile; the moving one
+   has an ink border. */
+html.pm:root #newWatchlistBody > tr.watchlist-row { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+html.pm:root #newWatchlistBody[data-dragging] > tr.watchlist-row { cursor: grabbing; }
+html.pm:root #newWatchlistBody > tr.watchlist-row.is-dragging { border-color: var(--pm-ink); }
+
 @media (hover: hover) {
   html.pm:root #newWatchlistBody > tr.watchlist-row:hover { border-color: var(--pm-ink); }
 }

@@ -894,7 +894,10 @@ export function setupSettingsDialog({ getSettings, invalidateSettingsCache, onCl
           } catch (_) { /* Best effort */ }
         }
         sessionStorage.clear();
-        const keep = new Set([STORAGE_KEY, 'theme', 'walletAssetEntryPrices', 'stickyStickers.v1']);
+        // Settings, plus the view choices (periods, sort, folds, tabs): those are not caches.
+        const keep = new Set([STORAGE_KEY, 'theme', 'walletAssetEntryPrices', 'stickyStickers.v1',
+          'myDashboardCustomThemes', 'pmWatchlistPeriod', 'pmValuePeriod', 'pmAccountTab', 'pmChartLayers',
+          'positionsSort', 'positionsFolded']);
         Object.keys(localStorage).filter(key => !keep.has(key)).forEach(key => localStorage.removeItem(key));
         if (savedSettings) localStorage.setItem(STORAGE_KEY, savedSettings);
         const url = new URL(window.location.href);

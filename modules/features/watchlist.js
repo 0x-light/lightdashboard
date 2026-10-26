@@ -404,6 +404,8 @@ let lastRender = null;
 function renderRows(container, data, options) {
   const { useColoredPnL, showPriceChart, prevPriceMap } = options;
   lastRender = { container, data, options: { ...options, prevPriceMap: {} } };
+  // A tile is being dragged (app.js): leave the rows alone; the drop redraws.
+  if (container.dataset.dragging !== undefined) return;
 
   if (!data || data.length === 0) {
     container.innerHTML = '<tr class="watchlist-empty-row"><td colspan="4">Your watchlist is empty.</td></tr>';
