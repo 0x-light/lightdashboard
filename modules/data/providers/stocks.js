@@ -216,13 +216,15 @@ export function marketStateOf(payload, quoteTime, now = Date.now()) {
  * invalid symbols are absent from the map. Each quote also carries quoteTime (ms, its last
  * print), marketState (see marketStateOf) and extendedHours: false when the request had to
  * leave out pre- and post-market prints. During PRE or POST, change24h is the
- * extended-hours price against the last regular close.
+ * extended-hours price against the last regular close. With `includeIdle`, a listing Yahoo
+ * knows that hasn't traded today (an illiquid option) is in the map as { idle: true,
+ * price: null, previousClose }.
  *
  * We use `spark` instead of `/v7/finance/quote` because the latter was locked behind a crumb
  * cookie in ~2023 and silently returns empty for unauthenticated callers; spark has stayed
  * open and gives us the same price data plus intraday candles in a single round-trip.
  */
-export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
+export async function getQuotes(symbols, { timeoutMs = 5000, includeIdle = false } = {}) {
   if (!Array.isArray(symbols) || symbols.length === 0) return {};
   // Tickers Yahoo said it doesn't know have no quote to fetch.
   const misses = loadListingMisses();
@@ -266,7 +268,10 @@ export async function getQuotes(symbols, { timeoutMs = 5000 } = {}) {
       if (!payload || typeof payload !== 'object') continue;
       const price = lastFiniteClose(payload.close);
       const prevClose = Number(payload.previousClose ?? payload.chartPreviousClose);
-      if (!Number.isFinite(price)) continue;
+      if (!Number.isFinite(price)) {
+        if (includeIdle && prevClose > 0) merged[sym] = { symbol: sym, idle: true, price: null, previousClose: prevClose };
+        continue;
+      }
 
       // Spark gives us sparkline data for free — carry it through so the watchlist / manual
       // fetcher doesn't need to make a second chart request.

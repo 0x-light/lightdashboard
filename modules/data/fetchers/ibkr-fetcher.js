@@ -202,7 +202,7 @@ export class IbkrFetcher {
             const wanted = [...new Set([...[...symbols.values()].flat(), ...underlyings.values()])];
             if (wanted.length > 0 && this.providers.stocks?.getQuotes) {
                 try {
-                    quotes = await this.providers.stocks.getQuotes(wanted, { timeoutMs: 5000 }) || {};
+                    quotes = await this.providers.stocks.getQuotes(wanted, { timeoutMs: 5000, includeIdle: true }) || {};
                 } catch (e) {
                     console.warn('[IBKR] Live quotes failed; using statement prices:', e);
                 }
@@ -211,9 +211,14 @@ export class IbkrFetcher {
             // The first candidate with a price in the holding's own currency.
             const symbolFor = pos => (symbols.get(pos) || []).find(sym => livePriceFor(pos, quotes[sym]) !== null);
             const rows = positions.map(pos => buildPositionRow(pos, quotes[symbolFor(pos)], quotes[underlyings.get(pos)], symbolFor(pos)));
+            // A contract Yahoo knows but that hasn't traded today: the statement's mark is
+            // still its latest price, so the row is current.
+            positions.forEach((pos, i) => {
+                if ((symbols.get(pos) || []).some(sym => quotes[sym]?.idle)) rows[i].livePrice = true;
+            });
             // When IBKR made the statement (end of day). Every row carries it as holdingsAsOf.
-            // Rows priced from the statement (no live quote) carry it as asOf, the age of
-            // their numbers. Cash changes only with trades, so the latest statement's cash is
+            // Rows priced from the statement (no live quote, and not an untraded contract)
+            // carry it as asOf, the age of their numbers. Cash changes only with trades, so the latest statement's cash is
             // current; it is old only when the statement is a saved one after a failed refresh.
             const generatedAt = flexTime(statement.generatedAt) ?? savedAt;
             const all = [...rows, ...cashRows];
