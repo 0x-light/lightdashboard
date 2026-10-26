@@ -128,8 +128,9 @@ async function runHealthChecks() {
 
   // CoinGecko
   try {
-    const data = await providers.coingecko.getSimplePrice('bitcoin,ethereum', { timeoutMs: 8000, ttlMs: 15000 });
-    const ok = !!(data && (data.bitcoin || data.ethereum));
+    // Bitcoin only, kept a minute: the price the fetchers already got answers it without a request
+    const data = await providers.coingecko.getSimplePrice('bitcoin', { timeoutMs: 8000, ttlMs: 60000 });
+    const ok = !!data?.bitcoin;
     parts.push(`<span style="color: ${ok ? 'var(--green)' : 'var(--red)'};">●</span> CoinGecko`);
   } catch (e) {
     parts.push('<span style="color: var(--red);">●</span> CoinGecko');
@@ -3795,6 +3796,8 @@ const boot = async () => {
             .catch(() => { });
           if (wasHiddenLong && navigator.serviceWorker.controller) {
             navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_API_CACHE' });
+            // A PWA resumed from the background doesn't reload, so ask for the app shell check here
+            navigator.serviceWorker.controller.postMessage({ type: 'REVALIDATE_SHELL' });
           }
         }
 

@@ -1039,6 +1039,19 @@
                 }
             });
 
+            // The worker cached a new version of the app. Reload while the page is out of sight,
+            // so the change never interrupts what is on screen.
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                if (event.data?.type !== 'SHELL_UPDATED' || refreshing) return;
+                const reloadWhenHidden = () => {
+                    if (!document.hidden || refreshing) return;
+                    refreshing = true;
+                    window.location.reload();
+                };
+                if (document.hidden) reloadWhenHidden();
+                else document.addEventListener('visibilitychange', reloadWhenHidden);
+            });
+
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
                     .then((registration) => {
