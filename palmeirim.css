@@ -1376,12 +1376,35 @@ html.pm:root .status-bar {
 html.pm:root .last-update-timestamp { color: var(--pm-muted); }
 
 /* In the top bar, the update time sits at the right. */
-html.pm:root .app-header .last-update-timestamp { margin-left: auto; line-height: var(--pm-lh); cursor: pointer; }
+html.pm:root .app-header .pm-stamp { margin-left: auto; }
+html.pm:root .app-header .last-update-timestamp { line-height: var(--pm-lh); cursor: pointer; }
 html.pm:root .app-header .last-update-timestamp:hover,
 html.pm:root .app-header .last-update-timestamp[aria-expanded="true"] { color: var(--pm-ink); }
+/* A failed source turns the update time red; its line and Retry are in the list. */
+html.pm:root .pm-stamp:has(.provider-status[data-state="failed"]) .last-update-timestamp { color: var(--red); }
 
-/* The sources show only when the update time is clicked, or when one failed. */
-html.pm:root .provider-status:not(.is-open):not([data-state="failed"]) { display: none; }
+/* The sources: a drop-down that hangs from the update time at its right edge. */
+html.pm:root .pm-stamp:not(.is-open) .provider-status { display: none; }
+html.pm:root .pm-stamp .provider-status:not([hidden]) {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 60;
+  width: 64ch;
+  max-width: calc(100vw - 16px);
+  padding: calc(var(--pm-lh) / 2) 1ch;
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+  line-height: var(--pm-lh);
+}
+/* The footer is empty now: no band of padding at the foot of the page. */
+html.pm:root .status-bar:not(:has(*)) { display: none; }
+
+/* Phones: the list spans the bar, as MENU's does. */
+@media (max-width: 720px) {
+  html.pm:root .pm-stamp { position: static; }
+  html.pm:root .pm-stamp .provider-status:not([hidden]) { left: 1ch; right: 1ch; width: auto; max-width: none; }
+}
 
 /* ── Pop-ups: the page's own vocabulary in a frame ──
    Everything sits on the line grid: one-line fields, uppercase muted labels,
@@ -2554,7 +2577,7 @@ html.pm:root .wlc__menu {
   min-width: 30ch;
   max-height: calc(var(--pm-lh) * 14);
   margin-top: calc(var(--pm-lh) / 2);
-  padding: calc(var(--pm-lh) / 2) 0;
+  padding: 0 0 calc(var(--pm-lh) / 2);
   overflow: hidden;
   background: var(--bg);
   border: 1px solid var(--pm-tint-2);
@@ -2563,7 +2586,7 @@ html.pm:root .wlc__menu[hidden] { display: none; }
 html.pm:root .wlc__menu-rows { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
 html.pm:root .wlc__menu-search {
   min-width: 0;
-  margin: 0 1ch calc(var(--pm-lh) / 2);
+  margin: 0 0 calc(var(--pm-lh) / 2);
   padding: 0 1ch;
   border: 0;
   border-radius: 0;

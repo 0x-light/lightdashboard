@@ -1102,9 +1102,7 @@ function addMenu(open) {
   if (l.onAdd) { l.onAdd(); return; }
   const input = menu.querySelector('.wlc__menu-search');
   input.value = '';
-  found = [];
-  ++searchSeq;
-  menuRows();
+  searchMenu();
   menu.hidden = false;
   button.setAttribute('aria-expanded', 'true');
   input.focus();
@@ -1122,7 +1120,8 @@ function menuRows() {
   const rows = [...hidden, ...others].filter(i => matches(i, q))
     .map(i => ({ ...i, from: lists.find(x => x.id === i.list)?.title || '' }));
   const known = new Set([...shown, ...rows.map(i => i.key)]);
-  if (q) rows.push(...found.filter(i => !known.has(i.key)).map(i => ({ ...i, list: 'found', from: i.kind || '' })));
+  // The search's items, or before you type its suggestions, that are on no list yet.
+  rows.push(...found.filter(i => !known.has(i.key)).map(i => ({ ...i, list: 'found', from: i.kind || '' })));
   menu.querySelector('.wlc__menu-rows').innerHTML = rows.length
     ? rows.map(i => `<button type="button" class="wlc__menu-item" data-key="${esc(i.key)}" data-list="${esc(i.list)}">` +
       `<span>${esc(i.label || i.symbol || '')}</span><span class="wlc__menu-from">${esc(i.from)}</span></button>`).join('')
@@ -1136,17 +1135,17 @@ function searchMenu() {
   found = [];
   menuRows();
   clearTimeout(searchWait);
-  if (!q || !search) return;
+  if (!search) return;
   searchWait = setTimeout(async () => {
     let result = [];
     try { result = await search(q); } catch (_) { /* no results */ }
     if (seq !== searchSeq || win.querySelector('.wlc__menu').hidden) return;
     found = result || [];
     menuRows();
-    if (!found.length && !win.querySelector('.wlc__menu-item')) {
+    if (q && !found.length && !win.querySelector('.wlc__menu-item')) {
       win.querySelector('.wlc__menu-rows').innerHTML = '<p class="wlc__empty">No results.</p>';
     }
-  }, 250);
+  }, q ? 250 : 0);
 }
 
 function addCell(listOf, k) {

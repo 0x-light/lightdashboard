@@ -1653,6 +1653,7 @@ function setupControls() {
     { provider: 'yahoo', symbol: 'DX-Y.NYB', label: 'DXY', name: 'ICE US dollar', category: 'index' },
     { provider: 'yahoo', symbol: '^TNX', label: 'US10Y', name: '10-year Treasury yield', category: 'index' },
     { provider: 'yahoo', symbol: 'GC=F', label: 'GOLD', name: 'Gold futures', category: 'commodity' },
+    { provider: 'yahoo', symbol: 'SI=F', label: 'SILVER', name: 'Silver futures', category: 'commodity' },
     // Brent, the world's oil benchmark: Pyth's 24/7 spot, priced from the contract nearest expiry.
     { feed: 'BRENT', label: 'BRENT', name: 'Brent crude', fallback: { provider: 'yahoo', symbol: 'BZ=F', label: 'BRENT', name: 'Brent crude futures', category: 'commodity' } },
     { crypto: 'BTC' },
@@ -1947,14 +1948,16 @@ function setupControls() {
   }
 
   // The chart window's + Add search: Pyth's feeds and Yahoo's symbols, as the watchlist's
-  // search finds them, as chart items.
+  // search finds them, as chart items. Before you type, the watchlist's markets.
   async function searchChartItems(query) {
-    const pyth = rankFeedMatches(query, await loadAllPythFeeds());
-    let feeds = pyth;
-    try {
-      const yahoo = await window.AppModules?.data?.providers?.stocks?.searchSymbols?.(query, { limit: 25 });
-      if (yahoo) feeds = mergeSearchResults(query, pyth, yahoo);
-    } catch (_) { /* Pyth's matches only */ }
+    const all = await loadAllPythFeeds();
+    let feeds = query ? rankFeedMatches(query, all) : marketSuggestions();
+    if (query) {
+      try {
+        const yahoo = await window.AppModules?.data?.providers?.stocks?.searchSymbols?.(query, { limit: 25 });
+        if (yahoo) feeds = mergeSearchResults(query, feeds, yahoo);
+      } catch (_) { /* Pyth's matches only */ }
+    }
     return feeds.slice(0, 12).map(feed => {
       const kind = categoryLabel(feed.category);
       const name = feed.name && feed.name !== feed.symbol ? feed.name : null;
@@ -1963,7 +1966,7 @@ function setupControls() {
         return { key, provider: 'yahoo', symbol: feed.symbol, label: feed.label || feed.symbol, name, category: feed.category, currency: quoteCurrencyForFeed(feed) || 'USD', kind };
       }
       const key = watchlistEntryKey({ provider: 'pyth', id: feed.id });
-      return { key, provider: 'pyth', feedId: key.slice('pyth:'.length), symbol: feed.symbol, label: feed.symbol, name, category: feed.category, currency: 'USD', kind };
+      return { key, provider: 'pyth', feedId: key.slice('pyth:'.length), symbol: feed.symbol, label: feed.label || feed.symbol, name, category: feed.category, currency: 'USD', kind };
     });
   }
 

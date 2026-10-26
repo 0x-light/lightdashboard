@@ -65,12 +65,12 @@ async function fetchPyth(path, timeoutMs = 10000, bypassCache = false) {
 let feedsCache = null;
 let feedsCacheTimestamp = 0;
 let feedsMetadataCache = null;
-// v4 adds the Commodities.Index feeds (24/7 Brent) and plain commodity names.
-const FEEDS_CACHE_KEY = 'pyth_price_feeds_v4';
-const FEEDS_METADATA_CACHE_KEY = 'pyth_feed_metadata_v4';
+// v5 adds the Commodities.Index feeds (24/7 Brent) and plain commodity names.
+const FEEDS_CACHE_KEY = 'pyth_price_feeds_v5';
+const FEEDS_METADATA_CACHE_KEY = 'pyth_feed_metadata_v5';
 const FEEDS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 const FEED_ID_PATTERN = /^0x[a-f0-9]{64}$/;
-const LEGACY_FEEDS_CACHE_KEYS = ['pyth_price_feeds_v1', 'pyth_price_feeds_v2', 'pyth_price_feeds_v3', 'pyth_feed_metadata_v2', 'pyth_feed_metadata_v3'];
+const LEGACY_FEEDS_CACHE_KEYS = ['pyth_price_feeds_v1', 'pyth_price_feeds_v2', 'pyth_price_feeds_v3', 'pyth_price_feeds_v4', 'pyth_feed_metadata_v2', 'pyth_feed_metadata_v3', 'pyth_feed_metadata_v4'];
 
 // Pyth symbols are structured as `<Category>.<Rest>/<Quote>`. We extract a compact
 // symbol (AAPL, BTC, EUR/USD, XAU) and the category so the UI can label stocks distinctly
@@ -109,7 +109,7 @@ const FEED_PARSERS = [
 ];
 
 // Pyth describes its commodity feeds as "PYTH PRICE IN USD FOR BRENT 24/7": the asset is the rest.
-const FEED_NAMES = { BRENT: 'Brent crude', WTI: 'WTI crude' };
+const FEED_NAMES = { BRENT: 'Brent crude', WTI: 'WTI crude', NATGAS: 'Natural gas' };
 function feedName(feed, symbol) {
   const description = feed?.attributes?.description || feed?.attributes?.display_symbol || symbol;
   const commodity = /^PYTH PRICE IN USD FOR (.+?)(?: 24\/7)?$/i.exec(description);
@@ -386,42 +386,70 @@ let hlPrevDayCache = null; // { at, promise }
 // spark endpoint, so the front-month future stands in (within ~1% of spot).
 const YAHOO_COMMODITY_SYMBOLS = {
   XAU: 'GC=F', XAG: 'SI=F', XPT: 'PL=F', XPD: 'PA=F', XCU: 'HG=F', COPPER: 'HG=F', CU: 'HG=F',
-  WTI: 'CL=F', WTI1M: 'CL=F', USOILSPOT: 'CL=F', NGAS: 'NG=F', NATGAS: 'NG=F'
+  WTI: 'CL=F', WTI1M: 'CL=F', USOILSPOT: 'CL=F'
 };
-const BRENT_SPOT_SYMBOLS = new Set(['BRENT', 'BRENT1M', 'UKOILSPOT']);
 const FUTURES_MONTH_CODES = 'FGHJKMNQUVXZ';
 
-function lastBusinessDayUTC(year, month) {
-  const d = new Date(Date.UTC(year, month + 1, 0));
-  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() - 1);
-  return d.getUTCDate();
+const weekend = d => d.getUTCDay() === 0 || d.getUTCDay() === 6;
+
+// A month's last business day (n = 0), or the nth business day before the month starts.
+function businessDayUTC(year, month, n) {
+  if (n === 0) {
+    const d = new Date(Date.UTC(year, month + 1, 0));
+    while (weekend(d)) d.setUTCDate(d.getUTCDate() - 1);
+    return d;
+  }
+  const d = new Date(Date.UTC(year, month, 1));
+  for (let left = n; left > 0;) {
+    d.setUTCDate(d.getUTCDate() - 1);
+    if (!weekend(d)) left--;
+  }
+  return d;
 }
 
-// Brent "cash" is the contract nearest expiry. Yahoo's BZ=F rolls to the next one weeks early, so
-// it can sit several dollars off. A Brent contract expires on the last business day of the second
-// month before its delivery month.
-export function brentFrontMonthTicker(now = new Date()) {
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth();
-  const ahead = now.getUTCDate() <= lastBusinessDayUTC(year, month) ? 2 : 3;
-  const delivery = new Date(Date.UTC(year, month + ahead, 1));
-  const yy = String(delivery.getUTCFullYear() % 100).padStart(2, '0');
-  return `BZ${FUTURES_MONTH_CODES[delivery.getUTCMonth()]}${yy}.NYM`;
+// Futures on Yahoo by Pyth's root: Yahoo's root, exchange and when a contract for a delivery
+// month stops trading. Brent: the last business day of the second month before. Henry Hub gas:
+// three business days before the delivery month.
+const FUTURES = {
+  BRENT: { root: 'BZ', exchange: 'NYM', expiry: (y, m) => businessDayUTC(y, m - 2, 0) },
+  HN: { root: 'NG', exchange: 'NYM', expiry: (y, m) => businessDayUTC(y, m, 3) },
+  CLL: { root: 'CL', exchange: 'NYM' },
+  CA: { root: 'CC', exchange: 'NYB' }
+};
+// Pyth's spot feeds where Yahoo's continuous future (BZ=F, NG=F) rolls weeks before expiry and
+// sits off the cash price: these take the contract nearest expiry.
+const FRONT_MONTH = { BRENT: 'BRENT', BRENT1M: 'BRENT', UKOILSPOT: 'BRENT', NATGAS: 'HN', NGAS: 'HN', HHGAS1M: 'HN', HLGAS1M: 'HN' };
+
+const contractTicker = (f, year, month) =>
+  `${f.root}${FUTURES_MONTH_CODES[month]}${String(year % 100).padStart(2, '0')}.${f.exchange}`;
+
+export function frontMonthTicker(root, now = new Date()) {
+  const f = FUTURES[root];
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  for (let ahead = 0; ahead < 4; ahead++) {
+    const delivery = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + ahead, 1));
+    const y = delivery.getUTCFullYear();
+    const m = delivery.getUTCMonth();
+    if (f.expiry(y, m).getTime() >= today) return contractTicker(f, y, m);
+  }
+  return null;
 }
 
-// Pyth's dated Brent feeds (BRENTZ6 = December 2026) map to Yahoo's matching contract.
-function brentContractTicker(symbol, now = new Date()) {
-  const m = /^BRENT([FGHJKMNQUVXZ])(\d)$/.exec(symbol);
-  if (!m) return null;
+// Pyth's dated feeds (BRENTZ6 = December 2026 Brent, CLLZ6 WTI, HNX6 gas) map to Yahoo's
+// matching contract.
+function datedContractTicker(symbol, now = new Date()) {
+  const m = /^([A-Z]+?)([FGHJKMNQUVXZ])(\d)$/.exec(symbol);
+  const f = m && FUTURES[m[1]];
+  if (!f) return null;
   const year = now.getUTCFullYear();
-  let contractYear = year - (year % 10) + Number(m[2]);
+  let contractYear = year - (year % 10) + Number(m[3]);
   if (contractYear < year - 1) contractYear += 10;
-  return `BZ${m[1]}${String(contractYear % 100).padStart(2, '0')}.NYM`;
+  return contractTicker(f, contractYear, FUTURES_MONTH_CODES.indexOf(m[2]));
 }
 
 function yahooCommoditySymbol(symbol) {
-  if (BRENT_SPOT_SYMBOLS.has(symbol)) return brentFrontMonthTicker();
-  return YAHOO_COMMODITY_SYMBOLS[symbol] || brentContractTicker(symbol);
+  if (FRONT_MONTH[symbol]) return frontMonthTicker(FRONT_MONTH[symbol]);
+  return YAHOO_COMMODITY_SYMBOLS[symbol] || datedContractTicker(symbol);
 }
 
 /**
