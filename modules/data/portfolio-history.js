@@ -3,7 +3,8 @@
 //   Hyperliquid   the portfolio endpoint (hl-account.js), per address: its P&L history, so
 //                 deposits and withdrawals don't show as gains or losses (its value
 //                 history when the P&L line would dip below zero)
-//   Lighter       its P&L history per account: the value's changes, hourly or daily
+//   Lighter       its P&L history per account: the value's changes, hourly or daily (it
+//                 has no finer steps)
 //   EVM wallets   Zerion's balance chart per wallet
 //   IBKR          the daily net asset value in the Flex statement, if the query includes it
 //   the rest      today's amount at the asset's price history: Hyperliquid candles for
@@ -29,8 +30,8 @@ const YEAR_MS = 365 * DAY;
 
 // Per period: the window, and how each source is asked for it.
 export const PERIODS = {
-  day: { ms: DAY, zerion: 'day', lighter: ['1h', 25], hl: '1h', yahoo: ['1d', '15m'] },
-  week: { ms: 7 * DAY, zerion: 'week', lighter: ['1h', 169], hl: '1h', yahoo: ['5d', '1h'] },
+  day: { ms: DAY, zerion: 'day', lighter: ['1h', 25], hl: '5m', yahoo: ['1d', '5m'] },
+  week: { ms: 7 * DAY, zerion: 'week', lighter: ['1h', 169], hl: '15m', yahoo: ['5d', '15m'] },
   month: { ms: 30 * DAY, zerion: 'month', lighter: ['1d', 31], hl: '1d', yahoo: ['1mo', '1d'] },
   allTime: { ms: Infinity, zerion: 'max', lighter: ['1d', 366], hl: '1d', yahoo: ['1y', '1d'] }
 };
@@ -56,13 +57,17 @@ const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
 // ── Series arithmetic, on [[t, v]] lists sorted by t ──
 
-// Reads a series in time order: the last point at or before t, the first point before any.
-export function stepper(series) {
+// Reads a series in time order: on the straight line between the points around t, the
+// first point before any, the last after all.
+export function reader(series) {
   let i = 0;
-  let v = series.length ? series[0][1] : 0;
   return (t) => {
-    while (i < series.length && series[i][0] <= t) v = series[i++][1];
-    return v;
+    if (!series.length) return 0;
+    while (i + 1 < series.length && series[i + 1][0] <= t) i++;
+    const [t0, v0] = series[i];
+    if (t <= t0 || i + 1 === series.length) return v0;
+    const [t1, v1] = series[i + 1];
+    return v0 + (v1 - v0) * (t - t0) / (t1 - t0);
   };
 }
 
@@ -73,14 +78,14 @@ export function sumSeries(parts, since = 0) {
   for (const s of parts) for (const [t] of s) if (t >= since) ts.push(t);
   if (since > 0 && parts.some(s => s.length && s[0][0] < since)) ts.push(since);
   ts.sort((a, b) => a - b);
-  const steps = parts.map(stepper);
+  const reads = parts.map(reader);
   const values = [];
   let last = null;
   for (const t of ts) {
     if (t === last) continue;
     last = t;
     let v = 0;
-    for (const at of steps) v += at(t);
+    for (const at of reads) v += at(t);
     values.push([t, v]);
   }
   return values;

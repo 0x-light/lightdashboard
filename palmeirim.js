@@ -196,7 +196,8 @@
     var pct = first > 0 ? (pnl / first) * 100 : null;
     $(".pm-value__change", valueBox).textContent = money(pnl, true) + (pct !== null ? " (" + (pct >= 0 ? "+" : "−") + Math.abs(pct).toFixed(1) + "%)" : "");
 
-    // Drawn at the box's real pixel size, so the 1px dither stays crisp.
+    // Drawn at the box's real pixel size on whole pixels, so the 1px dither and the 2px
+    // line stay crisp. The right and top/bottom edges keep room for the end mark.
     var w = Math.max(100, Math.round(chart.clientWidth));
     var h = chartHeight();
     var ts = data.values.map(function (p) { return p[0]; });
@@ -204,15 +205,19 @@
     var t0 = Math.min.apply(null, ts), t1 = Math.max.apply(null, ts);
     var v0 = Math.min.apply(null, vs), v1 = Math.max.apply(null, vs);
     if (v1 === v0) { v0 -= 1; v1 += 1; }
+    var yOf = function (v) { return Math.round(3 + (1 - (v - v0) / (v1 - v0)) * (h - 7)); };
     valueSeries = data.values.map(function (p) {
-      return { t: p[0], v: p[1], x: (p[0] - t0) / (t1 - t0 || 1) * (w - 1), y: 1 + (1 - (p[1] - v0) / (v1 - v0)) * (h - 3) };
+      return { t: p[0], v: p[1], x: Math.round((p[0] - t0) / (t1 - t0 || 1) * (w - 4)), y: yOf(p[1]) };
     });
-    var pts = valueSeries.map(function (p) { return p.x.toFixed(1) + "," + p.y.toFixed(1); }).join(" ");
+    var pts = valueSeries.map(function (p) { return p.x + "," + p.y; }).join(" ");
+    var end = valueSeries[valueSeries.length - 1];
     chart.innerHTML =
       '<svg class="pm-value__svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '" aria-hidden="true">' +
       '<defs><pattern id="pmValueDz" width="2" height="2" patternUnits="userSpaceOnUse"><rect class="pm-value__dot" width="1" height="1"/><rect class="pm-value__dot" x="1" y="1" width="1" height="1"/></pattern></defs>' +
-      '<polygon points="0,' + h + " " + pts + " " + (w - 1) + "," + h + '" fill="url(#pmValueDz)"/>' +
+      '<polygon points="0,' + h + " " + pts + " " + end.x + "," + h + '" fill="url(#pmValueDz)"/>' +
       '<polyline points="' + pts + '" class="pm-value__line" fill="none"/>' +
+      // Now: a square at the line's end.
+      '<rect class="pm-value__end" width="5" height="5" x="' + (end.x - 2) + '" y="' + (end.y - 2) + '"/>' +
       // Hover marker: moved by attributes (not style), which the page observer ignores.
       '<line class="pm-value__cursor" x1="0" x2="0" y1="0" y2="' + h + '" visibility="hidden"/>' +
       '<rect class="pm-value__point" width="5" height="5" x="0" y="0" visibility="hidden"/></svg>';
