@@ -359,9 +359,10 @@
   function syncWeather() {
     var w = $("#newSummary .hero-sentence-weather");
     var place = $(".js-pm-place");
-    var temp = w && w.textContent.match(/(-?\d+)°C/);
+    // The sentence's icon (sun or moon when clear, cloud, rain, snow) goes before the temperature.
+    var temp = w && w.textContent.match(/(-?\d+)°C(?:\s+(\S+)\s+in\b)?/);
     var city = w && $("strong", w);
-    var text = temp && city ? " " + city.textContent + " · " + temp[1] + "°C" : "";
+    var text = temp && city ? " " + city.textContent + " · " + (temp[2] ? temp[2] + " " : "") + temp[1] + "°C" : "";
     // The badge lives inside the observed subtree; writing the same text would loop.
     if (place.textContent !== text) place.textContent = text;
   }

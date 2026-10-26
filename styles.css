@@ -856,8 +856,10 @@ body.portfolio-empty #positionsSection {
 
 /* Positions: columns carry their key as a class (col-asset, col-value, ...) since
    Settings can put them in any order; `num` marks the right-aligned ones. */
+/* Asset takes a set width, not the slack: the numbers spread out instead of crowding
+   to the right of a wide name column. */
 #newPositionsTable th.th-asset {
-  width: 100%;
+  width: 24ch;
 }
 
 #newPositionsTable td.col-asset {
@@ -1301,7 +1303,6 @@ body.hide-comic #newComicSection {
 
 .last-update-timestamp[data-state="refreshing"] .last-update-mark {
   color: var(--muted);
-  animation: terminal-blink 0.8s steps(1) infinite;
 }
 
 .provider-status {
@@ -3501,7 +3502,6 @@ html:root .hero-sentence-weather {
   color: var(--muted);
 }
 
-html:root .hero-sentence-weather strong {
 /* Readout: columns, muted label over figure; columns wrap whole on narrow screens. */
 html:root .hero-readout {
   display: flex;
@@ -3518,6 +3518,7 @@ html:root .hero-readout-label { color: var(--muted); }
   html:root .hero-readout { column-gap: 2ch; }
 }
 
+html:root .hero-sentence-weather strong {
   color: var(--text);
 }
 
@@ -4052,6 +4053,7 @@ html:root .sticker-window-content .help,
   margin: 0;
   padding: calc(var(--lh) * 0.5) 1ch;
 }
+
 /* Watchlist suggestions: "Your positions", "Markets" */
 .search-group {
   margin: 0;
@@ -4059,7 +4061,6 @@ html:root .sticker-window-content .help,
   border-bottom: 1px solid var(--line-soft);
   color: var(--muted);
 }
-
 
 #newAddPositionPythResults:not(:empty) {
   max-height: 240px;
