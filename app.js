@@ -1,6 +1,7 @@
 // Minimal alpha boot for the new modular dashboard
 import * as AssetMapping from './modules/utils/asset-mapping.js';
 import * as Portfolio from './modules/domain/portfolio.js';
+import { optionOf } from './modules/domain/instruments.js';
 import { PortfolioManager } from './modules/domain/portfolio-manager.js';
 import {
   getManualPositionAssetAliases,
@@ -1678,15 +1679,18 @@ function setupControls() {
   function positionSuggestions() {
     const totals = new Map();
     for (const p of window.cachedPositions || []) {
-      if (p.isHlAccountEquity || p.isLighterAccountEquity || p.underlyingPrice != null || p._strategy) continue;
+      if (p.isHlAccountEquity || p.isLighterAccountEquity) continue;
+      // An option, or a row of options, suggests its underlying.
+      const underlying = p._strategy?.underlying || optionOf(p)?.underlying;
+      if (!underlying && p.underlyingPrice != null) continue;
       // Hyperliquid's builder-deployed perps carry their dex: "xyz:AAPL" is AAPL.
-      const symbol = String(p.asset || '').replace(/^[a-z0-9]+:/i, '').trim().toUpperCase();
+      const symbol = String(underlying || p.asset || '').replace(/^[a-z0-9]+:/i, '').trim().toUpperCase();
       const stock = /IBKR/i.test(p.exchange || '') && p.category !== 'cash';
       if (!symbol || (!stock && CASH_OR_STABLE.test(symbol))) continue;
       const t = totals.get(symbol) || { symbol, value: 0, stock: false, name: null };
       t.value += Math.abs(Number(p.value) || 0);
       if (stock) t.stock = true;
-      t.name = t.name || p.name || null;
+      t.name = t.name || (underlying ? null : p.name) || null;
       totals.set(symbol, t);
     }
     const out = [];
@@ -1694,7 +1698,7 @@ function setupControls() {
       const feed = feedForSymbol(t.symbol, !t.stock);
       if (feed) out.push({ ...feed, provider: 'pyth' });
       else if (t.stock) out.push({ provider: 'yahoo', symbol: t.symbol, name: t.name, category: 'equity' });
-      if (out.length === 8) break;
+      if (out.length === 12) break;
     }
     return out;
   }
