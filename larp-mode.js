@@ -1,5 +1,7 @@
 // Larp mode: a made-up portfolio for screenshots. Settings > Demo turns it on and edits it;
-// ?larp turns it on and ?larp=off turns it off.
+// ?larp turns it on and ?larp=off turns it off. ?demo is the link to send people: the sample
+// portfolio for that page only, with the suggested watchlist and a card that leads to their own.
+// ?demo&theme=<name> shows it in that theme.
 // Runs before everything else. While it is on, localStorage is a throw-away copy filled from
 // the larp config, so the real wallets, keys and positions are never read, shown or written.
 // Prices stay live. The larp config itself is kept in the real localStorage (pmLarp.v1), and
@@ -63,6 +65,27 @@
     watchlist: 'TSLA, AMZN, GC=F, ^GSPC'
   };
 
+  // What a demo link shows: three spot holdings and the perps, with no broker account.
+  var DEMO = Object.assign({}, PRESET, {
+    manual: PRESET.manual.filter(function (row) { return ['BTC', 'Gold bars', 'Cash'].indexOf(row.symbol) !== -1; }),
+    hlSpot: [], hlStaked: 0, stocks: [], options: [], ibkrCash: []
+  });
+
+  // The markets the watchlist suggests before anything is typed (WATCHLIST_MARKETS in app.js).
+  var BASICS = [
+    { provider: 'yahoo', symbol: '^GSPC', label: 'SPX', name: 'S&P 500', category: 'index' },
+    { provider: 'yahoo', symbol: '^NDX', label: 'NDX', name: 'Nasdaq 100', category: 'index' },
+    { provider: 'yahoo', symbol: '^VIX', label: 'VIX', name: 'Cboe volatility', category: 'index' },
+    { provider: 'yahoo', symbol: 'DX-Y.NYB', label: 'DXY', name: 'ICE US dollar', category: 'index' },
+    { provider: 'yahoo', symbol: '^TNX', label: 'US10Y', name: '10-year Treasury yield', category: 'index' },
+    { provider: 'yahoo', symbol: 'GC=F', label: 'GOLD', name: 'Gold futures', category: 'commodity' },
+    { provider: 'yahoo', symbol: 'SI=F', label: 'SILVER', name: 'Silver futures', category: 'commodity' },
+    { provider: 'yahoo', symbol: 'BZ=F', label: 'BRENT', name: 'Brent crude futures', category: 'commodity' },
+    { provider: 'pyth', id: '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43' },
+    { provider: 'pyth', id: '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace' },
+    { provider: 'yahoo', symbol: 'EURUSD=X', label: 'EUR/USD', name: 'Euro / US dollar', category: 'fx' }
+  ];
+
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
 
   var state = { on: false, config: null, saved: {} };
@@ -83,7 +106,10 @@
     }
   });
 
+  var shared = false; // opened from a ?demo link
+
   function persist() {
+    if (shared) return; // a demo link changes nothing that is kept
     try { real.setItem(KEY, JSON.stringify({ on: state.on, config: config, saved: state.saved })); } catch (_) { /* not saved */ }
   }
   var pricesTimer = null;
@@ -97,8 +123,15 @@
   try {
     var q = new URLSearchParams(location.search);
     var asked = q.has('larp') ? q.get('larp') : q.get('demo');
-    if (asked !== null) {
-      state.on = asked !== 'off' && asked !== '0' && asked !== 'false';
+    var off = asked === 'off' || asked === '0' || asked === 'false';
+    var linkTheme = /^[a-z0-9-]+$/i.test(q.get('theme') || '') ? q.get('theme') : null;
+    if (q.has('demo') && !q.has('larp') && !off) {
+      // The link stays in the address bar, so a reload shows the demo again and the plain
+      // address shows the visitor's own portfolio.
+      shared = true;
+      config = clone(DEMO);
+    } else if (asked !== null) {
+      state.on = !off;
       persist();
       q.delete('larp'); q.delete('demo');
       var search = q.toString();
@@ -113,30 +146,43 @@
       userName: c.name || '',
       weather: { label: place.label, region: place.region, lat: place.lat, lon: place.lon },
       walletAddresses: WALLET,
-      ibkrFlexToken: 'larp',
-      ibkrFlexQueryId: 'larp',
+      ibkrFlexToken: shared ? '' : 'larp',
+      ibkrFlexQueryId: shared ? '' : 'larp',
       cryptoPositions: clone(c.manual || []),
-      watchlist: String(c.watchlist || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean)
+      watchlist: shared ? clone(BASICS) : String(c.watchlist || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean)
         .map(function (symbol) { return { provider: 'yahoo', symbol: symbol, name: null, category: null }; })
     };
   }
 
   var data = Object.create(null);
 
+  // The page without ?demo: the visitor's own portfolio.
+  function ownAddress() {
+    var q = new URLSearchParams(location.search);
+    q.delete('demo'); q.delete('theme');
+    var search = q.toString();
+    return location.pathname + (search ? '?' + search : '') + location.hash;
+  }
+
   window.larp = {
-    on: state.on,
+    on: state.on || shared,
+    shared: shared,
+    ownAddress: ownAddress,
     config: config,
     prices: prices,
     rememberPrices: persistPrices,
     preset: function () { return clone(PRESET); },
     save: function (next) { config = next; window.larp.config = next; persist(); },
-    setOn: function (on) { state.on = !!on; persist(); },
+    setOn: function (on) {
+      if (shared) { if (!on) location.assign(ownAddress()); return; }
+      state.on = !!on; persist();
+    },
     saved: function () { return state.saved; },
     keep: function (name, c) { state.saved[name] = clone(c); persist(); },
     forget: function (name) { delete state.saved[name]; persist(); },
     // Writes the config into the page's copy of the settings. Returns false when larp is off.
     apply: function () {
-      if (!state.on) return false;
+      if (!window.larp.on) return false;
       var current = {};
       try { current = JSON.parse(data[SETTINGS_KEY] || '{}') || {}; } catch (_) { /* start again */ }
       data[SETTINGS_KEY] = JSON.stringify(Object.assign(current, larpSettings(config)));
@@ -145,14 +191,14 @@
     }
   };
 
-  if (!state.on) return;
+  if (!window.larp.on) return;
 
   data[SETTINGS_KEY] = JSON.stringify(Object.assign({
     theme: 'dark',
     portfolioBaseCurrency: 'USD',
     minBalanceThreshold: 0,
-    hideComic: true
-  }, larpSettings(config)));
+    hideComic: !shared // screenshots leave the comic out; a demo link shows the whole page
+  }, larpSettings(config), shared && linkTheme ? { theme: linkTheme, seasonalThemes: false } : {}));
 
   var methods = {
     getItem: function (k) { k = String(k); return k in data ? data[k] : null; },

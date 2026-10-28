@@ -1137,6 +1137,57 @@ html.pm:root .undo-line__btn:focus-visible kbd { background: var(--pm-ink); colo
   html.pm:root .undo-line__btn:hover > span { background: var(--pm-ink); color: var(--bg); }
 }
 
+/* ── Demo card: on a ?demo link, framed like the undo line, low on the left ── */
+html.pm:root .demo-card {
+  position: fixed;
+  left: 2ch;
+  bottom: calc(var(--pm-lh) + env(safe-area-inset-bottom, 0px));
+  z-index: 999; /* as the undo line */
+  box-sizing: border-box;
+  width: 42ch;
+  max-width: calc(100vw - 4ch);
+  padding: calc(var(--pm-lh) / 2) 1ch;
+  border: 1px solid var(--pm-ink);
+  background: var(--bg);
+  color: var(--pm-ink);
+  box-shadow: 1ch calc(var(--pm-lh) / 2) 0 var(--pm-tint-2);
+  line-height: var(--pm-lh);
+}
+html.pm:root .demo-card__text { margin: 0; }
+html.pm:root .demo-card__muted { color: var(--pm-muted); }
+html.pm:root .demo-card__actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: calc(var(--pm-lh) / 2);
+}
+html.pm:root .demo-card__go {
+  padding: 0 1ch;
+  background: var(--pm-tint);
+  color: var(--pm-ink);
+  text-decoration: none;
+  text-transform: uppercase;
+}
+html.pm:root .demo-card__hide {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pm-muted);
+  font: inherit;
+  line-height: var(--pm-lh);
+  cursor: pointer;
+}
+html.pm:root .demo-card__go:focus-visible { background: var(--pm-ink); color: var(--bg); outline: none; }
+html.pm:root .demo-card__hide:focus-visible { color: var(--pm-ink); }
+@media (hover: hover) {
+  html.pm:root .demo-card__go:hover { background: var(--pm-ink); color: var(--bg); }
+  html.pm:root .demo-card__hide:hover { color: var(--pm-ink); }
+}
+/* Phones: the width of the page. */
+@media (max-width: 640px) {
+  html.pm:root .demo-card { left: 1ch; right: 1ch; width: auto; max-width: none; }
+}
+
 /* ── Buttons under a table: the site's filled uppercase buttons ── */
 
 html.pm:root .panel-foot {

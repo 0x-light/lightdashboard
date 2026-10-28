@@ -573,7 +573,7 @@ export function setupLarpSettings({ invalidateSettingsCache, refresh } = {}) {
     } else if (t.id === 'larpToggle') {
       flush();
       larp.setOn(!larp.on);
-      location.reload();
+      if (!larp.shared) location.reload(); // a demo link leaves for the visitor's own page
     } else if (t.id === 'larpLoad') {
       picked = root.querySelector('#larpPreset').value;
       load(picked);

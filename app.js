@@ -427,6 +427,7 @@ async function _doRenderPortfolioIncremental() {
     // Demo mode (?demo): sample accounts in place of the real exchange and broker data
     if (larp) {
       (await import('./modules/larp/larp-data.js')).installLarp(providers);
+      if (window.larp?.shared) import('./modules/ui/demo-card.js').then(m => m.showDemoCard());
       renderer = makeRenderer();
     }
 
