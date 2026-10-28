@@ -2839,7 +2839,7 @@ const boot = async () => {
 
   if (Themes) {
     const theme = settings.theme || Themes.getPreferredTheme();
-    Themes.applyTheme(theme);
+    Themes.applyTheme(window.pmSeasonTheme?.(settings) || theme); // the picker still shows your own
     const themeSelect = document.getElementById('newThemeSelect');
     const themeSelectMobile = document.getElementById('newThemeSelectMobile');
 

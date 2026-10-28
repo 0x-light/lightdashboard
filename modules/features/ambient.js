@@ -463,9 +463,9 @@ let themeBefore = null;
 
 function wearTheme(name) {
   const html = document.documentElement;
-  if (html.dataset.theme === name) return;
-  if (themeBefore === null) themeBefore = html.dataset.theme || '';
-  setTheme(name);
+  // index.html puts the season's theme on before the first frame; yours is window.pmOwnTheme
+  if (themeBefore === null) themeBefore = (html.dataset.theme === name ? window.pmOwnTheme : html.dataset.theme) || '';
+  if (html.dataset.theme !== name) setTheme(name);
 }
 
 function takeOffTheme(name) {

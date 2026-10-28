@@ -104,6 +104,15 @@
     <link rel="modulepreload" href="/modules/features/watchlist.js">
     <!-- Apply theme synchronously to prevent flash of wrong theme -->
     <script>
+        // The season's theme, worn over your own for its week (ambient.js keeps it on and takes it
+        // off). Decided here too, so the first frame already has it.
+        window.pmSeasonTheme = function (settings) {
+            if (!settings || settings.seasonalThemes === false) return null;
+            var now = new Date(), month = now.getMonth(), day = now.getDate();
+            if (month === 9 && day >= 25) return 'halloween';
+            if (month === 11 && day >= 19 && day <= 26) return 'christmas';
+            return null;
+        };
         // A theme you made: four colours, the rest derived. palmeirim.js uses it too.
         window.pmThemeCss = function (t) {
             var hex = /^#[0-9a-f]{6}$/i;
@@ -129,6 +138,8 @@
                 var rawSettings = localStorage.getItem('myDashboardSettings.v2') || localStorage.getItem('myDashboardSettings.v1') || localStorage.getItem('dashboardSettings') || '{}';
                 var settings = JSON.parse(rawSettings);
                 var theme = settings.theme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                window.pmOwnTheme = theme;
+                theme = window.pmSeasonTheme(settings) || theme;
                 document.documentElement.dataset.theme = theme;
                 document.documentElement.dataset.font = settings.font || 'sf';
                 // Layout options before first paint, so the page doesn't jump
