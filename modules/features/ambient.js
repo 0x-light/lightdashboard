@@ -1,5 +1,5 @@
 // Ambient effects (lazy-loaded): small touches that follow the real world.
-//   Sky       wind slants the rain, stars on clear nights (more at a new moon)
+//   Sky       wind slants the rain, stars every night (more at a new moon)
 //   Market    stock rows dim while their exchange is closed (New York, Europe, London)
 //   Calendar  Halloween week (Oct 25-31) and Christmas week (Dec 19-26) wear their
 //             theme. The themes, however chosen, bring lights on the rules, and bats
@@ -128,15 +128,15 @@ function markClosedExchanges(now) {
 
 function readWorld(now = new Date()) {
   const c = sky?.current;
-  const code = Number(c?.weather_code);
   const t = now.getTime() / 1000;
   const sunrise = Number(sky?.daily?.sunrise?.[0]);
   const sunset = Number(sky?.daily?.sunset?.[0]);
   const hasSun = Number.isFinite(sunrise) && Number.isFinite(sunset);
-  const night = hasSun ? (t < sunrise || t > sunset) : c?.is_day === 0;
+  const hour = now.getHours();
+  const night = hasSun ? (t < sunrise || t > sunset) : c ? c.is_day === 0 : (hour < 6 || hour >= 20);
 
   auto.wind = !!c && (Number(c.wind_speed_10m) || 0) >= 8;
-  auto.stars = !!c && night && (Number(c.cloud_cover) || 0) < 40 && code <= 2;
+  auto.stars = night;
 
   markClosedExchanges(now);
   auto.closed = Object.keys(EXCHANGES).some(market => !exchangeOpen(market, now));
@@ -185,8 +185,8 @@ let sparks = [];
 let nextRocket = 0;
 
 function makeStars() {
-  const count = Math.round(30 + 90 * (1 - moonIllumination()));
-  const band = canvas.height * 0.45;
+  const count = Math.round(60 + 120 * (1 - moonIllumination()));
+  const band = canvas.height * 0.6;
   stars = Array.from({ length: count }, () => {
     const y = Math.random() ** 1.6 * band;
     return {
@@ -204,14 +204,15 @@ function drawStars(color, dt) {
   ctx.fillStyle = color;
   for (const s of stars) {
     s.phase += s.speed * dt;
-    ctx.globalAlpha = (0.35 + 0.65 * s.b) * (0.65 + 0.35 * Math.sin(s.phase)) * (0.3 + 0.7 * s.fade);
-    ctx.fillRect(s.x, s.y, 1, 1);
-    if (s.b > 0.93) {
-      ctx.globalAlpha *= 0.5;
-      ctx.fillRect(s.x - 1, s.y, 1, 1);
-      ctx.fillRect(s.x + 1, s.y, 1, 1);
-      ctx.fillRect(s.x, s.y - 1, 1, 1);
-      ctx.fillRect(s.x, s.y + 1, 1, 1);
+    ctx.globalAlpha = (0.6 + 0.4 * s.b) * (0.75 + 0.25 * Math.sin(s.phase)) * (0.5 + 0.5 * s.fade);
+    const size = s.b > 0.6 ? 2 : 1;
+    ctx.fillRect(s.x, s.y, size, size);
+    if (s.b > 0.9) {
+      ctx.globalAlpha *= 0.6;
+      ctx.fillRect(s.x - 1, s.y, 1, size);
+      ctx.fillRect(s.x + size, s.y, 1, size);
+      ctx.fillRect(s.x, s.y - 1, size, 1);
+      ctx.fillRect(s.x, s.y + size, size, 1);
     }
   }
   ctx.globalAlpha = 1;
