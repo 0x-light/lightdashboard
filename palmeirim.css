@@ -3076,6 +3076,11 @@ html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-c
   --pm-share-fill: color-mix(in srgb, var(--bg) 30%, var(--pm-ink));
 }
 
+/* A row whose market is closed fades its fill with its text; inverted rows keep theirs. */
+html.pm.ambient-markets-closed:root :is(.ambient-closed-us [data-market="us"], .ambient-closed-eu [data-market="eu"], .ambient-closed-uk [data-market="uk"]) td.asset-cell {
+  --pm-share-fill: color-mix(in srgb, var(--pm-tint-2) 55%, transparent);
+}
+
 /* The text inside lets the fill show through instead of painting its own ink box. */
 html.pm:root .data-table tr.position-row:is(.is-open, :focus-visible) td.asset-cell * { background-color: transparent; }
 

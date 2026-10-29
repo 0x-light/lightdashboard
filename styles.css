@@ -4255,12 +4255,16 @@ html.pm:root.ambient-canvas-on body { background-color: transparent; }
 
 .ambient-canvas.active { display: block; }
 
-/* Closed markets: stock rows rest while their exchange is closed (New York, Europe, London) */
-html.ambient-markets-closed:is(.ambient-closed-us) :is(tr.position-row, .mobile-position-card)[data-market="us"],
-html.ambient-markets-closed:is(.ambient-closed-eu) :is(tr.position-row, .mobile-position-card)[data-market="eu"],
-html.ambient-markets-closed:is(.ambient-closed-uk) :is(tr.position-row, .mobile-position-card)[data-market="uk"] {
+/* Closed markets: stock rows rest while their exchange is closed (New York, Europe, London).
+   Only the contents fade: borders and cell backgrounds stay at full strength. Text fades
+   in its own colour, so gains stay green and losses red. */
+html.ambient-markets-closed :is(.ambient-closed-us [data-market="us"], .ambient-closed-eu [data-market="eu"], .ambient-closed-uk [data-market="uk"]):is(tr.position-row, .mobile-position-card),
+html.ambient-markets-closed :is(.ambient-closed-us [data-market="us"], .ambient-closed-eu [data-market="eu"], .ambient-closed-uk [data-market="uk"]):is(tr.position-row, .mobile-position-card) * {
+  -webkit-text-fill-color: color-mix(in srgb, currentColor 55%, transparent);
+}
+
+html.ambient-markets-closed :is(.ambient-closed-us [data-market="us"], .ambient-closed-eu [data-market="eu"], .ambient-closed-uk [data-market="uk"]):is(tr.position-row, .mobile-position-card) svg {
   opacity: 0.55;
-  transition: opacity 0.6s ease;
 }
 
 
