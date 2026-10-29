@@ -84,6 +84,14 @@ export function loadSettings() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
     }
 
+    // Centered became the default: move everyone there once. After that, left stays left.
+    if (!s.centerLayoutReset) {
+      const stored = JSON.parse(raw);
+      stored.centerLayout = s.centerLayout = true;
+      stored.centerLayoutReset = s.centerLayoutReset = true;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+    }
+
     // Merge with defaults to ensure new settings are included
     const defaults = getDefaultSettings();
     const merged = { ...defaults, ...s };
@@ -114,7 +122,8 @@ export function getDefaultSettings() {
     font: 'sf',
     fontSize: 14,
     fullWidth: false, // Content column fills the window instead of stopping at a reading width
-    centerLayout: false, // Content column sits in the middle of the window instead of on the left
+    centerLayout: true, // Content column sits in the middle of the window instead of on the left
+    centerLayoutReset: true, // Settings without it predate centered as the default and move there once
     valueInTitle: true, // Portfolio value and today's change in the browser tab title
     showValueChart: true, // portfolio value chart in the portfolio card
     comicStrip: 'calvinandhobbes',

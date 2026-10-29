@@ -144,7 +144,7 @@
                 document.documentElement.dataset.font = settings.font || 'sf';
                 // Layout options before first paint, so the page doesn't jump
                 document.documentElement.classList.toggle('pm-full', !!settings.fullWidth);
-                document.documentElement.classList.toggle('pm-center', !!settings.centerLayout);
+                document.documentElement.classList.toggle('pm-center', settings.centerLayout !== false || !settings.centerLayoutReset);
                 document.documentElement.dataset.valueChart = settings.showValueChart === false ? 'off' : 'on';
 
                 // Theme background colors for status bar (must match CSS)

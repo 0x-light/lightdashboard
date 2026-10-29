@@ -25,7 +25,7 @@ const FIELDS = [
   { id: 'newFontSelect', key: 'font', type: 'select', fallback: 'sf' },
   { id: 'newFontSizeSelect', key: 'fontSize', type: 'number', fallback: 14 },
   { name: 'newWidth', key: 'fullWidth', type: 'choice', fallback: false },
-  { name: 'newAlign', key: 'centerLayout', type: 'choice', fallback: false },
+  { name: 'newAlign', key: 'centerLayout', type: 'choice', fallback: true },
   { id: 'newValueInTitle', key: 'valueInTitle', type: 'check', fallback: true },
   { id: 'newShowValueChart', key: 'showValueChart', type: 'check', fallback: true },
   { id: 'newUseColoredPnL', key: 'useColoredPnL', type: 'check', fallback: true },
@@ -262,7 +262,7 @@ export function applyAppearance(settings) {
   body.classList.toggle('mono-pnl', !(settings.useColoredPnL ?? true));
   body.classList.toggle('no-charts', !(settings.showPriceChart ?? true));
   document.documentElement.classList.toggle('pm-full', settings.fullWidth ?? false);
-  document.documentElement.classList.toggle('pm-center', settings.centerLayout ?? false);
+  document.documentElement.classList.toggle('pm-center', settings.centerLayout ?? true);
   // The portfolio renderer writes the value into the tab title unless this says off.
   const titleValue = settings.valueInTitle ?? true;
   document.documentElement.dataset.titleValue = titleValue ? 'on' : 'off';
