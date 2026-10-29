@@ -9,7 +9,7 @@ export function showDemoCard() {
   card.className = 'demo-card';
   card.setAttribute('aria-label', 'Sample portfolio');
   card.innerHTML =
-    '<p class="demo-card__text">This is a sample portfolio. Prices are live.</p>' +
+    '<p class="demo-card__text">This is a sample portfolio.</p>' +
     '<p class="demo-card__text demo-card__muted">Add a wallet or a position to see your own. No sign-up.</p>' +
     '<div class="demo-card__actions">' +
       '<a class="demo-card__go"></a>' +
