@@ -279,10 +279,11 @@
       point.setAttribute("y", (near.y - 2.5).toFixed(1));
       point.setAttribute("visibility", "visible");
     }
-    var when = new Date(near.t);
-    var label = valuePeriod === "day"
-      ? when.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: window.larpTimeZone })
-      : when.toLocaleDateString(undefined, { month: "short", day: "numeric", year: valuePeriod === "allTime" ? "numeric" : undefined });
+    // As in the chart window: 1D the time, 1W and 1M the date and time, All the date.
+    var when = new Date(near.t), tz = window.larpTimeZone;
+    var clock = when.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: tz });
+    var date = when.toLocaleDateString(undefined, { month: "short", day: "numeric", year: valuePeriod === "allTime" ? "numeric" : undefined, timeZone: tz });
+    var label = valuePeriod === "day" ? clock : valuePeriod === "allTime" ? date : date + " " + clock;
     var first = valueSeries[0].v;
     var pct = first > 0 ? (near.v / first - 1) * 100 : null;
     var value = el("span"), time = el("span", { class: "pm-value__tag-when" });
